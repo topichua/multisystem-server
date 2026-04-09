@@ -20,6 +20,7 @@ import { getTypeOrmModuleOptions } from './database/typeorm-connection-options';
           DB_PASSWORD: config.get<string>('DB_PASSWORD'),
           DB_NAME: config.get<string>('DB_NAME'),
           DB_LOGGING: config.get<string>('DB_LOGGING'),
+          DB_SSL: config.get<string>('DB_SSL'),
         }),
       inject: [ConfigService],
     }),
