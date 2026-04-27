@@ -1,6 +1,16 @@
 import { DataSourceOptions } from 'typeorm';
-import { CreateUsersTable1744200000001 } from './migrations/1744200000001-CreateUsersTable';
-import { User } from '../users/entities/user.entity';
+import { InitialSchema1744200000001 } from './migrations/1744200000001-InitialSchema';
+import { ConversationParticipantString1744200000002 } from './migrations/1744200000002-ConversationParticipantString';
+import {
+  Client,
+  Company,
+  Conversation,
+  ConversationGroup,
+  ConversationMessage,
+  InstagramUser,
+  Source,
+  User,
+} from './entities';
 
 export type DatabaseEnv = {
   DATABASE_URL?: string;
@@ -10,43 +20,29 @@ export type DatabaseEnv = {
   DB_PASSWORD?: string;
   DB_NAME?: string;
   DB_LOGGING?: string;
-  /** `true` / `false` to force SSL on or off; omit for auto (e.g. SSL on Vercel). */
-  DB_SSL?: string;
 };
 
-function sslOptions(env: DatabaseEnv):
-  | undefined
-  | false
-  | { rejectUnauthorized: boolean } {
-  if (env.DB_SSL === 'false') return false;
-  if (env.DB_SSL === 'true') return { rejectUnauthorized: false };
-  const url = env.DATABASE_URL?.trim();
-  if (!url) return undefined;
-  if (process.env.VERCEL === '1') {
-    return { rejectUnauthorized: false };
-  }
-  if (
-    url.includes('neon.tech') ||
-    url.includes('supabase.co') ||
-    /[?&]sslmode=require/i.test(url)
-  ) {
-    return { rejectUnauthorized: false };
-  }
-  return undefined;
-}
+const entities = [
+  User,
+  Company,
+  Source,
+  InstagramUser,
+  Client,
+  ConversationGroup,
+  Conversation,
+  ConversationMessage,
+];
 
 function baseOptions(env: DatabaseEnv) {
   const logging = env.DB_LOGGING === 'true';
   const url = env.DATABASE_URL?.trim();
-  const ssl = sslOptions(env);
   if (url) {
     return {
       type: 'postgres' as const,
       url,
-      entities: [User],
+      entities,
       synchronize: false,
       logging,
-      ...(ssl ? { ssl } : {}),
     };
   }
   return {
@@ -56,10 +52,9 @@ function baseOptions(env: DatabaseEnv) {
     username: env.DB_USERNAME ?? 'postgres',
     password: env.DB_PASSWORD ?? 'postgres',
     database: env.DB_NAME ?? 'multisystem',
-    entities: [User],
+    entities,
     synchronize: false,
     logging,
-    ...(ssl ? { ssl } : {}),
   };
 }
 
@@ -72,6 +67,9 @@ export function getTypeOrmModuleOptions(env: DatabaseEnv) {
 export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
   return {
     ...baseOptions(env),
-    migrations: [CreateUsersTable1744200000001],
+    migrations: [
+      InitialSchema1744200000001,
+      ConversationParticipantString1744200000002,
+    ],
   };
 }

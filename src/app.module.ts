@@ -4,6 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
+import { CompaniesModule } from './companies/companies.module';
+import { ConversationsModule } from './conversations/conversations.module';
+import { AccountModule } from './account/account.module';
 import { getTypeOrmModuleOptions } from './database/typeorm-connection-options';
 
 @Module({
@@ -20,11 +23,13 @@ import { getTypeOrmModuleOptions } from './database/typeorm-connection-options';
           DB_PASSWORD: config.get<string>('DB_PASSWORD'),
           DB_NAME: config.get<string>('DB_NAME'),
           DB_LOGGING: config.get<string>('DB_LOGGING'),
-          DB_SSL: config.get<string>('DB_SSL'),
         }),
       inject: [ConfigService],
     }),
     UsersModule,
+    CompaniesModule,
+    ConversationsModule,
+    AccountModule,
   ],
   controllers: [AppController],
   providers: [AppService],

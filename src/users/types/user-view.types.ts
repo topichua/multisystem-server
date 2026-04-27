@@ -1,4 +1,4 @@
-import { UserStatus } from '../entities/user-status.enum';
+import { UserStatus } from '../../database/entities';
 
 /** Public user shape (no password or invitation token secrets). */
 export type SafeUser = {

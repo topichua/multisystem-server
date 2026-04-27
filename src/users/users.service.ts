@@ -6,8 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from './entities/user.entity';
-import { UserStatus } from './entities/user-status.enum';
+import { User, UserStatus } from '../database/entities';
 import { PasswordService } from './crypto/password.service';
 import { InvitationTokenService } from './crypto/invitation-token.service';
 import { toAuthSnapshot, toSafeUser } from './mappers/user.mapper';

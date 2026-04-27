@@ -11,11 +11,11 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Super admin login (env credentials)',
+    summary: 'Login (env admin or database user)',
     description:
-      'Returns a JWT with role super_admin. Configure ADMIN_EMAIL and ADMIN_PASSWORD.',
+      'Authenticates using ADMIN_EMAIL/ADMIN_PASSWORD from env or users table email/password, and returns a JWT with role super_admin.',
   })
-  login(@Body() dto: LoginRequestDto) {
+  async login(@Body() dto: LoginRequestDto) {
     return this.authService.loginSuperAdmin(dto);
   }
 }

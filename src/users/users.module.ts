@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
-import { User } from './entities/user.entity';
+import { User } from '../database/entities';
 import { InvitationTokenService } from './crypto/invitation-token.service';
 import { PasswordService } from './crypto/password.service';
 import { UsersAdminController } from './users-admin.controller';

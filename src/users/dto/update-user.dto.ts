@@ -1,4 +1,4 @@
-import { UserStatus } from '../entities/user-status.enum';
+import { UserStatus } from '../../database/entities';
 
 /** Non-sensitive profile fields only (no passwords or invitation fields). */
 export type UpdateUserInput = {

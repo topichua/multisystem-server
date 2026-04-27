@@ -8,7 +8,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { UserStatus } from '../../entities/user-status.enum';
+import { UserStatus } from '../../../database/entities';
 
 export class CreateUserRequestDto {
   @ApiProperty()

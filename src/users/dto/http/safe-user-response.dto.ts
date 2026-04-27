@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserStatus } from '../../entities/user-status.enum';
+import { UserStatus } from '../../../database/entities';
 
 /** API response shape — never includes password_hash or invitation_token_hash. */
 export class SafeUserResponseDto {

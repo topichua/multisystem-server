@@ -1,10 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
-/** Served from CDN so Swagger works on Vercel (serverless has no local swagger-ui-dist). */
-const SWAGGER_UI_CDN =
-  'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14';
-
 export function setupSwagger(app: INestApplication, path = 'api'): void {
   const config = new DocumentBuilder()
     .setTitle('Multisystem API')
@@ -34,10 +30,5 @@ export function setupSwagger(app: INestApplication, path = 'api'): void {
       displayRequestDuration: true,
     },
     customSiteTitle: 'Multisystem API — Swagger',
-    customCssUrl: [`${SWAGGER_UI_CDN}/swagger-ui.css`],
-    customJs: [
-      `${SWAGGER_UI_CDN}/swagger-ui-bundle.js`,
-      `${SWAGGER_UI_CDN}/swagger-ui-standalone-preset.js`,
-    ],
   });
 }
