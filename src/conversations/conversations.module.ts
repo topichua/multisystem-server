@@ -1,11 +1,23 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Company, Conversation, Source } from '../database/entities';
+import {
+  Company,
+  Conversation,
+  ConversationMessage,
+  Source,
+} from '../database/entities';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Company, Conversation, Source])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Company,
+      Conversation,
+      ConversationMessage,
+      Source,
+    ]),
+  ],
   controllers: [ConversationsController],
   providers: [ConversationsService],
   exports: [ConversationsService],

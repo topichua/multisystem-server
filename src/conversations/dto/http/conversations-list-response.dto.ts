@@ -14,8 +14,8 @@ export class ConversationRowDto {
   @ApiProperty()
   instUpdatedAt: Date;
 
-  @ApiPropertyOptional({ nullable: true })
-  readAt: Date | null;
+  @ApiPropertyOptional()
+  isUnread: boolean;
 
   @ApiProperty({ description: 'Instagram-scoped id for the other participant in the thread.' })
   participantId: string;
@@ -25,6 +25,9 @@ export class ConversationRowDto {
 
   @ApiPropertyOptional({ nullable: true })
   groupId: number | null;
+
+  @ApiProperty()
+  lastMessage: string;
 }
 
 export class ConversationsListResponseDto {

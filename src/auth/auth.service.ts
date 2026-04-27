@@ -7,10 +7,16 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
-import { User, UserStatus } from '../database/entities';
+import { Company, User, UserStatus } from '../database/entities';
 import { ROLE_SUPER_ADMIN } from './constants';
+import type { AuthUser } from './types/auth-user.type';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { LoginRequestDto } from './dto/login-request.dto';
+import type {
+  CompanyMeDto,
+  MeResponseDto,
+  UserMeDto,
+} from './dto/me-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -19,7 +25,77 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Company)
+    private readonly companyRepo: Repository<Company>,
   ) {}
+
+  async getMe(authUser: AuthUser): Promise<MeResponseDto> {
+    if (authUser.userId === 'super-admin') {
+      return {
+        email: authUser.email,
+        role: authUser.role,
+        user: null,
+        company: null,
+        companyName: null,
+      };
+    }
+
+    const id = Number(authUser.userId);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new UnauthorizedException();
+    }
+
+    const user = await this.userRepo.findOne({
+      where: { id },
+      withDeleted: false,
+    });
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    const company = await this.companyRepo.findOne({
+      where: { ownerId: id },
+      order: { id: 'DESC' },
+    });
+
+    const companyDto: CompanyMeDto | null = company
+      ? { id: company.id, name: company.name, pageId: company.pageId }
+      : null;
+
+    return {
+      email: authUser.email,
+      role: authUser.role,
+      user: this.toUserMeDto(user),
+      company: companyDto,
+      companyName: companyDto?.name ?? null,
+    };
+  }
+
+  private toUserMeDto(user: User): UserMeDto {
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      status: user.status,
+      invitedAt: user.invitedAt,
+      invitedByUserId: user.invitedByUserId,
+      invitationExpiresAt: user.invitationExpiresAt,
+      invitationAcceptedAt: user.invitationAcceptedAt,
+      emailVerifiedAt: user.emailVerifiedAt,
+      lastSeenAt: user.lastSeenAt,
+      lastLoginAt: user.lastLoginAt,
+      country: user.country,
+      region: user.region,
+      city: user.city,
+      streetLine1: user.streetLine1,
+      streetLine2: user.streetLine2,
+      postalCode: user.postalCode,
+      metadata: user.metadata ?? {},
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
 
   async loginSuperAdmin(
     dto: LoginRequestDto,
