@@ -4,6 +4,7 @@ import {
   Company,
   Conversation,
   ConversationMessage,
+  InstagramUser,
   Source,
 } from '../database/entities';
 import { ConversationsController } from './conversations.controller';
@@ -15,6 +16,7 @@ import { ConversationsService } from './conversations.service';
       Company,
       Conversation,
       ConversationMessage,
+      InstagramUser,
       Source,
     ]),
   ],

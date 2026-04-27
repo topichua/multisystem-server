@@ -1,6 +1,8 @@
 import { DataSourceOptions } from 'typeorm';
 import { InitialSchema1744200000001 } from './migrations/1744200000001-InitialSchema';
 import { ConversationParticipantString1744200000002 } from './migrations/1744200000002-ConversationParticipantString';
+import { ConversationMessageEditedAt1744200000003 } from './migrations/1744200000003-ConversationMessageEditedAt';
+import { InstagramUserScopedId1744200000004 } from './migrations/1744200000004-InstagramUserScopedId';
 import {
   Client,
   Company,
@@ -70,6 +72,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
     migrations: [
       InitialSchema1744200000001,
       ConversationParticipantString1744200000002,
+      ConversationMessageEditedAt1744200000003,
+      InstagramUserScopedId1744200000004,
     ],
   };
 }

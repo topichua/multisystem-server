@@ -162,6 +162,12 @@ export class InstagramMessageDto {
   @ApiProperty()
   created_time: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Present when requesting `conversation{id}` on the message node (fallback resolution)',
+  })
+  conversation?: { id?: string };
+
   @ApiPropertyOptional({ type: () => InstagramMessageActorDto })
   from?: InstagramMessageActorDto;
 
@@ -190,6 +196,17 @@ export class InstagramMessageDto {
 
   @ApiPropertyOptional({ type: () => InstagramMessageTagsDto })
   tags?: InstagramMessageTagsDto;
+
+  @ApiPropertyOptional({
+    description:
+      'When the message was last edited on Instagram (if known), ISO 8601',
+  })
+  edited_at?: string;
+
+  @ApiPropertyOptional({
+    description: 'When this server last stored/updated the message row, ISO 8601',
+  })
+  system_updated_at?: string;
 }
 
 export class InstagramMessagesPagingCursorsDto {

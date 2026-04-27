@@ -8,6 +8,7 @@ import { CompaniesModule } from './companies/companies.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { AccountModule } from './account/account.module';
 import { getTypeOrmModuleOptions } from './database/typeorm-connection-options';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { getTypeOrmModuleOptions } from './database/typeorm-connection-options';
     CompaniesModule,
     ConversationsModule,
     AccountModule,
+    WebhookModule,
   ],
   controllers: [AppController],
   providers: [AppService],

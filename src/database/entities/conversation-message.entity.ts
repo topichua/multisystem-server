@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Conversation } from './conversation.entity';
 
@@ -32,6 +33,19 @@ export class ConversationMessage {
 
   @Column({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  /**
+   * When the message was last edited on Instagram (e.g. from a `message_edit` webhook
+   * or when we learn of an edit). Null if never edited in our data.
+   */
+  @Column({ name: 'edited_at', type: 'timestamptz', nullable: true })
+  editedAt: Date | null;
+
+  /**
+   * Last time this application wrote/updated the row in the database.
+   */
+  @UpdateDateColumn({ name: 'system_updated_at', type: 'timestamptz' })
+  systemUpdatedAt: Date;
 
   @Column({ name: 'sender_id', type: 'varchar', length: 255 })
   senderId: string;
