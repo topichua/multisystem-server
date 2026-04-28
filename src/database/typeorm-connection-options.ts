@@ -3,6 +3,8 @@ import { InitialSchema1744200000001 } from './migrations/1744200000001-InitialSc
 import { ConversationParticipantString1744200000002 } from './migrations/1744200000002-ConversationParticipantString';
 import { ConversationMessageEditedAt1744200000003 } from './migrations/1744200000003-ConversationMessageEditedAt';
 import { InstagramUserScopedId1744200000004 } from './migrations/1744200000004-InstagramUserScopedId';
+import { InstagramUserScopedIdPK1744200000005 } from './migrations/1744200000005-InstagramUserScopedIdPK';
+import { InstagramUserIdColumnNames1744200000006 } from './migrations/1744200000006-InstagramUserIdColumnNames';
 import {
   Client,
   Company,
@@ -74,6 +76,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationParticipantString1744200000002,
       ConversationMessageEditedAt1744200000003,
       InstagramUserScopedId1744200000004,
+      InstagramUserScopedIdPK1744200000005,
+      InstagramUserIdColumnNames1744200000006,
     ],
   };
 }

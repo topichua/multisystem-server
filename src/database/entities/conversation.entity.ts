@@ -33,7 +33,7 @@ export class Conversation {
   @Column({ name: 'read_at', type: 'timestamptz', nullable: true })
   readAt: Date | null;
 
-  /** Instagram-scoped participant (PSID / IGSID); stored as string (can exceed 32-bit int). */
+  /** Instagram participant user id (PSID / IGSID); stored as string (can exceed 32-bit int). */
   @Column({ name: 'participant_id', type: 'varchar', length: 255 })
   participantId: string;
 

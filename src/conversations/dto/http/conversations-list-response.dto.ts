@@ -17,7 +17,7 @@ export class ConversationRowDto {
   @ApiPropertyOptional()
   isUnread: boolean;
 
-  @ApiProperty({ description: 'Instagram-scoped id for the other participant in the thread.' })
+  @ApiProperty({ description: 'Instagram user id for the other participant in the thread (PSID / IGSID).' })
   participantId: string;
 
   @ApiProperty({ enum: ConversationSource })

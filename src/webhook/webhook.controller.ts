@@ -49,6 +49,6 @@ export class WebhookController {
   })
   async handleEvent(@Body() body: unknown): Promise<void> {
     const instagram = isInstagramWebhookPayload(body) ? body : null;
-    await this.webhookService.handleWebhookPost(instagram, body);
+    await this.webhookService.handleWebhookPost(instagram);
   }
 }

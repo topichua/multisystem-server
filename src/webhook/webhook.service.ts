@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ConversationsService } from '../conversations/conversations.service';
+import { ConversationsAllocationService } from '../conversations/conversations-allocation.service';
 import type { InstagramWebhookPayload } from './instagram-webhook-payload.types';
 
 @Injectable()
@@ -10,7 +10,7 @@ export class WebhookService {
 
   constructor(
     private readonly config: ConfigService,
-    private readonly conversationsService: ConversationsService,
+    private readonly conversationsAllocationService: ConversationsAllocationService,
   ) {}
 
   /** Returns the challenge string when verification succeeds; otherwise `null`. */
@@ -36,31 +36,18 @@ export class WebhookService {
 
   async handleWebhookPost(
     instagram: InstagramWebhookPayload | null,
-    raw: unknown,
   ): Promise<void> {
     const traceId = randomUUID();
     if (instagram) {
-      const entryCount = instagram.entry?.length ?? 0;
-      let messagingCount = 0;
-      for (const e of instagram.entry ?? []) {
-        messagingCount += e.messaging?.length ?? 0;
-      }
-      this.log.log(
-        `[webhook trace=${traceId}] accepted object=instagram entries=${entryCount} messaging_items=${messagingCount}`,
-      );
       this.log.debug(
         `[webhook trace=${traceId}] payload:\n${JSON.stringify(instagram, null, 2)}`,
       );
-      await this.conversationsService.allocateInstagramMessagingWebhook(
+      await this.conversationsAllocationService.allocateInstagramMessagingWebhook(
         instagram,
         traceId,
       );
       this.log.log(
         `[webhook trace=${traceId}] handler finished (allocation complete)`,
-      );
-    } else {
-      this.log.log(
-        `[webhook trace=${traceId}] non-instagram body (ignored for allocation):\n${JSON.stringify(raw, null, 2)}`,
       );
     }
   }

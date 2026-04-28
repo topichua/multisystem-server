@@ -30,10 +30,10 @@ export class Client {
   @Column({ name: 'delivery_info', type: 'text' })
   deliveryInfo: string;
 
-  @Column({ name: 'instagram_user_id', type: 'int' })
-  instagramUserId: number;
+  @Column({ name: 'instagram_user_id', type: 'varchar', length: 255 })
+  instagramUserId: string;
 
   @ManyToOne(() => InstagramUser, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'instagram_user_id' })
+  @JoinColumn({ name: 'instagram_user_id', referencedColumnName: 'id' })
   instagramUser: InstagramUser;
 }

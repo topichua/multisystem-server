@@ -33,8 +33,7 @@ export type Conversation = {
 };
 
 export type InstagramUser = {
-  id: number;
-  scopedId: string | null;
+  id: string;
   name: string;
   username: string;
   profilePic: string;
@@ -49,7 +48,7 @@ export type Client = {
   createdAt: Date;
   phone: string;
   deliveryInfo: string;
-  instagramUserId: number;
+  instagramUserId: string;
 };
 
 export type ConversationMessage = {

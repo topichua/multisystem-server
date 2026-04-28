@@ -8,6 +8,7 @@ import {
   Source,
 } from '../database/entities';
 import { ConversationsController } from './conversations.controller';
+import { ConversationsAllocationService } from './conversations-allocation.service';
 import { ConversationsService } from './conversations.service';
 
 @Module({
@@ -21,7 +22,7 @@ import { ConversationsService } from './conversations.service';
     ]),
   ],
   controllers: [ConversationsController],
-  providers: [ConversationsService],
-  exports: [ConversationsService],
+  providers: [ConversationsService, ConversationsAllocationService],
+  exports: [ConversationsService, ConversationsAllocationService],
 })
 export class ConversationsModule {}
