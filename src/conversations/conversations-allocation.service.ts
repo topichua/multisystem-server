@@ -72,7 +72,7 @@ export class ConversationsAllocationService {
 
       const messaging = entry.messaging ?? [];
       const company = await this.companyRepo.findOne({
-        where: { pageToken: entryPageId },
+        where: { businessAccountId: entryPageId },
         order: { id: 'DESC' },
       });
       if (!company) {
@@ -92,6 +92,17 @@ export class ConversationsAllocationService {
 
       for (let mi = 0; mi < messaging.length; mi++) {
         const ev = messaging[mi];
+        const readMid = ev.read?.mid?.trim();
+        if (readMid) {
+          const readAt = new Date(ev.timestamp ?? entry.time);
+          await this.applyReadWebhookByMid(
+            readMid,
+            company.ownerId,
+            Number.isNaN(readAt.getTime()) ? new Date() : readAt,
+            traceId,
+          );
+        }
+
         const midJobs = this.mergeWebhookMidsForEvent(ev, entry.time);
         if (midJobs.length === 0) {
           this.log.log(
@@ -115,10 +126,12 @@ export class ConversationsAllocationService {
               traceId,
               mid,
               pageId: pageTrim,
+              businessInstagramId: company.instagramAccountId,
               ownerId: company.ownerId,
               accessToken,
-              editedAt,
+              ...(editedAt != null ? { editedAt } : {}),
               senderHintId,
+              webhookMessaging: ev,
             });
           } catch (e) {
             const err = e instanceof Error ? e.message : String(e);
@@ -176,7 +189,7 @@ export class ConversationsAllocationService {
   private mergeWebhookMidsForEvent(
     ev: InstagramWebhookMessagingItem,
     entryTimeMs: number,
-  ): { mid: string; editedAt: Date | null; senderHintId?: string }[] {
+  ): { mid: string; editedAt?: Date; senderHintId?: string }[] {
     const eventMs = ev.timestamp ?? entryTimeMs;
     const asDate = (ms: number): Date => {
       const d = new Date(ms);
@@ -189,16 +202,16 @@ export class ConversationsAllocationService {
       if (mid) pairs.push({ mid, fromEdit });
     };
     pushMid(ev.message?.mid, false);
-    pushMid(ev.read?.mid, false);
-    pushMid(ev.message_edit?.mid, true);
+    const numEdit = ev.message_edit?.num_edit;
+    pushMid(ev.message_edit?.mid, (numEdit ?? 0) > 0);
     pushMid(ev.reaction?.mid, false);
 
-    const byMid = new Map<string, Date | null>();
+    const byMid = new Map<string, Date | undefined>();
     for (const p of pairs) {
       if (p.fromEdit) {
         byMid.set(p.mid, asDate(eventMs));
       } else if (!byMid.has(p.mid)) {
-        byMid.set(p.mid, null);
+        byMid.set(p.mid, undefined);
       }
     }
 
@@ -218,13 +231,18 @@ export class ConversationsAllocationService {
   private pickCustomerUserIdFromMessage(
     m: InstagramMessageDto,
     pageId: string,
+    businessInstagramId?: string | null,
   ): string | null {
-    const pageTrim = pageId.trim();
+    const excludedIds = new Set(
+      [pageId, businessInstagramId ?? undefined]
+        .map((x) => x?.trim())
+        .filter((x): x is string => Boolean(x)),
+    );
     const fromId = m.from?.id?.trim();
     if (
       this.isLikelyInstagramPsid(fromId) &&
       fromId !== undefined &&
-      fromId !== pageTrim
+      !excludedIds.has(fromId)
     ) {
       return fromId;
     }
@@ -233,7 +251,7 @@ export class ConversationsAllocationService {
       if (
         this.isLikelyInstagramPsid(tid) &&
         tid !== undefined &&
-        tid !== pageTrim
+        !excludedIds.has(tid)
       ) {
         return tid;
       }
@@ -245,9 +263,20 @@ export class ConversationsAllocationService {
   private pickCustomerUserIdForWebhook(
     m: InstagramMessageDto,
     pageId: string,
+    businessInstagramId?: string | null,
     senderHintId?: string | null,
   ): string | null {
-    const fromGraph = this.pickCustomerUserIdFromMessage(m, pageId);
+    const excludedIds = new Set(
+      [pageId, businessInstagramId ?? undefined]
+        .map((x) => x?.trim())
+        .filter((x): x is string => Boolean(x)),
+    );
+
+    const fromGraph = this.pickCustomerUserIdFromMessage(
+      m,
+      pageId,
+      businessInstagramId,
+    );
     if (fromGraph) {
       return fromGraph;
     }
@@ -255,7 +284,7 @@ export class ConversationsAllocationService {
     if (
       hint &&
       this.isLikelyInstagramPsid(hint) &&
-      hint !== pageId.trim()
+      !excludedIds.has(hint)
     ) {
       return hint;
     }
@@ -266,15 +295,17 @@ export class ConversationsAllocationService {
     traceId: string;
     mid: string;
     pageId: string;
+    businessInstagramId?: string | null;
     ownerId: number;
     accessToken: string;
-    editedAt: Date | null;
+    editedAt?: Date;
     /** Webhook `sender` when the event is a reaction (Graph message may not list both parties). */
     senderHintId?: string | null;
+    webhookMessaging: InstagramWebhookMessagingItem;
   }): Promise<void> {
     const t = `[webhook trace=${opts.traceId}]`;
     const messageFieldsWithReactions =
-      'id,created_time,from,to,message,reactions{data{reaction,users{id,username}}}';
+      'id,created_time,from,to,reply_to,message,reactions{data{reaction,users{id,username}}}';
     const msg = await this.fetchInstagramMessageById(
       opts.mid,
       opts.accessToken,
@@ -288,6 +319,7 @@ export class ConversationsAllocationService {
     const customerUserId = this.pickCustomerUserIdForWebhook(
       msg,
       opts.pageId,
+      opts.businessInstagramId,
       opts.senderHintId,
     );
     if (!customerUserId) {
@@ -348,8 +380,13 @@ export class ConversationsAllocationService {
       ? this.pickCustomerParticipantId(
           igConv.participants?.data ?? [],
           opts.pageId,
+          opts.businessInstagramId,
         )
-      : this.pickCustomerUserIdFromMessage(msg, opts.pageId) ?? 'unknown';
+      : this.pickCustomerUserIdFromMessage(
+          msg,
+          opts.pageId,
+          opts.businessInstagramId,
+        ) ?? 'unknown';
 
     let row = await this.conversationRepo.findOne({
       where: { managerId: opts.ownerId, externalId: graphConversationId },
@@ -383,7 +420,10 @@ export class ConversationsAllocationService {
     await this.persistInstagramMessages(
       row.id,
       [msg],
-      opts.editedAt != null ? { editedAt: opts.editedAt } : undefined,
+      {
+        ...(opts.editedAt != null ? { editedAt: opts.editedAt } : {}),
+        webhookMessaging: opts.webhookMessaging,
+      },
     );
     await this.syncInstagramUsersForWebhookAllocation(
       msg,
@@ -400,7 +440,7 @@ export class ConversationsAllocationService {
   private async persistInstagramMessages(
     conversationDbId: number,
     messages: InstagramMessageDto[],
-    options?: { editedAt?: Date },
+    options?: { editedAt?: Date; webhookMessaging?: InstagramWebhookMessagingItem },
   ): Promise<void> {
     for (const m of messages) {
       const ext = m.id?.trim();
@@ -410,7 +450,22 @@ export class ConversationsAllocationService {
       const senderId = m.from?.id?.trim() ?? '';
       const receiverId = m.to?.data?.[0]?.id?.trim() ?? '';
       const text = m.message ?? '';
-      const instagramJson = JSON.stringify(m);
+      const replyToExternalId = options?.webhookMessaging?.message?.reply_to?.mid?.trim();
+      const replyToId = await this.resolveReplyToId(
+        conversationDbId,
+        ext,
+        replyToExternalId,
+      );
+      const { id: _messageId, ...messageWithoutId } = m;
+      const instagramJson = JSON.stringify({
+        ...messageWithoutId,
+        ...(options?.webhookMessaging != null
+          ? {
+              webhook_messaging:
+                this.sanitizeWebhookMessagingForStorage(options.webhookMessaging),
+            }
+          : {}),
+      });
 
       let row = await this.conversationMessageRepo.findOne({
         where: { conversationId: conversationDbId, externalId: ext },
@@ -424,6 +479,8 @@ export class ConversationsAllocationService {
           createdAt,
           senderId: senderId.length > 0 ? senderId : '0',
           receiverId: receiverId.length > 0 ? receiverId : '0',
+          readAt: null,
+          replyToId,
           ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
         });
       } else {
@@ -432,6 +489,9 @@ export class ConversationsAllocationService {
         row.createdAt = createdAt;
         row.senderId = senderId.length > 0 ? senderId : row.senderId;
         row.receiverId = receiverId.length > 0 ? receiverId : row.receiverId;
+        if (replyToId != null) {
+          row.replyToId = replyToId;
+        }
         if (options?.editedAt != null) {
           row.editedAt = options.editedAt;
         }
@@ -440,17 +500,107 @@ export class ConversationsAllocationService {
     }
   }
 
+  private async applyReadWebhookByMid(
+    mid: string,
+    ownerId: number,
+    readAt: Date,
+    traceId: string,
+  ): Promise<void> {
+    const t = `[webhook trace=${traceId}]`;
+    const rows = await this.conversationMessageRepo
+      .createQueryBuilder('m')
+      .innerJoin(Conversation, 'c', 'c.id = m.conversation_id')
+      .where('m.external_id = :mid', { mid })
+      .andWhere('c.manager_id = :ownerId', { ownerId })
+      .getMany();
+
+    if (rows.length === 0) {
+      this.log.debug(`${t} read.mid not found in DB mid=${mid.slice(0, 64)}`);
+      return;
+    }
+
+    const toSave: ConversationMessage[] = [];
+    for (const row of rows) {
+      if (row.readAt == null || row.readAt.getTime() < readAt.getTime()) {
+        row.readAt = readAt;
+        toSave.push(row);
+      }
+    }
+    if (toSave.length > 0) {
+      await this.conversationMessageRepo.save(toSave);
+      this.log.log(
+        `${t} read applied mid=${mid.slice(0, 64)} rows=${toSave.length} at=${readAt.toISOString()}`,
+      );
+    }
+  }
+
+  private async resolveReplyToId(
+    conversationDbId: number,
+    messageExternalId: string,
+    replyToExternalId?: string,
+  ): Promise<number | null> {
+    const mid = replyToExternalId?.trim();
+    if (!mid || mid === messageExternalId) return null;
+    const target = await this.conversationMessageRepo.findOne({
+      where: { conversationId: conversationDbId, externalId: mid },
+      select: { id: true },
+    });
+    return target?.id ?? null;
+  }
+
+  private sanitizeWebhookMessagingForStorage(
+    ev: InstagramWebhookMessagingItem,
+  ): Record<string, unknown> {
+    return {
+      ...ev,
+      ...(ev.read != null ? { read: {} } : {}),
+      ...(ev.message_edit != null
+        ? { message_edit: { num_edit: ev.message_edit.num_edit } }
+        : {}),
+      ...(ev.message != null
+        ? {
+            message: {
+              text: ev.message.text,
+              is_echo: ev.message.is_echo,
+              ...(ev.message.reply_to != null
+                ? {
+                    reply_to: {
+                      mid: ev.message.reply_to.mid,
+                      is_self_reply: ev.message.reply_to.is_self_reply,
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
+      ...(ev.reaction != null
+        ? {
+            reaction: {
+              action: ev.reaction.action,
+              reaction: ev.reaction.reaction,
+              emoji: ev.reaction.emoji,
+            },
+          }
+        : {}),
+    };
+  }
+
   private pickCustomerParticipantId(
     participants: InstagramConversationParticipantDto[],
     pageId: string,
+    businessInstagramId?: string | null,
   ): string {
     const ids = participants
       .map((p) => p.id?.trim())
       .filter((id): id is string => Boolean(id));
     if (ids.length === 0) return 'unknown';
-    const page = pageId.trim();
-    const notPage = ids.find((id) => id !== page);
-    return notPage ?? ids[0];
+    const excludedIds = new Set(
+      [pageId, businessInstagramId ?? undefined]
+        .map((x) => x?.trim())
+        .filter((x): x is string => Boolean(x)),
+    );
+    const customerId = ids.find((id) => !excludedIds.has(id));
+    return customerId ?? ids[0];
   }
 
   /** Upserts `instagram_users` from message actors + optional conversation participants (Graph profile fields). */

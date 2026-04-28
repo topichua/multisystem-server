@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CompanyResponseDto {
   @ApiProperty({ example: 1 })
@@ -11,10 +12,13 @@ export class CompanyResponseDto {
   pageId: string;
 
   @ApiProperty()
-  pageToken: string;
+  businessAccountId: string;
 
   @ApiProperty()
   accessToken: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  instagramAccountId: string | null;
 
   @ApiProperty()
   ownerId: number;

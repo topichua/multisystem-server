@@ -11,6 +11,7 @@ import { Conversation } from './conversation.entity';
 
 @Entity('conversation_messages')
 @Index('IDX_conversation_messages_conversation_id', ['conversationId'])
+@Index('IDX_conversation_messages_reply_to_id', ['replyToId'])
 export class ConversationMessage {
   @PrimaryGeneratedColumn({ name: 'id' })
   id: number;
@@ -42,6 +43,12 @@ export class ConversationMessage {
   editedAt: Date | null;
 
   /**
+   * When this message was read in this system (e.g. fetched by messaging UI).
+   */
+  @Column({ name: 'read_at', type: 'timestamptz', nullable: true })
+  readAt: Date | null;
+
+  /**
    * Last time this application wrote/updated the row in the database.
    */
   @UpdateDateColumn({ name: 'system_updated_at', type: 'timestamptz' })
@@ -52,4 +59,7 @@ export class ConversationMessage {
 
   @Column({ name: 'receiver_id', type: 'varchar', length: 255 })
   receiverId: string;
+
+  @Column({ name: 'reply_to_id', type: 'int', nullable: true })
+  replyToId: number | null;
 }

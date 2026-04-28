@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   Company,
   Conversation,
@@ -28,7 +28,10 @@ import type {
   InstagramMessagesResponseDto,
 } from './dto/http/instagram-messages-response.dto';
 import type { SendInstagramMessageResponseDto } from './dto/http/send-instagram-message-response.dto';
-import type { ConversationRowDto } from './dto/http/conversations-list-response.dto';
+import type {
+  ConversationRowDto,
+  ConversationParticipantDto,
+} from './dto/http/conversations-list-response.dto';
 
 type InstagramErrorResponse = {
   error?: {
@@ -59,24 +62,28 @@ export class ConversationsService {
   async listConversationsForOwner(ownerId: number): Promise<{
     items: ConversationRowDto[];
   }> {
-    await this.requireCompanyForOwner(ownerId);
+    const company = await this.requireCompanyForOwner(ownerId);
+    const myAccountIds = this.buildMyInstagramIds(company);
     const rows = await this.conversationRepo.find({
       where: { managerId: ownerId },
       order: { instUpdatedAt: 'DESC' },
     });
+    const lastMessageByConversationId = await this.getLastMessageByConversationIds(
+      rows.map((r) => r.id),
+    );
+    const participantById = await this.getInstagramUsersByIds(
+      rows.map((r) => r.participantId),
+    );
+
     return {
-      items: rows.map((r) => ({
-        id: r.id,
-        externalSourceId: r.externalSourceId,
-        externalId: r.externalId,
-        instUpdatedAt: r.instUpdatedAt,
-        readAt: r.readAt,
-        participantId: r.participantId,
-        source: r.source,
-        groupId: r.groupId,
-        isUnread: Math.random() < 0.5,
-        lastMessage: 'mocked for now'
-      })),
+      items: rows.map((r) =>
+        this.toConversationRowDto(
+          r,
+          lastMessageByConversationId.get(r.id),
+          participantById,
+          myAccountIds,
+        ),
+      ),
     };
   }
 
@@ -182,24 +189,126 @@ export class ConversationsService {
     ownerId: number,
     id: number,
   ): Promise<ConversationRowDto> {
-    await this.requireCompanyForOwner(ownerId);
+    const company = await this.requireCompanyForOwner(ownerId);
+    const myAccountIds = this.buildMyInstagramIds(company);
     const row = await this.conversationRepo.findOne({
       where: { id, managerId: ownerId },
     });
     if (!row) {
       throw new NotFoundException('Conversation not found');
     }
+    const lastMessageByConversationId = await this.getLastMessageByConversationIds(
+      [row.id],
+    );
+    const participantById = await this.getInstagramUsersByIds(
+      [row.participantId],
+    );
+    return this.toConversationRowDto(
+      row,
+      lastMessageByConversationId.get(row.id),
+      participantById,
+      myAccountIds,
+    );
+  }
+
+  private toConversationRowDto(
+    row: Conversation,
+    lastMessage: ConversationMessage | undefined,
+    participantById: Map<string, InstagramUser>,
+    myAccountIds: Set<string>,
+  ): ConversationRowDto {
+    const participant = this.toConversationParticipantDto(
+      row.participantId,
+      participantById,
+    );
+    const isLastMessageFromMe = this.resolveIsLastMessageFromMe(
+      lastMessage,
+      myAccountIds,
+    );
     return {
       id: row.id,
-      externalSourceId: row.externalSourceId,
-      externalId: row.externalId,
       instUpdatedAt: row.instUpdatedAt,
       isUnread: Math.random() < 0.5,
-      participantId: row.participantId,
       source: row.source,
       groupId: row.groupId,
-      lastMessage: 'mocked for now'
+      lastMessage: lastMessage?.message ?? '',
+      isLastMessageFromMe,
+      participant,
     };
+  }
+
+  private resolveIsLastMessageFromMe(
+    lastMessage: ConversationMessage | undefined,
+    myAccountIds: Set<string>,
+  ): boolean | null {
+    if (!lastMessage) return null;
+    const senderId = lastMessage.senderId?.trim();
+    if (!senderId || senderId === '0') return null;
+    return myAccountIds.has(senderId);
+  }
+
+  private buildMyInstagramIds(company: Company): Set<string> {
+    return new Set(
+      [
+        company.instagramAccountId,
+        company.pageId,
+        company.businessAccountId,
+      ]
+        .map((x) => x?.trim())
+        .filter((x): x is string => Boolean(x)),
+    );
+  }
+
+  private toConversationParticipantDto(
+    participantId: string | undefined,
+    participantById: Map<string, InstagramUser>,
+  ): ConversationParticipantDto | null {
+    const participantKey = participantId?.trim();
+    if (!participantKey || participantKey === 'unknown') return null;
+    const participant = participantById.get(participantKey);
+    if (!participant) return null;
+    return {
+      id: participant.id,
+      name: participant.name,
+      username: participant.username,
+      profilePic: participant.profilePic,
+    };
+  }
+
+  private async getInstagramUsersByIds(
+    ids: string[],
+  ): Promise<Map<string, InstagramUser>> {
+    const uniqIds = [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
+    if (uniqIds.length === 0) return new Map();
+    const users = await this.instagramUserRepo.find({
+      where: { id: In(uniqIds) },
+    });
+    return new Map(users.map((u) => [u.id, u]));
+  }
+
+  private async getLastMessageByConversationIds(
+    conversationIds: number[],
+  ): Promise<Map<number, ConversationMessage>> {
+    const uniqIds = [...new Set(conversationIds)];
+    if (uniqIds.length === 0) return new Map();
+
+    const rows = await this.conversationMessageRepo
+      .createQueryBuilder('m')
+      .where('m.conversation_id IN (:...conversationIds)', {
+        conversationIds: uniqIds,
+      })
+      .orderBy('m.conversation_id', 'ASC')
+      .addOrderBy('m.created_at', 'DESC')
+      .addOrderBy('m.id', 'DESC')
+      .getMany();
+
+    const out = new Map<number, ConversationMessage>();
+    for (const m of rows) {
+      if (!out.has(m.conversationId)) {
+        out.set(m.conversationId, m);
+      }
+    }
+    return out;
   }
 
   /**
@@ -313,7 +422,8 @@ export class ConversationsService {
       const senderId = m.from?.id?.trim() ?? '';
       const receiverId = m.to?.data?.[0]?.id?.trim() ?? '';
       const text = m.message ?? '';
-      const instagramJson = JSON.stringify(m);
+      const { id: _messageId, ...messageWithoutId } = m;
+      const instagramJson = JSON.stringify(messageWithoutId);
 
       let row = await this.conversationMessageRepo.findOne({
         where: { conversationId: conversationDbId, externalId: ext },
@@ -327,6 +437,8 @@ export class ConversationsService {
           createdAt,
           senderId: senderId.length > 0 ? senderId : '0',
           receiverId: receiverId.length > 0 ? receiverId : '0',
+          readAt: null,
+          replyToId: null,
           ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
         });
       } else {
@@ -427,28 +539,54 @@ export class ConversationsService {
 
   private async getConversationMessagesFromDb(
     conversationDbId: number,
-    since?: Date,
+    paging?: { page: number; pageSize: number },
   ): Promise<InstagramMessagesResponseDto> {
     const qb = this.conversationMessageRepo
       .createQueryBuilder('m')
       .where('m.conversation_id = :cid', { cid: conversationDbId })
-      .orderBy('m.created_at', 'ASC');
-    if (since) {
-      qb.andWhere('m.created_at >= :since', { since });
+      .orderBy('m.created_at', 'DESC')
+      .addOrderBy('m.id', 'DESC');
+    const page = paging?.page ?? 1;
+    const pageSize = paging?.pageSize ?? 50;
+    const total = await qb.getCount();
+    const rows = await qb
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
+      .getMany();
+    const readAtNow = new Date();
+    const unreadIds = rows.filter((r) => r.readAt == null).map((r) => r.id);
+    if (unreadIds.length > 0) {
+      await this.conversationMessageRepo
+        .createQueryBuilder()
+        .update(ConversationMessage)
+        .set({ readAt: readAtNow })
+        .where('id IN (:...ids)', { ids: unreadIds })
+        .execute();
+      for (const row of rows) {
+        if (row.readAt == null) row.readAt = readAtNow;
+      }
     }
-    const rows = await qb.getMany();
     const data: InstagramMessageDto[] = rows.map((r) => {
       const addDbMeta = (m: InstagramMessageDto): InstagramMessageDto => ({
         ...m,
         ...(r.editedAt != null
           ? { edited_at: r.editedAt.toISOString() }
           : {}),
+        ...(r.readAt != null ? { read_at: r.readAt.toISOString() } : {}),
+        ...(r.replyToId != null ? { reply_to_id: r.replyToId } : {}),
         system_updated_at: r.systemUpdatedAt.toISOString(),
       });
       try {
-        const parsed = JSON.parse(r.instagramJson) as InstagramMessageDto;
-        if (parsed?.id && parsed.created_time) {
-          return addDbMeta(parsed);
+        const parsed = JSON.parse(r.instagramJson) as Record<string, unknown>;
+        const createdTime = parsed.created_time;
+        if (typeof createdTime === 'string' && createdTime.length > 0) {
+          return addDbMeta({
+            ...(parsed as unknown as InstagramMessageDto),
+            id:
+              typeof parsed.id === 'string' && parsed.id.length > 0
+                ? parsed.id
+                : r.externalId,
+          } as InstagramMessageDto);
         }
       } catch {
         /* use fallback */
@@ -457,53 +595,36 @@ export class ConversationsService {
         id: r.externalId,
         created_time: r.createdAt.toISOString(),
         message: r.message,
-        from: { id: r.senderId },
         to: { data: r.receiverId && r.receiverId !== '0' ? [{ id: r.receiverId }] : [] },
       });
     });
-    return { data };
+    const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+    return {
+      data,
+      paging: {
+        page,
+        page_size: pageSize,
+        total,
+        total_pages: totalPages,
+        has_next: page < totalPages,
+        has_previous: totalPages > 0 && page > 1,
+      },
+    };
   }
 
   async getInstagramMessagesForConversation(
     ownerId: number,
     conversationId: string,
-    options?: { since?: Date; sync?: boolean },
+    options?: { page?: number; pageSize?: number },
   ): Promise<InstagramMessagesResponseDto> {
     const conv = await this.requireConversationForOwnerFromParam(
       ownerId,
       conversationId,
     );
-    const sync = options?.sync ?? true;
-
-    if (!sync) {
-      return this.getConversationMessagesFromDb(conv.id, options?.since);
-    }
-
-    const company = await this.requireCompanyForOwner(ownerId);
-    const accessToken = await this.resolveGraphAccessToken(company.id);
-    const graphConversationId = conv.externalId?.trim();
-    if (!graphConversationId) {
-      throw new BadRequestException(
-        'Conversation is missing external_id; run POST /conversations/sync first.',
-      );
-    }
-
-    let response: InstagramMessagesResponseDto;
-    if (options?.since) {
-      response = await this.getInstagramMessagesSince(
-        graphConversationId,
-        accessToken,
-        options.since,
-      );
-    } else {
-      const url = this.buildConversationMessagesGraphUrl(
-        graphConversationId,
-        accessToken,
-      );
-      response = await this.instagramGraphFetch<InstagramMessagesResponseDto>(url);
-    }
-    await this.persistInstagramMessages(conv.id, response.data ?? []);
-    return response;
+    return this.getConversationMessagesFromDb(conv.id, {
+      page: options?.page ?? 1,
+      pageSize: options?.pageSize ?? 50,
+    });
   }
 
   private normalizeRecipientIdInput(
@@ -656,7 +777,7 @@ export class ConversationsService {
         const resolved = fromDb ?? fromGraphConv ?? fromMsgs;
         if (!resolved || !this.isLikelyInstagramPsid(resolved)) {
           throw new BadRequestException(
-            'Could not resolve recipient PSID. Pass recipientId (numeric id) in the body, run POST /conversations/sync, or fetch messages (sync=true) so participants can be inferred.',
+            'Could not resolve recipient PSID. Pass recipientId (numeric id) in the body, run POST /conversations/sync, or fetch messages so participants can be inferred.',
           );
         }
         recipient = resolved;
@@ -811,39 +932,37 @@ export class ConversationsService {
   }
 
   /**
-   * Optional `since` for GET …/messages: ISO 8601, or Unix seconds (10 digits) / ms (13 digits).
+   * Pagination for GET .../messages (database-backed endpoint).
    */
-  parseOptionalSinceForMessages(sinceRaw?: string): Date | undefined {
-    if (sinceRaw == null) return undefined;
-    const t = sinceRaw.trim();
-    if (t.length === 0) return undefined;
-    if (/^\d{10}$/.test(t)) {
-      const d = new Date(Number(t) * 1000);
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-    if (/^\d{13}$/.test(t)) {
-      const d = new Date(Number(t));
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-    const d = new Date(t);
-    if (Number.isNaN(d.getTime())) {
-      throw new BadRequestException(
-        'since must be ISO 8601 (e.g. 2024-01-15T00:00:00.000Z) or Unix time in seconds (10 digits) or milliseconds (13 digits)',
-      );
-    }
-    return d;
-  }
+  parseDbPagingForMessages(
+    pageRaw?: string,
+    pageSizeRaw?: string,
+  ): { page: number; pageSize: number } {
+    const parseIntStrict = (
+      raw: string | undefined,
+      field: 'page' | 'pageSize',
+      fallback: number,
+    ): number => {
+      if (raw == null) return fallback;
+      const t = raw.trim();
+      if (t.length === 0) return fallback;
+      if (!/^\d+$/.test(t)) {
+        throw new BadRequestException(`${field} must be a positive integer`);
+      }
+      const n = Number(t);
+      if (!Number.isInteger(n) || n <= 0) {
+        throw new BadRequestException(`${field} must be a positive integer`);
+      }
+      return n;
+    };
 
-  /**
-   * Query `sync` on GET …/messages: when omitted, defaults to `true` (Instagram + upsert).
-   */
-  parseSyncForMessages(syncRaw?: string): boolean {
-    if (syncRaw == null) return true;
-    const v = syncRaw.trim().toLowerCase();
-    if (v.length === 0) return true;
-    if (['true', '1', 'yes'].includes(v)) return true;
-    if (['false', '0', 'no'].includes(v)) return false;
-    throw new BadRequestException('sync must be true or false');
+    const page = parseIntStrict(pageRaw, 'page', 1);
+    const pageSize = parseIntStrict(pageSizeRaw, 'pageSize', 50);
+    const maxPageSize = 200;
+    if (pageSize > maxPageSize) {
+      throw new BadRequestException(`pageSize must be <= ${maxPageSize}`);
+    }
+    return { page, pageSize };
   }
 
   private async requireCompanyForOwner(ownerId: number): Promise<Company> {

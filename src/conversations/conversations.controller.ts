@@ -68,28 +68,26 @@ export class ConversationsController {
   @Get(":conversationId/messages")
   @ApiOperation({
     summary:
-      "Get messages for a conversation. `conversationId` = DB id or Instagram external id. `sync=true` (default): fetch Instagram Graph, upsert into `conversation_messages`, return API payload. `sync=false`: read `conversation_messages` only (no Graph). Optional `since` filters by time (Graph when sync=true, DB `created_at` when sync=false).",
+      "Get messages for a conversation from local database with paging.",
   })
   @ApiQuery({
-    name: "since",
+    name: "page",
     required: false,
-    description:
-      "Only messages at or after this time: ISO 8601, or Unix seconds (10 digits) / milliseconds (13 digits).",
-    example: "2024-06-01T00:00:00.000Z",
+    description: "Paging: 1-based page number. Default: 1.",
+    schema: { type: "string", example: "1" },
   })
   @ApiQuery({
-    name: "sync",
+    name: "pageSize",
     required: false,
-    description:
-      "true (default): Instagram API + save rows. false: database only.",
-    schema: { type: "string", enum: ["true", "false"] },
+    description: "Paging: messages per page. Default: 50, max: 200.",
+    schema: { type: "string", example: "50" },
   })
   @ApiOkResponse({ type: InstagramMessagesResponseDto })
   async getMessagesByConversationId(
     @Req() req: { user?: AuthUser },
     @Param("conversationId") conversationId: string,
-    @Query("since") sinceRaw?: string,
-    @Query("sync") syncRaw?: string
+    @Query("page") pageRaw?: string,
+    @Query("pageSize") pageSizeRaw?: string
   ): Promise<InstagramMessagesResponseDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
@@ -97,15 +95,14 @@ export class ConversationsController {
         "Current authorized user does not contain numeric owner id"
       );
     }
-    const since =
-      this.conversationsService.parseOptionalSinceForMessages(sinceRaw);
-    const sync = this.conversationsService.parseSyncForMessages(syncRaw);
+    const { page, pageSize } =
+      this.conversationsService.parseDbPagingForMessages(pageRaw, pageSizeRaw);
     return this.conversationsService.getInstagramMessagesForConversation(
       ownerId,
       conversationId,
       {
-        ...(since != null ? { since } : {}),
-        sync,
+        page,
+        pageSize,
       }
     );
   }

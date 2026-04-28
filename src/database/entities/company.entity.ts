@@ -21,11 +21,14 @@ export class Company {
   @Column({ name: 'page_id', type: 'varchar', length: 255 })
   pageId: string;
 
-  @Column({ name: 'page_token', type: 'text' })
-  pageToken: string;
+  @Column({ name: 'business_account_id', type: 'text' })
+  businessAccountId: string;
 
   @Column({ name: 'access_token', type: 'text' })
   accessToken: string;
+
+  @Column({ name: 'instagram_account_id', type: 'varchar', length: 255, nullable: true })
+  instagramAccountId: string | null;
 
   @Column({ name: 'owner_id', type: 'int' })
   ownerId: number;

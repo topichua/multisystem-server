@@ -204,9 +204,20 @@ export class InstagramMessageDto {
   edited_at?: string;
 
   @ApiPropertyOptional({
+    description: 'When this message was marked as read in this system, ISO 8601',
+  })
+  read_at?: string;
+
+  @ApiPropertyOptional({
     description: 'When this server last stored/updated the message row, ISO 8601',
   })
   system_updated_at?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Internal DB id of the message this message replies to (resolved from webhook reply_to.mid when available).',
+  })
+  reply_to_id?: number;
 }
 
 export class InstagramMessagesPagingCursorsDto {
@@ -226,6 +237,36 @@ export class InstagramMessagesPagingDto {
 
   @ApiPropertyOptional()
   previous?: string;
+
+  @ApiPropertyOptional({
+    description: 'Paging: current page number.',
+  })
+  page?: number;
+
+  @ApiPropertyOptional({
+    description: 'Paging: page size.',
+  })
+  page_size?: number;
+
+  @ApiPropertyOptional({
+    description: 'Paging: total messages matching the filter.',
+  })
+  total?: number;
+
+  @ApiPropertyOptional({
+    description: 'Paging: total number of pages.',
+  })
+  total_pages?: number;
+
+  @ApiPropertyOptional({
+    description: 'Paging: whether there is a next page.',
+  })
+  has_next?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Paging: whether there is a previous page.',
+  })
+  has_previous?: boolean;
 }
 
 export class InstagramMessagesResponseDto {

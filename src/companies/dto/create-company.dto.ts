@@ -8,4 +8,8 @@ export type CreateCompanyWithOwnerInput = {
   instagramToken: string;
   /** Facebook Page ID for the Instagram business; defaults to `pending` if omitted. */
   instagramPageId?: string | null;
+  /** Instagram business account id used to match webhook entry.id. */
+  instagramBusinessAccountId?: string | null;
+  /** Instagram account id (IGSID/PSID) of the connected account owner. */
+  instagramAccountId?: string | null;
 };

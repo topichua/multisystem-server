@@ -9,6 +9,8 @@ import type { ConversationSource } from './database/entities/conversation-source
 export type Company = {
   id: number;
   name: string;
+  businessAccountId: string;
+  instagramAccountId: string | null;
   createdAt: Date;
   ownerId: number;
 };
@@ -59,9 +61,11 @@ export type ConversationMessage = {
   instagramJson: string;
   createdAt: Date;
   editedAt: Date | null;
+  readAt: Date | null;
   systemUpdatedAt: Date;
   senderId: string;
   receiverId: string;
+  replyToId: number | null;
 };
 
 /** `sort_order` column — SQL `order` is reserved. */

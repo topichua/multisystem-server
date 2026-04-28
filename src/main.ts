@@ -2,10 +2,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
+import { LocationLogger } from './location-logger';
 import { setupSwagger } from './swagger.setup';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: new LocationLogger(),
+  });
   app.enableCors({ origin: true, credentials: true });
 
   app.use((req: Request, res: Response, next: NextFunction) => {

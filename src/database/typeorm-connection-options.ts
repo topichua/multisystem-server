@@ -5,6 +5,10 @@ import { ConversationMessageEditedAt1744200000003 } from './migrations/174420000
 import { InstagramUserScopedId1744200000004 } from './migrations/1744200000004-InstagramUserScopedId';
 import { InstagramUserScopedIdPK1744200000005 } from './migrations/1744200000005-InstagramUserScopedIdPK';
 import { InstagramUserIdColumnNames1744200000006 } from './migrations/1744200000006-InstagramUserIdColumnNames';
+import { ConversationMessageReplyToId1744200000007 } from './migrations/1744200000007-ConversationMessageReplyToId';
+import { CompanyInstagramAccountId1744200000008 } from './migrations/1744200000008-CompanyInstagramAccountId';
+import { CompanyBusinessAccountIdRename1744200000009 } from './migrations/1744200000009-CompanyBusinessAccountIdRename';
+import { ConversationMessageReadAt1744200000010 } from './migrations/1744200000010-ConversationMessageReadAt';
 import {
   Client,
   Company,
@@ -78,6 +82,10 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       InstagramUserScopedId1744200000004,
       InstagramUserScopedIdPK1744200000005,
       InstagramUserIdColumnNames1744200000006,
+      ConversationMessageReplyToId1744200000007,
+      CompanyInstagramAccountId1744200000008,
+      CompanyBusinessAccountIdRename1744200000009,
+      ConversationMessageReadAt1744200000010,
     ],
   };
 }

@@ -49,4 +49,22 @@ export class CreateCompanyWithOwnerRequestDto {
   @IsString()
   @MaxLength(255)
   instagramPageId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Instagram business account id used for webhook matching; stored as company.business_account_id.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  instagramBusinessAccountId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Instagram account id of the connected owner account; stored as company.instagram_account_id.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  instagramAccountId?: string | null;
 }
