@@ -12,6 +12,7 @@ import {
   ConversationMessage,
   ConversationSource,
   InstagramUser,
+  Source,
 } from '../database/entities';
 import type {
   InstagramConversationDto,
@@ -42,6 +43,8 @@ export class ConversationsAllocationService {
   constructor(
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
+    @InjectRepository(Source)
+    private readonly sourceRepo: Repository<Source>,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
@@ -72,11 +75,13 @@ export class ConversationsAllocationService {
 
       const messaging = entry.messaging ?? [];
       const company = await this.companyRepo.findOne({
-        where: { businessAccountId: entryPageId },
+        where: { instagramAccountId: entryPageId },
         order: { id: 'DESC' },
       });
       if (!company) {
-        this.log.warn(`${t} entry[${ei}] no company for page_id=${entryPageId}`);
+        this.log.warn(
+          `${t} entry[${ei}] no company for instagram_account_id=${entryPageId}`,
+        );
         continue;
       }
 
@@ -84,10 +89,28 @@ export class ConversationsAllocationService {
         `${t} entry[${ei}] company found id=${company.id} owner_id=${company.ownerId}`,
       );
 
-      const pageTrim = company.pageId.trim();
-      const accessToken = company.accessToken;
+      const businessInstagramId = company.instagramAccountId?.trim() ?? '';
+      if (!businessInstagramId) {
+        this.log.warn(
+          `${t} entry[${ei}] company=${company.id} missing instagram_account_id; webhook skipped`,
+        );
+        continue;
+      }
+
+      const source = await this.sourceRepo.findOne({
+        where: { companyId: company.id },
+        order: { id: 'DESC' },
+      });
+      const accessToken =
+        company.accessToken?.trim() || source?.token?.trim() || '';
+      if (!accessToken) {
+        this.log.warn(
+          `${t} entry[${ei}] no Page token in sources for company=${company.id}; webhook skipped`,
+        );
+        continue;
+      }
       this.log.debug(
-        `${t} entry[${ei}] Graph token resolved for company=${company.id}`,
+        `${t} entry[${ei}] Graph page token resolved for company=${company.id}`,
       );
 
       for (let mi = 0; mi < messaging.length; mi++) {
@@ -124,9 +147,9 @@ export class ConversationsAllocationService {
           try {
             await this.allocateSingleWebhookMessage({
               traceId,
+              pageId: company.pageId,
               mid,
-              pageId: pageTrim,
-              businessInstagramId: company.instagramAccountId,
+              businessInstagramId,
               ownerId: company.ownerId,
               accessToken,
               ...(editedAt != null ? { editedAt } : {}),
@@ -135,7 +158,9 @@ export class ConversationsAllocationService {
             });
           } catch (e) {
             const err = e instanceof Error ? e.message : String(e);
-            this.log.warn(`${t} mid failed page=${pageTrim}: ${err}`);
+            this.log.warn(
+              `${t} mid failed ig_business=${businessInstagramId}: ${err}`,
+            );
           }
         }
       }
@@ -161,7 +186,7 @@ export class ConversationsAllocationService {
   }
 
   /**
-   * GET `/v25.0/{page-id}/conversations?platform=instagram&user_id=…` — reusable Graph helper.
+   * GET `/v25.0/{instagram-business-account-id}/conversations?platform=instagram&user_id=…` — reusable Graph helper.
    */
   private async fetchInstagramConversationsForUser(
     pageId: string,
@@ -230,11 +255,10 @@ export class ConversationsAllocationService {
 
   private pickCustomerUserIdFromMessage(
     m: InstagramMessageDto,
-    pageId: string,
-    businessInstagramId?: string | null,
+    businessInstagramId: string,
   ): string | null {
     const excludedIds = new Set(
-      [pageId, businessInstagramId ?? undefined]
+      [businessInstagramId]
         .map((x) => x?.trim())
         .filter((x): x is string => Boolean(x)),
     );
@@ -262,19 +286,17 @@ export class ConversationsAllocationService {
   /** Resolves "customer" PSID from Graph message; falls back to webhook `sender` for reaction deliveries. */
   private pickCustomerUserIdForWebhook(
     m: InstagramMessageDto,
-    pageId: string,
-    businessInstagramId?: string | null,
+    businessInstagramId: string,
     senderHintId?: string | null,
   ): string | null {
     const excludedIds = new Set(
-      [pageId, businessInstagramId ?? undefined]
+      [businessInstagramId]
         .map((x) => x?.trim())
         .filter((x): x is string => Boolean(x)),
     );
 
     const fromGraph = this.pickCustomerUserIdFromMessage(
       m,
-      pageId,
       businessInstagramId,
     );
     if (fromGraph) {
@@ -293,9 +315,9 @@ export class ConversationsAllocationService {
 
   private async allocateSingleWebhookMessage(opts: {
     traceId: string;
-    mid: string;
     pageId: string;
-    businessInstagramId?: string | null;
+    mid: string;
+    businessInstagramId: string;
     ownerId: number;
     accessToken: string;
     editedAt?: Date;
@@ -318,7 +340,6 @@ export class ConversationsAllocationService {
 
     const customerUserId = this.pickCustomerUserIdForWebhook(
       msg,
-      opts.pageId,
       opts.businessInstagramId,
       opts.senderHintId,
     );
@@ -328,7 +349,7 @@ export class ConversationsAllocationService {
       );
     }
     this.log.log(`${t} mid customer user_id=${customerUserId}`);
-
+    
     const convList = await this.fetchInstagramConversationsForUser(
       opts.pageId,
       customerUserId,
@@ -379,14 +400,10 @@ export class ConversationsAllocationService {
     const participantId = igConv
       ? this.pickCustomerParticipantId(
           igConv.participants?.data ?? [],
-          opts.pageId,
           opts.businessInstagramId,
         )
-      : this.pickCustomerUserIdFromMessage(
-          msg,
-          opts.pageId,
-          opts.businessInstagramId,
-        ) ?? 'unknown';
+      : this.pickCustomerUserIdFromMessage(msg, opts.businessInstagramId) ??
+        'unknown';
 
     let row = await this.conversationRepo.findOne({
       where: { managerId: opts.ownerId, externalId: graphConversationId },
@@ -394,7 +411,7 @@ export class ConversationsAllocationService {
 
     if (!row) {
       row = this.conversationRepo.create({
-        externalSourceId: opts.pageId,
+        externalSourceId: opts.businessInstagramId,
         externalId: graphConversationId,
         instUpdatedAt: updatedTime,
         readAt: null,
@@ -410,7 +427,7 @@ export class ConversationsAllocationService {
       row.instUpdatedAt = updatedTime;
       row.participantId =
         participantId !== 'unknown' ? participantId : row.participantId;
-      row.externalSourceId = opts.pageId;
+      row.externalSourceId = opts.businessInstagramId;
       this.log.log(
         `${t} mid conversation UPDATE db_id=${row.id} external_id=${graphConversationId} inst_updated_at=${updatedTime.toISOString()}`,
       );
@@ -572,15 +589,14 @@ export class ConversationsAllocationService {
 
   private pickCustomerParticipantId(
     participants: InstagramConversationParticipantDto[],
-    pageId: string,
-    businessInstagramId?: string | null,
+    businessInstagramId: string,
   ): string {
     const ids = participants
       .map((p) => p.id?.trim())
       .filter((id): id is string => Boolean(id));
     if (ids.length === 0) return 'unknown';
     const excludedIds = new Set(
-      [pageId, businessInstagramId ?? undefined]
+      [businessInstagramId]
         .map((x) => x?.trim())
         .filter((x): x is string => Boolean(x)),
     );

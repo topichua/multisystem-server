@@ -37,14 +37,13 @@ export class CompaniesController {
         password: dto.password,
         instagramToken: dto.instagramToken,
         instagramPageId: dto.instagramPageId,
-        instagramBusinessAccountId: dto.instagramBusinessAccountId,
         instagramAccountId: dto.instagramAccountId,
       });
     return {
       id: company.id,
       name: company.name,
       pageId: company.pageId,
-      businessAccountId: company.businessAccountId,
+      userAccessToken: company.userAccessToken,
       accessToken: company.accessToken,
       instagramAccountId: company.instagramAccountId,
       ownerId: company.ownerId,

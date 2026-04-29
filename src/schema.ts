@@ -9,8 +9,13 @@ import type { ConversationSource } from './database/entities/conversation-source
 export type Company = {
   id: number;
   name: string;
-  businessAccountId: string;
+  pageId: string;
+  userAccessToken: string | null;
+  accessToken: string | null;
   instagramAccountId: string | null;
+  facebookPageName?: string | null;
+  tokenConnectedAt?: Date | null;
+  tokenStatus?: string | null;
   createdAt: Date;
   ownerId: number;
 };

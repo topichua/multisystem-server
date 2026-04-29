@@ -9,10 +9,12 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { AccountModule } from './account/account.module';
 import { getTypeOrmModuleOptions } from './database/typeorm-connection-options';
 import { WebhookModule } from './webhook/webhook.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AuthModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) =>

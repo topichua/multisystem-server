@@ -21,14 +21,30 @@ export class Company {
   @Column({ name: 'page_id', type: 'varchar', length: 255 })
   pageId: string;
 
-  @Column({ name: 'business_account_id', type: 'text' })
-  businessAccountId: string;
+  /**
+   * Long-lived Facebook **user** token from OAuth (`fb_exchange_token` flow).
+   */
+  @Column({ name: 'user_access_token', type: 'text', nullable: true })
+  userAccessToken: string | null;
 
-  @Column({ name: 'access_token', type: 'text' })
-  accessToken: string;
+  /**
+   * **Page** access token from Graph `me/accounts` (`access_token` on the Page object).
+   * Used for Page-scoped Graph calls; also mirrored to `sources.token` on OAuth.
+   */
+  @Column({ name: 'access_token', type: 'text', nullable: true })
+  accessToken: string | null;
 
   @Column({ name: 'instagram_account_id', type: 'varchar', length: 255, nullable: true })
   instagramAccountId: string | null;
+
+  @Column({ name: 'facebook_page_name', type: 'varchar', length: 255, nullable: true })
+  facebookPageName: string | null;
+
+  @Column({ name: 'token_connected_at', type: 'timestamptz', nullable: true })
+  tokenConnectedAt: Date | null;
+
+  @Column({ name: 'token_status', type: 'varchar', length: 32, nullable: true })
+  tokenStatus: string | null;
 
   @Column({ name: 'owner_id', type: 'int' })
   ownerId: number;

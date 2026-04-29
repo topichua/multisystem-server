@@ -11,6 +11,12 @@ import { CompanyBusinessAccountIdRename1744200000009 } from './migrations/174420
 import { ConversationMessageReadAt1744200000010 } from './migrations/1744200000010-ConversationMessageReadAt';
 import { ConversationMessageReplyParentExternalId1744200000011 } from './migrations/1744200000011-ConversationMessageReplyParentExternalId';
 import { ConversationMessageExternalIdPK1744200000012 } from './migrations/1744200000012-ConversationMessageExternalIdPK';
+import { CompanyFacebookOAuthFields1744200000013 } from './migrations/1744200000013-CompanyFacebookOAuthFields';
+import { CompanyDropFacebookUserAccessToken1744200000014 } from './migrations/1744200000014-CompanyDropFacebookUserAccessToken';
+import { CompanyDropBusinessAccountId1744200000015 } from './migrations/1744200000015-CompanyDropBusinessAccountId';
+import { CompanyAccessTokenRenameLongToken1744200000016 } from './migrations/1744200000016-CompanyAccessTokenRenameLongToken';
+import { CompanyLongTokenRenameAccessToken1744200000017 } from './migrations/1744200000017-CompanyLongTokenRenameAccessToken';
+import { CompanyUserAccessTokenSplit1744200000018 } from './migrations/1744200000018-CompanyUserAccessTokenSplit';
 import {
   Client,
   Company,
@@ -90,6 +96,12 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationMessageReadAt1744200000010,
       ConversationMessageReplyParentExternalId1744200000011,
       ConversationMessageExternalIdPK1744200000012,
+      CompanyFacebookOAuthFields1744200000013,
+      CompanyDropFacebookUserAccessToken1744200000014,
+      CompanyDropBusinessAccountId1744200000015,
+      CompanyAccessTokenRenameLongToken1744200000016,
+      CompanyLongTokenRenameAccessToken1744200000017,
+      CompanyUserAccessTokenSplit1744200000018,
     ],
   };
 }

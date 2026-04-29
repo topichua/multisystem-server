@@ -34,11 +34,6 @@ export class CompaniesService {
       input.instagramPageId?.trim() && input.instagramPageId.trim().length > 0
         ? input.instagramPageId.trim()
         : 'pending';
-    const businessAccountId =
-      input.instagramBusinessAccountId?.trim() &&
-      input.instagramBusinessAccountId.trim().length > 0
-        ? input.instagramBusinessAccountId.trim()
-        : token;
     const instagramAccountId =
       input.instagramAccountId?.trim() && input.instagramAccountId.trim().length > 0
         ? input.instagramAccountId.trim()
@@ -64,7 +59,7 @@ export class CompaniesService {
       const company = companyRepo.create({
         name: input.companyName.trim(),
         pageId,
-        businessAccountId,
+        userAccessToken: null,
         accessToken: token,
         instagramAccountId,
         ownerId: user.id,

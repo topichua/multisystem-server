@@ -18,6 +18,9 @@ import type {
   UserMeDto,
 } from './dto/me-response.dto';
 
+/** Default access token lifetime when `JWT_EXPIRES_SECONDS` is unset (30 days). */
+const DEFAULT_JWT_EXPIRES_SECONDS = 30 * 24 * 60 * 60;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -141,7 +144,8 @@ export class AuthService {
 
   private signAccessToken(payload: JwtPayload): { access_token: string } {
     const expiresSeconds = parseInt(
-      this.config.get<string>('JWT_EXPIRES_SECONDS') ?? `${8 * 60 * 60}`,
+      this.config.get<string>('JWT_EXPIRES_SECONDS') ??
+        `${DEFAULT_JWT_EXPIRES_SECONDS}`,
       10,
     );
     return {

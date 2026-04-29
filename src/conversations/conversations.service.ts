@@ -7,7 +7,6 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import {
@@ -46,7 +45,6 @@ export class ConversationsService {
   private readonly log = new Logger(ConversationsService.name);
 
   constructor(
-    private readonly config: ConfigService,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(Conversation)
@@ -271,11 +269,7 @@ export class ConversationsService {
 
   private buildMyInstagramIds(company: Company): Set<string> {
     return new Set(
-      [
-        company.instagramAccountId,
-        company.pageId,
-        company.businessAccountId,
-      ]
+      [company.instagramAccountId, company.pageId]
         .map((x) => x?.trim())
         .filter((x): x is string => Boolean(x)),
     );
@@ -672,93 +666,10 @@ export class ConversationsService {
     return t.length > 0 && t !== 'unknown' && /^\d+$/.test(t);
   }
 
-  private async inferRecipientPsidFromDbMessages(
-    conversationDbId: number,
-    pageId: string,
-  ): Promise<string | null> {
-    const pageTrim = pageId.trim();
-    const rows = await this.conversationMessageRepo.find({
-      where: { conversationId: conversationDbId },
-      order: { createdAt: 'DESC' },
-      take: 80,
-    });
-    for (const r of rows) {
-      try {
-        const m = JSON.parse(r.instagramJson) as InstagramMessageDto;
-        const fromId = m.from?.id?.trim();
-        if (this.isLikelyInstagramPsid(fromId) && fromId !== pageTrim) {
-          return fromId!;
-        }
-        for (const t of m.to?.data ?? []) {
-          const tid = t.id?.trim();
-          if (this.isLikelyInstagramPsid(tid) && tid !== pageTrim) {
-            return tid!;
-          }
-        }
-      } catch {
-        const sid = r.senderId?.trim();
-        if (this.isLikelyInstagramPsid(sid) && sid !== pageTrim) {
-          return sid!;
-        }
-        const rid = r.receiverId?.trim();
-        if (this.isLikelyInstagramPsid(rid) && rid !== pageTrim) {
-          return rid!;
-        }
-      }
-    }
-    return null;
-  }
-
-  private async fetchGraphConversationParticipants(
-    conversationExternalId: string,
-    accessToken: string,
-  ): Promise<InstagramConversationParticipantDto[]> {
-    const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(conversationExternalId)}`,
-    );
-    url.searchParams.set(
-      'fields',
-      'participants{id,name,username,profile_pic}',
-    );
-    url.searchParams.set('access_token', accessToken);
-    const body = await this.instagramGraphFetch<{
-      participants?: { data?: InstagramConversationParticipantDto[] };
-    }>(url);
-    return body.participants?.data ?? [];
-  }
-
-  private async inferRecipientPsidFromGraphMessages(
-    graphConversationId: string,
-    accessToken: string,
-    pageId: string,
-  ): Promise<string | null> {
-    const pageTrim = pageId.trim();
-    const graphUrl = this.buildConversationMessagesGraphUrl(
-      graphConversationId,
-      accessToken,
-    );
-    const res =
-      await this.instagramGraphFetch<InstagramMessagesResponseDto>(graphUrl);
-    for (const m of res.data ?? []) {
-      const fromId = m.from?.id?.trim();
-      if (this.isLikelyInstagramPsid(fromId) && fromId !== pageTrim) {
-        return fromId!;
-      }
-      for (const t of m.to?.data ?? []) {
-        const tid = t.id?.trim();
-        if (this.isLikelyInstagramPsid(tid) && tid !== pageTrim) {
-          return tid!;
-        }
-      }
-    }
-    return null;
-  }
-
   async sendInstagramMessageForConversation(
     ownerId: number,
     conversationIdParam: string,
     message: string,
-    recipientIdOverride?: string,
   ): Promise<SendInstagramMessageResponseDto> {
     const company = await this.requireCompanyForOwner(ownerId);
     const accessToken = await this.resolveGraphAccessToken(company.id);
@@ -767,55 +678,11 @@ export class ConversationsService {
       conversationIdParam,
     );
 
-    const pageId = company.pageId?.trim() ?? '';
-    const override = this.normalizeRecipientIdInput(recipientIdOverride);
-
-    let recipient: string;
-    if (override.length > 0) {
-      if (!this.isLikelyInstagramPsid(override)) {
-        throw new BadRequestException(
-          'recipientId must be digits only (Instagram PSID). Spaces, commas, and quotes are stripped; omit recipientId to resolve from the conversation.',
-        );
-      }
-      recipient = override;
-    } else {
-      const stored = conv.participantId?.trim() ?? '';
-      if (this.isLikelyInstagramPsid(stored)) {
-        recipient = stored;
-      } else {
-        const ext = conv.externalId?.trim();
-        if (!ext) {
-          throw new BadRequestException(
-            'Conversation is missing external_id; run POST /conversations/sync first.',
-          );
-        }
-        const fromDb = await this.inferRecipientPsidFromDbMessages(conv.id, pageId);
-        const fromParticipants = this.pickCustomerParticipantId(
-          await this.fetchGraphConversationParticipants(ext, accessToken),
-          pageId,
-        );
-        const fromGraphConv =
-          this.isLikelyInstagramPsid(fromParticipants) &&
-          fromParticipants !== 'unknown'
-            ? fromParticipants
-            : null;
-        const fromMsgs = await this.inferRecipientPsidFromGraphMessages(
-          ext,
-          accessToken,
-          pageId,
-        );
-        const resolved = fromDb ?? fromGraphConv ?? fromMsgs;
-        if (!resolved || !this.isLikelyInstagramPsid(resolved)) {
-          throw new BadRequestException(
-            'Could not resolve recipient PSID. Pass recipientId (numeric id) in the body, run POST /conversations/sync, or fetch messages so participants can be inferred.',
-          );
-        }
-        recipient = resolved;
-        if (conv.participantId !== resolved) {
-          conv.participantId = resolved;
-          await this.conversationRepo.save(conv);
-        }
-      }
+    const recipient = conv.participantId?.trim() ?? '';
+    if (!this.isLikelyInstagramPsid(recipient)) {
+      throw new BadRequestException(
+        'Conversation has no valid participant_id (recipient PSID). Run POST /conversations/sync so the thread is stored with a participant, or open the conversation in Instagram first.',
+      );
     }
 
     const text = message.trim();
@@ -848,6 +715,10 @@ export class ConversationsService {
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {
+    const company = await this.companyRepo.findOne({ where: { id: companyId } });
+    const pageToken = company?.accessToken?.trim();
+    if (pageToken) return pageToken;
+
     const source = await this.sourceRepo.findOne({
       where: { companyId },
       order: { id: 'DESC' },
@@ -855,11 +726,8 @@ export class ConversationsService {
     const fromSource = source?.token?.trim();
     if (fromSource) return fromSource;
 
-    const fromEnv = this.config.get<string>('INSTAGRAM_ACCESS_TOKEN')?.trim();
-    if (fromEnv) return fromEnv;
-
     throw new ServiceUnavailableException(
-      'No source token found for company and INSTAGRAM_ACCESS_TOKEN is not configured',
+      'No Page Graph token: set company.access_token (Page token from OAuth) or sources.token for this company.',
     );
   }
 

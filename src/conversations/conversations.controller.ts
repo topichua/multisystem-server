@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -110,7 +111,11 @@ export class ConversationsController {
   @Post(":conversationId/messages")
   @ApiOperation({
     summary:
-      "Send Instagram message in this thread. Body `recipientId` is optional — defaults to the conversation’s stored `participant_id` (numeric PSID).",
+      "Send Instagram message in this thread. Body is only `{ message }`. Recipient PSID comes from the conversation row (`participant_id`).",
+  })
+  @ApiBody({
+    type: SendInstagramMessageRequestDto,
+    description: "Must contain only the `message` field (no recipientId or other keys).",
   })
   @ApiOkResponse({ type: SendInstagramMessageResponseDto })
   async sendMessageByConversationId(
@@ -127,8 +132,7 @@ export class ConversationsController {
     return this.conversationsService.sendInstagramMessageForConversation(
       ownerId,
       conversationId,
-      dto.message,
-      dto.recipientId
+      dto.message
     );
   }
 
