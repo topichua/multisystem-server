@@ -228,13 +228,35 @@ export class ConversationsService {
     return {
       id: row.id,
       instUpdatedAt: row.instUpdatedAt,
-      isUnread: Math.random() < 0.5,
+      isUnread: this.resolveConversationIsUnread(
+        row,
+        lastMessage,
+        isLastMessageFromMe,
+      ),
       source: row.source,
       groupId: row.groupId,
       lastMessage: lastMessage?.message ?? '',
       isLastMessageFromMe,
       participant,
     };
+  }
+
+  /**
+   * Unread when the latest message is from the participant (not my account) and it is
+   * newer than when this user last opened the thread (`conversations.read_at`), or
+   * they have never opened it (`read_at` null).
+   */
+  private resolveConversationIsUnread(
+    row: Conversation,
+    lastMessage: ConversationMessage | undefined,
+    isLastMessageFromMe: boolean | null,
+  ): boolean {
+    if (!lastMessage) return false;
+    if (isLastMessageFromMe !== false) return false;
+    const lastTs = lastMessage.createdAt.getTime();
+    const readTs = row.readAt?.getTime();
+    if (readTs == null) return true;
+    return lastTs > readTs;
   }
 
   private resolveIsLastMessageFromMe(
@@ -299,7 +321,7 @@ export class ConversationsService {
       })
       .orderBy('m.conversation_id', 'ASC')
       .addOrderBy('m.created_at', 'DESC')
-      .addOrderBy('m.id', 'DESC')
+      .addOrderBy('m.external_id', 'DESC')
       .getMany();
 
     const out = new Map<number, ConversationMessage>();
@@ -438,7 +460,7 @@ export class ConversationsService {
           senderId: senderId.length > 0 ? senderId : '0',
           receiverId: receiverId.length > 0 ? receiverId : '0',
           readAt: null,
-          replyToId: null,
+          repliedToExternalId: null,
           ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
         });
       } else {
@@ -545,7 +567,7 @@ export class ConversationsService {
       .createQueryBuilder('m')
       .where('m.conversation_id = :cid', { cid: conversationDbId })
       .orderBy('m.created_at', 'DESC')
-      .addOrderBy('m.id', 'DESC');
+      .addOrderBy('m.external_id', 'DESC');
     const page = paging?.page ?? 1;
     const pageSize = paging?.pageSize ?? 50;
     const total = await qb.getCount();
@@ -554,13 +576,13 @@ export class ConversationsService {
       .take(pageSize)
       .getMany();
     const readAtNow = new Date();
-    const unreadIds = rows.filter((r) => r.readAt == null).map((r) => r.id);
+    const unreadIds = rows.filter((r) => r.readAt == null).map((r) => r.externalId);
     if (unreadIds.length > 0) {
       await this.conversationMessageRepo
         .createQueryBuilder()
         .update(ConversationMessage)
         .set({ readAt: readAtNow })
-        .where('id IN (:...ids)', { ids: unreadIds })
+        .where('external_id IN (:...ids)', { ids: unreadIds })
         .execute();
       for (const row of rows) {
         if (row.readAt == null) row.readAt = readAtNow;
@@ -573,7 +595,9 @@ export class ConversationsService {
           ? { edited_at: r.editedAt.toISOString() }
           : {}),
         ...(r.readAt != null ? { read_at: r.readAt.toISOString() } : {}),
-        ...(r.replyToId != null ? { reply_to_id: r.replyToId } : {}),
+        ...(r.repliedToExternalId != null
+          ? { reply_to_id: r.repliedToExternalId }
+          : {}),
         system_updated_at: r.systemUpdatedAt.toISOString(),
       });
       try {
@@ -621,10 +645,16 @@ export class ConversationsService {
       ownerId,
       conversationId,
     );
-    return this.getConversationMessagesFromDb(conv.id, {
+    const result = await this.getConversationMessagesFromDb(conv.id, {
       page: options?.page ?? 1,
       pageSize: options?.pageSize ?? 50,
     });
+    const now = new Date();
+    await this.conversationRepo.update(
+      { id: conv.id, managerId: ownerId },
+      { readAt: now },
+    );
+    return result;
   }
 
   private normalizeRecipientIdInput(

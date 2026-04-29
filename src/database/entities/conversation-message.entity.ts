@@ -4,17 +4,20 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Conversation } from './conversation.entity';
 
 @Entity('conversation_messages')
 @Index('IDX_conversation_messages_conversation_id', ['conversationId'])
-@Index('IDX_conversation_messages_reply_to_id', ['replyToId'])
+@Index('IDX_conversation_messages_replied_to_external_id', ['repliedToExternalId'])
 export class ConversationMessage {
-  @PrimaryGeneratedColumn({ name: 'id' })
-  id: number;
+  /**
+   * Instagram / Graph message id (`mid`).
+   */
+  @PrimaryColumn({ name: 'external_id', type: 'varchar', length: 255 })
+  externalId: string;
 
   @Column({ name: 'conversation_id', type: 'int' })
   conversationId: number;
@@ -22,9 +25,6 @@ export class ConversationMessage {
   @ManyToOne(() => Conversation, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'conversation_id' })
   conversation: Conversation;
-
-  @Column({ name: 'external_id', type: 'varchar', length: 255 })
-  externalId: string;
 
   @Column({ name: 'message', type: 'text' })
   message: string;
@@ -60,6 +60,9 @@ export class ConversationMessage {
   @Column({ name: 'receiver_id', type: 'varchar', length: 255 })
   receiverId: string;
 
-  @Column({ name: 'reply_to_id', type: 'int', nullable: true })
-  replyToId: number | null;
+  /**
+   * Parent message id (`mid` / Graph message id) when this message is a reply.
+   */
+  @Column({ name: 'replied_to_external_id', type: 'varchar', length: 255, nullable: true })
+  repliedToExternalId: string | null;
 }

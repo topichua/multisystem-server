@@ -9,6 +9,8 @@ import { ConversationMessageReplyToId1744200000007 } from './migrations/17442000
 import { CompanyInstagramAccountId1744200000008 } from './migrations/1744200000008-CompanyInstagramAccountId';
 import { CompanyBusinessAccountIdRename1744200000009 } from './migrations/1744200000009-CompanyBusinessAccountIdRename';
 import { ConversationMessageReadAt1744200000010 } from './migrations/1744200000010-ConversationMessageReadAt';
+import { ConversationMessageReplyParentExternalId1744200000011 } from './migrations/1744200000011-ConversationMessageReplyParentExternalId';
+import { ConversationMessageExternalIdPK1744200000012 } from './migrations/1744200000012-ConversationMessageExternalIdPK';
 import {
   Client,
   Company,
@@ -86,6 +88,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       CompanyInstagramAccountId1744200000008,
       CompanyBusinessAccountIdRename1744200000009,
       ConversationMessageReadAt1744200000010,
+      ConversationMessageReplyParentExternalId1744200000011,
+      ConversationMessageExternalIdPK1744200000012,
     ],
   };
 }

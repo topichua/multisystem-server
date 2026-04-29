@@ -54,9 +54,8 @@ export type Client = {
 };
 
 export type ConversationMessage = {
-  id: number;
-  conversationId: number;
   externalId: string;
+  conversationId: number;
   message: string;
   instagramJson: string;
   createdAt: Date;
@@ -65,7 +64,7 @@ export type ConversationMessage = {
   systemUpdatedAt: Date;
   senderId: string;
   receiverId: string;
-  replyToId: number | null;
+  repliedToExternalId: string | null;
 };
 
 /** `sort_order` column — SQL `order` is reserved. */

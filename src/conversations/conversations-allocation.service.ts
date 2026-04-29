@@ -450,13 +450,13 @@ export class ConversationsAllocationService {
       const senderId = m.from?.id?.trim() ?? '';
       const receiverId = m.to?.data?.[0]?.id?.trim() ?? '';
       const text = m.message ?? '';
-      const replyToExternalId = options?.webhookMessaging?.message?.reply_to?.mid?.trim();
-      const replyToId = await this.resolveReplyToId(
-        conversationDbId,
-        ext,
-        replyToExternalId,
-      );
-      const { id: _messageId, ...messageWithoutId } = m;
+      /** Graph includes `reply_to` when requested; webhooks often omit it (only `mid` + text). */
+      const parentMidRaw =
+        m.reply_to?.mid?.trim() ||
+        options?.webhookMessaging?.message?.reply_to?.mid?.trim();
+      const repliedToFromPayload =
+        parentMidRaw && parentMidRaw !== ext ? parentMidRaw : null;
+      const { reply_to: _replyTo, id: _graphMessageId, ...messageWithoutId } = m;
       const instagramJson = JSON.stringify({
         ...messageWithoutId,
         ...(options?.webhookMessaging != null
@@ -480,7 +480,7 @@ export class ConversationsAllocationService {
           senderId: senderId.length > 0 ? senderId : '0',
           receiverId: receiverId.length > 0 ? receiverId : '0',
           readAt: null,
-          replyToId,
+          repliedToExternalId: repliedToFromPayload,
           ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
         });
       } else {
@@ -489,8 +489,8 @@ export class ConversationsAllocationService {
         row.createdAt = createdAt;
         row.senderId = senderId.length > 0 ? senderId : row.senderId;
         row.receiverId = receiverId.length > 0 ? receiverId : row.receiverId;
-        if (replyToId != null) {
-          row.replyToId = replyToId;
+        if (repliedToFromPayload != null) {
+          row.repliedToExternalId = repliedToFromPayload;
         }
         if (options?.editedAt != null) {
           row.editedAt = options.editedAt;
@@ -534,20 +534,6 @@ export class ConversationsAllocationService {
     }
   }
 
-  private async resolveReplyToId(
-    conversationDbId: number,
-    messageExternalId: string,
-    replyToExternalId?: string,
-  ): Promise<number | null> {
-    const mid = replyToExternalId?.trim();
-    if (!mid || mid === messageExternalId) return null;
-    const target = await this.conversationMessageRepo.findOne({
-      where: { conversationId: conversationDbId, externalId: mid },
-      select: { id: true },
-    });
-    return target?.id ?? null;
-  }
-
   private sanitizeWebhookMessagingForStorage(
     ev: InstagramWebhookMessagingItem,
   ): Record<string, unknown> {
@@ -565,7 +551,6 @@ export class ConversationsAllocationService {
               ...(ev.message.reply_to != null
                 ? {
                     reply_to: {
-                      mid: ev.message.reply_to.mid,
                       is_self_reply: ev.message.reply_to.is_self_reply,
                     },
                   }

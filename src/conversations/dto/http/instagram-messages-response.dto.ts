@@ -199,6 +199,12 @@ export class InstagramMessageDto {
 
   @ApiPropertyOptional({
     description:
+      'Present on some Graph payloads when the message is a reply (parent message id). Not persisted in `instagram_json` — see `reply_to_id` on API responses.',
+  })
+  reply_to?: { mid?: string; is_self_reply?: boolean };
+
+  @ApiPropertyOptional({
+    description:
       'When the message was last edited on Instagram (if known), ISO 8601',
   })
   edited_at?: string;
@@ -215,9 +221,9 @@ export class InstagramMessageDto {
 
   @ApiPropertyOptional({
     description:
-      'Internal DB id of the message this message replies to (resolved from webhook reply_to.mid when available).',
+      'Instagram / Graph message id (`mid`) of the parent message when this is a reply (from payload reply_to.mid).',
   })
-  reply_to_id?: number;
+  reply_to_id?: string;
 }
 
 export class InstagramMessagesPagingCursorsDto {
