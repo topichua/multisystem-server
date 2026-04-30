@@ -10,6 +10,13 @@ export class CompanyMeDto {
 
   @ApiProperty()
   pageId: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instagram Business Account id (Graph `instagram_business_account.id`) for this company when connected.',
+  })
+  instagramAccountId: string | null;
 }
 
 export class UserMeDto {

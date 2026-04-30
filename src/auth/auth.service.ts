@@ -62,7 +62,12 @@ export class AuthService {
     });
 
     const companyDto: CompanyMeDto | null = company
-      ? { id: company.id, name: company.name, pageId: company.pageId }
+      ? {
+          id: company.id,
+          name: company.name,
+          pageId: company.pageId,
+          instagramAccountId: company.instagramAccountId?.trim() ?? null,
+        }
       : null;
 
     return {
