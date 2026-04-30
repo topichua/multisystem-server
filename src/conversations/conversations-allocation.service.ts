@@ -12,7 +12,6 @@ import {
   ConversationMessage,
   ConversationSource,
   InstagramUser,
-  Source,
 } from '../database/entities';
 import type {
   InstagramConversationDto,
@@ -43,8 +42,6 @@ export class ConversationsAllocationService {
   constructor(
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
-    @InjectRepository(Source)
-    private readonly sourceRepo: Repository<Source>,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
@@ -54,8 +51,8 @@ export class ConversationsAllocationService {
   ) {}
 
   /**
-   * Webhook-driven allocation: fetch message + conversation from Graph, upsert `conversations`,
-   * persist `conversation_messages`.
+   * Webhook-driven allocation: load message by `mid`, upsert `conversations` (by participant or
+   * Graph thread id), persist `conversation_messages`, sync `instagram_users`.
    */
   async allocateInstagramMessagingWebhook(
     payload: InstagramWebhookPayload,
@@ -97,15 +94,10 @@ export class ConversationsAllocationService {
         continue;
       }
 
-      const source = await this.sourceRepo.findOne({
-        where: { companyId: company.id },
-        order: { id: 'DESC' },
-      });
-      const accessToken =
-        company.accessToken?.trim() || source?.token?.trim() || '';
+      const accessToken = company.accessToken?.trim() ?? '';
       if (!accessToken) {
         this.log.warn(
-          `${t} entry[${ei}] no Page token in sources for company=${company.id}; webhook skipped`,
+          `${t} entry[${ei}] no Page token (company.access_token) for company=${company.id}; webhook skipped`,
         );
         continue;
       }
@@ -147,7 +139,6 @@ export class ConversationsAllocationService {
           try {
             await this.allocateSingleWebhookMessage({
               traceId,
-              pageId: company.pageId,
               mid,
               businessInstagramId,
               ownerId: company.ownerId,
@@ -186,18 +177,21 @@ export class ConversationsAllocationService {
   }
 
   /**
-   * GET `/v25.0/{instagram-business-account-id}/conversations?platform=instagram&user_id=…` — reusable Graph helper.
+   * GET `/v25.0/{instagram-business-account-id}/conversations?platform=instagram&user_id=…`
+   *
+   * `customerInstagramUserId` is the Instagram-scoped **other party** id (same value we store as
+   * `conversations.participant_id`); Meta expects it as the `user_id` query param.
    */
   private async fetchInstagramConversationsForUser(
-    pageId: string,
-    userId: string,
+    businessInstagramId: string,
+    customerInstagramUserId: string,
     accessToken: string,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
     const fields = encodeURIComponent('id,participants,updated_time');
     let nextUrl: string | null =
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(pageId)}/conversations` +
-      `?platform=instagram&user_id=${encodeURIComponent(userId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
+      `https://graph.facebook.com/v25.0/${encodeURIComponent(businessInstagramId)}/conversations` +
+      `?platform=instagram&user_id=${encodeURIComponent(customerInstagramUserId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {
       const batch: InstagramConversationsResponseDto =
@@ -313,9 +307,143 @@ export class ConversationsAllocationService {
     return null;
   }
 
+  private instUpdatedAtFromWebhookMessage(
+    msg: InstagramMessageDto,
+    igConv?: InstagramConversationDto,
+  ): Date {
+    if (igConv?.updated_time) {
+      const d = new Date(igConv.updated_time);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    const d = new Date(msg.created_time);
+    if (!Number.isNaN(d.getTime())) return d;
+    return new Date();
+  }
+
+  /**
+   * Finds or builds the `Conversation` row: by customer `participant_id` first, else via Graph
+   * (`/conversations?user_id=…` then optional `message.conversation`).
+   */
+  private async ensureInstagramConversationRowForWebhook(params: {
+    traceId: string;
+    msg: InstagramMessageDto;
+    mid: string;
+    customerUserId: string;
+    businessInstagramId: string;
+    ownerId: number;
+    accessToken: string;
+  }): Promise<{
+    row: Conversation;
+    participantExtras: InstagramConversationParticipantDto[] | undefined;
+  }> {
+    const t = `[webhook trace=${params.traceId}]`;
+    const {
+      msg,
+      mid,
+      customerUserId,
+      businessInstagramId,
+      ownerId,
+      accessToken,
+    } = params;
+
+    let row = await this.conversationRepo.findOne({
+      where: {
+        managerId: ownerId,
+        participantId: customerUserId,
+        source: ConversationSource.INSTAGRAM,
+      },
+      order: { id: 'DESC' },
+    });
+
+    if (row) {
+      row.instUpdatedAt = this.instUpdatedAtFromWebhookMessage(msg, undefined);
+      row.externalSourceId = businessInstagramId;
+      row.participantId = customerUserId;
+      this.log.log(
+        `${t} conversation matched by participant_id=${customerUserId} db_id=${row.id}`,
+      );
+      return { row, participantExtras: undefined };
+    }
+
+    this.log.log(
+      `${t} no DB row for participant_id=${customerUserId}; Graph user_id=${customerUserId}`,
+    );
+
+    const convList = await this.fetchInstagramConversationsForUser(
+      businessInstagramId,
+      customerUserId,
+      accessToken,
+    );
+    this.log.log(
+      `${t} Graph conversations count=${convList.length} first_id=${convList[0]?.id ?? 'none'}`,
+    );
+
+    let graphConversationId: string | undefined = convList[0]?.id?.trim();
+
+    if (!graphConversationId) {
+      this.log.log(`${t} conversations edge empty; loading message.conversation{id}`);
+      const extended = await this.fetchInstagramMessageById(
+        mid,
+        accessToken,
+        'id,created_time,from,to,message,conversation{id},reactions{data{reaction,users{id,username}}}',
+      );
+      graphConversationId = extended.conversation?.id?.trim();
+      if (graphConversationId) {
+        this.log.log(`${t} conversation id from message node id=${graphConversationId}`);
+      }
+    }
+
+    if (!graphConversationId) {
+      throw new Error(
+        'Could not resolve Instagram conversation id (user conversations edge empty and message.conversation missing)',
+      );
+    }
+
+    const igConv = convList.find((c) => c.id?.trim() === graphConversationId);
+    const updatedTime = this.instUpdatedAtFromWebhookMessage(msg, igConv);
+    const participantId = igConv
+      ? this.pickCustomerParticipantId(
+          igConv.participants?.data ?? [],
+          businessInstagramId,
+        )
+      : this.pickCustomerUserIdFromMessage(msg, businessInstagramId) ?? 'unknown';
+
+    row = await this.conversationRepo.findOne({
+      where: { managerId: ownerId, externalId: graphConversationId },
+    });
+
+    if (!row) {
+      row = this.conversationRepo.create({
+        externalSourceId: businessInstagramId,
+        externalId: graphConversationId,
+        instUpdatedAt: updatedTime,
+        readAt: null,
+        participantId,
+        source: ConversationSource.INSTAGRAM,
+        managerId: ownerId,
+        groupId: null,
+      });
+      this.log.log(
+        `${t} conversation CREATE external_id=${graphConversationId} participant=${participantId}`,
+      );
+    } else {
+      row.instUpdatedAt = updatedTime;
+      row.participantId =
+        participantId !== 'unknown' ? participantId : row.participantId;
+      row.externalSourceId = businessInstagramId;
+      this.log.log(
+        `${t} conversation UPDATE by external_id db_id=${row.id} external_id=${graphConversationId}`,
+      );
+    }
+
+    return {
+      row,
+      participantExtras: igConv?.participants?.data,
+    };
+  }
+
   private async allocateSingleWebhookMessage(opts: {
     traceId: string;
-    pageId: string;
     mid: string;
     businessInstagramId: string;
     ownerId: number;
@@ -349,102 +477,27 @@ export class ConversationsAllocationService {
       );
     }
     this.log.log(`${t} mid customer user_id=${customerUserId}`);
-    
-    const convList = await this.fetchInstagramConversationsForUser(
-      opts.pageId,
-      customerUserId,
-      opts.accessToken,
-    );
 
-    this.log.log(
-      `${t} mid conversations edge count=${convList.length} first_id=${convList[0]?.id ?? 'none'}`,
-    );
-
-    let graphConversationId: string | undefined = convList[0]?.id?.trim();
-
-    if (!graphConversationId) {
-      this.log.log(
-        `${t} mid conversations edge empty - fetching message with conversation{id}`,
-      );
-      const extended = await this.fetchInstagramMessageById(
-        opts.mid,
-        opts.accessToken,
-        'id,created_time,from,to,message,conversation{id},reactions{data{reaction,users{id,username}}}',
-      );
-      graphConversationId = extended.conversation?.id?.trim();
-      if (graphConversationId) {
-        this.log.log(
-          `${t} mid resolved conversation id from message node id=${graphConversationId}`,
-        );
-      }
-    }
-
-    if (!graphConversationId) {
-      throw new Error(
-        'Could not resolve Instagram conversation id (user conversations edge empty and message.conversation missing)',
-      );
-    }
-
-    const igConv = convList.find((c) => c.id?.trim() === graphConversationId);
-
-    const updatedTime = (() => {
-      if (igConv?.updated_time) {
-        const d = new Date(igConv.updated_time);
-        if (!Number.isNaN(d.getTime())) return d;
-      }
-      const d = new Date(msg.created_time);
-      if (!Number.isNaN(d.getTime())) return d;
-      return new Date();
-    })();
-
-    const participantId = igConv
-      ? this.pickCustomerParticipantId(
-          igConv.participants?.data ?? [],
-          opts.businessInstagramId,
-        )
-      : this.pickCustomerUserIdFromMessage(msg, opts.businessInstagramId) ??
-        'unknown';
-
-    let row = await this.conversationRepo.findOne({
-      where: { managerId: opts.ownerId, externalId: graphConversationId },
-    });
-
-    if (!row) {
-      row = this.conversationRepo.create({
-        externalSourceId: opts.businessInstagramId,
-        externalId: graphConversationId,
-        instUpdatedAt: updatedTime,
-        readAt: null,
-        participantId,
-        source: ConversationSource.INSTAGRAM,
-        managerId: opts.ownerId,
-        groupId: null,
+    const { row, participantExtras } =
+      await this.ensureInstagramConversationRowForWebhook({
+        traceId: opts.traceId,
+        msg,
+        mid: opts.mid,
+        customerUserId,
+        businessInstagramId: opts.businessInstagramId,
+        ownerId: opts.ownerId,
+        accessToken: opts.accessToken,
       });
-      this.log.log(
-        `${t} mid conversation CREATE external_id=${graphConversationId} participant=${participantId}`,
-      );
-    } else {
-      row.instUpdatedAt = updatedTime;
-      row.participantId =
-        participantId !== 'unknown' ? participantId : row.participantId;
-      row.externalSourceId = opts.businessInstagramId;
-      this.log.log(
-        `${t} mid conversation UPDATE db_id=${row.id} external_id=${graphConversationId} inst_updated_at=${updatedTime.toISOString()}`,
-      );
-    }
+
     await this.conversationRepo.save(row);
 
-    await this.persistInstagramMessages(
-      row.id,
-      [msg],
-      {
-        ...(opts.editedAt != null ? { editedAt: opts.editedAt } : {}),
-        webhookMessaging: opts.webhookMessaging,
-      },
-    );
+    await this.persistInstagramMessages(row.id, [msg], {
+      ...(opts.editedAt != null ? { editedAt: opts.editedAt } : {}),
+      webhookMessaging: opts.webhookMessaging,
+    });
     await this.syncInstagramUsersForWebhookAllocation(
       msg,
-      igConv?.participants?.data,
+      participantExtras,
       opts.accessToken,
       opts.traceId,
       opts.senderHintId,
@@ -722,7 +775,7 @@ export class ConversationsAllocationService {
       throw new ForbiddenException(
         'Facebook / Instagram access token is missing the pages_messaging permission (Graph error #230). ' +
           'In developers.facebook.com: add "pages_messaging" (and Instagram messaging scopes your product needs) to the app, ' +
-          're-run Login / Page install so the Page token includes those permissions, then store the new token for this company (or Sources / env).',
+          're-run Login / Page install so the Page token includes those permissions, then store the new Page token on the company (OAuth).',
       );
     }
     throw new BadGatewayException(msg);
