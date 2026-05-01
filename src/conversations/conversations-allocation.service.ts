@@ -26,6 +26,7 @@ import type {
   InstagramWebhookMessagingItem,
   InstagramWebhookPayload,
 } from '../webhook/instagram-webhook-payload.types';
+import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from './instagram-graph-message-fields';
 
 type InstagramErrorResponse = {
   error?: {
@@ -385,7 +386,16 @@ export class ConversationsAllocationService {
       const extended = await this.fetchInstagramMessageById(
         mid,
         accessToken,
-        'id,created_time,from,to,message,conversation{id},reactions{data{reaction,users{id,username}}}',
+        [
+          'id',
+          'created_time',
+          'from',
+          'to',
+          'message',
+          `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
+          'conversation{id}',
+          'reactions{data{reaction,users{id,username}}}',
+        ].join(','),
       );
       graphConversationId = extended.conversation?.id?.trim();
       if (graphConversationId) {
@@ -454,8 +464,16 @@ export class ConversationsAllocationService {
     webhookMessaging: InstagramWebhookMessagingItem;
   }): Promise<void> {
     const t = `[webhook trace=${opts.traceId}]`;
-    const messageFieldsWithReactions =
-      'id,created_time,from,to,reply_to,message,reactions{data{reaction,users{id,username}}}';
+    const messageFieldsWithReactions = [
+      'id',
+      'created_time',
+      'from',
+      'to',
+      'reply_to',
+      'message',
+      `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
+      'reactions{data{reaction,users{id,username}}}',
+    ].join(',');
     const msg = await this.fetchInstagramMessageById(
       opts.mid,
       opts.accessToken,

@@ -111,11 +111,10 @@ export class ConversationsController {
   @Post(":conversationId/messages")
   @ApiOperation({
     summary:
-      "Send Instagram message in this thread. Body is only `{ message }`. Recipient PSID comes from the conversation row (`participant_id`).",
+      "Send Instagram message in this thread. `reply_to_id` is optional: omit or null for a normal message; set it to the parent message id to send a reply. Recipient PSID comes from `participant_id` on the conversation row.",
   })
   @ApiBody({
     type: SendInstagramMessageRequestDto,
-    description: "Must contain only the `message` field (no recipientId or other keys).",
   })
   @ApiOkResponse({ type: SendInstagramMessageResponseDto })
   async sendMessageByConversationId(
@@ -132,7 +131,8 @@ export class ConversationsController {
     return this.conversationsService.sendInstagramMessageForConversation(
       ownerId,
       conversationId,
-      dto.message
+      dto.message,
+      dto.reply_to_id,
     );
   }
 

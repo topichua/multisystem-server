@@ -25,7 +25,9 @@ import type {
 import type {
   InstagramMessageDto,
   InstagramMessagesResponseDto,
+  InstagramRepliedToMessageRefDto,
 } from './dto/http/instagram-messages-response.dto';
+import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from './instagram-graph-message-fields';
 import type { SendInstagramMessageResponseDto } from './dto/http/send-instagram-message-response.dto';
 import type {
   ConversationRowDto,
@@ -369,7 +371,7 @@ export class ConversationsService {
         'is_unsupported',
         'from{id,name,email,username}',
         'to{data{id,name,email,username}}',
-        'attachments{id,name,mime_type,size,file_url,image_data{url,width,height,preview_url,animated_gif_url,animated_gif_preview_url,render_as_sticker},video_data{url,preview_url},generic_template}',
+        `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
         'reactions{data{reaction,users{id,username}}}',
       ].join(','),
     );
@@ -553,6 +555,33 @@ export class ConversationsService {
     await this.instagramUserRepo.save(row);
   }
 
+  private buildRepliedToMessageRef(
+    row: ConversationMessage,
+  ): InstagramRepliedToMessageRefDto {
+    try {
+      const parsed = JSON.parse(row.instagramJson) as InstagramMessageDto;
+      if (
+        typeof parsed.created_time === 'string' &&
+        parsed.created_time.length > 0
+      ) {
+        return {
+          id: row.externalId,
+          created_time: parsed.created_time,
+          message: (parsed.message ?? row.message) || undefined,
+          ...(parsed.attachments != null ? { attachments: parsed.attachments } : {}),
+          ...(parsed.from != null ? { from: parsed.from } : {}),
+        };
+      }
+    } catch {
+      /* use row columns */
+    }
+    return {
+      id: row.externalId,
+      created_time: row.createdAt.toISOString(),
+      ...(row.message.length > 0 ? { message: row.message } : {}),
+    };
+  }
+
   private async getConversationMessagesFromDb(
     conversationDbId: number,
     paging?: { page: number; pageSize: number },
@@ -569,52 +598,88 @@ export class ConversationsService {
       .skip((page - 1) * pageSize)
       .take(pageSize)
       .getMany();
-    const readAtNow = new Date();
-    const unreadIds = rows.filter((r) => r.readAt == null).map((r) => r.externalId);
-    if (unreadIds.length > 0) {
-      await this.conversationMessageRepo
-        .createQueryBuilder()
-        .update(ConversationMessage)
-        .set({ readAt: readAtNow })
-        .where('external_id IN (:...ids)', { ids: unreadIds })
-        .execute();
-      for (const row of rows) {
-        if (row.readAt == null) row.readAt = readAtNow;
+
+    const messageRowsByExternalId = new Map(
+      rows.map((r) => [r.externalId, r]),
+    );
+    const parentIds = [
+      ...new Set(
+        rows
+          .map((r) => r.repliedToExternalId?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const missingParentIds = parentIds.filter(
+      (id) => !messageRowsByExternalId.has(id),
+    );
+    if (missingParentIds.length > 0) {
+      const extraParents = await this.conversationMessageRepo.find({
+        where: {
+          conversationId: conversationDbId,
+          externalId: In(missingParentIds),
+        },
+      });
+      for (const p of extraParents) {
+        messageRowsByExternalId.set(p.externalId, p);
       }
     }
+
+    const attachRepliedToSnapshot = (
+      dbRow: ConversationMessage,
+      dto: InstagramMessageDto,
+    ): InstagramMessageDto => {
+      const parentId = dbRow.repliedToExternalId?.trim();
+      if (!parentId) return dto;
+      const parent = messageRowsByExternalId.get(parentId);
+      const replied_to_message = parent
+        ? this.buildRepliedToMessageRef(parent)
+        : { id: parentId };
+      return { ...dto, replied_to_message };
+    };
+
     const data: InstagramMessageDto[] = rows.map((r) => {
-      const addDbMeta = (m: InstagramMessageDto): InstagramMessageDto => ({
-        ...m,
-        ...(r.editedAt != null
-          ? { edited_at: r.editedAt.toISOString() }
-          : {}),
-        ...(r.readAt != null ? { read_at: r.readAt.toISOString() } : {}),
-        ...(r.repliedToExternalId != null
-          ? { reply_to_id: r.repliedToExternalId }
-          : {}),
-        system_updated_at: r.systemUpdatedAt.toISOString(),
-      });
+      /** `read_at` / `edited_at` come only from DB columns, not from stored Graph JSON. */
+      const addDbMeta = (m: InstagramMessageDto): InstagramMessageDto => {
+        const { read_at: _dropReadAt, edited_at: _dropEditedAt, ...fromGraph } = m;
+        return {
+          ...fromGraph,
+          ...(r.editedAt != null
+            ? { edited_at: r.editedAt.toISOString() }
+            : {}),
+          ...(r.readAt != null ? { read_at: r.readAt.toISOString() } : {}),
+          ...(r.repliedToExternalId != null
+            ? { reply_to_id: r.repliedToExternalId }
+            : {}),
+          system_updated_at: r.systemUpdatedAt.toISOString(),
+        };
+      };
       try {
         const parsed = JSON.parse(r.instagramJson) as Record<string, unknown>;
         const createdTime = parsed.created_time;
         if (typeof createdTime === 'string' && createdTime.length > 0) {
-          return addDbMeta({
-            ...(parsed as unknown as InstagramMessageDto),
-            id:
-              typeof parsed.id === 'string' && parsed.id.length > 0
-                ? parsed.id
-                : r.externalId,
-          } as InstagramMessageDto);
+          return attachRepliedToSnapshot(
+            r,
+            addDbMeta({
+              ...(parsed as unknown as InstagramMessageDto),
+              id:
+                typeof parsed.id === 'string' && parsed.id.length > 0
+                  ? parsed.id
+                  : r.externalId,
+            } as InstagramMessageDto),
+          );
         }
       } catch {
         /* use fallback */
       }
-      return addDbMeta({
-        id: r.externalId,
-        created_time: r.createdAt.toISOString(),
-        message: r.message,
-        to: { data: r.receiverId && r.receiverId !== '0' ? [{ id: r.receiverId }] : [] },
-      });
+      return attachRepliedToSnapshot(
+        r,
+        addDbMeta({
+          id: r.externalId,
+          created_time: r.createdAt.toISOString(),
+          message: r.message,
+          to: { data: r.receiverId && r.receiverId !== '0' ? [{ id: r.receiverId }] : [] },
+        }),
+      );
     });
     const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
     return {
@@ -666,10 +731,14 @@ export class ConversationsService {
     return t.length > 0 && t !== 'unknown' && /^\d+$/.test(t);
   }
 
+  /**
+   * @param replyToMid When unset: plain text message. When set: Graph `message.reply_to.mid` (reply).
+   */
   async sendInstagramMessageForConversation(
     ownerId: number,
     conversationIdParam: string,
     message: string,
+    replyToMid?: string,
   ): Promise<SendInstagramMessageResponseDto> {
     const company = await this.requireCompanyForOwner(ownerId);
     const accessToken = await this.resolveGraphAccessToken(company.id);
@@ -690,6 +759,28 @@ export class ConversationsService {
       throw new BadRequestException('message must not be empty');
     }
 
+    const replyMid = replyToMid?.trim();
+    if (replyMid) {
+      const parentExists = await this.conversationMessageRepo.exist({
+        where: { conversationId: conv.id, externalId: replyMid },
+      });
+      if (!parentExists) {
+        throw new BadRequestException(
+          'reply_to_id must be the id of a message in this conversation (from GET .../messages).',
+        );
+      }
+    }
+
+    /** Instagram Messaging: `reply_to` is a root-level sibling of `message`, not inside it. */
+    const sendBody: Record<string, unknown> = {
+      recipient: { id: recipient },
+      message: { text },
+      messaging_type: 'RESPONSE',
+    };
+    if (replyMid) {
+      sendBody.reply_to = { mid: replyMid };
+    }
+
     const url = new URL('https://graph.facebook.com/v25.0/me/messages');
     url.searchParams.set('access_token', accessToken);
 
@@ -698,11 +789,7 @@ export class ConversationsService {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipient: { id: recipient },
-          message: { text: text },
-          messaging_type: 'RESPONSE',
-        }),
+        body: JSON.stringify(sendBody),
       },
     );
 

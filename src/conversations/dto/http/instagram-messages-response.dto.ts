@@ -155,6 +155,24 @@ export class InstagramMessageTagsDto {
   data?: InstagramMessageTagDto[];
 }
 
+/** Parent message snapshot for reply rendering (from our DB). */
+export class InstagramRepliedToMessageRefDto {
+  @ApiProperty({ description: 'Parent message Graph id (`mid`)' })
+  id: string;
+
+  @ApiPropertyOptional()
+  created_time?: string;
+
+  @ApiPropertyOptional()
+  message?: string;
+
+  @ApiPropertyOptional({ type: () => InstagramMessageAttachmentsDto })
+  attachments?: InstagramMessageAttachmentsDto;
+
+  @ApiPropertyOptional({ type: () => InstagramMessageActorDto })
+  from?: InstagramMessageActorDto;
+}
+
 export class InstagramMessageDto {
   @ApiProperty()
   id: string;
@@ -224,6 +242,13 @@ export class InstagramMessageDto {
       'Instagram / Graph message id (`mid`) of the parent message when this is a reply (from payload reply_to.mid).',
   })
   reply_to_id?: string;
+
+  @ApiPropertyOptional({
+    type: () => InstagramRepliedToMessageRefDto,
+    description:
+      'Parent message fields for reply UI. Full snapshot when the parent exists in this conversation in the DB; otherwise `{ id }` only (same as `reply_to_id`).',
+  })
+  replied_to_message?: InstagramRepliedToMessageRefDto;
 }
 
 export class InstagramMessagesPagingCursorsDto {
