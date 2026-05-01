@@ -8,9 +8,11 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { User } from './user.entity';
+import { Workspace } from './workspace.entity';
 
-@Entity('company')
-@Index('IDX_company_owner_id', ['ownerId'])
+@Entity('integration')
+@Index('IDX_integration_owner_id', ['ownerId'])
+@Index('IDX_integration_workspace_id', ['workspaceId'])
 export class Company {
   @PrimaryGeneratedColumn({ name: 'id' })
   id: number;
@@ -29,7 +31,7 @@ export class Company {
 
   /**
    * **Page** access token from Graph `me/accounts` (`access_token` on the Page object).
-   * Used for Page-scoped Graph calls; also mirrored to `sources.token` on OAuth.
+   * Used for Page-scoped Graph calls (set on OAuth callback).
    */
   @Column({ name: 'access_token', type: 'text', nullable: true })
   accessToken: string | null;
@@ -49,9 +51,16 @@ export class Company {
   @Column({ name: 'owner_id', type: 'int' })
   ownerId: number;
 
+  @Column({ name: 'workspace_id', type: 'int' })
+  workspaceId: number;
+
   @ManyToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'owner_id' })
   owner: User;
+
+  @ManyToOne(() => Workspace, { nullable: false, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'workspace_id' })
+  workspace: Workspace;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

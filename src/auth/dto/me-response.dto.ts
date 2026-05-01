@@ -17,6 +17,9 @@ export class CompanyMeDto {
       'Instagram Business Account id (Graph `instagram_business_account.id`) for this company when connected.',
   })
   instagramAccountId: string | null;
+
+  @ApiProperty({ description: 'Owning workspace id (`integration.workspace_id`).' })
+  workspaceId: number;
 }
 
 export class UserMeDto {

@@ -12,7 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as crypto from 'crypto';
 import { Repository } from 'typeorm';
-import { Company, Source } from '../database/entities';
+import { Company } from '../database/entities';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type { FacebookOAuthStatusDto } from './dto/facebook-oauth-status.dto';
 
@@ -34,7 +34,6 @@ const DEFAULT_OAUTH_SCOPES = [
 ];
 
 const TOKEN_STATUS_ACTIVE = 'active';
-const SOURCE_NAME_INSTAGRAM = 'Instagram';
 
 const STATE_TTL_MS = 15 * 60 * 1000;
 
@@ -76,8 +75,6 @@ export class FacebookOAuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
-    @InjectRepository(Source)
-    private readonly sourceRepo: Repository<Source>,
   ) {
     setInterval(() => this.sweepExpiredStates(), 60_000).unref?.();
   }
@@ -269,10 +266,7 @@ export class FacebookOAuthService {
     );
     this.log.log(`Long-lived user token received ${this.maskToken(longLived)}`);
 
-    const page = await this.findPageWithInstagramBusinessAccount(
-      longLived,
-      pending.companyId,
-    );
+    const page = await this.findPageWithInstagramBusinessAccount(longLived);
     const igId = page.instagram_business_account!.id!.trim();
 
     const pageId = page.id!.trim();
@@ -377,13 +371,12 @@ export class FacebookOAuthService {
 
   /**
    * Calls Graph `me/accounts` with the long-lived **user** token (`access_token` query param),
-   * picks the first Page with `instagram_business_account`, persists that Page’s `access_token`
-   * to `sources.token`, and returns the Page node (caller sets `company.user_access_token` and
-   * `company.access_token` from the user token and `page.access_token`).
+   * picks the first Page with `instagram_business_account`, and returns the Page node (caller
+   * sets `company.user_access_token` and `company.access_token` from the user token and
+   * `page.access_token`).
    */
   private async findPageWithInstagramBusinessAccount(
     userAccessToken: string,
-    companyId: number,
   ): Promise<PageWithIg> {
     const fields = 'id,name,access_token,instagram_business_account{id}';
     let nextUrl: string | null =
@@ -418,25 +411,9 @@ export class FacebookOAuthService {
       );
     }
 
-    const pageAccessToken = withIg.access_token!.trim();
     this.log.log(
-      `Persisting Page access_token to sources companyId=${companyId} token=${this.maskToken(pageAccessToken)}`,
+      `Selected Page with Instagram Business account token=${this.maskToken(withIg.access_token!.trim())}`,
     );
-
-    let source = await this.sourceRepo.findOne({
-      where: { companyId },
-      order: { id: 'DESC' },
-    });
-    if (!source) {
-      source = this.sourceRepo.create({
-        name: SOURCE_NAME_INSTAGRAM,
-        companyId,
-        token: pageAccessToken,
-      });
-    } else {
-      source.token = pageAccessToken;
-    }
-    await this.sourceRepo.save(source);
 
     return withIg;
   }

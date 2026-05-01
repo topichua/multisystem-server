@@ -8,14 +8,14 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import {
   Company,
   Conversation,
+  ConversationGroup,
   ConversationMessage,
   ConversationSource,
   InstagramUser,
-  Source,
 } from '../database/entities';
 import type {
   InstagramConversationDto,
@@ -51,21 +51,44 @@ export class ConversationsService {
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
+    @InjectRepository(ConversationGroup)
+    private readonly conversationGroupRepo: Repository<ConversationGroup>,
     @InjectRepository(ConversationMessage)
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
-    @InjectRepository(Source)
-    private readonly sourceRepo: Repository<Source>,
   ) {}
 
-  async listConversationsForOwner(ownerId: number): Promise<{
+  async listConversationsForOwner(
+    ownerId: number,
+    filters?: { groupIds?: number[] },
+  ): Promise<{
     items: ConversationRowDto[];
   }> {
     const company = await this.requireCompanyForOwner(ownerId);
     const myAccountIds = this.buildMyInstagramIds(company);
+
+    const groupIds = filters?.groupIds?.filter(
+      (id) => Number.isInteger(id) && id > 0,
+    );
+    let where: FindOptionsWhere<Conversation> = { managerId: ownerId };
+    if (groupIds != null && groupIds.length > 0) {
+      const unique = [...new Set(groupIds)];
+      const groups = await this.conversationGroupRepo.find({
+        where: { workspaceId: company.workspaceId, id: In(unique) },
+      });
+      const found = new Set(groups.map((g) => g.id));
+      const missing = unique.filter((id) => !found.has(id));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Unknown or inaccessible group id(s) for this workspace: ${missing.join(', ')}`,
+        );
+      }
+      where = { managerId: ownerId, groupId: In(unique) };
+    }
+
     const rows = await this.conversationRepo.find({
-      where: { managerId: ownerId },
+      where,
       order: { instUpdatedAt: 'DESC' },
     });
     const lastMessageByConversationId = await this.getLastMessageByConversationIds(
@@ -209,6 +232,39 @@ export class ConversationsService {
       participantById,
       myAccountIds,
     );
+  }
+
+  /**
+   * Sets `conversations.group_id` to a group in the same workspace as the owner’s integration.
+   */
+  async assignConversationGroupForOwner(
+    ownerId: number,
+    conversationId: number,
+    groupId: number,
+  ): Promise<ConversationRowDto> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const workspaceId = company.workspaceId;
+
+    const conv = await this.conversationRepo.findOne({
+      where: { id: conversationId, managerId: ownerId },
+    });
+    if (!conv) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const group = await this.conversationGroupRepo.findOne({
+      where: { id: groupId, workspaceId },
+    });
+    if (!group) {
+      throw new BadRequestException(
+        'Conversation group not found or does not belong to this workspace',
+      );
+    }
+
+    conv.groupId = groupId;
+    await this.conversationRepo.save(conv);
+
+    return this.getConversationForOwnerById(ownerId, conversationId);
   }
 
   private toConversationRowDto(
@@ -806,15 +862,8 @@ export class ConversationsService {
     const pageToken = company?.accessToken?.trim();
     if (pageToken) return pageToken;
 
-    const source = await this.sourceRepo.findOne({
-      where: { companyId },
-      order: { id: 'DESC' },
-    });
-    const fromSource = source?.token?.trim();
-    if (fromSource) return fromSource;
-
     throw new ServiceUnavailableException(
-      'No Page Graph token: set company.access_token (Page token from OAuth) or sources.token for this company.',
+      'No Page Graph token: set company.access_token (Page token from OAuth) for this company.',
     );
   }
 
@@ -984,7 +1033,7 @@ export class ConversationsService {
       throw new ForbiddenException(
         'Facebook / Instagram access token is missing the pages_messaging permission (Graph error #230). ' +
           'In developers.facebook.com: add “pages_messaging” (and Instagram messaging scopes your product needs) to the app, ' +
-          're-run Login / Page install so the Page token includes those permissions, then store the new token for this company (or Sources / env).',
+          're-run Login / Page install so the Page token includes those permissions, then store the new token on this company.',
       );
     }
     throw new BadGatewayException(msg);

@@ -1,61 +1,37 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsEmail,
-  IsOptional,
-  IsString,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateCompanyWithOwnerRequestDto {
-  @ApiProperty({ description: 'Legal or display name of the company' })
+  @ApiProperty({ description: 'Workspace display name' })
   @IsString()
   @MinLength(1)
   @MaxLength(255)
-  companyName: string;
+  workspace_name: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Email for the new owner user (login identifier)' })
   @IsEmail()
-  email: string;
+  user_email: string;
 
   @ApiProperty()
   @IsString()
   @MinLength(1)
   @MaxLength(120)
-  firstName: string;
+  first_name: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: 'Optional; omit or send empty string for no last name.',
+  })
+  @IsOptional()
   @IsString()
   @MaxLength(120)
-  lastName: string;
+  last_name?: string;
 
-  @ApiProperty({ description: 'Plaintext password; stored as bcrypt hash only.', minLength: 8 })
+  @ApiProperty({
+    description: 'Plaintext password for the new owner; stored as bcrypt hash only.',
+    minLength: 8,
+  })
   @IsString()
   @MinLength(8)
   @MaxLength(200)
   password: string;
-
-  @ApiProperty({
-    description: 'Instagram / Facebook Graph API token (stored on company tokens and source).',
-  })
-  @IsString()
-  @MinLength(1)
-  instagramToken: string;
-
-  @ApiPropertyOptional({
-    description: 'Facebook Page ID linked to Instagram; stored as company.page_id.',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  instagramPageId?: string | null;
-
-  @ApiPropertyOptional({
-    description:
-      'Instagram account id of the connected owner account; stored as company.instagram_account_id.',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  instagramAccountId?: string | null;
 }

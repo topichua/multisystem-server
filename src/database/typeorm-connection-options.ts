@@ -17,6 +17,10 @@ import { CompanyDropBusinessAccountId1744200000015 } from './migrations/17442000
 import { CompanyAccessTokenRenameLongToken1744200000016 } from './migrations/1744200000016-CompanyAccessTokenRenameLongToken';
 import { CompanyLongTokenRenameAccessToken1744200000017 } from './migrations/1744200000017-CompanyLongTokenRenameAccessToken';
 import { CompanyUserAccessTokenSplit1744200000018 } from './migrations/1744200000018-CompanyUserAccessTokenSplit';
+import { ConversationGroupDescriptionColorCreated1744200000019 } from './migrations/1744200000019-ConversationGroupDescriptionColorCreated';
+import { DropSourcesTable1744200000020 } from './migrations/1744200000020-DropSourcesTable';
+import { CompanyTableRenameToIntegration1744200000021 } from './migrations/1744200000021-CompanyTableRenameToIntegration';
+import { WorkspaceIntegrationGroupsClients1744200000022 } from './migrations/1744200000022-WorkspaceIntegrationGroupsClients';
 import {
   Client,
   Company,
@@ -24,8 +28,8 @@ import {
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
-  Source,
   User,
+  Workspace,
 } from './entities';
 
 export type DatabaseEnv = {
@@ -40,8 +44,8 @@ export type DatabaseEnv = {
 
 const entities = [
   User,
+  Workspace,
   Company,
-  Source,
   InstagramUser,
   Client,
   ConversationGroup,
@@ -102,6 +106,10 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       CompanyAccessTokenRenameLongToken1744200000016,
       CompanyLongTokenRenameAccessToken1744200000017,
       CompanyUserAccessTokenSplit1744200000018,
+      ConversationGroupDescriptionColorCreated1744200000019,
+      DropSourcesTable1744200000020,
+      CompanyTableRenameToIntegration1744200000021,
+      WorkspaceIntegrationGroupsClients1744200000022,
     ],
   };
 }

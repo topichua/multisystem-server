@@ -8,9 +8,11 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { InstagramUser } from './instagram-user.entity';
+import { Workspace } from './workspace.entity';
 
 @Entity('clients')
 @Index('IDX_clients_instagram_user_id', ['instagramUserId'])
+@Index('IDX_clients_workspace_id', ['workspaceId'])
 export class Client {
   @PrimaryGeneratedColumn({ name: 'id' })
   id: number;
@@ -33,7 +35,14 @@ export class Client {
   @Column({ name: 'instagram_user_id', type: 'varchar', length: 255 })
   instagramUserId: string;
 
+  @Column({ name: 'workspace_id', type: 'int' })
+  workspaceId: number;
+
   @ManyToOne(() => InstagramUser, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'instagram_user_id', referencedColumnName: 'id' })
   instagramUser: InstagramUser;
+
+  @ManyToOne(() => Workspace, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'workspace_id' })
+  workspace: Workspace;
 }

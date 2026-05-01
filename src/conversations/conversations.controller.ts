@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -27,6 +28,7 @@ import {
 } from './dto/http/conversations-list-response.dto';
 import { SyncConversationsResponseDto } from './dto/http/sync-conversations-response.dto';
 import { InstagramMessagesResponseDto } from './dto/http/instagram-messages-response.dto';
+import { AssignConversationGroupRequestDto } from './dto/http/assign-conversation-group-request.dto';
 import { SendInstagramMessageRequestDto } from './dto/http/send-instagram-message-request.dto';
 import { SendInstagramMessageResponseDto } from './dto/http/send-instagram-message-response.dto';
 
@@ -38,13 +40,59 @@ export class ConversationsController {
   constructor(private readonly conversationsService: ConversationsService) {}
 
   @Get()
-  @ApiOperation({})
+  @ApiOperation({
+    summary: "List conversations for the current owner",
+    description:
+      "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the owner’s workspace.",
+  })
+  @ApiQuery({
+    name: "groupIds",
+    required: false,
+    description:
+      "Comma-separated conversation group ids, e.g. `1,2`. Omit for all conversations.",
+    example: "1,2",
+  })
   @ApiOkResponse({ type: ConversationsListResponseDto })
   async getAll(
-    @Req() req: { user?: AuthUser }
+    @Req() req: { user?: AuthUser },
+    @Query("groupIds") groupIdsRaw?: string | string[],
   ): Promise<ConversationsListResponseDto> {
     const ownerId = Number(req.user?.userId);
-    return this.conversationsService.listConversationsForOwner(ownerId);
+    const groupIds = this.parseOptionalGroupIdsQuery(groupIdsRaw);
+    return this.conversationsService.listConversationsForOwner(ownerId, {
+      groupIds,
+    });
+  }
+
+  /**
+   * Accepts `?groupIds=1,2` or repeated `groupIds` (framework-dependent).
+   * Empty / absent → undefined (no filter).
+   */
+  private parseOptionalGroupIdsQuery(
+    raw?: string | string[],
+  ): number[] | undefined {
+    if (raw == null) return undefined;
+    const chunks = Array.isArray(raw) ? raw : [raw];
+    const ids: number[] = [];
+    for (const chunk of chunks) {
+      for (const part of chunk.split(",")) {
+        const t = part.trim();
+        if (!t) continue;
+        if (!/^\d+$/.test(t)) {
+          throw new BadRequestException(
+            `groupIds must be comma-separated positive integers; invalid segment: "${part.trim()}"`,
+          );
+        }
+        const n = Number(t);
+        if (!Number.isInteger(n) || n <= 0) {
+          throw new BadRequestException(
+            `groupIds must be comma-separated positive integers; invalid segment: "${part.trim()}"`,
+          );
+        }
+        ids.push(n);
+      }
+    }
+    return ids.length > 0 ? [...new Set(ids)] : undefined;
   }
 
   @Post("sync")
@@ -133,6 +181,40 @@ export class ConversationsController {
       conversationId,
       dto.message,
       dto.reply_to_id,
+    );
+  }
+
+  @Put(":id")
+  @ApiOperation({
+    summary: "Assign a conversation group",
+    description:
+      "Sets `group_id` on the conversation to `groupId`. The group must belong to the same workspace as the owner’s integration.",
+  })
+  @ApiBody({ type: AssignConversationGroupRequestDto })
+  @ApiOkResponse({ type: ConversationRowDto })
+  async assignGroup(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+    @Body() dto: AssignConversationGroupRequestDto,
+  ): Promise<ConversationRowDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    return this.conversationsService.assignConversationGroupForOwner(
+      ownerId,
+      numericId,
+      dto.groupId,
     );
   }
 

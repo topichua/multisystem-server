@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/**
- * Long-lived user token lives in `company.access_token`; page token stays in `sources.token`.
- */
+/** Copies `facebook_user_access_token` into `access_token` then drops the old column. */
 export class CompanyDropFacebookUserAccessToken1744200000014
   implements MigrationInterface
 {

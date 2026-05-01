@@ -5,7 +5,14 @@
 export { ConversationSource } from './database/entities/conversation-source.enum';
 import type { ConversationSource } from './database/entities/conversation-source.enum';
 
-/** Matches `company` + `Company` entity (also has page tokens for integrations). */
+export type Workspace = {
+  id: number;
+  name: string;
+  createdAt: Date;
+  ownerId: number;
+};
+
+/** Matches `integration` table + `Company` entity (page tokens for Meta / Instagram). */
 export type Company = {
   id: number;
   name: string;
@@ -18,13 +25,7 @@ export type Company = {
   tokenStatus?: string | null;
   createdAt: Date;
   ownerId: number;
-};
-
-export type Source = {
-  id: number;
-  name: string;
-  companyId: number;
-  token: string;
+  workspaceId: number;
 };
 
 export type Conversation = {
@@ -56,6 +57,7 @@ export type Client = {
   phone: string;
   deliveryInfo: string;
   instagramUserId: string;
+  workspaceId: number;
 };
 
 export type ConversationMessage = {
@@ -75,7 +77,11 @@ export type ConversationMessage = {
 /** `sort_order` column — SQL `order` is reserved. */
 export type ConversationGroup = {
   id: number;
-  companyId: number;
+  workspaceId: number;
   name: string;
+  description: string | null;
+  color: string | null;
+  createdAt: Date;
+  createdById: number | null;
   sortOrder: number;
 };

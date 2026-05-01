@@ -9,7 +9,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyWithOwnerRequestDto } from './dto/http/create-company-with-owner-request.dto';
-import { CreateCompanyWithOwnerResponseDto } from './dto/http/create-company-with-owner-response.dto';
+import { CreateWorkspaceWithOwnerResponseDto } from './dto/http/create-workspace-with-owner-response.dto';
 
 @ApiTags('admin — companies')
 @ApiBearerAuth('bearer')
@@ -20,24 +20,22 @@ export class CompaniesController {
 
   @Post()
   @ApiOperation({
-    summary: 'Create company, owner user, and Instagram source',
+    summary: 'Create workspace, owner user, and integration',
     description:
-      'Creates an active user (owner), a company owned by that user, and a `sources` row with the given Instagram token.',
+      'Creates a `workspace` and an active `users` row (owner) with the given bcrypt-backed password. ' +
+      'Creates one `integration` row (`page_id` pending, tokens null) until the owner completes GET /auth/facebook.',
   })
-  @ApiOkResponse({ type: CreateCompanyWithOwnerResponseDto })
+  @ApiOkResponse({ type: CreateWorkspaceWithOwnerResponseDto })
   async create(
     @Body() dto: CreateCompanyWithOwnerRequestDto,
-  ): Promise<CreateCompanyWithOwnerResponseDto> {
-    const { company, source } =
-      await this.companiesService.createCompanyWithOwnerAndSource({
-        companyName: dto.companyName,
-        email: dto.email,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
+  ): Promise<CreateWorkspaceWithOwnerResponseDto> {
+    const { company, workspace, user } =
+      await this.companiesService.createCompanyWithOwner({
+        workspaceName: dto.workspace_name.trim(),
+        userEmail: dto.user_email.trim(),
+        firstName: dto.first_name.trim(),
+        lastName: dto.last_name?.trim() ?? '',
         password: dto.password,
-        instagramToken: dto.instagramToken,
-        instagramPageId: dto.instagramPageId,
-        instagramAccountId: dto.instagramAccountId,
       });
     return {
       id: company.id,
@@ -47,7 +45,10 @@ export class CompaniesController {
       accessToken: company.accessToken,
       instagramAccountId: company.instagramAccountId,
       ownerId: company.ownerId,
-      sourceId: source.id,
+      workspaceId: company.workspaceId,
+      workspaceName: workspace.name,
+      userId: user.id,
+      userEmail: user.email,
     };
   }
 }

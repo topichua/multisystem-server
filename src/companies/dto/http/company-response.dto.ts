@@ -20,7 +20,7 @@ export class CompanyResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Facebook **Page** access token from `me/accounts` (`company.access_token`). Also in `sources.token`.',
+      'Facebook **Page** access token from `me/accounts` (`company.access_token`).',
   })
   accessToken: string | null;
 
@@ -29,4 +29,7 @@ export class CompanyResponseDto {
 
   @ApiProperty()
   ownerId: number;
+
+  @ApiProperty({ description: 'Owning workspace id (`integration.workspace_id`).' })
+  workspaceId: number;
 }

@@ -5,10 +5,8 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import type { CreateCompanyWithOwnerInput } from './dto/create-company.dto';
-import { Company, Source, User, UserStatus } from '../database/entities';
+import { Company, User, UserStatus, Workspace } from '../database/entities';
 import { PasswordService } from '../users/crypto/password.service';
-
-const DEFAULT_INSTAGRAM_SOURCE_NAME = 'Instagram';
 
 @Injectable()
 export class CompaniesService {
@@ -18,10 +16,10 @@ export class CompaniesService {
     private readonly passwordService: PasswordService,
   ) {}
 
-  async createCompanyWithOwnerAndSource(
+  async createCompanyWithOwner(
     input: CreateCompanyWithOwnerInput,
-  ): Promise<{ company: Company; source: Source }> {
-    const email = input.email.trim().toLowerCase();
+  ): Promise<{ company: Company; workspace: Workspace; user: User }> {
+    const email = input.userEmail.trim().toLowerCase();
     const existing = await this.dataSource
       .getRepository(User)
       .exist({ where: { email } });
@@ -29,22 +27,12 @@ export class CompaniesService {
       throw new ConflictException('Email already in use');
     }
 
-    const token = input.instagramToken.trim();
-    const pageId =
-      input.instagramPageId?.trim() && input.instagramPageId.trim().length > 0
-        ? input.instagramPageId.trim()
-        : 'pending';
-    const instagramAccountId =
-      input.instagramAccountId?.trim() && input.instagramAccountId.trim().length > 0
-        ? input.instagramAccountId.trim()
-        : null;
+    const passwordHash = await this.passwordService.hash(input.password);
 
     return this.dataSource.transaction(async (mgr) => {
       const userRepo = mgr.getRepository(User);
+      const workspaceRepo = mgr.getRepository(Workspace);
       const companyRepo = mgr.getRepository(Company);
-      const sourceRepo = mgr.getRepository(Source);
-
-      const passwordHash = await this.passwordService.hash(input.password);
 
       const user = userRepo.create({
         email,
@@ -56,24 +44,24 @@ export class CompaniesService {
       });
       await userRepo.save(user);
 
-      const company = companyRepo.create({
-        name: input.companyName.trim(),
-        pageId,
-        userAccessToken: null,
-        accessToken: token,
-        instagramAccountId,
+      const workspace = workspaceRepo.create({
+        name: input.workspaceName.trim(),
         ownerId: user.id,
+      });
+      await workspaceRepo.save(workspace);
+
+      const company = companyRepo.create({
+        name: input.workspaceName.trim(),
+        pageId: 'pending',
+        userAccessToken: null,
+        accessToken: null,
+        instagramAccountId: null,
+        ownerId: user.id,
+        workspaceId: workspace.id,
       });
       await companyRepo.save(company);
 
-      const source = sourceRepo.create({
-        name: DEFAULT_INSTAGRAM_SOURCE_NAME,
-        companyId: company.id,
-        token,
-      });
-      await sourceRepo.save(source);
-
-      return { company, source };
+      return { company, workspace, user };
     });
   }
 }

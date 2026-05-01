@@ -67,6 +67,7 @@ export class AuthService {
           name: company.name,
           pageId: company.pageId,
           instagramAccountId: company.instagramAccountId?.trim() ?? null,
+          workspaceId: company.workspaceId,
         }
       : null;
 
