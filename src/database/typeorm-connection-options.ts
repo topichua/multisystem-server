@@ -21,6 +21,7 @@ import { ConversationGroupDescriptionColorCreated1744200000019 } from './migrati
 import { DropSourcesTable1744200000020 } from './migrations/1744200000020-DropSourcesTable';
 import { CompanyTableRenameToIntegration1744200000021 } from './migrations/1744200000021-CompanyTableRenameToIntegration';
 import { WorkspaceIntegrationGroupsClients1744200000022 } from './migrations/1744200000022-WorkspaceIntegrationGroupsClients';
+import { ClientsInstagramUserIdNullable1744200000023 } from './migrations/1744200000023-ClientsInstagramUserIdNullable';
 import {
   Client,
   Company,
@@ -110,6 +111,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       DropSourcesTable1744200000020,
       CompanyTableRenameToIntegration1744200000021,
       WorkspaceIntegrationGroupsClients1744200000022,
+      ClientsInstagramUserIdNullable1744200000023,
     ],
   };
 }

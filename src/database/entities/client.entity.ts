@@ -32,15 +32,15 @@ export class Client {
   @Column({ name: 'delivery_info', type: 'text' })
   deliveryInfo: string;
 
-  @Column({ name: 'instagram_user_id', type: 'varchar', length: 255 })
-  instagramUserId: string;
+  @Column({ name: 'instagram_user_id', type: 'varchar', length: 255, nullable: true })
+  instagramUserId: string | null;
 
   @Column({ name: 'workspace_id', type: 'int' })
   workspaceId: number;
 
-  @ManyToOne(() => InstagramUser, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => InstagramUser, { onDelete: 'RESTRICT', nullable: true })
   @JoinColumn({ name: 'instagram_user_id', referencedColumnName: 'id' })
-  instagramUser: InstagramUser;
+  instagramUser: InstagramUser | null;
 
   @ManyToOne(() => Workspace, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'workspace_id' })

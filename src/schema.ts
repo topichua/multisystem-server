@@ -56,7 +56,7 @@ export type Client = {
   createdAt: Date;
   phone: string;
   deliveryInfo: string;
-  instagramUserId: string;
+  instagramUserId: string | null;
   workspaceId: number;
 };
 
