@@ -147,6 +147,7 @@ export class ConversationsAllocationService {
               ...(editedAt != null ? { editedAt } : {}),
               senderHintId,
               webhookMessaging: ev,
+              pageId: company.pageId
             });
           } catch (e) {
             const err = e instanceof Error ? e.message : String(e);
@@ -333,6 +334,7 @@ export class ConversationsAllocationService {
     businessInstagramId: string;
     ownerId: number;
     accessToken: string;
+    pageId: string;
   }): Promise<{
     row: Conversation;
     participantExtras: InstagramConversationParticipantDto[] | undefined;
@@ -371,7 +373,7 @@ export class ConversationsAllocationService {
     );
 
     const convList = await this.fetchInstagramConversationsForUser(
-      businessInstagramId,
+      params.pageId,
       customerUserId,
       accessToken,
     );
@@ -454,6 +456,7 @@ export class ConversationsAllocationService {
 
   private async allocateSingleWebhookMessage(opts: {
     traceId: string;
+    pageId: string;
     mid: string;
     businessInstagramId: string;
     ownerId: number;
@@ -505,6 +508,7 @@ export class ConversationsAllocationService {
         businessInstagramId: opts.businessInstagramId,
         ownerId: opts.ownerId,
         accessToken: opts.accessToken,
+        pageId: opts.pageId,
       });
 
     await this.conversationRepo.save(row);
