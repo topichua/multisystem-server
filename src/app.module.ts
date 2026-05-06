@@ -11,6 +11,7 @@ import { getTypeOrmModuleOptions } from './database/typeorm-connection-options';
 import { WebhookModule } from './webhook/webhook.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ClientsModule } from './clients/clients.module';
     CompaniesModule,
     ConversationsModule,
     ClientsModule,
+    CategoriesModule,
     AccountModule,
     WebhookModule,
   ],

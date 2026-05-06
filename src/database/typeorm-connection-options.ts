@@ -22,6 +22,9 @@ import { DropSourcesTable1744200000020 } from './migrations/1744200000020-DropSo
 import { CompanyTableRenameToIntegration1744200000021 } from './migrations/1744200000021-CompanyTableRenameToIntegration';
 import { WorkspaceIntegrationGroupsClients1744200000022 } from './migrations/1744200000022-WorkspaceIntegrationGroupsClients';
 import { ClientsInstagramUserIdNullable1744200000023 } from './migrations/1744200000023-ClientsInstagramUserIdNullable';
+import { ProductCategories1744200000024 } from './migrations/1744200000024-ProductCategories';
+import { ProductCategoriesIntegerIds1744200000025 } from './migrations/1744200000025-ProductCategoriesIntegerIds';
+import { ProductCategoriesCreatedBySoftDelete1744200000026 } from './migrations/1744200000026-ProductCategoriesCreatedBySoftDelete';
 import {
   Client,
   Company,
@@ -29,6 +32,7 @@ import {
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
+  ProductCategory,
   User,
   Workspace,
 } from './entities';
@@ -52,6 +56,7 @@ const entities = [
   ConversationGroup,
   Conversation,
   ConversationMessage,
+  ProductCategory,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -112,6 +117,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       CompanyTableRenameToIntegration1744200000021,
       WorkspaceIntegrationGroupsClients1744200000022,
       ClientsInstagramUserIdNullable1744200000023,
+      ProductCategories1744200000024,
+      ProductCategoriesIntegerIds1744200000025,
+      ProductCategoriesCreatedBySoftDelete1744200000026,
     ],
   };
 }
