@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class InstagramConversationParticipantDto {
   @ApiPropertyOptional()
@@ -10,7 +10,7 @@ export class InstagramConversationParticipantDto {
   @ApiPropertyOptional()
   username?: string;
 
-  @ApiPropertyOptional({ description: 'Profile image URL' })
+  @ApiPropertyOptional({ description: "Profile image URL" })
   profile_pic?: string;
 }
 
@@ -29,10 +29,14 @@ export class InstagramConversationDto {
   @ApiProperty({ type: () => InstagramConversationParticipantsDto })
   participants: InstagramConversationParticipantsDto;
 
-  @ApiPropertyOptional({ description: 'Unread message count (when returned by Graph API)' })
+  @ApiPropertyOptional({
+    description: "Unread message count (when returned by Graph API)",
+  })
   unread_count?: number;
 
-  @ApiPropertyOptional({ description: 'Total message count (when returned by Graph API)' })
+  @ApiPropertyOptional({
+    description: "Total message count (when returned by Graph API)",
+  })
   message_count?: number;
 }
 

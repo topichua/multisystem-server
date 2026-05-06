@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserStatus } from '../../../database/entities';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { UserStatus } from "../../../database/entities";
 
 /** API response shape — never includes password_hash or invitation_token_hash. */
 export class SafeUserResponseDto {
@@ -21,29 +21,29 @@ export class SafeUserResponseDto {
   @ApiProperty({
     enum: UserStatus,
     example: UserStatus.Invited,
-    description: '0 = invited, 1 = active, 2 = disabled (stored as smallint)',
+    description: "0 = invited, 1 = active, 2 = disabled (stored as smallint)",
   })
   status: UserStatus;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   invitedAt: Date | null;
 
   @ApiPropertyOptional({ nullable: true })
   invitedByUserId: number | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   invitationExpiresAt: Date | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   invitationAcceptedAt: Date | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   emailVerifiedAt: Date | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   lastSeenAt: Date | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   lastLoginAt: Date | null;
 
   @ApiPropertyOptional({ nullable: true })
@@ -64,15 +64,15 @@ export class SafeUserResponseDto {
   @ApiPropertyOptional({ nullable: true })
   postalCode: string | null;
 
-  @ApiProperty({ type: 'object', additionalProperties: true })
+  @ApiProperty({ type: "object", additionalProperties: true })
   metadata: Record<string, unknown>;
 
-  @ApiProperty({ type: String, format: 'date-time' })
+  @ApiProperty({ type: String, format: "date-time" })
   createdAt: Date;
 
-  @ApiProperty({ type: String, format: 'date-time' })
+  @ApiProperty({ type: String, format: "date-time" })
   updatedAt: Date;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   deletedAt: Date | null;
 }

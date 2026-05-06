@@ -2,4 +2,4 @@
  * Nested field list for Instagram Graph API `attachments{...}` on a message node.
  */
 export const INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS =
-  'id,name,mime_type,size,file_url,image_data{url,width,height,preview_url,animated_gif_url,animated_gif_preview_url,render_as_sticker},video_data{url,preview_url},generic_template';
+  "id,name,mime_type,size,file_url,image_data{url,width,height,preview_url,animated_gif_url,animated_gif_preview_url,render_as_sticker},video_data{url,preview_url},generic_template";

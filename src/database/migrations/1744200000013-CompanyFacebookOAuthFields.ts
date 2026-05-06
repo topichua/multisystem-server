@@ -1,9 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class CompanyFacebookOAuthFields1744200000013
-  implements MigrationInterface
-{
-  name = 'CompanyFacebookOAuthFields1744200000013';
+export class CompanyFacebookOAuthFields1744200000013 implements MigrationInterface {
+  name = "CompanyFacebookOAuthFields1744200000013";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

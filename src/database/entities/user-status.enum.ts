@@ -9,7 +9,7 @@ export enum UserStatus {
 }
 
 export const UserStatusLabels: Record<UserStatus, string> = {
-  [UserStatus.Invited]: 'invited',
-  [UserStatus.Active]: 'active',
-  [UserStatus.Disabled]: 'disabled',
+  [UserStatus.Invited]: "invited",
+  [UserStatus.Active]: "active",
+  [UserStatus.Disabled]: "disabled",
 };

@@ -1,12 +1,9 @@
-import {
-  ConflictException,
-  Injectable,
-} from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import type { CreateCompanyWithOwnerInput } from './dto/create-company.dto';
-import { Company, User, UserStatus, Workspace } from '../database/entities';
-import { PasswordService } from '../users/crypto/password.service';
+import { ConflictException, Injectable } from "@nestjs/common";
+import { InjectDataSource } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
+import type { CreateCompanyWithOwnerInput } from "./dto/create-company.dto";
+import { Company, User, UserStatus, Workspace } from "../database/entities";
+import { PasswordService } from "../users/crypto/password.service";
 
 @Injectable()
 export class CompaniesService {
@@ -24,7 +21,7 @@ export class CompaniesService {
       .getRepository(User)
       .exist({ where: { email } });
     if (existing) {
-      throw new ConflictException('Email already in use');
+      throw new ConflictException("Email already in use");
     }
 
     const passwordHash = await this.passwordService.hash(input.password);
@@ -52,7 +49,7 @@ export class CompaniesService {
 
       const company = companyRepo.create({
         name: input.workspaceName.trim(),
-        pageId: 'pending',
+        pageId: "pending",
         userAccessToken: null,
         accessToken: null,
         instagramAccountId: null,

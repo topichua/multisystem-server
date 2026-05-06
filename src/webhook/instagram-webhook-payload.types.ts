@@ -1,5 +1,5 @@
 export interface InstagramWebhookPayload {
-  object: 'instagram';
+  object: "instagram";
   entry: InstagramWebhookEntry[];
 }
 
@@ -11,7 +11,7 @@ export interface InstagramWebhookEntry {
 
 export interface InstagramWebhookReaction {
   mid?: string;
-  action?: 'react' | 'unreact' | string;
+  action?: string;
   reaction?: string;
   emoji?: string;
 }
@@ -42,11 +42,11 @@ export interface InstagramWebhookMessagingItem {
 export function isInstagramWebhookPayload(
   value: unknown,
 ): value is InstagramWebhookPayload {
-  if (value === null || typeof value !== 'object') {
+  if (value === null || typeof value !== "object") {
     return false;
   }
   const o = value as Record<string, unknown>;
-  if (o.object !== 'instagram') {
+  if (o.object !== "instagram") {
     return false;
   }
   if (!Array.isArray(o.entry)) {

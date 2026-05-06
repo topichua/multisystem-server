@@ -1,12 +1,16 @@
-import { ConsoleLogger, LogLevel, type ConsoleLoggerOptions } from '@nestjs/common';
-import { basename } from 'node:path';
+import {
+  ConsoleLogger,
+  LogLevel,
+  type ConsoleLoggerOptions,
+} from "@nestjs/common";
+import { basename } from "node:path";
 
 export class LocationLogger extends ConsoleLogger {
   constructor(
     context?: string,
     options?: ConsoleLoggerOptions & { logLevels?: LogLevel[] },
   ) {
-    super(context ?? 'App', options ?? {});
+    super(context ?? "App", options ?? {});
   }
 
   override log(message: unknown, context?: string): void {
@@ -31,7 +35,7 @@ export class LocationLogger extends ConsoleLogger {
 
   private decorateMessage(message: unknown): string {
     const msg =
-      typeof message === 'string' ? message : JSON.stringify(message ?? '');
+      typeof message === "string" ? message : JSON.stringify(message ?? "");
     const loc = this.detectCallerLocation();
     if (!loc) return msg;
     return `[${loc}] ${msg}`;
@@ -40,12 +44,12 @@ export class LocationLogger extends ConsoleLogger {
   private detectCallerLocation(): string | null {
     const stack = new Error().stack;
     if (!stack) return null;
-    const lines = stack.split('\n').map((x) => x.trim());
+    const lines = stack.split("\n").map((x) => x.trim());
     for (const line of lines) {
       if (
-        line.includes('LocationLogger.') ||
-        line.includes('ConsoleLogger.') ||
-        line.includes('/node_modules/')
+        line.includes("LocationLogger.") ||
+        line.includes("ConsoleLogger.") ||
+        line.includes("/node_modules/")
       ) {
         continue;
       }

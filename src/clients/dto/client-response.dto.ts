@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class ClientResponseDto {
   @ApiProperty()
@@ -21,7 +21,7 @@ export class ClientResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Instagram scoped user id when linked; null if none.',
+    description: "Instagram scoped user id when linked; null if none.",
   })
   instagramUserId: string | null;
 

@@ -6,17 +6,17 @@ import {
   Logger,
   NotFoundException,
   UnauthorizedException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
-import * as crypto from 'crypto';
-import { Repository } from 'typeorm';
-import { Company } from '../database/entities';
-import type { JwtPayload } from './interfaces/jwt-payload.interface';
-import type { FacebookOAuthStatusDto } from './dto/facebook-oauth-status.dto';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
+import { InjectRepository } from "@nestjs/typeorm";
+import * as crypto from "crypto";
+import { Repository } from "typeorm";
+import { Company } from "../database/entities";
+import type { JwtPayload } from "./interfaces/jwt-payload.interface";
+import type { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 
-const GRAPH_VERSION = 'v25.0';
+const GRAPH_VERSION = "v25.0";
 
 /**
  * Scopes passed to `www.facebook.com/.../dialog/oauth`.
@@ -26,14 +26,14 @@ const GRAPH_VERSION = 'v25.0';
  * flows. Override with `FACEBOOK_OAUTH_SCOPES` or `FB_OAUTH_SCOPES` in `.env` if needed.
  */
 const DEFAULT_OAUTH_SCOPES = [
-  'pages_show_list',
-  'business_management',
-  'instagram_basic',
-  'instagram_manage_messages',
-  'pages_read_engagement',
+  "pages_show_list",
+  "business_management",
+  "instagram_basic",
+  "instagram_manage_messages",
+  "pages_read_engagement",
 ];
 
-const TOKEN_STATUS_ACTIVE = 'active';
+const TOKEN_STATUS_ACTIVE = "active";
 
 const STATE_TTL_MS = 15 * 60 * 1000;
 
@@ -87,7 +87,7 @@ export class FacebookOAuthService {
   }
 
   private maskToken(t: string): string {
-    if (t.length <= 8) return '***';
+    if (t.length <= 8) return "***";
     return `${t.slice(0, 4)}…${t.slice(-4)} (len=${t.length})`;
   }
 
@@ -98,16 +98,16 @@ export class FacebookOAuthService {
     jwtFromQuery: string | undefined,
     authHeader: string | undefined,
   ): Promise<string> {
-    const appId = this.requireEnvEither('FACEBOOK_APP_ID', 'FB_APP_ID');
+    const appId = this.requireEnvEither("FACEBOOK_APP_ID", "FB_APP_ID");
     const redirectUri = this.requireEnvEither(
-      'FACEBOOK_REDIRECT_URI',
-      'FB_REDIRECT_URI',
+      "FACEBOOK_REDIRECT_URI",
+      "FB_REDIRECT_URI",
     );
 
     const rawToken = this.extractBearerToken(jwtFromQuery, authHeader);
     if (!rawToken) {
       throw new UnauthorizedException(
-        'Missing JWT. After POST /auth/login, open GET /auth/facebook?jwt=YOUR_ACCESS_TOKEN (paste the token from the login response) or send Authorization: Bearer …',
+        "Missing JWT. After POST /auth/login, open GET /auth/facebook?jwt=YOUR_ACCESS_TOKEN (paste the token from the login response) or send Authorization: Bearer …",
       );
     }
 
@@ -115,18 +115,18 @@ export class FacebookOAuthService {
     try {
       payload = this.jwtService.verify<JwtPayload>(rawToken);
     } catch {
-      throw new UnauthorizedException('Invalid or expired JWT');
+      throw new UnauthorizedException("Invalid or expired JWT");
     }
 
-    if (payload.sub === 'super-admin') {
+    if (payload.sub === "super-admin") {
       throw new ForbiddenException(
-        'Facebook OAuth requires a company user. Log in as a user that owns a company, not the env super-admin login.',
+        "Facebook OAuth requires a company user. Log in as a user that owns a company, not the env super-admin login.",
       );
     }
 
     const userId = Number.parseInt(payload.sub, 10);
     if (!Number.isInteger(userId) || userId <= 0) {
-      throw new UnauthorizedException('JWT subject must be a numeric user id');
+      throw new UnauthorizedException("JWT subject must be a numeric user id");
     }
 
     return this.buildAuthorizeUrlForUser(userId, appId, redirectUri);
@@ -139,13 +139,15 @@ export class FacebookOAuthService {
   ): Promise<string> {
     const row = await this.companyRepo.findOne({
       where: { ownerId: userId },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
     if (!row) {
-      throw new NotFoundException('No company found for this user; create a company first.');
+      throw new NotFoundException(
+        "No company found for this user; create a company first.",
+      );
     }
 
-    const state = crypto.randomBytes(32).toString('hex');
+    const state = crypto.randomBytes(32).toString("hex");
     this.pendingByState.set(state, {
       userId,
       companyId: row.id,
@@ -158,11 +160,11 @@ export class FacebookOAuthService {
     );
 
     const u = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`);
-    u.searchParams.set('client_id', appId);
-    u.searchParams.set('redirect_uri', redirectUri);
-    u.searchParams.set('state', state);
-    u.searchParams.set('response_type', 'code');
-    u.searchParams.set('scope', this.getOAuthScopeQueryValue());
+    u.searchParams.set("client_id", appId);
+    u.searchParams.set("redirect_uri", redirectUri);
+    u.searchParams.set("state", state);
+    u.searchParams.set("response_type", "code");
+    u.searchParams.set("scope", this.getOAuthScopeQueryValue());
 
     return u.toString();
   }
@@ -170,10 +172,10 @@ export class FacebookOAuthService {
   /** Comma-separated scope string for the OAuth dialog. */
   private getOAuthScopeQueryValue(): string {
     const override =
-      this.config.get<string>('FACEBOOK_OAUTH_SCOPES')?.trim() ??
-      this.config.get<string>('FB_OAUTH_SCOPES')?.trim();
+      this.config.get<string>("FACEBOOK_OAUTH_SCOPES")?.trim() ??
+      this.config.get<string>("FB_OAUTH_SCOPES")?.trim();
     if (override != null && override.length > 0) return override;
-    return DEFAULT_OAUTH_SCOPES.join(',');
+    return DEFAULT_OAUTH_SCOPES.join(",");
   }
 
   private extractBearerToken(
@@ -183,7 +185,7 @@ export class FacebookOAuthService {
     const q = jwtFromQuery?.trim();
     if (q) return q;
     const h = authHeader?.trim();
-    if (h?.toLowerCase().startsWith('bearer ')) {
+    if (h?.toLowerCase().startsWith("bearer ")) {
       return h.slice(7).trim();
     }
     return undefined;
@@ -216,35 +218,37 @@ export class FacebookOAuthService {
   }> {
     if (oauthError) {
       this.log.warn(
-        `Facebook OAuth error from provider error=${oauthError} description=${oauthErrorDescription ?? ''}`,
+        `Facebook OAuth error from provider error=${oauthError} description=${oauthErrorDescription ?? ""}`,
       );
       throw new BadRequestException(
-        oauthErrorDescription ?? oauthError ?? 'Facebook OAuth failed',
+        oauthErrorDescription ?? oauthError ?? "Facebook OAuth failed",
       );
     }
 
     if (!code?.trim()) {
-      throw new BadRequestException('Missing authorization code');
+      throw new BadRequestException("Missing authorization code");
     }
     if (!state?.trim()) {
-      throw new BadRequestException('Missing state parameter');
+      throw new BadRequestException("Missing state parameter");
     }
 
     const pending = this.pendingByState.get(state.trim());
     if (!pending || pending.expiresAt < Date.now()) {
-      this.log.warn('Facebook OAuth invalid or expired state');
-      throw new BadRequestException('Invalid or expired state; start again from GET /auth/facebook');
+      this.log.warn("Facebook OAuth invalid or expired state");
+      throw new BadRequestException(
+        "Invalid or expired state; start again from GET /auth/facebook",
+      );
     }
     this.pendingByState.delete(state.trim());
 
-    const appId = this.requireEnvEither('FACEBOOK_APP_ID', 'FB_APP_ID');
+    const appId = this.requireEnvEither("FACEBOOK_APP_ID", "FB_APP_ID");
     const appSecret = this.requireEnvEither(
-      'FACEBOOK_APP_SECRET',
-      'FB_APP_SECRET',
+      "FACEBOOK_APP_SECRET",
+      "FB_APP_SECRET",
     );
     const redirectUri = this.requireEnvEither(
-      'FACEBOOK_REDIRECT_URI',
-      'FB_REDIRECT_URI',
+      "FACEBOOK_REDIRECT_URI",
+      "FB_REDIRECT_URI",
     );
 
     this.log.log(
@@ -257,7 +261,9 @@ export class FacebookOAuthService {
       redirectUri,
       code.trim(),
     );
-    this.log.log(`Short-lived user token received ${this.maskToken(shortLived)}`);
+    this.log.log(
+      `Short-lived user token received ${this.maskToken(shortLived)}`,
+    );
 
     const longLived = await this.exchangeForLongLivedUserToken(
       appId,
@@ -270,7 +276,7 @@ export class FacebookOAuthService {
     const igId = page.instagram_business_account!.id!.trim();
 
     const pageId = page.id!.trim();
-    const pageName = page.name?.trim() ?? '';
+    const pageName = page.name?.trim() ?? "";
 
     this.log.log(
       `Selected Page pageId=${pageId} pageName=${pageName} instagramAccountId=${igId}`,
@@ -280,7 +286,7 @@ export class FacebookOAuthService {
       where: { id: pending.companyId, ownerId: pending.userId },
     });
     if (!company) {
-      throw new NotFoundException('Company not found for OAuth state');
+      throw new NotFoundException("Company not found for OAuth state");
     }
 
     const now = new Date();
@@ -310,10 +316,10 @@ export class FacebookOAuthService {
   async getStatusForOwner(ownerId: number): Promise<FacebookOAuthStatusDto> {
     const company = await this.companyRepo.findOne({
       where: { ownerId },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
     if (!company) {
-      throw new NotFoundException('Company not found for current user');
+      throw new NotFoundException("Company not found for current user");
     }
     return {
       pageId: company.pageId?.trim() || null,
@@ -330,18 +336,21 @@ export class FacebookOAuthService {
     redirectUri: string,
     code: string,
   ): Promise<string> {
-    const u = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`);
-    u.searchParams.set('client_id', appId);
-    u.searchParams.set('redirect_uri', redirectUri);
-    u.searchParams.set('client_secret', appSecret);
-    u.searchParams.set('code', code);
+    const u = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`,
+    );
+    u.searchParams.set("client_id", appId);
+    u.searchParams.set("redirect_uri", redirectUri);
+    u.searchParams.set("client_secret", appSecret);
+    u.searchParams.set("code", code);
 
     const json = await this.graphGet<OAuthTokenResponse & MetaErrorBody>(u);
     const token = json.access_token?.trim();
     if (!token) {
-      this.logMetaError('short-lived token exchange', json);
+      this.logMetaError("short-lived token exchange", json);
       throw new BadGatewayException(
-        (json as MetaErrorBody).error?.message ?? 'Failed to exchange code for access token',
+        (json as MetaErrorBody).error?.message ??
+          "Failed to exchange code for access token",
       );
     }
     return token;
@@ -352,18 +361,21 @@ export class FacebookOAuthService {
     appSecret: string,
     shortLivedUserToken: string,
   ): Promise<string> {
-    const u = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`);
-    u.searchParams.set('grant_type', 'fb_exchange_token');
-    u.searchParams.set('client_id', appId);
-    u.searchParams.set('client_secret', appSecret);
-    u.searchParams.set('fb_exchange_token', shortLivedUserToken);
+    const u = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`,
+    );
+    u.searchParams.set("grant_type", "fb_exchange_token");
+    u.searchParams.set("client_id", appId);
+    u.searchParams.set("client_secret", appSecret);
+    u.searchParams.set("fb_exchange_token", shortLivedUserToken);
 
     const json = await this.graphGet<OAuthTokenResponse & MetaErrorBody>(u);
     const token = json.access_token?.trim();
     if (!token) {
-      this.logMetaError('long-lived token exchange', json);
+      this.logMetaError("long-lived token exchange", json);
       throw new BadGatewayException(
-        (json as MetaErrorBody).error?.message ?? 'Failed to exchange for long-lived user token',
+        (json as MetaErrorBody).error?.message ??
+          "Failed to exchange for long-lived user token",
       );
     }
     return token;
@@ -378,7 +390,7 @@ export class FacebookOAuthService {
   private async findPageWithInstagramBusinessAccount(
     userAccessToken: string,
   ): Promise<PageWithIg> {
-    const fields = 'id,name,access_token,instagram_business_account{id}';
+    const fields = "id,name,access_token,instagram_business_account{id}";
     let nextUrl: string | null =
       `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
       `?fields=${encodeURIComponent(fields)}` +
@@ -387,9 +399,8 @@ export class FacebookOAuthService {
 
     const all: PageWithIg[] = [];
     while (nextUrl) {
-      const batch: MeAccountsResponse = await this.graphGetUrl<MeAccountsResponse>(
-        nextUrl,
-      );
+      const batch: MeAccountsResponse =
+        await this.graphGetUrl<MeAccountsResponse>(nextUrl);
       all.push(...(batch.data ?? []));
       nextUrl = batch.paging?.next ?? null;
     }
@@ -398,7 +409,7 @@ export class FacebookOAuthService {
 
     if (all.length === 0) {
       throw new BadRequestException(
-        'No Facebook Pages found for this user. Add a Page and grant the app access.',
+        "No Facebook Pages found for this user. Add a Page and grant the app access.",
       );
     }
 
@@ -407,7 +418,7 @@ export class FacebookOAuthService {
     );
     if (!withIg) {
       throw new BadRequestException(
-        'No Instagram Business account connected to any Facebook Page. Connect Instagram to a Page in Meta Business Suite.',
+        "No Instagram Business account connected to any Facebook Page. Connect Instagram to a Page in Meta Business Suite.",
       );
     }
 
@@ -423,14 +434,14 @@ export class FacebookOAuthService {
   }
 
   private async graphGetUrl<T>(url: string): Promise<T> {
-    const response = await fetch(url, { method: 'GET' });
+    const response = await fetch(url, { method: "GET" });
     const text = await response.text();
     let body: T & MetaErrorBody = {} as T & MetaErrorBody;
     if (text) {
       try {
         body = JSON.parse(text) as T & MetaErrorBody;
       } catch {
-        throw new BadGatewayException('Meta API returned invalid JSON');
+        throw new BadGatewayException("Meta API returned invalid JSON");
       }
     }
     if (!response.ok) {
@@ -438,11 +449,12 @@ export class FacebookOAuthService {
         `Meta API HTTP ${response.status} body=${text.slice(0, 500)}`,
       );
       throw new BadGatewayException(
-        body.error?.message ?? `Meta API request failed with status ${response.status}`,
+        body.error?.message ??
+          `Meta API request failed with status ${response.status}`,
       );
     }
     if (body.error?.message) {
-      this.logMetaError('Graph response', body);
+      this.logMetaError("Graph response", body);
       throw new BadGatewayException(body.error.message);
     }
     return body;

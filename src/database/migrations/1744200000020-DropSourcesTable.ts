@@ -1,7 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 export class DropSourcesTable1744200000020 implements MigrationInterface {
-  name = 'DropSourcesTable1744200000020';
+  name = "DropSourcesTable1744200000020";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "sources"`);

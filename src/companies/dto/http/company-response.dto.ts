@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from "@nestjs/swagger";
+import { ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CompanyResponseDto {
   @ApiProperty({ example: 1 })
@@ -13,14 +13,15 @@ export class CompanyResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Long-lived Facebook **user** token (`company.user_access_token`).',
+    description:
+      "Long-lived Facebook **user** token (`company.user_access_token`).",
   })
   userAccessToken: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Facebook **Page** access token from `me/accounts` (`company.access_token`).',
+      "Facebook **Page** access token from `me/accounts` (`company.access_token`).",
   })
   accessToken: string | null;
 
@@ -30,6 +31,8 @@ export class CompanyResponseDto {
   @ApiProperty()
   ownerId: number;
 
-  @ApiProperty({ description: 'Owning workspace id (`integration.workspace_id`).' })
+  @ApiProperty({
+    description: "Owning workspace id (`integration.workspace_id`).",
+  })
   workspaceId: number;
 }

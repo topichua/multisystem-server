@@ -1,29 +1,29 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
-} from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { SuperAdminGuard } from '../auth/super-admin.guard';
-import { CompaniesService } from './companies.service';
-import { CreateCompanyWithOwnerRequestDto } from './dto/http/create-company-with-owner-request.dto';
-import { CreateWorkspaceWithOwnerResponseDto } from './dto/http/create-workspace-with-owner-response.dto';
+} from "@nestjs/swagger";
+import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { SuperAdminGuard } from "../auth/super-admin.guard";
+import { CompaniesService } from "./companies.service";
+import { CreateCompanyWithOwnerRequestDto } from "./dto/http/create-company-with-owner-request.dto";
+import { CreateWorkspaceWithOwnerResponseDto } from "./dto/http/create-workspace-with-owner-response.dto";
 
-@ApiTags('admin — companies')
-@ApiBearerAuth('bearer')
+@ApiTags("admin — companies")
+@ApiBearerAuth("bearer")
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
-@Controller('companies')
+@Controller("companies")
 export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 
   @Post()
   @ApiOperation({
-    summary: 'Create workspace, owner user, and integration',
+    summary: "Create workspace, owner user, and integration",
     description:
-      'Creates a `workspace` and an active `users` row (owner) with the given bcrypt-backed password. ' +
-      'Creates one `integration` row (`page_id` pending, tokens null) until the owner completes GET /auth/facebook.',
+      "Creates a `workspace` and an active `users` row (owner) with the given bcrypt-backed password. " +
+      "Creates one `integration` row (`page_id` pending, tokens null) until the owner completes GET /auth/facebook.",
   })
   @ApiOkResponse({ type: CreateWorkspaceWithOwnerResponseDto })
   async create(
@@ -34,7 +34,7 @@ export class CompaniesController {
         workspaceName: dto.workspace_name.trim(),
         userEmail: dto.user_email.trim(),
         firstName: dto.first_name.trim(),
-        lastName: dto.last_name?.trim() ?? '',
+        lastName: dto.last_name?.trim() ?? "",
         password: dto.password,
       });
     return {

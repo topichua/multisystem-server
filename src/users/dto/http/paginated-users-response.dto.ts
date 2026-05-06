@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { SafeUserResponseDto } from './safe-user-response.dto';
+import { ApiProperty } from "@nestjs/swagger";
+import { SafeUserResponseDto } from "./safe-user-response.dto";
 
 export class PaginatedUsersResponseDto {
   @ApiProperty({ type: [SafeUserResponseDto] })

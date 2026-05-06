@@ -1,7 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 export class ProductCategoriesCreatedBySoftDelete1744200000026 implements MigrationInterface {
-  name = 'ProductCategoriesCreatedBySoftDelete1744200000026';
+  name = "ProductCategoriesCreatedBySoftDelete1744200000026";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

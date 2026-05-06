@@ -1,14 +1,16 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Replaces UUID ids with SERIAL integer ids (and integer `parent_id`).
  * Safe for empty `product_categories`; drops and recreates the table.
  */
 export class ProductCategoriesIntegerIds1744200000025 implements MigrationInterface {
-  name = 'ProductCategoriesIntegerIds1744200000025';
+  name = "ProductCategoriesIntegerIds1744200000025";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TABLE IF EXISTS "product_categories" CASCADE`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "product_categories" CASCADE`,
+    );
     await queryRunner.query(`
       CREATE TABLE "product_categories" (
         "id" SERIAL NOT NULL,
@@ -52,7 +54,9 @@ export class ProductCategoriesIntegerIds1744200000025 implements MigrationInterf
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TABLE IF EXISTS "product_categories" CASCADE`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "product_categories" CASCADE`,
+    );
     await queryRunner.query(`
       CREATE TABLE "product_categories" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),

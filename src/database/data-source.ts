@@ -1,6 +1,6 @@
-import { config } from 'dotenv';
-import { DataSource } from 'typeorm';
-import { getDataSourceOptions } from './typeorm-connection-options';
+import { config } from "dotenv";
+import { DataSource } from "typeorm";
+import { getDataSourceOptions } from "./typeorm-connection-options";
 
 config();
 

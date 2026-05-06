@@ -1,7 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 export class InstagramUserScopedId1744200000004 implements MigrationInterface {
-  name = 'InstagramUserScopedId1744200000004';
+  name = "InstagramUserScopedId1744200000004";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

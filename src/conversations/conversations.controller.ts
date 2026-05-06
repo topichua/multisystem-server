@@ -9,7 +9,7 @@ import {
   Query,
   Req,
   UseGuards,
-} from '@nestjs/common';
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -17,20 +17,20 @@ import {
   ApiOperation,
   ApiQuery,
   ApiTags,
-} from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { SuperAdminGuard } from '../auth/super-admin.guard';
-import type { AuthUser } from '../auth/types/auth-user.type';
-import { ConversationsService } from './conversations.service';
+} from "@nestjs/swagger";
+import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { SuperAdminGuard } from "../auth/super-admin.guard";
+import type { AuthUser } from "../auth/types/auth-user.type";
+import { ConversationsService } from "./conversations.service";
 import {
   ConversationRowDto,
   ConversationsListResponseDto,
-} from './dto/http/conversations-list-response.dto';
-import { SyncConversationsResponseDto } from './dto/http/sync-conversations-response.dto';
-import { InstagramMessagesResponseDto } from './dto/http/instagram-messages-response.dto';
-import { AssignConversationGroupRequestDto } from './dto/http/assign-conversation-group-request.dto';
-import { SendInstagramMessageRequestDto } from './dto/http/send-instagram-message-request.dto';
-import { SendInstagramMessageResponseDto } from './dto/http/send-instagram-message-response.dto';
+} from "./dto/http/conversations-list-response.dto";
+import { SyncConversationsResponseDto } from "./dto/http/sync-conversations-response.dto";
+import { InstagramMessagesResponseDto } from "./dto/http/instagram-messages-response.dto";
+import { AssignConversationGroupRequestDto } from "./dto/http/assign-conversation-group-request.dto";
+import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
+import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 
 @ApiTags("admin — conversations")
 @ApiBearerAuth("bearer")
@@ -101,23 +101,22 @@ export class ConversationsController {
   })
   @ApiOkResponse({ type: SyncConversationsResponseDto })
   async sync(
-    @Req() req: { user?: AuthUser }
+    @Req() req: { user?: AuthUser },
   ): Promise<SyncConversationsResponseDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        "Current authorized user does not contain numeric owner id"
+        "Current authorized user does not contain numeric owner id",
       );
     }
     return this.conversationsService.syncInstagramConversationsForOwner(
-      ownerId
+      ownerId,
     );
   }
 
   @Get(":conversationId/messages")
   @ApiOperation({
-    summary:
-      "Get messages for a conversation from local database with paging.",
+    summary: "Get messages for a conversation from local database with paging.",
   })
   @ApiQuery({
     name: "page",
@@ -136,12 +135,12 @@ export class ConversationsController {
     @Req() req: { user?: AuthUser },
     @Param("conversationId") conversationId: string,
     @Query("page") pageRaw?: string,
-    @Query("pageSize") pageSizeRaw?: string
+    @Query("pageSize") pageSizeRaw?: string,
   ): Promise<InstagramMessagesResponseDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        "Current authorized user does not contain numeric owner id"
+        "Current authorized user does not contain numeric owner id",
       );
     }
     const { page, pageSize } =
@@ -152,7 +151,7 @@ export class ConversationsController {
       {
         page,
         pageSize,
-      }
+      },
     );
   }
 
@@ -168,12 +167,12 @@ export class ConversationsController {
   async sendMessageByConversationId(
     @Req() req: { user?: AuthUser },
     @Param("conversationId") conversationId: string,
-    @Body() dto: SendInstagramMessageRequestDto
+    @Body() dto: SendInstagramMessageRequestDto,
   ): Promise<SendInstagramMessageResponseDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        "Current authorized user does not contain numeric owner id"
+        "Current authorized user does not contain numeric owner id",
       );
     }
     return this.conversationsService.sendInstagramMessageForConversation(
@@ -225,12 +224,12 @@ export class ConversationsController {
   @ApiOkResponse({ type: ConversationRowDto })
   async getById(
     @Req() req: { user?: AuthUser },
-    @Param("id") id: string
+    @Param("id") id: string,
   ): Promise<ConversationRowDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        "Current authorized user does not contain numeric owner id"
+        "Current authorized user does not contain numeric owner id",
       );
     }
     const numericId = Number(id);
@@ -243,7 +242,7 @@ export class ConversationsController {
     }
     return this.conversationsService.getConversationForOwnerById(
       ownerId,
-      numericId
+      numericId,
     );
   }
 }

@@ -3,14 +3,14 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Not, Repository } from 'typeorm';
-import { Client, Company, InstagramUser } from '../database/entities';
-import type { ClientLookupResponseDto } from './dto/client-lookup-response.dto';
-import type { ClientResponseDto } from './dto/client-response.dto';
-import type { CreateClientRequestDto } from './dto/create-client-request.dto';
-import type { UpdateClientRequestDto } from './dto/update-client-request.dto';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { FindOptionsWhere, Not, Repository } from "typeorm";
+import { Client, Company, InstagramUser } from "../database/entities";
+import type { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
+import type { ClientResponseDto } from "./dto/client-response.dto";
+import type { CreateClientRequestDto } from "./dto/create-client-request.dto";
+import type { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
 @Injectable()
 export class ClientsService {
@@ -36,7 +36,7 @@ export class ClientsService {
 
     const row = this.clientRepo.create({
       firstName: dto.first_name.trim(),
-      lastName: (dto.last_name?.trim() ?? '') || '',
+      lastName: (dto.last_name?.trim() ?? "") || "",
       phone: dto.phone.trim(),
       deliveryInfo: dto.delivery_info.trim(),
       instagramUserId,
@@ -56,7 +56,7 @@ export class ClientsService {
       where: { id: clientId, workspaceId },
     });
     if (!row) {
-      throw new NotFoundException('Client not found');
+      throw new NotFoundException("Client not found");
     }
 
     if (dto.first_name !== undefined) {
@@ -64,8 +64,8 @@ export class ClientsService {
     }
     if (dto.last_name !== undefined) {
       row.lastName =
-        dto.last_name === null || dto.last_name.trim() === ''
-          ? ''
+        dto.last_name === null || dto.last_name.trim() === ""
+          ? ""
           : dto.last_name.trim();
     }
     if (dto.phone !== undefined) {
@@ -90,7 +90,7 @@ export class ClientsService {
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
     const res = await this.clientRepo.delete({ id: clientId, workspaceId });
     if (res.affected === 0) {
-      throw new NotFoundException('Client not found');
+      throw new NotFoundException("Client not found");
     }
   }
 
@@ -104,7 +104,9 @@ export class ClientsService {
   ): Promise<ClientLookupResponseDto> {
     const instagramUserId = instagramIdRaw.trim();
     if (!instagramUserId) {
-      throw new BadRequestException('instagramId query parameter is required and non-empty');
+      throw new BadRequestException(
+        "instagramId query parameter is required and non-empty",
+      );
     }
 
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
@@ -114,7 +116,7 @@ export class ClientsService {
     });
 
     if (!row) {
-      return { associated: false, status: 'ok' };
+      return { associated: false, status: "ok" };
     }
 
     return {
@@ -123,13 +125,16 @@ export class ClientsService {
     };
   }
 
-  async getByIdForOwner(ownerId: number, clientId: number): Promise<ClientResponseDto> {
+  async getByIdForOwner(
+    ownerId: number,
+    clientId: number,
+  ): Promise<ClientResponseDto> {
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
     const row = await this.clientRepo.findOne({
       where: { id: clientId, workspaceId },
     });
     if (!row) {
-      throw new NotFoundException('Client not found');
+      throw new NotFoundException("Client not found");
     }
     return this.toClientDto(row);
   }
@@ -169,7 +174,7 @@ export class ClientsService {
     const dup = await this.clientRepo.exist({ where: dupWhere });
     if (dup) {
       throw new ConflictException(
-        'Another client in this workspace already uses this instagramId',
+        "Another client in this workspace already uses this instagramId",
       );
     }
 
@@ -179,16 +184,16 @@ export class ClientsService {
   private async requireWorkspaceIdForOwner(ownerId: number): Promise<number> {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        'Current authorized user does not contain a numeric owner id',
+        "Current authorized user does not contain a numeric owner id",
       );
     }
     const company = await this.companyRepo.findOne({
       where: { ownerId },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
     if (!company) {
       throw new NotFoundException(
-        'Integration not found for current user; create a workspace first',
+        "Integration not found for current user; create a workspace first",
       );
     }
     return company.workspaceId;

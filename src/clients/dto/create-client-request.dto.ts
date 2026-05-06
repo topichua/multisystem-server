@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export class CreateClientRequestDto {
   @ApiProperty()
@@ -8,7 +8,9 @@ export class CreateClientRequestDto {
   @MaxLength(120)
   first_name: string;
 
-  @ApiPropertyOptional({ description: 'Optional; stored as empty string if omitted.' })
+  @ApiPropertyOptional({
+    description: "Optional; stored as empty string if omitted.",
+  })
   @IsOptional()
   @IsString()
   @MaxLength(120)
@@ -29,7 +31,7 @@ export class CreateClientRequestDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Instagram scoped user id (`instagram_users.id`). Omit or null for a client with no linked Instagram account.',
+      "Instagram scoped user id (`instagram_users.id`). Omit or null for a client with no linked Instagram account.",
   })
   @IsOptional()
   @IsString()

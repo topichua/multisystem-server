@@ -6,9 +6,9 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { FindOptionsWhere, In, Repository } from "typeorm";
 import {
   Company,
   Conversation,
@@ -16,23 +16,23 @@ import {
   ConversationMessage,
   ConversationSource,
   InstagramUser,
-} from '../database/entities';
+} from "../database/entities";
 import type {
   InstagramConversationDto,
   InstagramConversationParticipantDto,
   InstagramConversationsResponseDto,
-} from './dto/http/instagram-conversations-response.dto';
+} from "./dto/http/instagram-conversations-response.dto";
 import type {
   InstagramMessageDto,
   InstagramMessagesResponseDto,
   InstagramRepliedToMessageRefDto,
-} from './dto/http/instagram-messages-response.dto';
-import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from './instagram-graph-message-fields';
-import type { SendInstagramMessageResponseDto } from './dto/http/send-instagram-message-response.dto';
+} from "./dto/http/instagram-messages-response.dto";
+import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
+import type { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 import type {
   ConversationRowDto,
   ConversationParticipantDto,
-} from './dto/http/conversations-list-response.dto';
+} from "./dto/http/conversations-list-response.dto";
 
 type InstagramErrorResponse = {
   error?: {
@@ -81,7 +81,7 @@ export class ConversationsService {
       const missing = unique.filter((id) => !found.has(id));
       if (missing.length > 0) {
         throw new BadRequestException(
-          `Unknown or inaccessible group id(s) for this workspace: ${missing.join(', ')}`,
+          `Unknown or inaccessible group id(s) for this workspace: ${missing.join(", ")}`,
         );
       }
       where = { managerId: ownerId, groupId: In(unique) };
@@ -89,11 +89,10 @@ export class ConversationsService {
 
     const rows = await this.conversationRepo.find({
       where,
-      order: { instUpdatedAt: 'DESC' },
+      order: { instUpdatedAt: "DESC" },
     });
-    const lastMessageByConversationId = await this.getLastMessageByConversationIds(
-      rows.map((r) => r.id),
-    );
+    const lastMessageByConversationId =
+      await this.getLastMessageByConversationIds(rows.map((r) => r.id));
     const participantById = await this.getInstagramUsersByIds(
       rows.map((r) => r.participantId),
     );
@@ -119,13 +118,16 @@ export class ConversationsService {
   ): Promise<{ upserted: number }> {
     const company = await this.requireCompanyForOwner(ownerId);
     const pageId = company.pageId?.trim();
-    if (!pageId || pageId === 'pending') {
+    if (!pageId || pageId === "pending") {
       throw new BadRequestException(
-        'Company Instagram / Facebook page id is not configured; set page_id before sync.',
+        "Company Instagram / Facebook page id is not configured; set page_id before sync.",
       );
     }
     const token = await this.resolveGraphAccessToken(company.id);
-    const conversations = await this.fetchAllInstagramConversations(pageId, token);
+    const conversations = await this.fetchAllInstagramConversations(
+      pageId,
+      token,
+    );
     await this.enrichParticipantProfilePics(
       { data: conversations, paging: undefined },
       token,
@@ -173,13 +175,13 @@ export class ConversationsService {
   async fetchInstagramMessageById(
     messageId: string,
     accessToken: string,
-    fields = 'id,created_time,from,to,message',
+    fields = "id,created_time,from,to,message",
   ): Promise<InstagramMessageDto> {
     const url = new URL(
       `https://graph.facebook.com/v25.0/${encodeURIComponent(messageId)}`,
     );
-    url.searchParams.set('fields', fields);
-    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set("fields", fields);
+    url.searchParams.set("access_token", accessToken);
     return this.instagramGraphFetch<InstagramMessageDto>(url);
   }
 
@@ -192,7 +194,7 @@ export class ConversationsService {
     accessToken: string,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
-    const fields = encodeURIComponent('id,participants,updated_time');
+    const fields = encodeURIComponent("id,participants,updated_time");
     let nextUrl: string | null =
       `https://graph.facebook.com/v25.0/${encodeURIComponent(pageId)}/conversations` +
       `?platform=instagram&user_id=${encodeURIComponent(userId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
@@ -218,14 +220,13 @@ export class ConversationsService {
       where: { id, managerId: ownerId },
     });
     if (!row) {
-      throw new NotFoundException('Conversation not found');
+      throw new NotFoundException("Conversation not found");
     }
-    const lastMessageByConversationId = await this.getLastMessageByConversationIds(
-      [row.id],
-    );
-    const participantById = await this.getInstagramUsersByIds(
-      [row.participantId],
-    );
+    const lastMessageByConversationId =
+      await this.getLastMessageByConversationIds([row.id]);
+    const participantById = await this.getInstagramUsersByIds([
+      row.participantId,
+    ]);
     return this.toConversationRowDto(
       row,
       lastMessageByConversationId.get(row.id),
@@ -249,7 +250,7 @@ export class ConversationsService {
       where: { id: conversationId, managerId: ownerId },
     });
     if (!conv) {
-      throw new NotFoundException('Conversation not found');
+      throw new NotFoundException("Conversation not found");
     }
 
     const group = await this.conversationGroupRepo.findOne({
@@ -257,7 +258,7 @@ export class ConversationsService {
     });
     if (!group) {
       throw new BadRequestException(
-        'Conversation group not found or does not belong to this workspace',
+        "Conversation group not found or does not belong to this workspace",
       );
     }
 
@@ -291,7 +292,7 @@ export class ConversationsService {
       ),
       source: row.source,
       groupId: row.groupId,
-      lastMessage: lastMessage?.message ?? '',
+      lastMessage: lastMessage?.message ?? "",
       isLastMessageFromMe,
       participant,
     };
@@ -321,7 +322,7 @@ export class ConversationsService {
   ): boolean | null {
     if (!lastMessage) return null;
     const senderId = lastMessage.senderId?.trim();
-    if (!senderId || senderId === '0') return null;
+    if (!senderId || senderId === "0") return null;
     return myAccountIds.has(senderId);
   }
 
@@ -338,7 +339,7 @@ export class ConversationsService {
     participantById: Map<string, InstagramUser>,
   ): ConversationParticipantDto | null {
     const participantKey = participantId?.trim();
-    if (!participantKey || participantKey === 'unknown') return null;
+    if (!participantKey || participantKey === "unknown") return null;
     const participant = participantById.get(participantKey);
     if (!participant) return null;
     return {
@@ -367,13 +368,13 @@ export class ConversationsService {
     if (uniqIds.length === 0) return new Map();
 
     const rows = await this.conversationMessageRepo
-      .createQueryBuilder('m')
-      .where('m.conversation_id IN (:...conversationIds)', {
+      .createQueryBuilder("m")
+      .where("m.conversation_id IN (:...conversationIds)", {
         conversationIds: uniqIds,
       })
-      .orderBy('m.conversation_id', 'ASC')
-      .addOrderBy('m.created_at', 'DESC')
-      .addOrderBy('m.external_id', 'DESC')
+      .orderBy("m.conversation_id", "ASC")
+      .addOrderBy("m.created_at", "DESC")
+      .addOrderBy("m.external_id", "DESC")
       .getMany();
 
     const out = new Map<number, ConversationMessage>();
@@ -394,7 +395,7 @@ export class ConversationsService {
   ): Promise<Conversation> {
     const trimmed = conversationIdParam.trim();
     if (!trimmed) {
-      throw new BadRequestException('conversationId must not be empty');
+      throw new BadRequestException("conversationId must not be empty");
     }
     if (/^\d+$/.test(trimmed)) {
       const id = Number(trimmed);
@@ -407,7 +408,7 @@ export class ConversationsService {
       where: { externalId: trimmed, managerId: ownerId },
     });
     if (byExternal) return byExternal;
-    throw new NotFoundException('Conversation not found');
+    throw new NotFoundException("Conversation not found");
   }
 
   private buildConversationMessagesGraphUrl(
@@ -419,21 +420,21 @@ export class ConversationsService {
       `https://graph.facebook.com/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
     );
     url.searchParams.set(
-      'fields',
+      "fields",
       [
-        'id',
-        'created_time',
-        'message',
-        'is_unsupported',
-        'from{id,name,email,username}',
-        'to{data{id,name,email,username}}',
+        "id",
+        "created_time",
+        "message",
+        "is_unsupported",
+        "from{id,name,email,username}",
+        "to{data{id,name,email,username}}",
         `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
-        'reactions{data{reaction,users{id,username}}}',
-      ].join(','),
+        "reactions{data{reaction,users{id,username}}}",
+      ].join(","),
     );
-    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set("access_token", accessToken);
     if (sinceUnixSeconds != null && Number.isFinite(sinceUnixSeconds)) {
-      url.searchParams.set('since', String(Math.floor(sinceUnixSeconds)));
+      url.searchParams.set("since", String(Math.floor(sinceUnixSeconds)));
     }
     return url;
   }
@@ -462,8 +463,8 @@ export class ConversationsService {
     while (nextUrl && pages < maxPages) {
       const page: InstagramMessagesResponseDto =
         await this.instagramGraphFetch<InstagramMessagesResponseDto>(
-        new URL(nextUrl),
-      );
+          new URL(nextUrl),
+        );
       pages++;
       const batch = page.data ?? [];
       for (const m of batch) {
@@ -493,10 +494,11 @@ export class ConversationsService {
       if (!ext) continue;
       const createdAt = new Date(m.created_time);
       if (Number.isNaN(createdAt.getTime())) continue;
-      const senderId = m.from?.id?.trim() ?? '';
-      const receiverId = m.to?.data?.[0]?.id?.trim() ?? '';
-      const text = m.message ?? '';
-      const { id: _messageId, ...messageWithoutId } = m;
+      const senderId = m.from?.id?.trim() ?? "";
+      const receiverId = m.to?.data?.[0]?.id?.trim() ?? "";
+      const text = m.message ?? "";
+      const { id, ...messageWithoutId } = m;
+      void id;
       const instagramJson = JSON.stringify(messageWithoutId);
 
       let row = await this.conversationMessageRepo.findOne({
@@ -509,8 +511,8 @@ export class ConversationsService {
           message: text,
           instagramJson,
           createdAt,
-          senderId: senderId.length > 0 ? senderId : '0',
-          receiverId: receiverId.length > 0 ? receiverId : '0',
+          senderId: senderId.length > 0 ? senderId : "0",
+          receiverId: receiverId.length > 0 ? receiverId : "0",
           readAt: null,
           repliedToExternalId: null,
           ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
@@ -572,7 +574,7 @@ export class ConversationsService {
     const url = new URL(
       `https://graph.facebook.com/v25.0/${encodeURIComponent(instagramUserId)}`,
     );
-    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set("access_token", accessToken);
     const node = await this.instagramGraphFetch<{
       id?: string;
       name?: string;
@@ -585,8 +587,9 @@ export class ConversationsService {
       node.username?.trim() ||
       node.id?.trim() ||
       instagramUserId;
-    const username = node.username?.trim() || node.id?.trim() || instagramUserId;
-    const profilePic = node.profile_pic?.trim() || '';
+    const username =
+      node.username?.trim() || node.id?.trim() || instagramUserId;
+    const profilePic = node.profile_pic?.trim() || "";
     const now = new Date();
 
     let row = await this.instagramUserRepo.findOne({
@@ -617,14 +620,16 @@ export class ConversationsService {
     try {
       const parsed = JSON.parse(row.instagramJson) as InstagramMessageDto;
       if (
-        typeof parsed.created_time === 'string' &&
+        typeof parsed.created_time === "string" &&
         parsed.created_time.length > 0
       ) {
         return {
           id: row.externalId,
           created_time: parsed.created_time,
           message: (parsed.message ?? row.message) || undefined,
-          ...(parsed.attachments != null ? { attachments: parsed.attachments } : {}),
+          ...(parsed.attachments != null
+            ? { attachments: parsed.attachments }
+            : {}),
           ...(parsed.from != null ? { from: parsed.from } : {}),
         };
       }
@@ -643,10 +648,10 @@ export class ConversationsService {
     paging?: { page: number; pageSize: number },
   ): Promise<InstagramMessagesResponseDto> {
     const qb = this.conversationMessageRepo
-      .createQueryBuilder('m')
-      .where('m.conversation_id = :cid', { cid: conversationDbId })
-      .orderBy('m.created_at', 'DESC')
-      .addOrderBy('m.external_id', 'DESC');
+      .createQueryBuilder("m")
+      .where("m.conversation_id = :cid", { cid: conversationDbId })
+      .orderBy("m.created_at", "DESC")
+      .addOrderBy("m.external_id", "DESC");
     const page = paging?.page ?? 1;
     const pageSize = paging?.pageSize ?? 50;
     const total = await qb.getCount();
@@ -655,9 +660,7 @@ export class ConversationsService {
       .take(pageSize)
       .getMany();
 
-    const messageRowsByExternalId = new Map(
-      rows.map((r) => [r.externalId, r]),
-    );
+    const messageRowsByExternalId = new Map(rows.map((r) => [r.externalId, r]));
     const parentIds = [
       ...new Set(
         rows
@@ -696,7 +699,9 @@ export class ConversationsService {
     const data: InstagramMessageDto[] = rows.map((r) => {
       /** `read_at` / `edited_at` come only from DB columns, not from stored Graph JSON. */
       const addDbMeta = (m: InstagramMessageDto): InstagramMessageDto => {
-        const { read_at: _dropReadAt, edited_at: _dropEditedAt, ...fromGraph } = m;
+        const { read_at, edited_at, ...fromGraph } = m;
+        void read_at;
+        void edited_at;
         return {
           ...fromGraph,
           ...(r.editedAt != null
@@ -712,13 +717,13 @@ export class ConversationsService {
       try {
         const parsed = JSON.parse(r.instagramJson) as Record<string, unknown>;
         const createdTime = parsed.created_time;
-        if (typeof createdTime === 'string' && createdTime.length > 0) {
+        if (typeof createdTime === "string" && createdTime.length > 0) {
           return attachRepliedToSnapshot(
             r,
             addDbMeta({
               ...(parsed as unknown as InstagramMessageDto),
               id:
-                typeof parsed.id === 'string' && parsed.id.length > 0
+                typeof parsed.id === "string" && parsed.id.length > 0
                   ? parsed.id
                   : r.externalId,
             } as InstagramMessageDto),
@@ -733,7 +738,12 @@ export class ConversationsService {
           id: r.externalId,
           created_time: r.createdAt.toISOString(),
           message: r.message,
-          to: { data: r.receiverId && r.receiverId !== '0' ? [{ id: r.receiverId }] : [] },
+          to: {
+            data:
+              r.receiverId && r.receiverId !== "0"
+                ? [{ id: r.receiverId }]
+                : [],
+          },
         }),
       );
     });
@@ -772,19 +782,17 @@ export class ConversationsService {
     return result;
   }
 
-  private normalizeRecipientIdInput(
-    raw: string | undefined | null,
-  ): string {
-    if (raw == null) return '';
+  private normalizeRecipientIdInput(raw: string | undefined | null): string {
+    if (raw == null) return "";
     return String(raw)
       .trim()
-      .replace(/^["']|["']$/g, '')
-      .replace(/[\s\u00a0\u200b-\u200d\ufeff,]+/g, '');
+      .replace(/^["']|["']$/g, "")
+      .replace(/[\s\u00a0\u200b-\u200d\ufeff,]+/g, "");
   }
 
   private isLikelyInstagramPsid(id: string | undefined): boolean {
-    const t = this.normalizeRecipientIdInput(id ?? '');
-    return t.length > 0 && t !== 'unknown' && /^\d+$/.test(t);
+    const t = this.normalizeRecipientIdInput(id ?? "");
+    return t.length > 0 && t !== "unknown" && /^\d+$/.test(t);
   }
 
   /**
@@ -803,16 +811,16 @@ export class ConversationsService {
       conversationIdParam,
     );
 
-    const recipient = conv.participantId?.trim() ?? '';
+    const recipient = conv.participantId?.trim() ?? "";
     if (!this.isLikelyInstagramPsid(recipient)) {
       throw new BadRequestException(
-        'Conversation has no valid participant_id (recipient PSID). Run POST /conversations/sync so the thread is stored with a participant, or open the conversation in Instagram first.',
+        "Conversation has no valid participant_id (recipient PSID). Run POST /conversations/sync so the thread is stored with a participant, or open the conversation in Instagram first.",
       );
     }
 
     const text = message.trim();
     if (!text) {
-      throw new BadRequestException('message must not be empty');
+      throw new BadRequestException("message must not be empty");
     }
 
     const replyMid = replyToMid?.trim();
@@ -822,7 +830,7 @@ export class ConversationsService {
       });
       if (!parentExists) {
         throw new BadRequestException(
-          'reply_to_id must be the id of a message in this conversation (from GET .../messages).',
+          "reply_to_id must be the id of a message in this conversation (from GET .../messages).",
         );
       }
     }
@@ -831,23 +839,21 @@ export class ConversationsService {
     const sendBody: Record<string, unknown> = {
       recipient: { id: recipient },
       message: { text },
-      messaging_type: 'RESPONSE',
+      messaging_type: "RESPONSE",
     };
     if (replyMid) {
       sendBody.reply_to = { mid: replyMid };
     }
 
-    const url = new URL('https://graph.facebook.com/v25.0/me/messages');
-    url.searchParams.set('access_token', accessToken);
+    const url = new URL("https://graph.facebook.com/v25.0/me/messages");
+    url.searchParams.set("access_token", accessToken);
 
-    const result = await this.instagramGraphFetch<SendInstagramMessageResponseDto>(
-      url,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+    const result =
+      await this.instagramGraphFetch<SendInstagramMessageResponseDto>(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sendBody),
-      },
-    );
+      });
 
     const maybeError = result as unknown as InstagramErrorResponse;
     if (maybeError.error?.message) {
@@ -858,12 +864,14 @@ export class ConversationsService {
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {
-    const company = await this.companyRepo.findOne({ where: { id: companyId } });
+    const company = await this.companyRepo.findOne({
+      where: { id: companyId },
+    });
     const pageToken = company?.accessToken?.trim();
     if (pageToken) return pageToken;
 
     throw new ServiceUnavailableException(
-      'No Page Graph token: set company.access_token (Page token from OAuth) for this company.',
+      "No Page Graph token: set company.access_token (Page token from OAuth) for this company.",
     );
   }
 
@@ -874,7 +882,7 @@ export class ConversationsService {
     const ids = participants
       .map((p) => p.id?.trim())
       .filter((id): id is string => Boolean(id));
-    if (ids.length === 0) return 'unknown';
+    if (ids.length === 0) return "unknown";
     const page = pageId.trim();
     const notPage = ids.find((id) => id !== page);
     return notPage ?? ids[0];
@@ -886,7 +894,7 @@ export class ConversationsService {
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
     const fields =
-      'id,updated_time,participants{id,name,username,profile_pic},unread_count,message_count';
+      "id,updated_time,participants{id,name,username,profile_pic},unread_count,message_count";
     let nextUrl: string | null =
       `https://graph.facebook.com/v25.0/${encodeURIComponent(pageId)}/conversations` +
       `?platform=instagram&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
@@ -955,10 +963,12 @@ export class ConversationsService {
     const url = new URL(
       `https://graph.facebook.com/v25.0/${encodeURIComponent(userId)}`,
     );
-    url.searchParams.set('fields', 'profile_pic');
-    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set("fields", "profile_pic");
+    url.searchParams.set("access_token", accessToken);
     try {
-      const body = await this.instagramGraphFetch<{ profile_pic?: string }>(url);
+      const body = await this.instagramGraphFetch<{ profile_pic?: string }>(
+        url,
+      );
       return body.profile_pic?.trim() || undefined;
     } catch {
       return undefined;
@@ -974,7 +984,7 @@ export class ConversationsService {
   ): { page: number; pageSize: number } {
     const parseIntStrict = (
       raw: string | undefined,
-      field: 'page' | 'pageSize',
+      field: "page" | "pageSize",
       fallback: number,
     ): number => {
       if (raw == null) return fallback;
@@ -990,8 +1000,8 @@ export class ConversationsService {
       return n;
     };
 
-    const page = parseIntStrict(pageRaw, 'page', 1);
-    const pageSize = parseIntStrict(pageSizeRaw, 'pageSize', 50);
+    const page = parseIntStrict(pageRaw, "page", 1);
+    const pageSize = parseIntStrict(pageSizeRaw, "pageSize", 50);
     const maxPageSize = 200;
     if (pageSize > maxPageSize) {
       throw new BadRequestException(`pageSize must be <= ${maxPageSize}`);
@@ -1002,10 +1012,10 @@ export class ConversationsService {
   private async requireCompanyForOwner(ownerId: number): Promise<Company> {
     const company = await this.companyRepo.findOne({
       where: { ownerId },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
     if (!company) {
-      throw new NotFoundException('Company not found for current user');
+      throw new NotFoundException("Company not found for current user");
     }
     return company;
   }
@@ -1031,9 +1041,9 @@ export class ConversationsService {
       /\(#[0-9]+\)\s*Requires pages_messaging/i.test(msg)
     ) {
       throw new ForbiddenException(
-        'Facebook / Instagram access token is missing the pages_messaging permission (Graph error #230). ' +
-          'In developers.facebook.com: add “pages_messaging” (and Instagram messaging scopes your product needs) to the app, ' +
-          're-run Login / Page install so the Page token includes those permissions, then store the new token on this company.',
+        "Facebook / Instagram access token is missing the pages_messaging permission (Graph error #230). " +
+          "In developers.facebook.com: add “pages_messaging” (and Instagram messaging scopes your product needs) to the app, " +
+          "re-run Login / Page install so the Page token includes those permissions, then store the new token on this company.",
       );
     }
     throw new BadGatewayException(msg);
@@ -1050,7 +1060,9 @@ export class ConversationsService {
       try {
         body = JSON.parse(bodyText) as T | InstagramErrorResponse;
       } catch {
-        throw new BadGatewayException('Instagram Graph API returned invalid JSON');
+        throw new BadGatewayException(
+          "Instagram Graph API returned invalid JSON",
+        );
       }
     }
 

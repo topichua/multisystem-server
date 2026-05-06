@@ -1,13 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Adds `workspace`, links `integration.workspace_id`, replaces
  * `conversation_groups.company_id` with `workspace_id`, and adds `clients.workspace_id`.
  */
-export class WorkspaceIntegrationGroupsClients1744200000022
-  implements MigrationInterface
-{
-  name = 'WorkspaceIntegrationGroupsClients1744200000022';
+export class WorkspaceIntegrationGroupsClients1744200000022 implements MigrationInterface {
+  name = "WorkspaceIntegrationGroupsClients1744200000022";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
@@ -30,20 +28,20 @@ export class WorkspaceIntegrationGroupsClients1744200000022
       `ALTER TABLE "integration" ADD COLUMN "workspace_id" integer`,
     );
 
-    const integrations: Array<{
+    const integrations = (await queryRunner.query(
+      `SELECT id, name, created_at, owner_id FROM "integration"`,
+    )) as Array<{
       id: number;
       name: string;
       created_at: Date;
       owner_id: number;
-    }> = await queryRunner.query(
-      `SELECT id, name, created_at, owner_id FROM "integration"`,
-    );
+    }>;
 
     for (const row of integrations) {
-      const inserted: Array<{ id: number }> = await queryRunner.query(
+      const inserted = (await queryRunner.query(
         `INSERT INTO "workspace" ("name", "created_at", "owner_id") VALUES ($1, $2, $3) RETURNING id`,
         [row.name, row.created_at, row.owner_id],
-      );
+      )) as Array<{ id: number }>;
       const wid = inserted[0].id;
       await queryRunner.query(
         `UPDATE "integration" SET "workspace_id" = $1 WHERE "id" = $2`,
@@ -74,12 +72,12 @@ export class WorkspaceIntegrationGroupsClients1744200000022
       WHERE cg."company_id" = i."id"
     `);
 
-    const orphanGroups: Array<{ c: string }> = await queryRunner.query(
+    const orphanGroups = (await queryRunner.query(
       `SELECT COUNT(*)::text AS c FROM "conversation_groups" WHERE "workspace_id" IS NULL`,
-    );
+    )) as Array<{ c: string }>;
     if (Number(orphanGroups[0].c) > 0) {
       throw new Error(
-        'Migration: conversation_groups.company_id does not match any integration row; fix data and retry.',
+        "Migration: conversation_groups.company_id does not match any integration row; fix data and retry.",
       );
     }
 
@@ -109,26 +107,26 @@ export class WorkspaceIntegrationGroupsClients1744200000022
       `ALTER TABLE "clients" ADD COLUMN "workspace_id" integer`,
     );
 
-    const clientCountRow: Array<{ c: string }> = await queryRunner.query(
+    const clientCountRow = (await queryRunner.query(
       `SELECT COUNT(*)::text AS c FROM "clients"`,
-    );
+    )) as Array<{ c: string }>;
     const clientCount = Number(clientCountRow[0].c);
     if (clientCount > 0) {
-      const workspaceCountRow: Array<{ c: string }> = await queryRunner.query(
+      const workspaceCountRow = (await queryRunner.query(
         `SELECT COUNT(*)::text AS c FROM "workspace"`,
-      );
+      )) as Array<{ c: string }>;
       if (Number(workspaceCountRow[0].c) === 0) {
-        const userRow: Array<{ id: number }> = await queryRunner.query(
+        const userRow = (await queryRunner.query(
           `SELECT id FROM "users" ORDER BY id ASC LIMIT 1`,
-        );
+        )) as Array<{ id: number }>;
         if (userRow.length === 0) {
           throw new Error(
-            'Migration: clients exist but no users row to own a fallback workspace.',
+            "Migration: clients exist but no users row to own a fallback workspace.",
           );
         }
         await queryRunner.query(
           `INSERT INTO "workspace" ("name", "created_at", "owner_id") VALUES ($1, now(), $2)`,
-          ['Default', userRow[0].id],
+          ["Default", userRow[0].id],
         );
       }
       await queryRunner.query(`
@@ -178,12 +176,12 @@ export class WorkspaceIntegrationGroupsClients1744200000022
       ) AS i
       WHERE cg."workspace_id" = i."workspace_id"
     `);
-    const gNull: Array<{ c: string }> = await queryRunner.query(
+    const gNull = (await queryRunner.query(
       `SELECT COUNT(*)::text AS c FROM "conversation_groups" WHERE "company_id" IS NULL`,
-    );
+    )) as Array<{ c: string }>;
     if (Number(gNull[0].c) > 0) {
       throw new Error(
-        'Migration down: cannot infer company_id for every conversation_group (multiple integrations per workspace).',
+        "Migration down: cannot infer company_id for every conversation_group (multiple integrations per workspace).",
       );
     }
     await queryRunner.query(
@@ -205,7 +203,9 @@ export class WorkspaceIntegrationGroupsClients1744200000022
     await queryRunner.query(
       `ALTER TABLE "integration" DROP CONSTRAINT "FK_integration_workspace_id"`,
     );
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_integration_workspace_id"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_integration_workspace_id"`,
+    );
     await queryRunner.query(
       `ALTER TABLE "integration" DROP COLUMN "workspace_id"`,
     );

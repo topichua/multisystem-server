@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import {
   IsDate,
   IsEmail,
@@ -10,7 +10,7 @@ import {
   MinLength,
   Min,
   ValidateIf,
-} from 'class-validator';
+} from "class-validator";
 
 export class InviteUserRequestDto {
   @ApiProperty()
@@ -30,7 +30,7 @@ export class InviteUserRequestDto {
   lastName?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Numeric user id of the inviting admin (stored on the row).',
+    description: "Numeric user id of the inviting admin (stored on the row).",
     nullable: true,
   })
   @IsOptional()
@@ -40,9 +40,9 @@ export class InviteUserRequestDto {
   invitedByUserId?: number | null;
 
   @ApiPropertyOptional({
-    description: 'Defaults to 72 hours from now if omitted.',
+    description: "Defaults to 72 hours from now if omitted.",
     type: String,
-    format: 'date-time',
+    format: "date-time",
   })
   @IsOptional()
   @Type(() => Date)

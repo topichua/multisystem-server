@@ -2,13 +2,13 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Company, ConversationGroup } from '../database/entities';
-import type { ConversationGroupResponseDto } from './dto/http/conversation-group-response.dto';
-import type { CreateConversationGroupRequestDto } from './dto/http/create-conversation-group-request.dto';
-import type { UpdateConversationGroupRequestDto } from './dto/http/update-conversation-group-request.dto';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Company, ConversationGroup } from "../database/entities";
+import type { ConversationGroupResponseDto } from "./dto/http/conversation-group-response.dto";
+import type { CreateConversationGroupRequestDto } from "./dto/http/create-conversation-group-request.dto";
+import type { UpdateConversationGroupRequestDto } from "./dto/http/update-conversation-group-request.dto";
 
 @Injectable()
 export class ConversationGroupsService {
@@ -19,11 +19,13 @@ export class ConversationGroupsService {
     private readonly groupRepo: Repository<ConversationGroup>,
   ) {}
 
-  async listForOwner(ownerId: number): Promise<{ items: ConversationGroupResponseDto[] }> {
+  async listForOwner(
+    ownerId: number,
+  ): Promise<{ items: ConversationGroupResponseDto[] }> {
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
     const rows = await this.groupRepo.find({
       where: { workspaceId },
-      order: { sortOrder: 'ASC', id: 'ASC' },
+      order: { sortOrder: "ASC", id: "ASC" },
     });
     return { items: rows.map((r) => this.toDto(r)) };
   }
@@ -37,7 +39,7 @@ export class ConversationGroupsService {
       where: { id: groupId, workspaceId },
     });
     if (!row) {
-      throw new NotFoundException('Conversation group not found');
+      throw new NotFoundException("Conversation group not found");
     }
     return this.toDto(row);
   }
@@ -70,18 +72,18 @@ export class ConversationGroupsService {
       where: { id: groupId, workspaceId },
     });
     if (!row) {
-      throw new NotFoundException('Conversation group not found');
+      throw new NotFoundException("Conversation group not found");
     }
     if (dto.name !== undefined) row.name = dto.name.trim();
     if (dto.description !== undefined) {
       row.description =
-        dto.description === null || dto.description.trim() === ''
+        dto.description === null || dto.description.trim() === ""
           ? null
           : dto.description.trim();
     }
     if (dto.color !== undefined) {
       row.color =
-        dto.color === null || dto.color.trim() === '' ? null : dto.color.trim();
+        dto.color === null || dto.color.trim() === "" ? null : dto.color.trim();
     }
     if (dto.sort_order !== undefined) row.sortOrder = dto.sort_order;
     await this.groupRepo.save(row);
@@ -92,23 +94,23 @@ export class ConversationGroupsService {
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
     const res = await this.groupRepo.delete({ id: groupId, workspaceId });
     if (res.affected === 0) {
-      throw new NotFoundException('Conversation group not found');
+      throw new NotFoundException("Conversation group not found");
     }
   }
 
   private async requireWorkspaceIdForOwner(ownerId: number): Promise<number> {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        'Current authorized user does not contain a numeric owner id',
+        "Current authorized user does not contain a numeric owner id",
       );
     }
     const company = await this.companyRepo.findOne({
       where: { ownerId },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
     if (!company) {
       throw new NotFoundException(
-        'Integration not found for current user; create a workspace first',
+        "Integration not found for current user; create a workspace first",
       );
     }
     return company.workspaceId;

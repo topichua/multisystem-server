@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class InstagramMessageActorDto {
   @ApiProperty()
@@ -18,7 +18,7 @@ export class InstagramMessageImageDataDto {
   @ApiPropertyOptional()
   url?: string;
 
-  @ApiPropertyOptional({ description: 'Meta docs typo variant' })
+  @ApiPropertyOptional({ description: "Meta docs typo variant" })
   medial_url?: string;
 
   @ApiPropertyOptional()
@@ -61,7 +61,7 @@ export class InstagramMessageAttachmentDto {
   @ApiPropertyOptional()
   size?: number;
 
-  @ApiPropertyOptional({ description: 'Generic file / audio CDN URL' })
+  @ApiPropertyOptional({ description: "Generic file / audio CDN URL" })
   file_url?: string;
 
   @ApiPropertyOptional({ type: () => InstagramMessageImageDataDto })
@@ -70,7 +70,7 @@ export class InstagramMessageAttachmentDto {
   @ApiPropertyOptional({ type: () => InstagramMessageVideoDataDto })
   video_data?: InstagramMessageVideoDataDto;
 
-  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @ApiPropertyOptional({ type: "object", additionalProperties: true })
   generic_template?: Record<string, unknown>;
 }
 
@@ -89,7 +89,7 @@ export class InstagramMessageShareDataDto {
   @ApiPropertyOptional()
   description?: string;
 
-  @ApiPropertyOptional({ description: 'e.g. post, reel, ig_post, ig_reel' })
+  @ApiPropertyOptional({ description: "e.g. post, reel, ig_post, ig_reel" })
   type?: string;
 
   @ApiPropertyOptional()
@@ -98,7 +98,7 @@ export class InstagramMessageShareDataDto {
   @ApiPropertyOptional()
   link?: string;
 
-  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @ApiPropertyOptional({ type: "object", additionalProperties: true })
   template?: Record<string, unknown>;
 }
 
@@ -111,7 +111,7 @@ export class InstagramMessageStoryNodeDto {
   @ApiPropertyOptional()
   id?: string;
 
-  @ApiPropertyOptional({ description: 'CDN preview URL' })
+  @ApiPropertyOptional({ description: "CDN preview URL" })
   link?: string;
 }
 
@@ -157,7 +157,7 @@ export class InstagramMessageTagsDto {
 
 /** Parent message snapshot for reply rendering (from our DB). */
 export class InstagramRepliedToMessageRefDto {
-  @ApiProperty({ description: 'Parent message Graph id (`mid`)' })
+  @ApiProperty({ description: "Parent message Graph id (`mid`)" })
   id: string;
 
   @ApiPropertyOptional()
@@ -182,21 +182,22 @@ export class InstagramMessageDto {
 
   @ApiPropertyOptional({
     description:
-      'Present when requesting `conversation{id}` on the message node (fallback resolution)',
+      "Present when requesting `conversation{id}` on the message node (fallback resolution)",
   })
   conversation?: { id?: string };
 
   @ApiPropertyOptional({ type: () => InstagramMessageActorDto })
   from?: InstagramMessageActorDto;
 
-  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @ApiPropertyOptional({ type: "object", additionalProperties: true })
   to?: { data?: InstagramMessageActorDto[] };
 
   @ApiPropertyOptional()
   message?: string;
 
   @ApiPropertyOptional({
-    description: 'True when the message type is not supported for display via API',
+    description:
+      "True when the message type is not supported for display via API",
   })
   is_unsupported?: boolean;
 
@@ -217,36 +218,38 @@ export class InstagramMessageDto {
 
   @ApiPropertyOptional({
     description:
-      'Present on some Graph payloads when the message is a reply (parent message id). Not persisted in `instagram_json` — see `reply_to_id` on API responses.',
+      "Present on some Graph payloads when the message is a reply (parent message id). Not persisted in `instagram_json` — see `reply_to_id` on API responses.",
   })
   reply_to?: { mid?: string; is_self_reply?: boolean };
 
   @ApiPropertyOptional({
     description:
-      'When the message was last edited on Instagram (if known), ISO 8601',
+      "When the message was last edited on Instagram (if known), ISO 8601",
   })
   edited_at?: string;
 
   @ApiPropertyOptional({
-    description: 'When this message was marked as read in this system, ISO 8601',
+    description:
+      "When this message was marked as read in this system, ISO 8601",
   })
   read_at?: string;
 
   @ApiPropertyOptional({
-    description: 'When this server last stored/updated the message row, ISO 8601',
+    description:
+      "When this server last stored/updated the message row, ISO 8601",
   })
   system_updated_at?: string;
 
   @ApiPropertyOptional({
     description:
-      'Instagram / Graph message id (`mid`) of the parent message when this is a reply (from payload reply_to.mid).',
+      "Instagram / Graph message id (`mid`) of the parent message when this is a reply (from payload reply_to.mid).",
   })
   reply_to_id?: string;
 
   @ApiPropertyOptional({
     type: () => InstagramRepliedToMessageRefDto,
     description:
-      'Parent message fields for reply UI. Full snapshot when the parent exists in this conversation in the DB; otherwise `{ id }` only (same as `reply_to_id`).',
+      "Parent message fields for reply UI. Full snapshot when the parent exists in this conversation in the DB; otherwise `{ id }` only (same as `reply_to_id`).",
   })
   replied_to_message?: InstagramRepliedToMessageRefDto;
 }
@@ -270,32 +273,32 @@ export class InstagramMessagesPagingDto {
   previous?: string;
 
   @ApiPropertyOptional({
-    description: 'Paging: current page number.',
+    description: "Paging: current page number.",
   })
   page?: number;
 
   @ApiPropertyOptional({
-    description: 'Paging: page size.',
+    description: "Paging: page size.",
   })
   page_size?: number;
 
   @ApiPropertyOptional({
-    description: 'Paging: total messages matching the filter.',
+    description: "Paging: total messages matching the filter.",
   })
   total?: number;
 
   @ApiPropertyOptional({
-    description: 'Paging: total number of pages.',
+    description: "Paging: total number of pages.",
   })
   total_pages?: number;
 
   @ApiPropertyOptional({
-    description: 'Paging: whether there is a next page.',
+    description: "Paging: whether there is a next page.",
   })
   has_next?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Paging: whether there is a previous page.',
+    description: "Paging: whether there is a previous page.",
   })
   has_previous?: boolean;
 }

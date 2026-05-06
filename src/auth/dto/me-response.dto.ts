@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserStatus } from '../../database/entities';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { UserStatus } from "../../database/entities";
 
 export class CompanyMeDto {
   @ApiProperty()
@@ -14,11 +14,13 @@ export class CompanyMeDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Instagram Business Account id (Graph `instagram_business_account.id`) for this company when connected.',
+      "Instagram Business Account id (Graph `instagram_business_account.id`) for this company when connected.",
   })
   instagramAccountId: string | null;
 
-  @ApiProperty({ description: 'Owning workspace id (`integration.workspace_id`).' })
+  @ApiProperty({
+    description: "Owning workspace id (`integration.workspace_id`).",
+  })
   workspaceId: number;
 }
 
@@ -35,7 +37,7 @@ export class UserMeDto {
   @ApiPropertyOptional({ nullable: true })
   lastName: string | null;
 
-  @ApiProperty({ enum: UserStatus, enumName: 'UserStatus' })
+  @ApiProperty({ enum: UserStatus, enumName: "UserStatus" })
   status: UserStatus;
 
   @ApiPropertyOptional({ nullable: true })
@@ -77,7 +79,7 @@ export class UserMeDto {
   @ApiPropertyOptional({ nullable: true })
   postalCode: string | null;
 
-  @ApiProperty({ type: 'object', additionalProperties: true })
+  @ApiProperty({ type: "object", additionalProperties: true })
   metadata: Record<string, unknown>;
 
   @ApiProperty()
@@ -91,7 +93,7 @@ export class MeResponseDto {
   @ApiProperty()
   email: string;
 
-  @ApiProperty({ example: 'super_admin' })
+  @ApiProperty({ example: "super_admin" })
   role: string;
 
   @ApiPropertyOptional({ type: UserMeDto, nullable: true })
@@ -102,7 +104,7 @@ export class MeResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Company display name when a company row exists for this user',
+    description: "Company display name when a company row exists for this user",
   })
   companyName: string | null;
 }

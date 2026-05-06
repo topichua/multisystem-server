@@ -1,4 +1,4 @@
-import { UserStatus } from '../../database/entities';
+import { UserStatus } from "../../database/entities";
 
 export type CreateUserInput = {
   email: string;

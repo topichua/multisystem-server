@@ -1,9 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class CompanyInstagramAccountId1744200000008
-  implements MigrationInterface
-{
-  name = 'CompanyInstagramAccountId1744200000008';
+export class CompanyInstagramAccountId1744200000008 implements MigrationInterface {
+  name = "CompanyInstagramAccountId1744200000008";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

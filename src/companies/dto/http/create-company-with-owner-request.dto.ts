@@ -1,14 +1,22 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 
 export class CreateCompanyWithOwnerRequestDto {
-  @ApiProperty({ description: 'Workspace display name' })
+  @ApiProperty({ description: "Workspace display name" })
   @IsString()
   @MinLength(1)
   @MaxLength(255)
   workspace_name: string;
 
-  @ApiProperty({ description: 'Email for the new owner user (login identifier)' })
+  @ApiProperty({
+    description: "Email for the new owner user (login identifier)",
+  })
   @IsEmail()
   user_email: string;
 
@@ -19,7 +27,7 @@ export class CreateCompanyWithOwnerRequestDto {
   first_name: string;
 
   @ApiPropertyOptional({
-    description: 'Optional; omit or send empty string for no last name.',
+    description: "Optional; omit or send empty string for no last name.",
   })
   @IsOptional()
   @IsString()
@@ -27,7 +35,8 @@ export class CreateCompanyWithOwnerRequestDto {
   last_name?: string;
 
   @ApiProperty({
-    description: 'Plaintext password for the new owner; stored as bcrypt hash only.',
+    description:
+      "Plaintext password for the new owner; stored as bcrypt hash only.",
     minLength: 8,
   })
   @IsString()

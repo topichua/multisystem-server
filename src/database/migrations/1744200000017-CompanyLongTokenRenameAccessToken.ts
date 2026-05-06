@@ -1,10 +1,8 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /** Facebook OAuth long-lived user token — use standard `access_token` column name. */
-export class CompanyLongTokenRenameAccessToken1744200000017
-  implements MigrationInterface
-{
-  name = 'CompanyLongTokenRenameAccessToken1744200000017';
+export class CompanyLongTokenRenameAccessToken1744200000017 implements MigrationInterface {
+  name = "CompanyLongTokenRenameAccessToken1744200000017";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

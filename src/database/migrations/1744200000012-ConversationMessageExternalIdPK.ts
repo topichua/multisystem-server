@@ -1,13 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * `conversation_messages`: PK is `external_id` (Instagram message id / Graph `mid`).
  * Reply link is stored as parent message external id in `replied_to_external_id` (varchar).
  */
-export class ConversationMessageExternalIdPK1744200000012
-  implements MigrationInterface
-{
-  name = 'ConversationMessageExternalIdPK1744200000012';
+export class ConversationMessageExternalIdPK1744200000012 implements MigrationInterface {
+  name = "ConversationMessageExternalIdPK1744200000012";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

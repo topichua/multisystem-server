@@ -1,11 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * `instagram_users.id` (serial) -> PK is `scoped_id` (Graph PSID/IGSID).
  * `clients.instagram_user_id` (int) -> `instagram_user_scoped_id` (varchar FK).
  */
 export class InstagramUserScopedIdPK1744200000005 implements MigrationInterface {
-  name = 'InstagramUserScopedIdPK1744200000005';
+  name = "InstagramUserScopedIdPK1744200000005";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
@@ -25,12 +25,12 @@ export class InstagramUserScopedIdPK1744200000005 implements MigrationInterface 
       WHERE c."instagram_user_id" = i."id"
     `);
 
-    const unmapped: { c: string }[] = await queryRunner.query(`
+    const unmapped = (await queryRunner.query(`
       SELECT COUNT(*)::text AS c FROM "clients" WHERE "instagram_user_scoped_id" IS NULL
-    `);
-    if (unmapped[0] && unmapped[0].c !== '0') {
+    `)) as { c: string }[];
+    if (unmapped[0] && unmapped[0].c !== "0") {
       throw new Error(
-        'Migration InstagramUserScopedIdPK: some clients could not be mapped to instagram_users.scoped_id (null scoped_id on parent). Fix data and retry.',
+        "Migration InstagramUserScopedIdPK: some clients could not be mapped to instagram_users.scoped_id (null scoped_id on parent). Fix data and retry.",
       );
     }
 
@@ -50,9 +50,7 @@ export class InstagramUserScopedIdPK1744200000005 implements MigrationInterface 
     await queryRunner.query(
       `ALTER TABLE "instagram_users" DROP CONSTRAINT "PK_instagram_users"`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "instagram_users" DROP COLUMN "id"`,
-    );
+    await queryRunner.query(`ALTER TABLE "instagram_users" DROP COLUMN "id"`);
     await queryRunner.query(`
       ALTER TABLE "instagram_users" ALTER COLUMN "scoped_id" SET NOT NULL
     `);

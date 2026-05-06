@@ -1,10 +1,8 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /** `scoped_id` / `instagram_user_scoped_id` -> `id` / `instagram_user_id` (same string PK / FK). */
-export class InstagramUserIdColumnNames1744200000006
-  implements MigrationInterface
-{
-  name = 'InstagramUserIdColumnNames1744200000006';
+export class InstagramUserIdColumnNames1744200000006 implements MigrationInterface {
+  name = "InstagramUserIdColumnNames1744200000006";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

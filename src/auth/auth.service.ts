@@ -1,22 +1,19 @@
-import {
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
-import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
-import { Company, User, UserStatus } from '../database/entities';
-import { ROLE_SUPER_ADMIN } from './constants';
-import type { AuthUser } from './types/auth-user.type';
-import type { JwtPayload } from './interfaces/jwt-payload.interface';
-import type { LoginRequestDto } from './dto/login-request.dto';
+import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
+import { InjectRepository } from "@nestjs/typeorm";
+import * as bcrypt from "bcrypt";
+import { Repository } from "typeorm";
+import { Company, User, UserStatus } from "../database/entities";
+import { ROLE_SUPER_ADMIN } from "./constants";
+import type { AuthUser } from "./types/auth-user.type";
+import type { JwtPayload } from "./interfaces/jwt-payload.interface";
+import type { LoginRequestDto } from "./dto/login-request.dto";
 import type {
   CompanyMeDto,
   MeResponseDto,
   UserMeDto,
-} from './dto/me-response.dto';
+} from "./dto/me-response.dto";
 
 /** Default access token lifetime when `JWT_EXPIRES_SECONDS` is unset (30 days). */
 const DEFAULT_JWT_EXPIRES_SECONDS = 30 * 24 * 60 * 60;
@@ -33,7 +30,7 @@ export class AuthService {
   ) {}
 
   async getMe(authUser: AuthUser): Promise<MeResponseDto> {
-    if (authUser.userId === 'super-admin') {
+    if (authUser.userId === "super-admin") {
       return {
         email: authUser.email,
         role: authUser.role,
@@ -58,7 +55,7 @@ export class AuthService {
 
     const company = await this.companyRepo.findOne({
       where: { ownerId: id },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
 
     const companyDto: CompanyMeDto | null = company
@@ -111,8 +108,11 @@ export class AuthService {
   ): Promise<{ access_token: string }> {
     const email = dto.email.trim().toLowerCase();
 
-    const adminEmail = this.config.get<string>('ADMIN_EMAIL')?.trim().toLowerCase();
-    const adminPassword = this.config.get<string>('ADMIN_PASSWORD');
+    const adminEmail = this.config
+      .get<string>("ADMIN_EMAIL")
+      ?.trim()
+      .toLowerCase();
+    const adminPassword = this.config.get<string>("ADMIN_PASSWORD");
     if (
       adminEmail &&
       adminPassword &&
@@ -120,7 +120,7 @@ export class AuthService {
       dto.password === adminPassword
     ) {
       return this.signAccessToken({
-        sub: 'super-admin',
+        sub: "super-admin",
         email: adminEmail,
         role: ROLE_SUPER_ADMIN,
       });
@@ -131,14 +131,14 @@ export class AuthService {
       withDeleted: false,
     });
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException("Invalid credentials");
     }
     if (user.status !== UserStatus.Active) {
-      throw new UnauthorizedException('User is not active');
+      throw new UnauthorizedException("User is not active");
     }
     const passwordMatch = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordMatch) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException("Invalid credentials");
     }
 
     return this.signAccessToken({
@@ -150,7 +150,7 @@ export class AuthService {
 
   private signAccessToken(payload: JwtPayload): { access_token: string } {
     const expiresSeconds = parseInt(
-      this.config.get<string>('JWT_EXPIRES_SECONDS') ??
+      this.config.get<string>("JWT_EXPIRES_SECONDS") ??
         `${DEFAULT_JWT_EXPIRES_SECONDS}`,
       10,
     );

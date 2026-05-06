@@ -1,9 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ConversationMessageEditedAt1744200000003
-  implements MigrationInterface
-{
-  name = 'ConversationMessageEditedAt1744200000003';
+export class ConversationMessageEditedAt1744200000003 implements MigrationInterface {
+  name = "ConversationMessageEditedAt1744200000003";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

@@ -1,9 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class CompanyAccessTokenRenameLongToken1744200000016
-  implements MigrationInterface
-{
-  name = 'CompanyAccessTokenRenameLongToken1744200000016';
+export class CompanyAccessTokenRenameLongToken1744200000016 implements MigrationInterface {
+  name = "CompanyAccessTokenRenameLongToken1744200000016";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

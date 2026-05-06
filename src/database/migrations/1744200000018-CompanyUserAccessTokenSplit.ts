@@ -1,14 +1,12 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Split Facebook tokens on `company`:
  * - `user_access_token` — long-lived **user** token (OAuth exchange).
  * - `access_token` — **Page** token from `me/accounts` (Graph `access_token` on the Page object).
  */
-export class CompanyUserAccessTokenSplit1744200000018
-  implements MigrationInterface
-{
-  name = 'CompanyUserAccessTokenSplit1744200000018';
+export class CompanyUserAccessTokenSplit1744200000018 implements MigrationInterface {
+  name = "CompanyUserAccessTokenSplit1744200000018";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

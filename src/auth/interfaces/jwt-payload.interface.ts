@@ -1,4 +1,4 @@
-import { AppRole } from '../constants';
+import { AppRole } from "../constants";
 
 export interface JwtPayload {
   sub: string;

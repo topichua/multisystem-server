@@ -1,11 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Allows CRM clients without a linked `instagram_users` row (`instagram_user_id` NULL).
  * Adds a partial unique index so at most one client per workspace can use a given Instagram id.
  */
 export class ClientsInstagramUserIdNullable1744200000023 implements MigrationInterface {
-  name = 'ClientsInstagramUserIdNullable1744200000023';
+  name = "ClientsInstagramUserIdNullable1744200000023";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
@@ -28,12 +28,12 @@ export class ClientsInstagramUserIdNullable1744200000023 implements MigrationInt
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const rows: Array<{ c: string }> = await queryRunner.query(
+    const rows = (await queryRunner.query(
       `SELECT COUNT(*)::text AS c FROM "clients" WHERE "instagram_user_id" IS NULL`,
-    );
+    )) as Array<{ c: string }>;
     if (Number(rows[0].c) > 0) {
       throw new Error(
-        'Cannot revert ClientsInstagramUserIdNullable: remove or set instagram_user_id on rows where it is NULL, then retry.',
+        "Cannot revert ClientsInstagramUserIdNullable: remove or set instagram_user_id on rows where it is NULL, then retry.",
       );
     }
     await queryRunner.query(

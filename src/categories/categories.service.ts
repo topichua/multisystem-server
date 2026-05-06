@@ -3,12 +3,12 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
-import { Company, ProductCategory } from '../database/entities';
-import type { CreateCategoryRequestDto } from './dto/create-category-request.dto';
-import type { UpdateCategoryRequestDto } from './dto/update-category-request.dto';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { IsNull, Not, Repository } from "typeorm";
+import { Company, ProductCategory } from "../database/entities";
+import type { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
+import type { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
 export type CategoryTreeNodeDto = {
   id: number;
@@ -21,7 +21,10 @@ export type CategoryTreeNodeDto = {
   children: CategoryTreeNodeDto[];
 };
 
-function compareCategoriesForSort(a: ProductCategory, b: ProductCategory): number {
+function compareCategoriesForSort(
+  a: ProductCategory,
+  b: ProductCategory,
+): number {
   if (a.sortOrder !== b.sortOrder) {
     return a.sortOrder - b.sortOrder;
   }
@@ -41,27 +44,30 @@ export class CategoriesService {
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
     const rows = await this.categoryRepo.find({
       where: { workspaceId, deletedAt: IsNull() },
-      order: { sortOrder: 'ASC', name: 'ASC' },
+      order: { sortOrder: "ASC", name: "ASC" },
     });
     return this.buildTree(rows);
   }
 
-  async findOneForOwner(ownerId: number, id: number): Promise<CategoryTreeNodeDto> {
+  async findOneForOwner(
+    ownerId: number,
+    id: number,
+  ): Promise<CategoryTreeNodeDto> {
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
       where: { id, workspaceId, deletedAt: IsNull() },
     });
     if (!row) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException("Category not found");
     }
     const rows = await this.categoryRepo.find({
       where: { workspaceId, deletedAt: IsNull() },
-      order: { sortOrder: 'ASC', name: 'ASC' },
+      order: { sortOrder: "ASC", name: "ASC" },
     });
     const tree = this.buildTree(rows);
     const found = this.findNodeInForest(tree, id);
     if (!found) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException("Category not found");
     }
     return found;
   }
@@ -73,7 +79,7 @@ export class CategoriesService {
     const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
     const name = dto.name.trim();
     if (!name) {
-      throw new BadRequestException('name is required');
+      throw new BadRequestException("name is required");
     }
     const sortOrder = dto.sortOrder ?? 0;
     const parentId = dto.parentId ?? null;
@@ -82,7 +88,12 @@ export class CategoriesService {
       await this.requireExistingTopLevelParent(workspaceId, parentId);
     }
 
-    await this.assertUniqueNameAmongSiblings(workspaceId, parentId, name, undefined);
+    await this.assertUniqueNameAmongSiblings(
+      workspaceId,
+      parentId,
+      name,
+      undefined,
+    );
 
     const row = this.categoryRepo.create({
       workspaceId,
@@ -107,13 +118,13 @@ export class CategoriesService {
       where: { id, workspaceId, deletedAt: IsNull() },
     });
     if (!row) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException("Category not found");
     }
 
     if (dto.name !== undefined) {
       const name = dto.name.trim();
       if (!name) {
-        throw new BadRequestException('name must not be empty');
+        throw new BadRequestException("name must not be empty");
       }
       row.name = name;
     }
@@ -126,7 +137,7 @@ export class CategoriesService {
       const newParentId = dto.parentId;
       if (newParentId === id) {
         throw new BadRequestException(
-          'Cannot set parentId: that would create a cycle in the category hierarchy',
+          "Cannot set parentId: that would create a cycle in the category hierarchy",
         );
       }
       if (newParentId !== null) {
@@ -137,14 +148,19 @@ export class CategoriesService {
         });
         if (childCount > 0) {
           throw new BadRequestException(
-            'Cannot set a parent category when this category has subcategories; maximum hierarchy depth is two levels',
+            "Cannot set a parent category when this category has subcategories; maximum hierarchy depth is two levels",
           );
         }
       }
       row.parentId = newParentId;
     }
 
-    await this.assertUniqueNameAmongSiblings(workspaceId, row.parentId, row.name, row.id);
+    await this.assertUniqueNameAmongSiblings(
+      workspaceId,
+      row.parentId,
+      row.name,
+      row.id,
+    );
 
     await this.categoryRepo.save(row);
     return this.findOneForOwner(ownerId, row.id);
@@ -156,14 +172,16 @@ export class CategoriesService {
       where: { id, workspaceId, deletedAt: IsNull() },
     });
     if (!row) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundException("Category not found");
     }
 
     const childCount = await this.categoryRepo.count({
       where: { workspaceId, parentId: id, deletedAt: IsNull() },
     });
     if (childCount > 0) {
-      throw new ConflictException('Cannot delete a category that has child categories');
+      throw new ConflictException(
+        "Cannot delete a category that has child categories",
+      );
     }
 
     row.deletedAt = new Date();
@@ -171,7 +189,10 @@ export class CategoriesService {
     await this.categoryRepo.save(row);
   }
 
-  private findNodeInForest(forest: CategoryTreeNodeDto[], id: number): CategoryTreeNodeDto | null {
+  private findNodeInForest(
+    forest: CategoryTreeNodeDto[],
+    id: number,
+  ): CategoryTreeNodeDto | null {
     for (const node of forest) {
       if (node.id === id) return node;
       const nested = this.findNodeInForest(node.children, id);
@@ -210,16 +231,16 @@ export class CategoriesService {
   private async requireWorkspaceIdForOwner(ownerId: number): Promise<number> {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        'Current authorized user does not contain a numeric owner id',
+        "Current authorized user does not contain a numeric owner id",
       );
     }
     const company = await this.companyRepo.findOne({
       where: { ownerId },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
     if (!company) {
       throw new NotFoundException(
-        'Integration not found for current user; create a workspace first',
+        "Integration not found for current user; create a workspace first",
       );
     }
     return company.workspaceId;
@@ -236,11 +257,11 @@ export class CategoriesService {
       where: { id: parentId, workspaceId, deletedAt: IsNull() },
     });
     if (!parent) {
-      throw new NotFoundException('Parent category not found');
+      throw new NotFoundException("Parent category not found");
     }
     if (parent.parentId !== null) {
       throw new BadRequestException(
-        'Only top-level categories can be parents; maximum hierarchy depth is two levels',
+        "Only top-level categories can be parents; maximum hierarchy depth is two levels",
       );
     }
     return parent;
@@ -254,7 +275,7 @@ export class CategoriesService {
     while (currentId) {
       if (currentId === categoryId) {
         throw new BadRequestException(
-          'Cannot set parentId: that would create a cycle in the category hierarchy',
+          "Cannot set parentId: that would create a cycle in the category hierarchy",
         );
       }
       const node = await this.categoryRepo.findOne({
@@ -291,7 +312,7 @@ export class CategoriesService {
     const dup = await this.categoryRepo.exist({ where });
     if (dup) {
       throw new ConflictException(
-        'A category with this name already exists under the same parent',
+        "A category with this name already exists under the same parent",
       );
     }
   }

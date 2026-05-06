@@ -2,8 +2,8 @@
  * Domain row shapes aligned with `src/database/entities` (TypeORM tables).
  * Canonical mappings and relations live in that folder only.
  */
-export { ConversationSource } from './database/entities/conversation-source.enum';
-import type { ConversationSource } from './database/entities/conversation-source.enum';
+export { ConversationSource } from "./database/entities/conversation-source.enum";
+import type { ConversationSource } from "./database/entities/conversation-source.enum";
 
 export type Workspace = {
   id: number;

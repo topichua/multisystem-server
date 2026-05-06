@@ -1,4 +1,4 @@
-import type { SafeUser } from '../types/user-view.types';
+import type { SafeUser } from "../types/user-view.types";
 
 export type InviteUserInput = {
   email: string;

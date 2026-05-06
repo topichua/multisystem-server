@@ -3,27 +3,27 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User, UserStatus } from '../database/entities';
-import { PasswordService } from './crypto/password.service';
-import { InvitationTokenService } from './crypto/invitation-token.service';
-import { toAuthSnapshot, toSafeUser } from './mappers/user.mapper';
-import type { AcceptInviteInput } from './dto/accept-invite.dto';
-import type { ChangeEmailInput } from './dto/change-email.dto';
-import type { ChangePasswordInput } from './dto/change-password.dto';
-import type { ChangePersonalInfoInput } from './dto/change-personal-info.dto';
-import type { CreateUserInput } from './dto/create-user.dto';
-import type { InviteUserInput, InviteUserResult } from './dto/invite-user.dto';
-import type { ListUsersQuery } from './dto/list-users.dto';
-import type { UpdateUserInput } from './dto/update-user.dto';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { User, UserStatus } from "../database/entities";
+import { PasswordService } from "./crypto/password.service";
+import { InvitationTokenService } from "./crypto/invitation-token.service";
+import { toAuthSnapshot, toSafeUser } from "./mappers/user.mapper";
+import type { AcceptInviteInput } from "./dto/accept-invite.dto";
+import type { ChangeEmailInput } from "./dto/change-email.dto";
+import type { ChangePasswordInput } from "./dto/change-password.dto";
+import type { ChangePersonalInfoInput } from "./dto/change-personal-info.dto";
+import type { CreateUserInput } from "./dto/create-user.dto";
+import type { InviteUserInput, InviteUserResult } from "./dto/invite-user.dto";
+import type { ListUsersQuery } from "./dto/list-users.dto";
+import type { UpdateUserInput } from "./dto/update-user.dto";
 import type {
   PaginatedUsers,
   SafeUser,
   UserAuthSnapshot,
   UserQueryOptions,
-} from './types/user-view.types';
+} from "./types/user-view.types";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -46,7 +46,7 @@ export class UsersService {
     const email = this.normalizeEmail(input.email);
     const existing = await this.findEntityByEmail(email);
     if (existing) {
-      throw new ConflictException('Email already in use');
+      throw new ConflictException("Email already in use");
     }
 
     const status =
@@ -107,7 +107,7 @@ export class UsersService {
       Math.max(1, query.limit ?? DEFAULT_PAGE_SIZE),
     );
     const [entities, total] = await this.userRepo.findAndCount({
-      order: { createdAt: 'DESC' },
+      order: { createdAt: "DESC" },
       skip: (page - 1) * limit,
       take: limit,
     });
@@ -163,7 +163,7 @@ export class UsersService {
     const email = this.normalizeEmail(input.email);
     const taken = await this.findEntityByEmail(email);
     if (taken) {
-      throw new ConflictException('Email already in use');
+      throw new ConflictException("Email already in use");
     }
 
     const rawInvitationToken = this.invitationTokenService.generateRawToken();
@@ -199,16 +199,16 @@ export class UsersService {
       where: { invitationTokenHash: tokenHash },
     });
     if (!user) {
-      throw new NotFoundException('Invalid or expired invitation');
+      throw new NotFoundException("Invalid or expired invitation");
     }
     if (user.status !== UserStatus.Invited) {
-      throw new BadRequestException('Invitation is no longer valid');
+      throw new BadRequestException("Invitation is no longer valid");
     }
     if (
       user.invitationExpiresAt &&
       user.invitationExpiresAt.getTime() < Date.now()
     ) {
-      throw new BadRequestException('Invitation has expired');
+      throw new BadRequestException("Invitation has expired");
     }
 
     user.status = UserStatus.Active;
@@ -257,10 +257,10 @@ export class UsersService {
       user.metadata = input.metadata;
     }
     if (input.mobilePhonePlain !== undefined) {
-      if (input.mobilePhonePlain === null || input.mobilePhonePlain === '') {
+      if (input.mobilePhonePlain === null || input.mobilePhonePlain === "") {
         user.mobilePhoneHash = null;
       } else {
-        const normalized = input.mobilePhonePlain.replace(/\D/g, '');
+        const normalized = input.mobilePhonePlain.replace(/\D/g, "");
         user.mobilePhoneHash =
           normalized.length === 0
             ? null
@@ -278,7 +278,7 @@ export class UsersService {
     }
     const other = await this.findEntityByEmail(next);
     if (other && other.id !== user.id) {
-      throw new ConflictException('Email already in use');
+      throw new ConflictException("Email already in use");
     }
     user.email = next;
     return toSafeUser(await this.userRepo.save(user));
@@ -291,14 +291,14 @@ export class UsersService {
     const user = await this.requireEntityById(id);
     if (user.passwordHash) {
       if (!input.currentPassword) {
-        throw new BadRequestException('Current password is required');
+        throw new BadRequestException("Current password is required");
       }
       const match = await this.passwordService.compare(
         input.currentPassword,
         user.passwordHash,
       );
       if (!match) {
-        throw new BadRequestException('Invalid current password');
+        throw new BadRequestException("Invalid current password");
       }
     }
     user.passwordHash = await this.passwordService.hash(input.newPassword);
@@ -348,7 +348,7 @@ export class UsersService {
   ): Promise<User> {
     const user = await this.findEntityById(id, options);
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException("User not found");
     }
     return user;
   }

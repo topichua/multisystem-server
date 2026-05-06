@@ -3,30 +3,27 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
 import {
   Company,
   Conversation,
   ConversationMessage,
   ConversationSource,
   InstagramUser,
-} from '../database/entities';
+} from "../database/entities";
 import type {
   InstagramConversationDto,
   InstagramConversationParticipantDto,
   InstagramConversationsResponseDto,
-} from './dto/http/instagram-conversations-response.dto';
-import type {
-  InstagramMessageDto,
-  InstagramMessagesResponseDto,
-} from './dto/http/instagram-messages-response.dto';
+} from "./dto/http/instagram-conversations-response.dto";
+import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
 import type {
   InstagramWebhookMessagingItem,
   InstagramWebhookPayload,
-} from '../webhook/instagram-webhook-payload.types';
-import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from './instagram-graph-message-fields';
+} from "../webhook/instagram-webhook-payload.types";
+import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 
 type InstagramErrorResponse = {
   error?: {
@@ -74,7 +71,7 @@ export class ConversationsAllocationService {
       const messaging = entry.messaging ?? [];
       const company = await this.companyRepo.findOne({
         where: { instagramAccountId: entryPageId },
-        order: { id: 'DESC' },
+        order: { id: "DESC" },
       });
       if (!company) {
         this.log.warn(
@@ -87,7 +84,7 @@ export class ConversationsAllocationService {
         `${t} entry[${ei}] company found id=${company.id} owner_id=${company.ownerId}`,
       );
 
-      const businessInstagramId = company.instagramAccountId?.trim() ?? '';
+      const businessInstagramId = company.instagramAccountId?.trim() ?? "";
       if (!businessInstagramId) {
         this.log.warn(
           `${t} entry[${ei}] company=${company.id} missing instagram_account_id; webhook skipped`,
@@ -95,7 +92,7 @@ export class ConversationsAllocationService {
         continue;
       }
 
-      const accessToken = company.accessToken?.trim() ?? '';
+      const accessToken = company.accessToken?.trim() ?? "";
       if (!accessToken) {
         this.log.warn(
           `${t} entry[${ei}] no Page token (company.access_token) for company=${company.id}; webhook skipped`,
@@ -147,7 +144,7 @@ export class ConversationsAllocationService {
               ...(editedAt != null ? { editedAt } : {}),
               senderHintId,
               webhookMessaging: ev,
-              pageId: company.pageId
+              pageId: company.pageId,
             });
           } catch (e) {
             const err = e instanceof Error ? e.message : String(e);
@@ -168,13 +165,13 @@ export class ConversationsAllocationService {
   private async fetchInstagramMessageById(
     messageId: string,
     accessToken: string,
-    fields = 'id,created_time,from,to,message',
+    fields = "id,created_time,from,to,message",
   ): Promise<InstagramMessageDto> {
     const url = new URL(
       `https://graph.facebook.com/v25.0/${encodeURIComponent(messageId)}`,
     );
-    url.searchParams.set('fields', fields);
-    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set("fields", fields);
+    url.searchParams.set("access_token", accessToken);
     return this.instagramGraphFetch<InstagramMessageDto>(url);
   }
 
@@ -190,7 +187,7 @@ export class ConversationsAllocationService {
     accessToken: string,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
-    const fields = encodeURIComponent('id,participants,updated_time');
+    const fields = encodeURIComponent("id,participants,updated_time");
     let nextUrl: string | null =
       `https://graph.facebook.com/v25.0/${encodeURIComponent(businessInstagramId)}/conversations` +
       `?platform=instagram&user_id=${encodeURIComponent(customerInstagramUserId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
@@ -299,11 +296,7 @@ export class ConversationsAllocationService {
       return fromGraph;
     }
     const hint = senderHintId?.trim();
-    if (
-      hint &&
-      this.isLikelyInstagramPsid(hint) &&
-      !excludedIds.has(hint)
-    ) {
+    if (hint && this.isLikelyInstagramPsid(hint) && !excludedIds.has(hint)) {
       return hint;
     }
     return null;
@@ -355,7 +348,7 @@ export class ConversationsAllocationService {
         participantId: customerUserId,
         source: ConversationSource.INSTAGRAM,
       },
-      order: { id: 'DESC' },
+      order: { id: "DESC" },
     });
 
     if (row) {
@@ -378,36 +371,40 @@ export class ConversationsAllocationService {
       accessToken,
     );
     this.log.log(
-      `${t} Graph conversations count=${convList.length} first_id=${convList[0]?.id ?? 'none'}`,
+      `${t} Graph conversations count=${convList.length} first_id=${convList[0]?.id ?? "none"}`,
     );
 
     let graphConversationId: string | undefined = convList[0]?.id?.trim();
 
     if (!graphConversationId) {
-      this.log.log(`${t} conversations edge empty; loading message.conversation{id}`);
+      this.log.log(
+        `${t} conversations edge empty; loading message.conversation{id}`,
+      );
       const extended = await this.fetchInstagramMessageById(
         mid,
         accessToken,
         [
-          'id',
-          'created_time',
-          'from',
-          'to',
-          'message',
+          "id",
+          "created_time",
+          "from",
+          "to",
+          "message",
           `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
-          'conversation{id}',
-          'reactions{data{reaction,users{id,username}}}',
-        ].join(','),
+          "conversation{id}",
+          "reactions{data{reaction,users{id,username}}}",
+        ].join(","),
       );
       graphConversationId = extended.conversation?.id?.trim();
       if (graphConversationId) {
-        this.log.log(`${t} conversation id from message node id=${graphConversationId}`);
+        this.log.log(
+          `${t} conversation id from message node id=${graphConversationId}`,
+        );
       }
     }
 
     if (!graphConversationId) {
       throw new Error(
-        'Could not resolve Instagram conversation id (user conversations edge empty and message.conversation missing)',
+        "Could not resolve Instagram conversation id (user conversations edge empty and message.conversation missing)",
       );
     }
 
@@ -418,7 +415,8 @@ export class ConversationsAllocationService {
           igConv.participants?.data ?? [],
           businessInstagramId,
         )
-      : this.pickCustomerUserIdFromMessage(msg, businessInstagramId) ?? 'unknown';
+      : (this.pickCustomerUserIdFromMessage(msg, businessInstagramId) ??
+        "unknown");
 
     row = await this.conversationRepo.findOne({
       where: { managerId: ownerId, externalId: graphConversationId },
@@ -441,7 +439,7 @@ export class ConversationsAllocationService {
     } else {
       row.instUpdatedAt = updatedTime;
       row.participantId =
-        participantId !== 'unknown' ? participantId : row.participantId;
+        participantId !== "unknown" ? participantId : row.participantId;
       row.externalSourceId = businessInstagramId;
       this.log.log(
         `${t} conversation UPDATE by external_id db_id=${row.id} external_id=${graphConversationId}`,
@@ -468,15 +466,15 @@ export class ConversationsAllocationService {
   }): Promise<void> {
     const t = `[webhook trace=${opts.traceId}]`;
     const messageFieldsWithReactions = [
-      'id',
-      'created_time',
-      'from',
-      'to',
-      'reply_to',
-      'message',
+      "id",
+      "created_time",
+      "from",
+      "to",
+      "reply_to",
+      "message",
       `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
-      'reactions{data{reaction,users{id,username}}}',
-    ].join(',');
+      "reactions{data{reaction,users{id,username}}}",
+    ].join(",");
     const msg = await this.fetchInstagramMessageById(
       opts.mid,
       opts.accessToken,
@@ -494,7 +492,7 @@ export class ConversationsAllocationService {
     );
     if (!customerUserId) {
       throw new Error(
-        'Could not resolve customer user_id from message from/to or webhook sender',
+        "Could not resolve customer user_id from message from/to or webhook sender",
       );
     }
     this.log.log(`${t} mid customer user_id=${customerUserId}`);
@@ -532,29 +530,35 @@ export class ConversationsAllocationService {
   private async persistInstagramMessages(
     conversationDbId: number,
     messages: InstagramMessageDto[],
-    options?: { editedAt?: Date; webhookMessaging?: InstagramWebhookMessagingItem },
+    options?: {
+      editedAt?: Date;
+      webhookMessaging?: InstagramWebhookMessagingItem;
+    },
   ): Promise<void> {
     for (const m of messages) {
       const ext = m.id?.trim();
       if (!ext) continue;
       const createdAt = new Date(m.created_time);
       if (Number.isNaN(createdAt.getTime())) continue;
-      const senderId = m.from?.id?.trim() ?? '';
-      const receiverId = m.to?.data?.[0]?.id?.trim() ?? '';
-      const text = m.message ?? '';
+      const senderId = m.from?.id?.trim() ?? "";
+      const receiverId = m.to?.data?.[0]?.id?.trim() ?? "";
+      const text = m.message ?? "";
       /** Graph includes `reply_to` when requested; webhooks often omit it (only `mid` + text). */
       const parentMidRaw =
         m.reply_to?.mid?.trim() ||
         options?.webhookMessaging?.message?.reply_to?.mid?.trim();
       const repliedToFromPayload =
         parentMidRaw && parentMidRaw !== ext ? parentMidRaw : null;
-      const { reply_to: _replyTo, id: _graphMessageId, ...messageWithoutId } = m;
+      const { reply_to, id, ...messageWithoutId } = m;
+      void reply_to;
+      void id;
       const instagramJson = JSON.stringify({
         ...messageWithoutId,
         ...(options?.webhookMessaging != null
           ? {
-              webhook_messaging:
-                this.sanitizeWebhookMessagingForStorage(options.webhookMessaging),
+              webhook_messaging: this.sanitizeWebhookMessagingForStorage(
+                options.webhookMessaging,
+              ),
             }
           : {}),
       });
@@ -569,8 +573,8 @@ export class ConversationsAllocationService {
           message: text,
           instagramJson,
           createdAt,
-          senderId: senderId.length > 0 ? senderId : '0',
-          receiverId: receiverId.length > 0 ? receiverId : '0',
+          senderId: senderId.length > 0 ? senderId : "0",
+          receiverId: receiverId.length > 0 ? receiverId : "0",
           readAt: null,
           repliedToExternalId: repliedToFromPayload,
           ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
@@ -600,10 +604,10 @@ export class ConversationsAllocationService {
   ): Promise<void> {
     const t = `[webhook trace=${traceId}]`;
     const rows = await this.conversationMessageRepo
-      .createQueryBuilder('m')
-      .innerJoin(Conversation, 'c', 'c.id = m.conversation_id')
-      .where('m.external_id = :mid', { mid })
-      .andWhere('c.manager_id = :ownerId', { ownerId })
+      .createQueryBuilder("m")
+      .innerJoin(Conversation, "c", "c.id = m.conversation_id")
+      .where("m.external_id = :mid", { mid })
+      .andWhere("c.manager_id = :ownerId", { ownerId })
       .getMany();
 
     if (rows.length === 0) {
@@ -669,7 +673,7 @@ export class ConversationsAllocationService {
     const ids = participants
       .map((p) => p.id?.trim())
       .filter((id): id is string => Boolean(id));
-    if (ids.length === 0) return 'unknown';
+    if (ids.length === 0) return "unknown";
     const excludedIds = new Set(
       [businessInstagramId]
         .map((x) => x?.trim())
@@ -722,7 +726,7 @@ export class ConversationsAllocationService {
     const url = new URL(
       `https://graph.facebook.com/v25.0/${encodeURIComponent(instagramUserId)}`,
     );
-    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set("access_token", accessToken);
     const node = await this.instagramGraphFetch<{
       id?: string;
       name?: string;
@@ -735,8 +739,9 @@ export class ConversationsAllocationService {
       node.username?.trim() ||
       node.id?.trim() ||
       instagramUserId;
-    const username = node.username?.trim() || node.id?.trim() || instagramUserId;
-    const profilePic = node.profile_pic?.trim() || '';
+    const username =
+      node.username?.trim() || node.id?.trim() || instagramUserId;
+    const profilePic = node.profile_pic?.trim() || "";
     const now = new Date();
 
     let row = await this.instagramUserRepo.findOne({
@@ -762,16 +767,16 @@ export class ConversationsAllocationService {
   }
 
   private normalizeRecipientIdInput(raw: string | undefined | null): string {
-    if (raw == null) return '';
+    if (raw == null) return "";
     return String(raw)
       .trim()
-      .replace(/^["']|["']$/g, '')
-      .replace(/[\s\u00a0\u200b-\u200d\ufeff,]+/g, '');
+      .replace(/^["']|["']$/g, "")
+      .replace(/[\s\u00a0\u200b-\u200d\ufeff,]+/g, "");
   }
 
   private isLikelyInstagramPsid(id: string | undefined): boolean {
-    const t = this.normalizeRecipientIdInput(id ?? '');
-    return t.length > 0 && t !== 'unknown' && /^\d+$/.test(t);
+    const t = this.normalizeRecipientIdInput(id ?? "");
+    return t.length > 0 && t !== "unknown" && /^\d+$/.test(t);
   }
 
   /**
@@ -795,15 +800,18 @@ export class ConversationsAllocationService {
       /\(#[0-9]+\)\s*Requires pages_messaging/i.test(msg)
     ) {
       throw new ForbiddenException(
-        'Facebook / Instagram access token is missing the pages_messaging permission (Graph error #230). ' +
+        "Facebook / Instagram access token is missing the pages_messaging permission (Graph error #230). " +
           'In developers.facebook.com: add "pages_messaging" (and Instagram messaging scopes your product needs) to the app, ' +
-          're-run Login / Page install so the Page token includes those permissions, then store the new Page token on the company (OAuth).',
+          "re-run Login / Page install so the Page token includes those permissions, then store the new Page token on the company (OAuth).",
       );
     }
     throw new BadGatewayException(msg);
   }
 
-  private async instagramGraphFetch<T>(url: URL, init?: RequestInit): Promise<T> {
+  private async instagramGraphFetch<T>(
+    url: URL,
+    init?: RequestInit,
+  ): Promise<T> {
     const response = await fetch(url.toString(), init);
     const bodyText = await response.text();
     let body: T | InstagramErrorResponse = {} as T;
@@ -811,7 +819,9 @@ export class ConversationsAllocationService {
       try {
         body = JSON.parse(bodyText) as T | InstagramErrorResponse;
       } catch {
-        throw new BadGatewayException('Instagram Graph API returned invalid JSON');
+        throw new BadGatewayException(
+          "Instagram Graph API returned invalid JSON",
+        );
       }
     }
 

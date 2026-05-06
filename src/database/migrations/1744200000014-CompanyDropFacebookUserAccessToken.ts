@@ -1,10 +1,8 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /** Copies `facebook_user_access_token` into `access_token` then drops the old column. */
-export class CompanyDropFacebookUserAccessToken1744200000014
-  implements MigrationInterface
-{
-  name = 'CompanyDropFacebookUserAccessToken1744200000014';
+export class CompanyDropFacebookUserAccessToken1744200000014 implements MigrationInterface {
+  name = "CompanyDropFacebookUserAccessToken1744200000014";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

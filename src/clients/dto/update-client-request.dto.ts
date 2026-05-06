@@ -1,5 +1,5 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiPropertyOptional } from "@nestjs/swagger";
+import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export class UpdateClientRequestDto {
   @ApiPropertyOptional()
@@ -32,7 +32,7 @@ export class UpdateClientRequestDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Set to a new Instagram id, or null / empty string to clear the link.',
+      "Set to a new Instagram id, or null / empty string to clear the link.",
   })
   @IsOptional()
   @IsString()

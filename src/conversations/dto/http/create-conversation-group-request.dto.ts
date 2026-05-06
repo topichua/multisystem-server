@@ -1,6 +1,13 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  Min,
+} from "class-validator";
+import { Type } from "class-transformer";
 
 export class CreateConversationGroupRequestDto {
   @ApiProperty()
@@ -21,7 +28,9 @@ export class CreateConversationGroupRequestDto {
   @MaxLength(64)
   color?: string | null;
 
-  @ApiPropertyOptional({ description: 'Display order within the workspace (default 0).' })
+  @ApiPropertyOptional({
+    description: "Display order within the workspace (default 0).",
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

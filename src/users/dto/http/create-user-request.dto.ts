@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsEmail,
   IsEnum,
@@ -7,8 +7,8 @@ import {
   IsString,
   MaxLength,
   MinLength,
-} from 'class-validator';
-import { UserStatus } from '../../../database/entities';
+} from "class-validator";
+import { UserStatus } from "../../../database/entities";
 
 export class CreateUserRequestDto {
   @ApiProperty()
@@ -28,7 +28,7 @@ export class CreateUserRequestDto {
   lastName?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Plaintext password; stored as bcrypt hash only.',
+    description: "Plaintext password; stored as bcrypt hash only.",
     minLength: 8,
   })
   @IsOptional()
@@ -38,7 +38,7 @@ export class CreateUserRequestDto {
 
   @ApiPropertyOptional({
     enum: UserStatus,
-    description: '0 = invited, 1 = active, 2 = disabled',
+    description: "0 = invited, 1 = active, 2 = disabled",
   })
   @IsOptional()
   @IsEnum(UserStatus)

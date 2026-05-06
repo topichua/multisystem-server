@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { ConversationGroupResponseDto } from './conversation-group-response.dto';
+import { ApiProperty } from "@nestjs/swagger";
+import { ConversationGroupResponseDto } from "./conversation-group-response.dto";
 
 export class ConversationGroupsListResponseDto {
   @ApiProperty({ type: [ConversationGroupResponseDto] })

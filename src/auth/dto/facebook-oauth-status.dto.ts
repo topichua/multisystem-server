@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from "@nestjs/swagger";
 
 export class FacebookOAuthStatusDto {
   @ApiPropertyOptional({ nullable: true })
@@ -9,13 +9,14 @@ export class FacebookOAuthStatusDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Instagram Business Account id (same as `company.instagram_account_id`).',
+    description:
+      "Instagram Business Account id (same as `company.instagram_account_id`).",
   })
   instagramAccountId: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   tokenStatus: string | null;
 
-  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   tokenConnectedAt: Date | null;
 }

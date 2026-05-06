@@ -1,13 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Renames the `company` table to `integration`. PostgreSQL updates FK targets
  * on `conversation_groups.company_id` automatically.
  */
-export class CompanyTableRenameToIntegration1744200000021
-  implements MigrationInterface
-{
-  name = 'CompanyTableRenameToIntegration1744200000021';
+export class CompanyTableRenameToIntegration1744200000021 implements MigrationInterface {
+  name = "CompanyTableRenameToIntegration1744200000021";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "company" RENAME TO "integration"`);

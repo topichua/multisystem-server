@@ -1,30 +1,33 @@
-import { DataSourceOptions } from 'typeorm';
-import { InitialSchema1744200000001 } from './migrations/1744200000001-InitialSchema';
-import { ConversationParticipantString1744200000002 } from './migrations/1744200000002-ConversationParticipantString';
-import { ConversationMessageEditedAt1744200000003 } from './migrations/1744200000003-ConversationMessageEditedAt';
-import { InstagramUserScopedId1744200000004 } from './migrations/1744200000004-InstagramUserScopedId';
-import { InstagramUserScopedIdPK1744200000005 } from './migrations/1744200000005-InstagramUserScopedIdPK';
-import { InstagramUserIdColumnNames1744200000006 } from './migrations/1744200000006-InstagramUserIdColumnNames';
-import { ConversationMessageReplyToId1744200000007 } from './migrations/1744200000007-ConversationMessageReplyToId';
-import { CompanyInstagramAccountId1744200000008 } from './migrations/1744200000008-CompanyInstagramAccountId';
-import { CompanyBusinessAccountIdRename1744200000009 } from './migrations/1744200000009-CompanyBusinessAccountIdRename';
-import { ConversationMessageReadAt1744200000010 } from './migrations/1744200000010-ConversationMessageReadAt';
-import { ConversationMessageReplyParentExternalId1744200000011 } from './migrations/1744200000011-ConversationMessageReplyParentExternalId';
-import { ConversationMessageExternalIdPK1744200000012 } from './migrations/1744200000012-ConversationMessageExternalIdPK';
-import { CompanyFacebookOAuthFields1744200000013 } from './migrations/1744200000013-CompanyFacebookOAuthFields';
-import { CompanyDropFacebookUserAccessToken1744200000014 } from './migrations/1744200000014-CompanyDropFacebookUserAccessToken';
-import { CompanyDropBusinessAccountId1744200000015 } from './migrations/1744200000015-CompanyDropBusinessAccountId';
-import { CompanyAccessTokenRenameLongToken1744200000016 } from './migrations/1744200000016-CompanyAccessTokenRenameLongToken';
-import { CompanyLongTokenRenameAccessToken1744200000017 } from './migrations/1744200000017-CompanyLongTokenRenameAccessToken';
-import { CompanyUserAccessTokenSplit1744200000018 } from './migrations/1744200000018-CompanyUserAccessTokenSplit';
-import { ConversationGroupDescriptionColorCreated1744200000019 } from './migrations/1744200000019-ConversationGroupDescriptionColorCreated';
-import { DropSourcesTable1744200000020 } from './migrations/1744200000020-DropSourcesTable';
-import { CompanyTableRenameToIntegration1744200000021 } from './migrations/1744200000021-CompanyTableRenameToIntegration';
-import { WorkspaceIntegrationGroupsClients1744200000022 } from './migrations/1744200000022-WorkspaceIntegrationGroupsClients';
-import { ClientsInstagramUserIdNullable1744200000023 } from './migrations/1744200000023-ClientsInstagramUserIdNullable';
-import { ProductCategories1744200000024 } from './migrations/1744200000024-ProductCategories';
-import { ProductCategoriesIntegerIds1744200000025 } from './migrations/1744200000025-ProductCategoriesIntegerIds';
-import { ProductCategoriesCreatedBySoftDelete1744200000026 } from './migrations/1744200000026-ProductCategoriesCreatedBySoftDelete';
+import { DataSourceOptions } from "typeorm";
+import { InitialSchema1744200000001 } from "./migrations/1744200000001-InitialSchema";
+import { ConversationParticipantString1744200000002 } from "./migrations/1744200000002-ConversationParticipantString";
+import { ConversationMessageEditedAt1744200000003 } from "./migrations/1744200000003-ConversationMessageEditedAt";
+import { InstagramUserScopedId1744200000004 } from "./migrations/1744200000004-InstagramUserScopedId";
+import { InstagramUserScopedIdPK1744200000005 } from "./migrations/1744200000005-InstagramUserScopedIdPK";
+import { InstagramUserIdColumnNames1744200000006 } from "./migrations/1744200000006-InstagramUserIdColumnNames";
+import { ConversationMessageReplyToId1744200000007 } from "./migrations/1744200000007-ConversationMessageReplyToId";
+import { CompanyInstagramAccountId1744200000008 } from "./migrations/1744200000008-CompanyInstagramAccountId";
+import { CompanyBusinessAccountIdRename1744200000009 } from "./migrations/1744200000009-CompanyBusinessAccountIdRename";
+import { ConversationMessageReadAt1744200000010 } from "./migrations/1744200000010-ConversationMessageReadAt";
+import { ConversationMessageReplyParentExternalId1744200000011 } from "./migrations/1744200000011-ConversationMessageReplyParentExternalId";
+import { ConversationMessageExternalIdPK1744200000012 } from "./migrations/1744200000012-ConversationMessageExternalIdPK";
+import { CompanyFacebookOAuthFields1744200000013 } from "./migrations/1744200000013-CompanyFacebookOAuthFields";
+import { CompanyDropFacebookUserAccessToken1744200000014 } from "./migrations/1744200000014-CompanyDropFacebookUserAccessToken";
+import { CompanyDropBusinessAccountId1744200000015 } from "./migrations/1744200000015-CompanyDropBusinessAccountId";
+import { CompanyAccessTokenRenameLongToken1744200000016 } from "./migrations/1744200000016-CompanyAccessTokenRenameLongToken";
+import { CompanyLongTokenRenameAccessToken1744200000017 } from "./migrations/1744200000017-CompanyLongTokenRenameAccessToken";
+import { CompanyUserAccessTokenSplit1744200000018 } from "./migrations/1744200000018-CompanyUserAccessTokenSplit";
+import { ConversationGroupDescriptionColorCreated1744200000019 } from "./migrations/1744200000019-ConversationGroupDescriptionColorCreated";
+import { DropSourcesTable1744200000020 } from "./migrations/1744200000020-DropSourcesTable";
+import { CompanyTableRenameToIntegration1744200000021 } from "./migrations/1744200000021-CompanyTableRenameToIntegration";
+import { WorkspaceIntegrationGroupsClients1744200000022 } from "./migrations/1744200000022-WorkspaceIntegrationGroupsClients";
+import { ClientsInstagramUserIdNullable1744200000023 } from "./migrations/1744200000023-ClientsInstagramUserIdNullable";
+import { ProductCategories1744200000024 } from "./migrations/1744200000024-ProductCategories";
+import { ProductCategoriesIntegerIds1744200000025 } from "./migrations/1744200000025-ProductCategoriesIntegerIds";
+import { ProductCategoriesCreatedBySoftDelete1744200000026 } from "./migrations/1744200000026-ProductCategoriesCreatedBySoftDelete";
+import { ProductCatalog1744200000027 } from "./migrations/1744200000027-ProductCatalog";
+import { DropProductsCategoriesPivot1744200000028 } from "./migrations/1744200000028-DropProductsCategoriesPivot";
+import { ProductMediaVariantId1744200000029 } from "./migrations/1744200000029-ProductMediaVariantId";
 import {
   Client,
   Company,
@@ -32,10 +35,14 @@ import {
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
+  Product,
   ProductCategory,
+  ProductMedia,
+  ProductSourceReference,
+  ProductVariant,
   User,
   Workspace,
-} from './entities';
+} from "./entities";
 
 export type DatabaseEnv = {
   DATABASE_URL?: string;
@@ -57,14 +64,18 @@ const entities = [
   Conversation,
   ConversationMessage,
   ProductCategory,
+  Product,
+  ProductVariant,
+  ProductMedia,
+  ProductSourceReference,
 ];
 
 function baseOptions(env: DatabaseEnv) {
-  const logging = env.DB_LOGGING === 'true';
+  const logging = env.DB_LOGGING === "true";
   const url = env.DATABASE_URL?.trim();
   if (url) {
     return {
-      type: 'postgres' as const,
+      type: "postgres" as const,
       url,
       entities,
       synchronize: false,
@@ -72,12 +83,12 @@ function baseOptions(env: DatabaseEnv) {
     };
   }
   return {
-    type: 'postgres' as const,
-    host: env.DB_HOST ?? 'localhost',
-    port: parseInt(env.DB_PORT ?? '5432', 10),
-    username: env.DB_USERNAME ?? 'postgres',
-    password: env.DB_PASSWORD ?? 'postgres',
-    database: env.DB_NAME ?? 'multisystem',
+    type: "postgres" as const,
+    host: env.DB_HOST ?? "localhost",
+    port: parseInt(env.DB_PORT ?? "5432", 10),
+    username: env.DB_USERNAME ?? "postgres",
+    password: env.DB_PASSWORD ?? "postgres",
+    database: env.DB_NAME ?? "multisystem",
     entities,
     synchronize: false,
     logging,
@@ -120,6 +131,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductCategories1744200000024,
       ProductCategoriesIntegerIds1744200000025,
       ProductCategoriesCreatedBySoftDelete1744200000026,
+      ProductCatalog1744200000027,
+      DropProductsCategoriesPivot1744200000028,
+      ProductMediaVariantId1744200000029,
     ],
   };
 }

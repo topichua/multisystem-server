@@ -1,5 +1,5 @@
-import { User } from '../../database/entities';
-import { SafeUser, UserAuthSnapshot } from '../types/user-view.types';
+import { User } from "../../database/entities";
+import { SafeUser, UserAuthSnapshot } from "../types/user-view.types";
 
 export function toSafeUser(user: User): SafeUser {
   return {

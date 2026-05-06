@@ -3,9 +3,9 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
-} from '@nestjs/common';
-import { ROLE_SUPER_ADMIN } from './constants';
-import type { AuthUser } from './types/auth-user.type';
+} from "@nestjs/common";
+import { ROLE_SUPER_ADMIN } from "./constants";
+import type { AuthUser } from "./types/auth-user.type";
 
 @Injectable()
 export class SuperAdminGuard implements CanActivate {

@@ -1,13 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
  * Older installs used `integer` for `participant_id`; Instagram ids can exceed 32-bit.
  * Adds unique upsert key if missing.
  */
-export class ConversationParticipantString1744200000002
-  implements MigrationInterface
-{
-  name = 'ConversationParticipantString1744200000002';
+export class ConversationParticipantString1744200000002 implements MigrationInterface {
+  name = "ConversationParticipantString1744200000002";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

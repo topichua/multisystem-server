@@ -2,9 +2,9 @@ import {
   BadGatewayException,
   Injectable,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { AccountResponseDto } from './dto/account-response.dto';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { AccountResponseDto } from "./dto/account-response.dto";
 
 type InstagramErrorResponse = {
   error?: {
@@ -34,19 +34,23 @@ export class AccountService {
     );
     // Scoped customer IDs do not support IG User fields like profile_picture_url.
     // See: User Profile API (Instagram messaging).
-    url.searchParams.set('fields', 'id,name,username,profile_pic');
-    url.searchParams.set('access_token', accessToken);
+    url.searchParams.set("fields", "id,name,username,profile_pic");
+    url.searchParams.set("access_token", accessToken);
 
     const node = await this.instagramGraphFetch<InstagramScopedUserNode>(url);
 
-    const username = node.username?.trim() ?? '';
+    const username = node.username?.trim() ?? "";
     const displayName = node.name?.trim() || username || node.id || accountId;
-    const handle = username ? (username.startsWith('@') ? username : `@${username}`) : `@${accountId}`;
+    const handle = username
+      ? username.startsWith("@")
+        ? username
+        : `@${username}`
+      : `@${accountId}`;
 
     const avatarUrl = node.profile_pic?.trim() || null;
 
     const instagramProfileUrl = username
-      ? `https://instagram.com/${username.replace(/^@/, '')}`
+      ? `https://instagram.com/${username.replace(/^@/, "")}`
       : `https://instagram.com/`;
 
     return {
@@ -63,10 +67,12 @@ export class AccountService {
   }
 
   private getInstagramAccessToken(): string {
-    const accessToken = this.config.get<string>('INSTAGRAM_ACCESS_TOKEN')?.trim();
+    const accessToken = this.config
+      .get<string>("INSTAGRAM_ACCESS_TOKEN")
+      ?.trim();
     if (!accessToken) {
       throw new ServiceUnavailableException(
-        'INSTAGRAM_ACCESS_TOKEN is not configured',
+        "INSTAGRAM_ACCESS_TOKEN is not configured",
       );
     }
     return accessToken;
@@ -80,7 +86,9 @@ export class AccountService {
       try {
         body = JSON.parse(bodyText) as T | InstagramErrorResponse;
       } catch {
-        throw new BadGatewayException('Instagram Graph API returned invalid JSON');
+        throw new BadGatewayException(
+          "Instagram Graph API returned invalid JSON",
+        );
       }
     }
 

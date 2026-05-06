@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsEnum,
   IsObject,
@@ -7,8 +7,8 @@ import {
   MaxLength,
   MinLength,
   ValidateIf,
-} from 'class-validator';
-import { UserStatus } from '../../../database/entities';
+} from "class-validator";
+import { UserStatus } from "../../../database/entities";
 
 export class UpdateUserRequestDto {
   @ApiPropertyOptional()
@@ -27,7 +27,7 @@ export class UpdateUserRequestDto {
 
   @ApiPropertyOptional({
     enum: UserStatus,
-    description: '0 = invited, 1 = active, 2 = disabled',
+    description: "0 = invited, 1 = active, 2 = disabled",
   })
   @IsOptional()
   @IsEnum(UserStatus)
