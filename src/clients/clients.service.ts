@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { FindOptionsWhere, Not, Repository } from "typeorm";
 import { Client, Company, InstagramUser } from "../database/entities";
+import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import type { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
 import type { ClientResponseDto } from "./dto/client-response.dto";
 import type { CreateClientRequestDto } from "./dto/create-client-request.dto";
@@ -98,6 +99,26 @@ export class ClientsService {
    * Looks up `clients.instagram_user_id` within the owner’s workspace.
    * Missing client → HTTP 200 with `{ associated: false, status: 'ok' }` (not 404).
    */
+  async listPagedForOwner(
+    ownerId: number,
+    page: number,
+    pageSize: number,
+  ): Promise<ClientsListResponseDto> {
+    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const [rows, total] = await this.clientRepo.findAndCount({
+      where: { workspaceId },
+      order: { createdAt: "DESC" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return {
+      items: rows.map((r) => this.toClientDto(r)),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
   async lookupByInstagramIdForOwner(
     ownerId: number,
     instagramIdRaw: string,

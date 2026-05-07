@@ -20,7 +20,6 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -28,7 +27,9 @@ import type { AuthUser } from "../auth/types/auth-user.type";
 import { ClientsService } from "./clients.service";
 import { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
 import { ClientResponseDto } from "./dto/client-response.dto";
+import { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import { CreateClientRequestDto } from "./dto/create-client-request.dto";
+import { ListClientsQueryDto } from "./dto/list-clients-query.dto";
 import { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
 @ApiTags("clients")
@@ -40,27 +41,28 @@ export class ClientsController {
 
   @Get()
   @ApiOperation({
-    summary: "Look up client by Instagram user id",
+    summary: "List clients or look up by Instagram id",
     description:
-      'Requires `instagramId`. Searches `clients.instagram_user_id` in your workspace. **Always HTTP 200** when a row is missing: `{ associated: false, status: "ok" }` — no 404 for “not linked”.',
+      "**Modes:** (1) Pass `instagramId` — same as before: one lookup in your workspace; HTTP 200 with `associated: false` if none. (2) Omit `instagramId` — paginated list of all clients in your workspace (`page` / `pageSize`, defaults 1 / 50).",
   })
-  @ApiQuery({
-    name: "instagramId",
-    required: true,
+  @ApiOkResponse({
     description:
-      "Instagram scoped user id (same value as `clients.instagram_user_id` / PSID–IGSID string).",
-    example: "17841400008460056",
+      "`ClientLookupResponseDto` when `instagramId` is set; `ClientsListResponseDto` when listing.",
   })
-  @ApiOkResponse({ type: ClientLookupResponseDto })
-  async lookupByInstagramId(
+  async listOrLookup(
     @Req() req: { user?: AuthUser },
-    @Query("instagramId") instagramId?: string,
-  ): Promise<ClientLookupResponseDto> {
+    @Query() query: ListClientsQueryDto,
+  ): Promise<ClientLookupResponseDto | ClientsListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    if (instagramId === undefined) {
-      throw new BadRequestException("instagramId query parameter is required");
+    if (query.instagramId !== undefined) {
+      return this.clients.lookupByInstagramIdForOwner(
+        ownerId,
+        query.instagramId,
+      );
     }
-    return this.clients.lookupByInstagramIdForOwner(ownerId, instagramId);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 50;
+    return this.clients.listPagedForOwner(ownerId, page, pageSize);
   }
 
   @Post()

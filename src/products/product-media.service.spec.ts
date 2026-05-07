@@ -31,8 +31,12 @@ describe("ProductMediaService", () => {
         {
           provide: getRepositoryToken(ProductMedia),
           useValue: {
-            create: jest.fn((x) => x),
-            save: jest.fn(async (x) => ({ ...x, id: 99 })),
+            create: jest.fn(
+              (x: Partial<ProductMedia>): Partial<ProductMedia> => x,
+            ),
+            save: jest.fn((x: Partial<ProductMedia>) =>
+              Promise.resolve({ ...x, id: 99 } as ProductMedia),
+            ),
             find: mediaFind,
             manager: { transaction: jest.fn() },
           },
@@ -76,9 +80,7 @@ describe("ProductMediaService", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     } as ProductMedia;
-    mediaFind
-      .mockResolvedValueOnce([productRow])
-      .mockResolvedValueOnce([]);
+    mediaFind.mockResolvedValueOnce([productRow]).mockResolvedValueOnce([]);
 
     const out = await service.getEffectiveMedia(1, 5, 2);
     expect(out).toHaveLength(1);
