@@ -13,11 +13,15 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
+import { CloudflareImagesService } from "./cloudflare-images.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
@@ -35,12 +39,19 @@ import {
 } from "./products.service";
 import type { ProductMedia } from "../database/entities";
 
+type UploadedImageFile = {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+};
+
 @ApiTags("products")
 @ApiBearerAuth("bearer")
 @UseGuards(JwtAuthGuard)
 @Controller("products")
 export class ProductsController {
   constructor(
+    private readonly cloudflareImages: CloudflareImagesService,
     private readonly products: ProductsService,
     private readonly productMedia: ProductMediaService,
   ) {}
@@ -129,12 +140,47 @@ export class ProductsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor("mainImage", {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+        status: { type: "string" },
+        sourceType: { type: "string" },
+        sourceId: { type: "string" },
+        referenceGroupId: { type: "string" },
+        price: { type: "number" },
+        currency: { type: "string" },
+        inStock: { type: "boolean" },
+        quantity: { type: "number" },
+        mainImageUrl: { type: "string" },
+        categoryId: { type: "number" },
+        mainImage: { type: "string", format: "binary" },
+      },
+      required: ["name"],
+    },
+  })
   async create(
     @Req() req: { user?: AuthUser },
     @Body() dto: CreateProductDto,
+    @UploadedFile() mainImage?: UploadedImageFile,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.products.createForOwner(ownerId, dto);
+    const uploadedMainImageUrl = mainImage
+      ? await this.cloudflareImages.uploadProductMainImage(mainImage)
+      : undefined;
+    const payload: CreateProductDto = {
+      ...dto,
+      ...(uploadedMainImageUrl ? { mainImageUrl: uploadedMainImageUrl } : {}),
+    };
+    return this.products.createForOwner(ownerId, payload);
   }
 
   @Patch(":id")

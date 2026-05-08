@@ -98,6 +98,8 @@ export type ProductDetailDto = ProductListItemDto & {
 export type ProductListResponseDto = {
   items: ProductListItemDto[];
   total: number;
+  page: number;
+  pageSize: number;
   limit: number;
   offset: number;
 };
@@ -195,8 +197,11 @@ export class ProductsService {
     query: ListProductsQueryDto,
   ): Promise<ProductListResponseDto> {
     const company = await this.requireCompanyForOwner(ownerId);
-    const limit = query.limit ?? 50;
-    const offset = query.offset ?? 0;
+    const pageSize = query.pageSize ?? query.limit ?? 50;
+    const page = query.page ?? 1;
+    const offset =
+      query.page != null ? (page - 1) * pageSize : (query.offset ?? 0);
+    const limit = pageSize;
     const where: { companyId: number; status?: ProductStatus } = {
       companyId: company.id,
     };
@@ -212,6 +217,8 @@ export class ProductsService {
     return {
       items: rows.map((p) => this.toListItem(p)),
       total,
+      page,
+      pageSize,
       limit,
       offset,
     };

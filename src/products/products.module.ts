@@ -8,6 +8,7 @@ import {
   ProductSourceReference,
   ProductVariant,
 } from "../database/entities";
+import { CloudflareImagesService } from "./cloudflare-images.service";
 import { ProductMediaService } from "./product-media.service";
 import { ProductsController } from "./products.controller";
 import { ProductsService } from "./products.service";
@@ -24,7 +25,7 @@ import { ProductsService } from "./products.service";
     ]),
   ],
   controllers: [ProductsController],
-  providers: [ProductMediaService, ProductsService],
-  exports: [ProductMediaService, ProductsService],
+  providers: [CloudflareImagesService, ProductMediaService, ProductsService],
+  exports: [CloudflareImagesService, ProductMediaService, ProductsService],
 })
 export class ProductsModule {}

@@ -79,6 +79,15 @@ export class CreateProductDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const t = value.trim().toLowerCase();
+      if (t === "true") return true;
+      if (t === "false") return false;
+    }
+    return value;
+  })
   @IsBoolean()
   inStock?: boolean;
 
@@ -98,9 +107,15 @@ export class CreateProductDto {
   mainImageUrl?: string;
 
   @ApiPropertyOptional({
-    description: "Single category in this workspace (non-deleted).",
+    description:
+      "Optional category in this workspace (non-deleted). Omit or send empty to keep product uncategorized.",
   })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === "string" && value.trim() === "") return undefined;
+    return value;
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
