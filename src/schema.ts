@@ -8,6 +8,7 @@ import type { ConversationSource } from "./database/entities/conversation-source
 export type Workspace = {
   id: number;
   name: string;
+  defaultCurrency: string;
   createdAt: Date;
   ownerId: number;
 };

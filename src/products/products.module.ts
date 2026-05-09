@@ -9,12 +9,14 @@ import {
   ProductVariant,
 } from "../database/entities";
 import { CloudflareImagesService } from "./cloudflare-images.service";
+import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
 import { ProductMediaService } from "./product-media.service";
 import { ProductsController } from "./products.controller";
 import { ProductsService } from "./products.service";
 
 @Module({
   imports: [
+    WorkspaceSettingsModule,
     TypeOrmModule.forFeature([
       Company,
       Product,

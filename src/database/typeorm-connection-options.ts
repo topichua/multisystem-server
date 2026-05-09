@@ -28,6 +28,8 @@ import { ProductCategoriesCreatedBySoftDelete1744200000026 } from "./migrations/
 import { ProductCatalog1744200000027 } from "./migrations/1744200000027-ProductCatalog";
 import { DropProductsCategoriesPivot1744200000028 } from "./migrations/1744200000028-DropProductsCategoriesPivot";
 import { ProductMediaVariantId1744200000029 } from "./migrations/1744200000029-ProductMediaVariantId";
+import { WorkspaceDefaultCurrency1744200000030 } from "./migrations/1744200000030-WorkspaceDefaultCurrency";
+import { ProductVariantStatus1744200000031 } from "./migrations/1744200000031-ProductVariantStatus";
 import {
   Client,
   Company,
@@ -134,6 +136,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductCatalog1744200000027,
       DropProductsCategoriesPivot1744200000028,
       ProductMediaVariantId1744200000029,
+      WorkspaceDefaultCurrency1744200000030,
+      ProductVariantStatus1744200000031,
     ],
   };
 }

@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
@@ -9,8 +10,14 @@ import {
   MaxLength,
   Min,
 } from "class-validator";
+import { ProductStatus } from "../../database/entities/product-status.enum";
 
 export class CreateProductVariantDto {
+  @ApiPropertyOptional({ enum: ProductStatus, default: ProductStatus.draft })
+  @IsOptional()
+  @IsEnum(ProductStatus)
+  status?: ProductStatus;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

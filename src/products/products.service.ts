@@ -5,7 +5,16 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { IsNull, Repository } from "typeorm";
+import type { FindOptionsOrder, FindOptionsWhere } from "typeorm";
+import {
+  Between,
+  In,
+  IsNull,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Repository,
+  type SelectQueryBuilder,
+} from "typeorm";
 import {
   Company,
   Product,
@@ -22,11 +31,24 @@ import type { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import type { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
 import type { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
+import { ProductListSort } from "./dto/product-list-sort.enum";
 import type { UpdateProductDto } from "./dto/update-product.dto";
 import type { UpdateProductMediaDto } from "./dto/update-product-media.dto";
 import type { UpdateProductVariantDto } from "./dto/update-product-variant.dto";
+import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
 import { ProductMediaService } from "./product-media.service";
 
+/** Parent product snapshot embedded on each variant (list/detail). */
+export type ProductParentSummaryDto = {
+  id: number;
+  name: string;
+  categoryId: number | null;
+  mainImageUrl: string | null;
+  currency: string;
+  status: ProductStatus;
+};
+
+/** Variant row as nested under `GET /products/:id` (no parent denormalization). */
 export type ProductVariantDto = {
   id: number;
   color: string | null;
@@ -36,9 +58,17 @@ export type ProductVariantDto = {
   quantity: number | null;
   imageUrl: string | null;
   sku: string | null;
+  status: ProductStatus;
   createdAt: Date;
   updatedAt: Date;
   media: ProductMediaDto[];
+};
+
+/** Single variant row for `GET /products/variants` (flat list with parent context). */
+export type ProductVariantListItemDto = ProductVariantDto & {
+  categoryId: number | null;
+  name: string;
+  product_parent: ProductParentSummaryDto;
 };
 
 export type ProductMediaDto = {
@@ -104,6 +134,15 @@ export type ProductListResponseDto = {
   offset: number;
 };
 
+export type ProductVariantListResponseDto = {
+  items: ProductVariantListItemDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+};
+
 /** Neutral payload from Instagram (or other) analysis — keeps `products` free of Instagram imports. */
 export type CatalogProductFromAnalysisParams = {
   instagramMediaId: string;
@@ -153,6 +192,61 @@ function mergeAnalysisDescription(
   return `${s}\n\n${l}`;
 }
 
+function assertListPriceRange(query: ListProductsQueryDto): void {
+  const minP = query.minPrice;
+  const maxP = query.maxPrice;
+  if (minP !== undefined && maxP !== undefined && minP > maxP) {
+    throw new BadRequestException("minPrice must be <= maxPrice");
+  }
+}
+
+function applyVariantListSort(
+  qb: SelectQueryBuilder<ProductVariant>,
+  sort: ProductListSort | undefined,
+): void {
+  switch (sort ?? ProductListSort.created_desc) {
+    case ProductListSort.created_asc:
+      qb.orderBy("p.createdAt", "ASC").addOrderBy("v.id", "ASC");
+      break;
+    case ProductListSort.name_asc:
+      qb.orderBy("p.name", "ASC").addOrderBy("v.id", "ASC");
+      break;
+    case ProductListSort.name_desc:
+      qb.orderBy("p.name", "DESC").addOrderBy("v.id", "DESC");
+      break;
+    case ProductListSort.price_asc:
+      qb.orderBy("p.price", "ASC").addOrderBy("v.id", "ASC");
+      break;
+    case ProductListSort.price_desc:
+      qb.orderBy("p.price", "DESC").addOrderBy("v.id", "DESC");
+      break;
+    case ProductListSort.created_desc:
+    default:
+      qb.orderBy("p.createdAt", "DESC").addOrderBy("v.id", "DESC");
+      break;
+  }
+}
+
+function listOrderForSort(
+  sort: ProductListSort | undefined,
+): FindOptionsOrder<Product> {
+  switch (sort ?? ProductListSort.created_desc) {
+    case ProductListSort.created_asc:
+      return { createdAt: "ASC", id: "ASC" };
+    case ProductListSort.name_asc:
+      return { name: "ASC", id: "ASC" };
+    case ProductListSort.name_desc:
+      return { name: "DESC", id: "DESC" };
+    case ProductListSort.price_asc:
+      return { price: "ASC", id: "ASC" };
+    case ProductListSort.price_desc:
+      return { price: "DESC", id: "DESC" };
+    case ProductListSort.created_desc:
+    default:
+      return { createdAt: "DESC", id: "DESC" };
+  }
+}
+
 function tryParsePriceFromOfferText(text: string | null): number | null {
   if (!text?.trim()) {
     return null;
@@ -185,6 +279,7 @@ export class ProductsService {
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
     private readonly productMedia: ProductMediaService,
+    private readonly workspaceSettings: WorkspaceSettingsService,
   ) {}
 
   /** Used by HTTP layer for media endpoints that need `companyId`. */
@@ -202,20 +297,82 @@ export class ProductsService {
     const offset =
       query.page != null ? (page - 1) * pageSize : (query.offset ?? 0);
     const limit = pageSize;
-    const where: { companyId: number; status?: ProductStatus } = {
+    const where: FindOptionsWhere<Product> = {
       companyId: company.id,
     };
     if (query.status !== undefined) {
       where.status = query.status;
     }
+    const categoryIdFilter = await this.parseAndValidateCategoryIdsForList(
+      company,
+      query,
+    );
+    if (categoryIdFilter?.length) {
+      where.categoryId = In(categoryIdFilter);
+    }
+    assertListPriceRange(query);
+    const minP = query.minPrice;
+    const maxP = query.maxPrice;
+    if (minP !== undefined && maxP !== undefined) {
+      where.price = Between(minP, maxP);
+    } else if (minP !== undefined) {
+      where.price = MoreThanOrEqual(minP);
+    } else if (maxP !== undefined) {
+      where.price = LessThanOrEqual(maxP);
+    }
     const [rows, total] = await this.productRepo.findAndCount({
       where,
-      order: { updatedAt: "DESC" },
+      order: listOrderForSort(query.sort),
       take: limit,
       skip: offset,
     });
     return {
       items: rows.map((p) => this.toListItem(p)),
+      total,
+      page,
+      pageSize,
+      limit,
+      offset,
+    };
+  }
+
+  /**
+   * Paginated variant rows for the owner’s catalog: same filters/sort/paging as `GET /products`,
+   * but each item is one variant with `product_parent` and variant `media`.
+   */
+  async listVariantsForOwner(
+    ownerId: number,
+    query: ListProductsQueryDto,
+  ): Promise<ProductVariantListResponseDto> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const pageSize = query.pageSize ?? query.limit ?? 50;
+    const page = query.page ?? 1;
+    const offset =
+      query.page != null ? (page - 1) * pageSize : (query.offset ?? 0);
+    const limit = pageSize;
+
+    assertListPriceRange(query);
+    const categoryIdFilter = await this.parseAndValidateCategoryIdsForList(
+      company,
+      query,
+    );
+
+    const countQb = this.variantRepo
+      .createQueryBuilder("v")
+      .innerJoin("v.product", "p");
+    this.applyVariantListFilters(countQb, company, categoryIdFilter, query);
+    const total = await countQb.getCount();
+
+    const dataQb = this.variantRepo
+      .createQueryBuilder("v")
+      .innerJoinAndSelect("v.product", "p")
+      .leftJoinAndSelect("v.media", "m");
+    this.applyVariantListFilters(dataQb, company, categoryIdFilter, query);
+    applyVariantListSort(dataQb, query.sort);
+    const rows = await dataQb.skip(offset).take(limit).getMany();
+
+    return {
+      items: rows.map((v) => this.toVariantListItem(v)),
       total,
       page,
       pageSize,
@@ -249,6 +406,8 @@ export class ProductsService {
     dto: CreateProductDto,
   ): Promise<ProductDetailDto> {
     const company = await this.requireCompanyForOwner(ownerId);
+    const defaultCurrency =
+      await this.workspaceSettings.getDefaultCurrencyForOwner(ownerId);
     const name = dto.name.trim();
     if (!name) {
       throw new BadRequestException("name is required");
@@ -270,7 +429,7 @@ export class ProductsService {
         sourceId: dto.sourceId?.trim() || null,
         referenceGroupId: dto.referenceGroupId?.trim() || null,
         price: dto.price ?? null,
-        currency: (dto.currency?.trim() || "UAH").slice(0, 8),
+        currency: (dto.currency?.trim() || defaultCurrency).slice(0, 8),
         inStock: dto.inStock ?? null,
         quantity: dto.quantity ?? null,
         mainImageUrl: dto.mainImageUrl?.trim() || null,
@@ -293,6 +452,8 @@ export class ProductsService {
     params: CatalogProductFromAnalysisParams,
   ): Promise<ProductDetailDto> {
     const company = await this.requireCompanyForOwner(ownerId);
+    const defaultCurrency =
+      await this.workspaceSettings.getDefaultCurrencyForOwner(ownerId);
     const name = params.name.trim().slice(0, 512);
     if (!name) {
       throw new BadRequestException("Product name is required");
@@ -325,7 +486,7 @@ export class ProductsService {
         sourceId: params.instagramMediaId,
         referenceGroupId: null,
         price,
-        currency: "UAH",
+        currency: defaultCurrency,
         inStock: null,
         quantity: null,
         mainImageUrl: params.mainImageUrl.trim() || null,
@@ -346,6 +507,7 @@ export class ProductsService {
           quantity: null,
           imageUrl: null,
           sku: null,
+          status: ProductStatus.draft,
           createdByUserId: ownerId,
           updatedByUserId: null,
         });
@@ -473,6 +635,7 @@ export class ProductsService {
       quantity: dto.quantity ?? null,
       imageUrl: dto.imageUrl?.trim() || null,
       sku: dto.sku?.trim() || null,
+      status: dto.status ?? ProductStatus.draft,
       createdByUserId: ownerId,
       updatedByUserId: null,
     });
@@ -514,6 +677,9 @@ export class ProductsService {
     }
     if (dto.sku !== undefined) {
       variant.sku = dto.sku === null ? null : dto.sku.trim() || null;
+    }
+    if (dto.status !== undefined) {
+      variant.status = dto.status;
     }
     variant.updatedByUserId = ownerId;
     await this.variantRepo.save(variant);
@@ -688,6 +854,74 @@ export class ProductsService {
     }
   }
 
+  private async parseAndValidateCategoryIdsForList(
+    company: Company,
+    query: ListProductsQueryDto,
+  ): Promise<number[] | undefined> {
+    if (!query.categoryIds) {
+      return undefined;
+    }
+    const categoryIdFilter = [
+      ...new Set(
+        query.categoryIds.split(",").map((s) => Number.parseInt(s.trim(), 10)),
+      ),
+    ];
+    await this.assertCategoriesInWorkspace(
+      company.workspaceId,
+      categoryIdFilter,
+    );
+    return categoryIdFilter;
+  }
+
+  private applyVariantListFilters(
+    qb: SelectQueryBuilder<ProductVariant>,
+    company: Company,
+    categoryIdFilter: number[] | undefined,
+    query: ListProductsQueryDto,
+  ): void {
+    qb.where("v.companyId = :companyId", { companyId: company.id }).andWhere(
+      "p.companyId = :companyId",
+      { companyId: company.id },
+    );
+
+    if (query.status !== undefined) {
+      qb.andWhere("p.status = :status", { status: query.status });
+    }
+    if (categoryIdFilter != null && categoryIdFilter.length > 0) {
+      qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
+    }
+    const minP = query.minPrice;
+    const maxP = query.maxPrice;
+    if (minP !== undefined && maxP !== undefined) {
+      qb.andWhere("p.price BETWEEN :minP AND :maxP", { minP, maxP });
+    } else if (minP !== undefined) {
+      qb.andWhere("p.price >= :minP", { minP });
+    } else if (maxP !== undefined) {
+      qb.andWhere("p.price <= :maxP", { maxP });
+    }
+  }
+
+  private async assertCategoriesInWorkspace(
+    workspaceId: number,
+    categoryIds: number[],
+  ): Promise<void> {
+    if (categoryIds.length === 0) {
+      return;
+    }
+    const count = await this.categoryRepo.count({
+      where: {
+        id: In(categoryIds),
+        workspaceId,
+        deletedAt: IsNull(),
+      },
+    });
+    if (count !== categoryIds.length) {
+      throw new BadRequestException(
+        "One or more category ids are invalid, deleted, or not in your workspace",
+      );
+    }
+  }
+
   private toListItem(p: Product): ProductListItemDto {
     return {
       id: p.id,
@@ -702,6 +936,74 @@ export class ProductsService {
       categoryId: p.categoryId,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
+    };
+  }
+
+  private toProductParentSummary(p: Product): ProductParentSummaryDto {
+    return {
+      id: p.id,
+      name: p.name,
+      categoryId: p.categoryId,
+      mainImageUrl: p.mainImageUrl,
+      currency: p.currency,
+      status: p.status,
+    };
+  }
+
+  private buildVariantDtos(p: Product): ProductVariantDto[] {
+    const variants = [...(p.variants ?? [])].sort((a, b) => a.id - b.id);
+    const allMedia = [...(p.media ?? [])];
+    const mediaByVariant = new Map<number, ProductMedia[]>();
+    for (const m of allMedia) {
+      if (m.variantId != null) {
+        const list = mediaByVariant.get(m.variantId) ?? [];
+        list.push(m);
+        mediaByVariant.set(m.variantId, list);
+      }
+    }
+    return variants.map((v) => {
+      const vMedia = (mediaByVariant.get(v.id) ?? []).sort((a, b) =>
+        this.mediaSort(a, b),
+      );
+      return {
+        id: v.id,
+        color: v.color,
+        size: v.size,
+        price: v.price,
+        inStock: v.inStock,
+        quantity: v.quantity,
+        imageUrl: v.imageUrl,
+        sku: v.sku,
+        status: v.status,
+        createdAt: v.createdAt,
+        updatedAt: v.updatedAt,
+        media: vMedia.map((m) => this.toMediaDto(m)),
+      };
+    });
+  }
+
+  private toVariantListItem(v: ProductVariant): ProductVariantListItemDto {
+    const p = v.product;
+    if (p == null) {
+      throw new Error("ProductVariant row missing product (invariant)");
+    }
+    const media = [...(v.media ?? [])].sort((a, b) => this.mediaSort(a, b));
+    return {
+      id: v.id,
+      color: v.color,
+      size: v.size,
+      price: v.price,
+      inStock: v.inStock,
+      quantity: v.quantity,
+      imageUrl: v.imageUrl,
+      sku: v.sku,
+      status: v.status,
+      createdAt: v.createdAt,
+      updatedAt: v.updatedAt,
+      media: media.map((m) => this.toMediaDto(m)),
+      categoryId: p.categoryId,
+      name: p.name,
+      product_parent: this.toProductParentSummary(p),
     };
   }
 
@@ -727,19 +1029,10 @@ export class ProductsService {
   }
 
   private toDetail(p: Product): ProductDetailDto {
-    const variants = [...(p.variants ?? [])].sort((a, b) => a.id - b.id);
     const allMedia = [...(p.media ?? [])];
     const productLevelMedia = allMedia
       .filter((m) => m.variantId == null)
       .sort((a, b) => this.mediaSort(a, b));
-    const mediaByVariant = new Map<number, ProductMedia[]>();
-    for (const m of allMedia) {
-      if (m.variantId != null) {
-        const list = mediaByVariant.get(m.variantId) ?? [];
-        list.push(m);
-        mediaByVariant.set(m.variantId, list);
-      }
-    }
     const refs = [...(p.sourceReferences ?? [])].sort((a, b) => a.id - b.id);
     const categoryNode = p.category;
     const categorySummary: ProductCategorySummaryDto | null = categoryNode
@@ -758,24 +1051,7 @@ export class ProductsService {
       createdByUserId: p.createdByUserId,
       updatedByUserId: p.updatedByUserId,
       category: categorySummary,
-      variants: variants.map((v) => {
-        const vMedia = (mediaByVariant.get(v.id) ?? []).sort((a, b) =>
-          this.mediaSort(a, b),
-        );
-        return {
-          id: v.id,
-          color: v.color,
-          size: v.size,
-          price: v.price,
-          inStock: v.inStock,
-          quantity: v.quantity,
-          imageUrl: v.imageUrl,
-          sku: v.sku,
-          createdAt: v.createdAt,
-          updatedAt: v.updatedAt,
-          media: vMedia.map((m) => this.toMediaDto(m)),
-        };
-      }),
+      variants: this.buildVariantDtos(p),
       media: productLevelMedia.map((m) => this.toMediaDto(m)),
       sourceReferences: refs.map((r) => ({
         id: r.id,

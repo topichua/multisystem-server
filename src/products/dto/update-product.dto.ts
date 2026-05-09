@@ -79,6 +79,16 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const t = value.trim().toLowerCase();
+      if (t === "true") return true;
+      if (t === "false") return false;
+    }
+    return value;
+  })
   @IsBoolean()
   inStock?: boolean | null;
 

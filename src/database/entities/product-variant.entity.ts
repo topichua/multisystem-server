@@ -13,11 +13,13 @@ import {
 import { Company } from "./company.entity";
 import { ProductMedia } from "./product-media.entity";
 import { Product } from "./product.entity";
+import { ProductStatus } from "./product-status.enum";
 import { User } from "./user.entity";
 
 @Entity({ name: "product_variants" })
 @Index("IDX_product_variants_product_id", ["productId"])
 @Index("IDX_product_variants_company_id", ["companyId"])
+@Index("IDX_product_variants_status", ["status"])
 export class ProductVariant {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
@@ -68,6 +70,14 @@ export class ProductVariant {
 
   @Column({ type: "varchar", length: 128, nullable: true })
   sku: string | null;
+
+  @Column({
+    type: "enum",
+    enum: ProductStatus,
+    enumName: "products_status_enum",
+    default: ProductStatus.draft,
+  })
+  status: ProductStatus;
 
   @Column({ name: "created_by_user_id", type: "int" })
   createdByUserId: number;
