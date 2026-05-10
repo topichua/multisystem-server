@@ -249,13 +249,43 @@ export class ProductsController {
 
   @Post(":id/variants")
   @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor("image", {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        color: { type: "string" },
+        size: { type: "string" },
+        price: { type: "number" },
+        inStock: { type: "boolean" },
+        quantity: { type: "number" },
+        imageUrl: { type: "string" },
+        sku: { type: "string" },
+        status: { type: "string", enum: ["draft", "active", "archived"] },
+        image: { type: "string", format: "binary" },
+      },
+    },
+  })
   async addVariant(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: CreateProductVariantDto,
+    @UploadedFile() image?: UploadedImageFile,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.products.createVariantForOwner(ownerId, id, dto);
+    const uploadedImageUrl = image
+      ? await this.cloudflareImages.uploadImage(image)
+      : undefined;
+    const payload: CreateProductVariantDto = {
+      ...dto,
+      ...(uploadedImageUrl ? { imageUrl: uploadedImageUrl } : {}),
+    };
+    return this.products.createVariantForOwner(ownerId, id, payload);
   }
 
   @Patch(":id/variants/:variantId")

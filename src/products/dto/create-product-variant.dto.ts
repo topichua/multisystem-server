@@ -45,6 +45,15 @@ export class CreateProductVariantDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const t = value.trim().toLowerCase();
+      if (t === "true") return true;
+      if (t === "false") return false;
+    }
+    return value;
+  })
   @IsBoolean()
   inStock?: boolean;
 
