@@ -14,6 +14,7 @@ import { ClientsModule } from "./clients/clients.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { InstagramModule } from "./instagram/instagram.module";
 import { ProductsModule } from "./products/products.module";
+import { OrdersModule } from "./orders/orders.module";
 import { WorkspaceSettingsModule } from "./workspace-settings/workspace-settings.module";
 
 @Module({
@@ -40,6 +41,7 @@ import { WorkspaceSettingsModule } from "./workspace-settings/workspace-settings
     ClientsModule,
     CategoriesModule,
     ProductsModule,
+    OrdersModule,
     WorkspaceSettingsModule,
     InstagramModule,
     AccountModule,

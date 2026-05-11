@@ -30,6 +30,7 @@ import { DropProductsCategoriesPivot1744200000028 } from "./migrations/174420000
 import { ProductMediaVariantId1744200000029 } from "./migrations/1744200000029-ProductMediaVariantId";
 import { WorkspaceDefaultCurrency1744200000030 } from "./migrations/1744200000030-WorkspaceDefaultCurrency";
 import { ProductVariantStatus1744200000031 } from "./migrations/1744200000031-ProductVariantStatus";
+import { OrdersModule1744200000032 } from "./migrations/1744200000032-OrdersModule";
 import {
   Client,
   Company,
@@ -37,6 +38,11 @@ import {
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
+  Order,
+  OrderDeliveryInfo,
+  OrderEvent,
+  OrderItem,
+  OrderStatus,
   Product,
   ProductCategory,
   ProductMedia,
@@ -70,6 +76,11 @@ const entities = [
   ProductVariant,
   ProductMedia,
   ProductSourceReference,
+  OrderStatus,
+  Order,
+  OrderItem,
+  OrderDeliveryInfo,
+  OrderEvent,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -138,6 +149,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductMediaVariantId1744200000029,
       WorkspaceDefaultCurrency1744200000030,
       ProductVariantStatus1744200000031,
+      OrdersModule1744200000032,
     ],
   };
 }

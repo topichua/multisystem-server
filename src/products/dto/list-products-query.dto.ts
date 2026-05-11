@@ -5,8 +5,10 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
+  IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
 } from "class-validator";
 import { ProductStatus } from "../../database/entities/product-status.enum";
@@ -17,6 +19,20 @@ export class ListProductsQueryDto {
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
+
+  @ApiPropertyOptional({
+    description:
+      "Case-insensitive substring match on product name (`ILIKE`). Wildcards `%` and `_` in the value are treated literally.",
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value == null || typeof value !== "string") return undefined;
+    const t = value.trim();
+    return t === "" ? undefined : t;
+  })
+  @IsString()
+  @MaxLength(256)
+  keyword?: string;
 
   @ApiPropertyOptional({
     enum: ProductListSort,

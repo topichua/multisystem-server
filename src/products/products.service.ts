@@ -5,16 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import type { FindOptionsOrder, FindOptionsWhere } from "typeorm";
-import {
-  Between,
-  In,
-  IsNull,
-  LessThanOrEqual,
-  MoreThanOrEqual,
-  Repository,
-  type SelectQueryBuilder,
-} from "typeorm";
+import { In, IsNull, Repository, type SelectQueryBuilder } from "typeorm";
 import {
   Company,
   Product,
@@ -227,23 +218,35 @@ function applyVariantListSort(
   }
 }
 
-function listOrderForSort(
+/** Escape `\\`, `%`, `_` for PostgreSQL `ILIKE ... ESCAPE '\\'`. */
+function escapePgIlikePattern(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+function applyProductListSort(
+  qb: SelectQueryBuilder<Product>,
   sort: ProductListSort | undefined,
-): FindOptionsOrder<Product> {
+): void {
   switch (sort ?? ProductListSort.created_desc) {
     case ProductListSort.created_asc:
-      return { createdAt: "ASC", id: "ASC" };
+      qb.orderBy("p.createdAt", "ASC").addOrderBy("p.id", "ASC");
+      break;
     case ProductListSort.name_asc:
-      return { name: "ASC", id: "ASC" };
+      qb.orderBy("p.name", "ASC").addOrderBy("p.id", "ASC");
+      break;
     case ProductListSort.name_desc:
-      return { name: "DESC", id: "DESC" };
+      qb.orderBy("p.name", "DESC").addOrderBy("p.id", "DESC");
+      break;
     case ProductListSort.price_asc:
-      return { price: "ASC", id: "ASC" };
+      qb.orderBy("p.price", "ASC").addOrderBy("p.id", "ASC");
+      break;
     case ProductListSort.price_desc:
-      return { price: "DESC", id: "DESC" };
+      qb.orderBy("p.price", "DESC").addOrderBy("p.id", "DESC");
+      break;
     case ProductListSort.created_desc:
     default:
-      return { createdAt: "DESC", id: "DESC" };
+      qb.orderBy("p.createdAt", "DESC").addOrderBy("p.id", "DESC");
+      break;
   }
 }
 
@@ -297,35 +300,38 @@ export class ProductsService {
     const offset =
       query.page != null ? (page - 1) * pageSize : (query.offset ?? 0);
     const limit = pageSize;
-    const where: FindOptionsWhere<Product> = {
-      companyId: company.id,
-    };
-    if (query.status !== undefined) {
-      where.status = query.status;
-    }
     const categoryIdFilter = await this.parseAndValidateCategoryIdsForList(
       company,
       query,
     );
-    if (categoryIdFilter?.length) {
-      where.categoryId = In(categoryIdFilter);
-    }
     assertListPriceRange(query);
+
+    const qb = this.productRepo
+      .createQueryBuilder("p")
+      .where("p.companyId = :companyId", { companyId: company.id });
+    if (query.status !== undefined) {
+      qb.andWhere("p.status = :status", { status: query.status });
+    }
+    if (categoryIdFilter?.length) {
+      qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
+    }
     const minP = query.minPrice;
     const maxP = query.maxPrice;
     if (minP !== undefined && maxP !== undefined) {
-      where.price = Between(minP, maxP);
+      qb.andWhere("p.price BETWEEN :minP AND :maxP", { minP, maxP });
     } else if (minP !== undefined) {
-      where.price = MoreThanOrEqual(minP);
+      qb.andWhere("p.price >= :minP", { minP });
     } else if (maxP !== undefined) {
-      where.price = LessThanOrEqual(maxP);
+      qb.andWhere("p.price <= :maxP", { maxP });
     }
-    const [rows, total] = await this.productRepo.findAndCount({
-      where,
-      order: listOrderForSort(query.sort),
-      take: limit,
-      skip: offset,
-    });
+    const keyword = query.keyword?.trim();
+    if (keyword) {
+      qb.andWhere("p.name ILIKE :nameKeyword ESCAPE '\\'", {
+        nameKeyword: `%${escapePgIlikePattern(keyword)}%`,
+      });
+    }
+    applyProductListSort(qb, query.sort);
+    const [rows, total] = await qb.skip(offset).take(limit).getManyAndCount();
     return {
       items: rows.map((p) => this.toListItem(p)),
       total,
@@ -898,6 +904,12 @@ export class ProductsService {
       qb.andWhere("p.price >= :minP", { minP });
     } else if (maxP !== undefined) {
       qb.andWhere("p.price <= :maxP", { maxP });
+    }
+    const keyword = query.keyword?.trim();
+    if (keyword) {
+      qb.andWhere("p.name ILIKE :nameKeyword ESCAPE '\\'", {
+        nameKeyword: `%${escapePgIlikePattern(keyword)}%`,
+      });
     }
   }
 
