@@ -18,12 +18,19 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
+import type { Request } from "express";
 import { CloudflareImagesService } from "./cloudflare-images.service";
+import { AddProductGalleryImageFormDto } from "./dto/add-product-gallery-image-form.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
-import { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
 import { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto";
@@ -39,6 +46,7 @@ import {
   type ProductVariantListResponseDto,
 } from "./products.service";
 import type { ProductMedia } from "../database/entities";
+import { ProductMediaType } from "../database/entities/product-media-type.enum";
 
 type UploadedImageFile = {
   buffer: Buffer;
@@ -342,13 +350,87 @@ export class ProductsController {
 
   @Post(":id/media")
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Add product gallery image",
+    description:
+      "Content-Type must be `multipart/form-data`. Send the file in part `image` (required). Optional part `sortOrder` (integer). Do not send JSON `url` / `type` / `sourceUrl` — the server uploads to Cloudflare and stores the CDN URL in `product_media.url`.",
+  })
+  @UseInterceptors(
+    FileInterceptor("image", {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    description:
+      "Multipart body: binary part `image` plus optional text part `sortOrder`.",
+    required: true,
+    // OpenAPI 3 multipart; @nestjs/swagger's ApiBody typings omit `content`.
+    ...({
+      content: {
+        "multipart/form-data": {
+          schema: {
+            type: "object",
+            required: ["image"],
+            properties: {
+              image: {
+                type: "string",
+                format: "binary",
+                description: "Image file (JPEG, PNG, WebP, …)",
+              },
+              sortOrder: {
+                type: "integer",
+                minimum: 0,
+                description:
+                  "Optional gallery order; omit to append after existing items.",
+              },
+            },
+          },
+        },
+      },
+    } as Record<string, unknown>),
+  })
   async addMedia(
-    @Req() req: { user?: AuthUser },
+    @Req() req: Request & { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto: CreateProductMediaDto,
+    @Body() body: AddProductGalleryImageFormDto,
+    @UploadedFile() image?: UploadedImageFile,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.products.createMediaForOwner(ownerId, id, dto);
+    const headers = req.headers as Record<
+      string,
+      string | string[] | undefined
+    >;
+    const rawCt = headers["content-type"];
+    let ctLower = "";
+    if (typeof rawCt === "string") {
+      ctLower = rawCt.toLowerCase();
+    } else if (Array.isArray(rawCt)) {
+      for (const part of rawCt) {
+        if (typeof part === "string" && part.length > 0) {
+          ctLower = part.toLowerCase();
+          break;
+        }
+      }
+    }
+    if (ctLower.length > 0 && !ctLower.includes("multipart/form-data")) {
+      throw new BadRequestException(
+        'Expected Content-Type: multipart/form-data with a file part named "image". JSON bodies (url, type, sourceUrl) are not accepted on this route.',
+      );
+    }
+    if (!image) {
+      throw new BadRequestException("Multipart field `image` is required.");
+    }
+    const company = await this.products.getIntegrationForOwner(ownerId);
+    const url = await this.cloudflareImages.uploadImage(image);
+    await this.productMedia.addMedia(company.id, ownerId, {
+      productId: id,
+      url,
+      type: ProductMediaType.image,
+      sourceUrl: null,
+      sortOrder: body.sortOrder,
+    });
+    return this.products.findOneForOwner(ownerId, id);
   }
 
   @Patch(":id/media/:mediaId")

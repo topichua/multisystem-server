@@ -12,7 +12,10 @@ import {
 import { ProductMediaType } from "../../database/entities/product-media-type.enum";
 
 export class CreateProductMediaDto {
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      "Absolute or CDN URL. Not used by `POST /products/:id/media` (that route accepts multipart `image` only).",
+  })
   @IsString()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim() : value,
@@ -25,7 +28,10 @@ export class CreateProductMediaDto {
   @IsEnum(ProductMediaType)
   type: ProductMediaType;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      "Optional provenance URL. Ignored by `POST /products/:id/media` (multipart upload).",
+  })
   @IsOptional()
   @IsString()
   @Transform(({ value }: { value: unknown }) =>
