@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   IsEnum,
   IsInt,
@@ -19,10 +19,24 @@ export class CreateOrderDto {
 
   @ApiPropertyOptional({
     description:
-      "Conversation id (must belong to a group in the same workspace). Omit for manual / non-DM orders.",
+      "Conversation id (must belong to a group in the same workspace). Omit, null, or empty string for manual / non-DM orders.",
   })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === null || value === undefined || value === "") {
+      return undefined;
+    }
+    if (typeof value === "number") {
+      return Number.isInteger(value) && value >= 1 ? value : undefined;
+    }
+    if (typeof value === "string") {
+      const t = value.trim();
+      if (t === "") return undefined;
+      const n = Number.parseInt(t, 10);
+      return Number.isInteger(n) && n >= 1 ? n : undefined;
+    }
+    return undefined;
+  })
   @IsInt()
   @Min(1)
   conversationId?: number;

@@ -66,6 +66,7 @@ export class Order {
   status: OrderStatus;
 
   @Column({
+    name: "payment_status",
     type: "enum",
     enum: OrderPaymentStatus,
     enumName: "orders_payment_status_enum",
@@ -74,6 +75,7 @@ export class Order {
   paymentStatus: OrderPaymentStatus;
 
   @Column({
+    name: "delivery_status",
     type: "enum",
     enum: OrderDeliveryStatus,
     enumName: "orders_delivery_status_enum",

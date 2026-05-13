@@ -34,7 +34,7 @@ export class OrdersController {
   @ApiOperation({
     summary: "Create order",
     description:
-      "Optional conversationId links the order to a DM thread; omit for manual orders.",
+      "`conversationId` is optional. When omitted (or null/empty), the order is not linked to a conversation and `source` defaults to `manual` unless you set it explicitly.",
   })
   @HttpCode(HttpStatus.CREATED)
   async create(@Req() req: { user?: AuthUser }, @Body() dto: CreateOrderDto) {

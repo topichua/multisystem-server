@@ -24,6 +24,8 @@ import {
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
+import { ListOrdersQueryDto } from "../orders/dto/list-orders-query.dto";
+import { OrdersService } from "../orders/orders.service";
 import { ClientsService } from "./clients.service";
 import { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
 import { ClientResponseDto } from "./dto/client-response.dto";
@@ -37,7 +39,10 @@ import { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 @UseGuards(JwtAuthGuard)
 @Controller("clients")
 export class ClientsController {
-  constructor(private readonly clients: ClientsService) {}
+  constructor(
+    private readonly clients: ClientsService,
+    private readonly orders: OrdersService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -79,6 +84,22 @@ export class ClientsController {
   ): Promise<ClientResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.clients.createForOwner(ownerId, dto);
+  }
+
+  @Get(":id/orders")
+  @ApiOperation({
+    summary: "List orders for client",
+    description:
+      "Returns paginated orders for which this client is the customer (`customer_id`), scoped to your workspace. Same query params as `GET /orders`.",
+  })
+  async listOrdersForClient(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+    @Query() query: ListOrdersQueryDto,
+  ) {
+    const ownerId = this.requireNumericOwnerId(req);
+    const clientId = this.parsePositiveInt(id, "id");
+    return this.orders.listOrdersForClient(ownerId, clientId, query);
   }
 
   @Get(":id")

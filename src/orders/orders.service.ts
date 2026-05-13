@@ -96,7 +96,11 @@ export class OrdersService {
       );
     }
 
-    const conversationId: number | null = dto.conversationId ?? null;
+    const rawConv = dto.conversationId;
+    const conversationId =
+      rawConv != null && Number.isInteger(rawConv) && rawConv >= 1
+        ? rawConv
+        : null;
     let source = dto.source;
     if (conversationId != null) {
       const conv = await this.conversationRepo.findOne({
@@ -362,6 +366,47 @@ export class OrdersService {
     const skip = (page - 1) * pageSize;
     const where: { workspaceId: number; statusId?: number } = {
       workspaceId: company.workspaceId,
+    };
+    if (query.statusId != null) {
+      where.statusId = query.statusId;
+    }
+    const [items, total] = await this.orderRepo.findAndCount({
+      where,
+      relations: { status: true, customer: true },
+      order: { createdAt: "DESC", id: "DESC" },
+      take: pageSize,
+      skip,
+    });
+    return { items, total, page, pageSize };
+  }
+
+  async listOrdersForClient(
+    ownerId: number,
+    clientId: number,
+    query: ListOrdersQueryDto,
+  ): Promise<{
+    items: Order[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const client = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId: company.workspaceId },
+    });
+    if (!client) {
+      throw new NotFoundException("Client not found");
+    }
+    const pageSize = query.pageSize ?? 50;
+    const page = query.page ?? 1;
+    const skip = (page - 1) * pageSize;
+    const where: {
+      workspaceId: number;
+      customerId: number;
+      statusId?: number;
+    } = {
+      workspaceId: company.workspaceId,
+      customerId: clientId,
     };
     if (query.statusId != null) {
       where.statusId = query.statusId;
