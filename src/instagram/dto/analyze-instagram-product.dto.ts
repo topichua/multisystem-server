@@ -52,6 +52,13 @@ export class InstagramAnalyzeProductPreviewDto {
   })
   matchedCategory: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Workspace `product_categories.id` when the model matched a category from your catalog; null if unmatched or invalid id.",
+  })
+  categoryId: number | null;
+
   @ApiProperty({ type: () => [InstagramAnalyzeProductVariantPreviewDto] })
   variants: InstagramAnalyzeProductVariantPreviewDto[];
 

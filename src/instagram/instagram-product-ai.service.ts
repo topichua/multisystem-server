@@ -166,6 +166,7 @@ export class InstagramProductAiService {
       price: tryParsePriceFromOfferText(parsed.product.visiblePriceOrOffer),
       images,
       matchedCategory: parsed.category.matchedCategoryPath ?? null,
+      categoryId: parsed.category.matchedCategoryId,
       variants,
       brandOrLabel: parsed.product.brandOrLabel ?? "",
     };
