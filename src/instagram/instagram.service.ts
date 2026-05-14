@@ -15,6 +15,7 @@ const GRAPH_VERSION = "v25.0";
 
 const IG_MEDIA_FIELDS =
   "id,caption,media_type,media_url,permalink,thumbnail_url,timestamp," +
+  "like_count,comments_count," +
   "children{id,media_type,media_url,thumbnail_url}";
 
 type InstagramErrorResponse = {
@@ -153,6 +154,8 @@ export class InstagramService {
         thumbnail_url: c.thumbnail_url,
       })) ?? undefined;
 
+    const tags = this.hashtagsFromCaption(raw.caption);
+
     return {
       id: raw.id ?? "",
       caption: raw.caption,
@@ -161,8 +164,19 @@ export class InstagramService {
       permalink: raw.permalink,
       thumbnail_url: raw.thumbnail_url,
       timestamp: raw.timestamp,
+      like_count: raw.like_count,
+      comments_count: raw.comments_count,
+      ...(tags ? { tags } : {}),
       ...(children && children.length > 0 ? { children } : {}),
     };
+  }
+
+  /** Hashtags from caption (Graph does not return a dedicated hashtag field). */
+  private hashtagsFromCaption(caption: string | undefined): string[] | undefined {
+    if (!caption?.trim()) return undefined;
+    const matches = caption.match(/#[\p{L}\p{N}_]+/gu) ?? [];
+    const unique = [...new Set(matches.map((m) => m.slice(1)))];
+    return unique.length > 0 ? unique : undefined;
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {
