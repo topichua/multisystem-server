@@ -2,6 +2,65 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsNotEmpty, IsString, MaxLength } from "class-validator";
 import type { ProductDetailDto } from "../../products/products.service";
 
+export class AnalyzeInstagramProductQueryDto {
+  @ApiProperty({
+    description:
+      "Instagram Graph media id (from GET /api/instagram/media `id` field).",
+    example: "17841400008460056_1234567890",
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  mediaId: string;
+}
+
+export class InstagramAnalyzeProductVariantPreviewDto {
+  @ApiProperty({ description: "Color label (empty when not inferred)." })
+  color: string;
+
+  @ApiProperty({ description: "Size label (empty when not inferred)." })
+  size: string;
+}
+
+export class InstagramAnalyzeProductPreviewDto {
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty({
+    description: "Merged short and long description from the model.",
+  })
+  description: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "First plausible numeric price parsed from the model’s offer/price text (same heuristic as catalog drafts).",
+  })
+  price: number | null;
+
+  @ApiProperty({
+    type: [String],
+    description:
+      "Instagram post URL when available, plus Graph media URLs for carousel slides / main asset.",
+  })
+  images: string[];
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Matched workspace category path when the model picked a listed category.",
+  })
+  matchedCategory: string | null;
+
+  @ApiProperty({ type: () => [InstagramAnalyzeProductVariantPreviewDto] })
+  variants: InstagramAnalyzeProductVariantPreviewDto[];
+
+  @ApiProperty({
+    description: "Brand or label inferred from image/caption (empty if none).",
+  })
+  brandOrLabel: string;
+}
+
 export class AnalyzeInstagramProductRequestDto {
   @ApiProperty({
     description:

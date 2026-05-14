@@ -41,11 +41,14 @@ export type InstagramGraphMediaDetail = {
   media_url?: string;
   thumbnail_url?: string;
   permalink?: string;
+  shortcode?: string;
   children?: {
     data?: Array<{
+      id?: string;
       media_type?: string;
       media_url?: string;
       thumbnail_url?: string;
+      permalink?: string;
     }>;
   };
 };
@@ -104,7 +107,8 @@ export class InstagramService {
     const company = await this.requireCompanyForOwner(ownerId);
     const accessToken = await this.resolveGraphAccessToken(company.id);
     const fields =
-      "caption,media_type,media_url,thumbnail_url,permalink,children{media_type,media_url,thumbnail_url}";
+      "caption,media_type,media_url,thumbnail_url,permalink,shortcode," +
+      "children{id,media_type,media_url,thumbnail_url,permalink}";
     const url = new URL(
       `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(mediaId)}`,
     );
@@ -172,7 +176,9 @@ export class InstagramService {
   }
 
   /** Hashtags from caption (Graph does not return a dedicated hashtag field). */
-  private hashtagsFromCaption(caption: string | undefined): string[] | undefined {
+  private hashtagsFromCaption(
+    caption: string | undefined,
+  ): string[] | undefined {
     if (!caption?.trim()) return undefined;
     const matches = caption.match(/#[\p{L}\p{N}_]+/gu) ?? [];
     const unique = [...new Set(matches.map((m) => m.slice(1)))];

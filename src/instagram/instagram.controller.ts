@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -16,8 +17,10 @@ import {
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
+  AnalyzeInstagramProductQueryDto,
   AnalyzeInstagramProductRequestDto,
   AnalyzeInstagramProductResponseDto,
+  InstagramAnalyzeProductPreviewDto,
 } from "./dto/analyze-instagram-product.dto";
 import { InstagramMediaListResponseDto } from "./dto/instagram-media-response.dto";
 import { InstagramProductAiService } from "./instagram-product-ai.service";
@@ -49,6 +52,29 @@ export class InstagramController {
       );
     }
     return this.instagram.listMediaForOwner(ownerId);
+  }
+
+  @Get("analyze-product")
+  @ApiOperation({
+    summary: "Preview product fields from Instagram media (no catalog write)",
+    description:
+      "Same Graph + OpenAI flow as POST /api/instagram/media/analyze-product, but returns only suggested fields. Pass the Graph media id as query `mediaId`. Does not create a product or source reference.",
+  })
+  @ApiOkResponse({ type: InstagramAnalyzeProductPreviewDto })
+  async analyzeProductPreview(
+    @Req() req: { user?: AuthUser },
+    @Query() query: AnalyzeInstagramProductQueryDto,
+  ): Promise<InstagramAnalyzeProductPreviewDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.instagramProductAi.analyzeProductPreviewFromMedia(
+      ownerId,
+      query.mediaId.trim(),
+    );
   }
 
   @Post("media/analyze-product")

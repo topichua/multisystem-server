@@ -9,11 +9,17 @@ import OpenAI from "openai";
 import type { CategoryTreeNodeDto } from "../categories/categories.service";
 import { CategoriesService } from "../categories/categories.service";
 import { ProductSourceType } from "../database/entities/product-source-type.enum";
+import {
+  expandVariantColorSize,
+  mergeAnalysisDescription,
+  tryParsePriceFromOfferText,
+} from "../products/instagram-analysis-draft.util";
 import { ProductsService } from "../products/products.service";
 import type {
   AnalyzedCategoryDto,
   AnalyzedProductDto,
   AnalyzeInstagramProductResponseDto,
+  InstagramAnalyzeProductPreviewDto,
 } from "./dto/analyze-instagram-product.dto";
 import {
   InstagramService,
@@ -40,6 +46,40 @@ function pickVisualAssetUrl(detail: InstagramGraphMediaDetail): string | null {
     return first?.media_url?.trim() || first?.thumbnail_url?.trim() || null;
   }
   return detail.media_url?.trim() || detail.thumbnail_url?.trim() || null;
+}
+
+function collectInstagramImageLinks(
+  detail: InstagramGraphMediaDetail,
+): string[] {
+  const out: string[] = [];
+  const push = (u: string | undefined | null) => {
+    const t = u?.trim();
+    if (t && !out.includes(t)) out.push(t);
+  };
+
+  push(detail.permalink);
+  const sc = detail.shortcode?.trim();
+  if (sc && !detail.permalink?.trim()) {
+    push(`https://www.instagram.com/p/${sc}/`);
+  }
+
+  const type = detail.media_type?.toUpperCase() ?? "";
+  if (type === "CAROUSEL_ALBUM") {
+    for (const c of detail.children?.data ?? []) {
+      const mt = c.media_type?.toUpperCase() ?? "";
+      if (mt === "VIDEO") {
+        push(c.thumbnail_url);
+      } else {
+        push(c.media_url);
+      }
+    }
+  } else {
+    push(detail.media_url);
+    if (type === "VIDEO") {
+      push(detail.thumbnail_url);
+    }
+  }
+  return out;
 }
 
 function formatCategoryCatalogLines(nodes: CategoryTreeNodeDto[]): string {
@@ -94,10 +134,87 @@ export class InstagramProductAiService {
     private readonly products: ProductsService,
   ) {}
 
+  /**
+   * Vision + OpenAI analysis only — no catalog writes. Same model input as
+   * {@link analyzeProductFromMedia}.
+   */
+  async analyzeProductPreviewFromMedia(
+    ownerId: number,
+    instagramMediaId: string,
+  ): Promise<InstagramAnalyzeProductPreviewDto> {
+    const { parsed, detail } = await this.runOpenAiProductAnalysis(
+      ownerId,
+      instagramMediaId,
+    );
+    const description =
+      mergeAnalysisDescription(
+        parsed.product.shortDescription,
+        parsed.product.longDescription,
+      ) ?? "";
+    const images = collectInstagramImageLinks(detail);
+    const variantRows = expandVariantColorSize(
+      parsed.product.colors,
+      parsed.product.sizes,
+    );
+    const variants = variantRows.map((v) => ({
+      color: v.color ?? "",
+      size: v.size ?? "",
+    }));
+    return {
+      name: parsed.product.name,
+      description,
+      price: tryParsePriceFromOfferText(parsed.product.visiblePriceOrOffer),
+      images,
+      matchedCategory: parsed.category.matchedCategoryPath ?? null,
+      variants,
+      brandOrLabel: parsed.product.brandOrLabel ?? "",
+    };
+  }
+
   async analyzeProductFromMedia(
     ownerId: number,
     instagramMediaId: string,
   ): Promise<AnalyzeInstagramProductResponseDto> {
+    const { parsed, detail, assetUrl } = await this.runOpenAiProductAnalysis(
+      ownerId,
+      instagramMediaId,
+    );
+
+    const savedProduct = await this.products.createDraftFromInstagramAnalysis(
+      ownerId,
+      {
+        instagramMediaId,
+        mainImageUrl: assetUrl,
+        sourceType: ProductSourceType.instagram_post,
+        permalink: detail.permalink?.trim() ?? null,
+        caption: detail.caption?.trim() ?? null,
+        name: parsed.product.name,
+        shortDescription: parsed.product.shortDescription,
+        longDescription: parsed.product.longDescription,
+        colors: parsed.product.colors,
+        sizes: parsed.product.sizes,
+        visiblePriceOrOffer: parsed.product.visiblePriceOrOffer,
+        matchedCategoryId: parsed.category.matchedCategoryId,
+      },
+    );
+
+    return {
+      instagramMediaId,
+      product: parsed.product,
+      category: parsed.category,
+      catalogProductId: savedProduct.id,
+      savedProduct,
+    };
+  }
+
+  private async runOpenAiProductAnalysis(
+    ownerId: number,
+    instagramMediaId: string,
+  ): Promise<{
+    parsed: { product: AnalyzedProductDto; category: AnalyzedCategoryDto };
+    detail: InstagramGraphMediaDetail;
+    assetUrl: string;
+  }> {
     const apiKey = this.config.get<string>("OPENAI_API_KEY")?.trim();
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -177,32 +294,7 @@ export class InstagramProductAiService {
     }
 
     const parsed = this.normalizeAnalysis(raw, allowedIds);
-
-    const savedProduct = await this.products.createDraftFromInstagramAnalysis(
-      ownerId,
-      {
-        instagramMediaId,
-        mainImageUrl: assetUrl,
-        sourceType: ProductSourceType.instagram_post,
-        permalink: detail.permalink?.trim() ?? null,
-        caption: detail.caption?.trim() ?? null,
-        name: parsed.product.name,
-        shortDescription: parsed.product.shortDescription,
-        longDescription: parsed.product.longDescription,
-        colors: parsed.product.colors,
-        sizes: parsed.product.sizes,
-        visiblePriceOrOffer: parsed.product.visiblePriceOrOffer,
-        matchedCategoryId: parsed.category.matchedCategoryId,
-      },
-    );
-
-    return {
-      instagramMediaId,
-      product: parsed.product,
-      category: parsed.category,
-      catalogProductId: savedProduct.id,
-      savedProduct,
-    };
+    return { parsed, detail, assetUrl };
   }
 
   private normalizeAnalysis(
