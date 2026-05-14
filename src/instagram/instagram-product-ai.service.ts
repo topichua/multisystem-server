@@ -57,12 +57,6 @@ function collectInstagramImageLinks(
     if (t && !out.includes(t)) out.push(t);
   };
 
-  push(detail.permalink);
-  const sc = detail.shortcode?.trim();
-  if (sc && !detail.permalink?.trim()) {
-    push(`https://www.instagram.com/p/${sc}/`);
-  }
-
   const type = detail.media_type?.toUpperCase() ?? "";
   if (type === "CAROUSEL_ALBUM") {
     for (const c of detail.children?.data ?? []) {

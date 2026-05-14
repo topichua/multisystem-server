@@ -41,7 +41,7 @@ export class InstagramAnalyzeProductPreviewDto {
   @ApiProperty({
     type: [String],
     description:
-      "Instagram post URL when available, plus Graph media URLs for carousel slides / main asset.",
+      "Graph `media_url` / `thumbnail_url` values only (no post permalink): main asset and each carousel slide when present.",
   })
   images: string[];
 
