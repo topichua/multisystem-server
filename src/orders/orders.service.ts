@@ -134,12 +134,25 @@ export class OrdersService {
       );
     }
 
+    let statusId = defaultStatus.id;
+    if (dto.statusId != null) {
+      const customStatus = await this.orderStatusRepo.findOne({
+        where: { id: dto.statusId, workspaceId },
+      });
+      if (!customStatus) {
+        throw new BadRequestException(
+          "Order status not found or not in your workspace",
+        );
+      }
+      statusId = customStatus.id;
+    }
+
     const order = this.orderRepo.create({
       workspaceId,
       customerId: client.id,
       conversationId,
       source,
-      statusId: defaultStatus.id,
+      statusId,
       customerNote: dto.customerNote?.trim() || null,
       internalNote: dto.internalNote?.trim() || null,
       currency,
@@ -158,6 +171,30 @@ export class OrdersService {
       statusId: saved.statusId,
       currency: saved.currency,
     });
+
+    if (statusId !== defaultStatus.id) {
+      await this.appendEvent(saved.id, OrderEventType.STATUS_CHANGED, ownerId, {
+        previousStatusId: defaultStatus.id,
+        statusId,
+        statusName:
+          (
+            await this.orderStatusRepo.findOne({ where: { id: statusId } })
+          )?.name ?? null,
+      });
+    }
+
+    const lineItems = dto.items ?? [];
+    if (lineItems.length > 0) {
+      for (const line of lineItems) {
+        await this.insertOrderLineItem(company, saved, line, ownerId);
+      }
+      await this.recalculateOrderTotals(saved.id, ownerId);
+    }
+
+    if (dto.delivery) {
+      await this.createDeliveryForOrder(saved.id, dto.delivery, ownerId);
+    }
+
     return this.getOrderById(ownerId, saved.id);
   }
 
@@ -172,56 +209,8 @@ export class OrdersService {
       company.workspaceId,
     );
 
-    const variant = await this.variantRepo.findOne({
-      where: {
-        id: dto.variantId,
-        productId: dto.productId,
-        companyId: company.id,
-      },
-      relations: { product: true },
-    });
-    if (!variant || !variant.product) {
-      throw new BadRequestException("Variant not found for this integration");
-    }
-    const product = variant.product;
-    const unitPrice = variant.price ?? product.price;
-    if (unitPrice == null) {
-      throw new BadRequestException(
-        "Cannot price line item: variant and product have no price",
-      );
-    }
-    const totalLine = roundMoney(unitPrice * dto.quantity);
-    const variantTitle = buildVariantTitleSnapshot(variant.color, variant.size);
-    const imageUrl =
-      variant.imageUrl?.trim() || product.mainImageUrl?.trim() || null;
-
-    const item = this.orderItemRepo.create({
-      orderId: order.id,
-      productId: product.id,
-      variantId: variant.id,
-      quantity: dto.quantity,
-      unitPriceAmount: unitPrice,
-      totalPriceAmount: totalLine,
-      productTitleSnapshot: product.name.slice(0, 512),
-      variantTitleSnapshot: variantTitle,
-      skuSnapshot: variant.sku?.trim() || null,
-      imageUrlSnapshot: imageUrl,
-      variantAttributesSnapshot: {
-        color: variant.color,
-        size: variant.size,
-      },
-    });
-    await this.orderItemRepo.save(item);
-
+    await this.insertOrderLineItem(company, order, dto, ownerId);
     await this.recalculateOrderTotals(order.id, ownerId);
-    await this.appendEvent(order.id, OrderEventType.ITEM_ADDED, ownerId, {
-      orderItemId: item.id,
-      productId: item.productId,
-      variantId: item.variantId,
-      quantity: item.quantity,
-      unitPriceAmount: item.unitPriceAmount,
-      totalPriceAmount: item.totalPriceAmount,
-    });
     return this.getOrderById(ownerId, order.id);
   }
 
@@ -419,6 +408,90 @@ export class OrdersService {
       skip,
     });
     return { items, total, page, pageSize };
+  }
+
+  private async insertOrderLineItem(
+    company: Company,
+    order: Order,
+    dto: AddOrderItemDto,
+    ownerId: number,
+  ): Promise<OrderItem> {
+    const variant = await this.variantRepo.findOne({
+      where: {
+        id: dto.variantId,
+        productId: dto.productId,
+        companyId: company.id,
+      },
+      relations: { product: true },
+    });
+    if (!variant || !variant.product) {
+      throw new BadRequestException("Variant not found for this integration");
+    }
+    const product = variant.product;
+    const unitPrice = variant.price ?? product.price;
+    if (unitPrice == null) {
+      throw new BadRequestException(
+        "Cannot price line item: variant and product have no price",
+      );
+    }
+    const totalLine = roundMoney(unitPrice * dto.quantity);
+    const variantTitle = buildVariantTitleSnapshot(variant.color, variant.size);
+    const imageUrl =
+      variant.imageUrl?.trim() || product.mainImageUrl?.trim() || null;
+
+    const item = this.orderItemRepo.create({
+      orderId: order.id,
+      productId: product.id,
+      variantId: variant.id,
+      quantity: dto.quantity,
+      unitPriceAmount: unitPrice,
+      totalPriceAmount: totalLine,
+      productTitleSnapshot: product.name.slice(0, 512),
+      variantTitleSnapshot: variantTitle,
+      skuSnapshot: variant.sku?.trim() || null,
+      imageUrlSnapshot: imageUrl,
+      variantAttributesSnapshot: {
+        color: variant.color,
+        size: variant.size,
+      },
+    });
+    const saved = await this.orderItemRepo.save(item);
+
+    await this.appendEvent(order.id, OrderEventType.ITEM_ADDED, ownerId, {
+      orderItemId: saved.id,
+      productId: saved.productId,
+      variantId: saved.variantId,
+      quantity: saved.quantity,
+      unitPriceAmount: saved.unitPriceAmount,
+      totalPriceAmount: saved.totalPriceAmount,
+    });
+    return saved;
+  }
+
+  private async createDeliveryForOrder(
+    orderId: number,
+    dto: UpdateOrderDeliveryDto,
+    ownerId: number,
+  ): Promise<void> {
+    const row = this.orderDeliveryRepo.create({
+      orderId,
+      provider: dto.provider,
+      recipientName: dto.recipientName ?? null,
+      phone: dto.phone ?? null,
+      city: dto.city ?? null,
+      cityRef: dto.cityRef ?? null,
+      warehouse: dto.warehouse ?? null,
+      warehouseRef: dto.warehouseRef ?? null,
+      address: dto.address ?? null,
+      trackingNumber: dto.trackingNumber ?? null,
+      rawProviderPayload: dto.rawProviderPayload ?? null,
+    });
+    await this.orderDeliveryRepo.save(row);
+    await this.appendEvent(orderId, OrderEventType.DELIVERY_UPDATED, ownerId, {
+      deliveryInfoId: row.id,
+      provider: row.provider,
+      trackingNumber: row.trackingNumber,
+    });
   }
 
   private async recalculateOrderTotals(

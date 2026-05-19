@@ -34,7 +34,9 @@ export class OrdersController {
   @ApiOperation({
     summary: "Create order",
     description:
-      "`conversationId` is optional. When omitted (or null/empty), the order is not linked to a conversation and `source` defaults to `manual` unless you set it explicitly.",
+      "Single request to create an order. Only `customerId` is required. All other fields are optional: " +
+      "`conversationId`, `source`, `currency`, notes, `statusId` (else workspace default), `items` (line items, same as POST /orders/:orderId/items), and `delivery` (same as PATCH /orders/:orderId/delivery). " +
+      "Omit `items` or pass `[]` for an empty order.",
   })
   @HttpCode(HttpStatus.CREATED)
   async create(@Req() req: { user?: AuthUser }, @Body() dto: CreateOrderDto) {

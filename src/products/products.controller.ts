@@ -22,6 +22,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
@@ -33,6 +34,8 @@ import { AddProductGalleryImageFormDto } from "./dto/add-product-gallery-image-f
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
 import { CreateProductVariantDto } from "./dto/create-product-variant.dto";
+import { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
+import { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto";
 import { ReplaceProductMediaRequestDto } from "./dto/replace-product-media.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
@@ -74,7 +77,28 @@ export class ProductsController {
     return this.products.listForOwner(ownerId, query);
   }
 
+  @Get("catalog-variants")
+  @ApiOperation({
+    summary: "Search catalog variants (flat list with product info)",
+    description:
+      "Paginated flat list of variants with embedded `product` fields — for order line pickers and catalog search. " +
+      "Search via `q` or `keyword` (product name, SKU, color, size). Defaults to `active` products only.",
+  })
+  @ApiOkResponse({ type: CatalogVariantListResponseDto })
+  async listCatalogVariants(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListCatalogVariantsQueryDto,
+  ): Promise<CatalogVariantListResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.products.listCatalogVariantsForOwner(ownerId, query);
+  }
+
   @Get("variants")
+  @ApiOperation({
+    summary: "List product variants (full rows)",
+    description:
+      "Paginated variants with `product_parent`, filters, and variant `media`. For a lighter picker, use `GET /products/catalog-variants`.",
+  })
   async listVariants(
     @Req() req: { user?: AuthUser },
     @Query() query: ListProductsQueryDto,

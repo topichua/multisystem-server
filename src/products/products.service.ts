@@ -21,6 +21,8 @@ import type { CreateProductDto } from "./dto/create-product.dto";
 import type { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import type { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
 import type { CreateProductVariantDto } from "./dto/create-product-variant.dto";
+import type { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
+import type { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
 import { ProductListSort } from "./dto/product-list-sort.enum";
 import type { UpdateProductDto } from "./dto/update-product.dto";
@@ -33,6 +35,15 @@ import {
   tryParsePriceFromOfferText,
 } from "./instagram-analysis-draft.util";
 import { ProductMediaService } from "./product-media.service";
+
+function buildVariantTitleSnapshot(
+  color: string | null,
+  size: string | null,
+): string | null {
+  const parts = [color?.trim(), size?.trim()].filter(Boolean) as string[];
+  if (parts.length === 0) return null;
+  return parts.join(" / ");
+}
 
 /** Parent product snapshot embedded on each variant (list/detail). */
 export type ProductParentSummaryDto = {
@@ -302,6 +313,56 @@ export class ProductsService {
    * Paginated variant rows for the owner’s catalog: same filters/sort/paging as `GET /products`,
    * but each item is one variant with `product_parent` and variant `media`.
    */
+  /**
+   * Flat variant rows with embedded product info — for catalog search / order line pickers.
+   * Lighter than `GET /products/variants` (no media gallery on each row).
+   */
+  async listCatalogVariantsForOwner(
+    ownerId: number,
+    query: ListCatalogVariantsQueryDto,
+  ): Promise<CatalogVariantListResponseDto> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const pageSize = query.pageSize ?? 50;
+    const page = query.page ?? 1;
+    const offset = (page - 1) * pageSize;
+    const productStatus = query.status ?? ProductStatus.active;
+    const searchText = query.q?.trim() || query.keyword?.trim();
+
+    const countQb = this.variantRepo
+      .createQueryBuilder("v")
+      .innerJoin("v.product", "p");
+    this.applyCatalogVariantFilters(
+      countQb,
+      company,
+      productStatus,
+      searchText,
+    );
+    const total = await countQb.getCount();
+
+    const dataQb = this.variantRepo
+      .createQueryBuilder("v")
+      .innerJoinAndSelect("v.product", "p");
+    this.applyCatalogVariantFilters(
+      dataQb,
+      company,
+      productStatus,
+      searchText,
+    );
+    dataQb
+      .orderBy("p.name", "ASC")
+      .addOrderBy("v.id", "ASC")
+      .skip(offset)
+      .take(pageSize);
+    const rows = await dataQb.getMany();
+
+    return {
+      items: rows.map((v) => this.toCatalogVariantItem(v)),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
   async listVariantsForOwner(
     ownerId: number,
     query: ListProductsQueryDto,
@@ -833,6 +894,69 @@ export class ProductsService {
       categoryIdFilter,
     );
     return categoryIdFilter;
+  }
+
+  private applyCatalogVariantFilters(
+    qb: SelectQueryBuilder<ProductVariant>,
+    company: Company,
+    productStatus: ProductStatus,
+    searchText: string | undefined,
+  ): void {
+    qb.where("v.companyId = :companyId", { companyId: company.id }).andWhere(
+      "p.companyId = :companyId",
+      { companyId: company.id },
+    );
+    qb.andWhere("p.status = :productStatus", { productStatus });
+
+    if (searchText) {
+      const pattern = `%${escapePgIlikePattern(searchText)}%`;
+      qb.andWhere(
+        `(
+          p.name ILIKE :catalogSearch ESCAPE '\\'
+          OR COALESCE(v.sku, '') ILIKE :catalogSearch ESCAPE '\\'
+          OR COALESCE(v.color, '') ILIKE :catalogSearch ESCAPE '\\'
+          OR COALESCE(v.size, '') ILIKE :catalogSearch ESCAPE '\\'
+        )`,
+        { catalogSearch: pattern },
+      );
+    }
+  }
+
+  private toCatalogVariantItem(
+    v: ProductVariant,
+  ): CatalogVariantListResponseDto["items"][number] {
+    const p = v.product;
+    if (p == null) {
+      throw new Error("ProductVariant row missing product (invariant)");
+    }
+    const variantTitle = buildVariantTitleSnapshot(v.color, v.size);
+    const label = variantTitle ? `${p.name} — ${variantTitle}` : p.name;
+    const unitPrice = v.price ?? p.price ?? null;
+    const imageUrl =
+      v.imageUrl?.trim() || p.mainImageUrl?.trim() || null;
+
+    return {
+      id: v.id,
+      productId: p.id,
+      color: v.color,
+      size: v.size,
+      sku: v.sku,
+      unitPrice,
+      imageUrl,
+      inStock: v.inStock ?? p.inStock,
+      quantity: v.quantity ?? p.quantity,
+      status: v.status,
+      label,
+      product: {
+        id: p.id,
+        name: p.name,
+        categoryId: p.categoryId,
+        mainImageUrl: p.mainImageUrl,
+        currency: p.currency,
+        status: p.status,
+        price: p.price,
+      },
+    };
   }
 
   private applyVariantListFilters(
