@@ -43,6 +43,10 @@ export class OrderStatus {
   @Column({ name: "is_default", type: "boolean", default: false })
   isDefault: boolean;
 
+  /** Built-in status from workspace seed; not removable by users when true. */
+  @Column({ name: "is_system", type: "boolean", default: false })
+  isSystem: boolean;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 

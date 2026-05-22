@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -23,9 +24,13 @@ import {
 } from "../database/entities";
 import type { AddOrderItemDto } from "./dto/add-order-item.dto";
 import type { CreateOrderDto } from "./dto/create-order.dto";
+import type { CreateOrderStatusDefinitionDto } from "./dto/create-order-status-definition.dto";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import type { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
+import type { OrderStatusResponseDto } from "./dto/order-status-response.dto";
+import type { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
 import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
+import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -125,27 +130,7 @@ export class OrdersService {
       source = source ?? OrderSource.manual;
     }
 
-    const defaultStatus = await this.orderStatusRepo.findOne({
-      where: { workspaceId, isDefault: true },
-    });
-    if (!defaultStatus) {
-      throw new ServiceUnavailableException(
-        "No default order status for workspace; run migrations or contact support",
-      );
-    }
-
-    let statusId = defaultStatus.id;
-    if (dto.statusId != null) {
-      const customStatus = await this.orderStatusRepo.findOne({
-        where: { id: dto.statusId, workspaceId },
-      });
-      if (!customStatus) {
-        throw new BadRequestException(
-          "Order status not found or not in your workspace",
-        );
-      }
-      statusId = customStatus.id;
-    }
+    const statusId = await this.resolveDefaultOrderStatusId(workspaceId);
 
     const order = this.orderRepo.create({
       workspaceId,
@@ -171,17 +156,6 @@ export class OrdersService {
       statusId: saved.statusId,
       currency: saved.currency,
     });
-
-    if (statusId !== defaultStatus.id) {
-      await this.appendEvent(saved.id, OrderEventType.STATUS_CHANGED, ownerId, {
-        previousStatusId: defaultStatus.id,
-        statusId,
-        statusName:
-          (
-            await this.orderStatusRepo.findOne({ where: { id: statusId } })
-          )?.name ?? null,
-      });
-    }
 
     const lineItems = dto.items ?? [];
     if (lineItems.length > 0) {
@@ -212,6 +186,147 @@ export class OrdersService {
     await this.insertOrderLineItem(company, order, dto, ownerId);
     await this.recalculateOrderTotals(order.id, ownerId);
     return this.getOrderById(ownerId, order.id);
+  }
+
+  async listOrderStatusesForOwner(
+    ownerId: number,
+  ): Promise<OrderStatusResponseDto[]> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const rows = await this.orderStatusRepo.find({
+      where: { workspaceId: company.workspaceId },
+      order: { sortOrder: "ASC", id: "ASC" },
+    });
+    return rows.map((s) => this.toOrderStatusDto(s));
+  }
+
+  async createOrderStatusDefinitionForOwner(
+    ownerId: number,
+    dto: CreateOrderStatusDefinitionDto,
+  ): Promise<OrderStatusResponseDto> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const workspaceId = company.workspaceId;
+
+    return this.orderStatusRepo.manager.transaction(async (em) => {
+      const raw = await em
+        .createQueryBuilder(OrderStatus, "s")
+        .select("COALESCE(MAX(s.sortOrder), -1)", "maxSort")
+        .where("s.workspaceId = :workspaceId", { workspaceId })
+        .getRawOne<{ maxSort: string | number }>();
+      const sortOrder = Number(raw?.maxSort ?? -1) + 1;
+
+      const status = em.create(OrderStatus, {
+        workspaceId,
+        name: dto.name.trim(),
+        category: dto.category,
+        color: dto.color ?? null,
+        sortOrder,
+        isDefault: false,
+        isSystem: false,
+      });
+
+      if (dto.isDefault === true) {
+        await em.update(
+          OrderStatus,
+          { workspaceId, isDefault: true },
+          { isDefault: false },
+        );
+        status.isDefault = true;
+      }
+
+      const saved = await em.save(status);
+      return this.toOrderStatusDto(saved);
+    });
+  }
+
+  async updateOrderStatusDefinitionForOwner(
+    ownerId: number,
+    statusId: number,
+    dto: UpdateOrderStatusDefinitionDto,
+  ): Promise<OrderStatusResponseDto> {
+    if (
+      dto.name === undefined &&
+      dto.color === undefined &&
+      dto.category === undefined &&
+      dto.isDefault === undefined
+    ) {
+      throw new BadRequestException(
+        "Provide at least one of: name, color, category, isDefault",
+      );
+    }
+
+    const company = await this.requireCompanyForOwner(ownerId);
+    const workspaceId = company.workspaceId;
+
+    return this.orderStatusRepo.manager.transaction(async (em) => {
+      const status = await em.findOne(OrderStatus, {
+        where: { id: statusId, workspaceId },
+      });
+      if (!status) {
+        throw new NotFoundException("Order status not found");
+      }
+
+      if (dto.category !== undefined) {
+        if (status.isSystem) {
+          throw new BadRequestException(
+            "Cannot change category on a system status",
+          );
+        }
+        status.category = dto.category;
+      }
+      if (dto.name !== undefined) {
+        status.name = dto.name.trim();
+      }
+      if (dto.color !== undefined) {
+        status.color = dto.color;
+      }
+      if (dto.isDefault === true) {
+        await em.update(
+          OrderStatus,
+          { workspaceId, isDefault: true },
+          { isDefault: false },
+        );
+        status.isDefault = true;
+      } else if (dto.isDefault === false) {
+        status.isDefault = false;
+      }
+
+      const saved = await em.save(status);
+      return this.toOrderStatusDto(saved);
+    });
+  }
+
+  async deleteOrderStatusDefinitionForOwner(
+    ownerId: number,
+    statusId: number,
+  ): Promise<void> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const workspaceId = company.workspaceId;
+
+    const status = await this.orderStatusRepo.findOne({
+      where: { id: statusId, workspaceId },
+    });
+    if (!status) {
+      throw new NotFoundException("Order status not found");
+    }
+    if (status.isSystem) {
+      throw new BadRequestException("System order statuses cannot be deleted");
+    }
+    if (status.isDefault) {
+      throw new BadRequestException(
+        "Cannot delete the default status; set another status as default first",
+      );
+    }
+
+    const ordersUsing = await this.orderRepo.count({
+      where: { statusId: status.id, workspaceId },
+    });
+    if (ordersUsing > 0) {
+      throw new ConflictException(
+        `Cannot delete status: ${ordersUsing} order(s) still use it`,
+      );
+    }
+
+    await this.orderStatusRepo.remove(status);
   }
 
   async updateOrderStatus(
@@ -353,9 +468,22 @@ export class OrdersService {
     const pageSize = query.pageSize ?? 50;
     const page = query.page ?? 1;
     const skip = (page - 1) * pageSize;
-    const where: { workspaceId: number; statusId?: number } = {
+    const where: {
+      workspaceId: number;
+      statusId?: number;
+      customerId?: number;
+    } = {
       workspaceId: company.workspaceId,
     };
+    if (query.clientId != null) {
+      const client = await this.clientRepo.findOne({
+        where: { id: query.clientId, workspaceId: company.workspaceId },
+      });
+      if (!client) {
+        throw new NotFoundException("Client not found");
+      }
+      where.customerId = query.clientId;
+    }
     if (query.statusId != null) {
       where.statusId = query.statusId;
     }
@@ -379,35 +507,50 @@ export class OrdersService {
     page: number;
     pageSize: number;
   }> {
+    return this.listOrdersByWorkspace(ownerId, { ...query, clientId });
+  }
+
+  async getOrderStatsForClient(
+    ownerId: number,
+    clientId: number,
+  ): Promise<ClientOrderStatsResponseDto> {
     const company = await this.requireCompanyForOwner(ownerId);
+    const workspaceId = company.workspaceId;
+
     const client = await this.clientRepo.findOne({
-      where: { id: clientId, workspaceId: company.workspaceId },
+      where: { id: clientId, workspaceId },
     });
     if (!client) {
       throw new NotFoundException("Client not found");
     }
-    const pageSize = query.pageSize ?? 50;
-    const page = query.page ?? 1;
-    const skip = (page - 1) * pageSize;
-    const where: {
-      workspaceId: number;
-      customerId: number;
-      statusId?: number;
-    } = {
-      workspaceId: company.workspaceId,
-      customerId: clientId,
+
+    const raw = await this.orderRepo
+      .createQueryBuilder("o")
+      .select("COUNT(o.id)::int", "orderCount")
+      .addSelect("COALESCE(SUM(o.totalAmount), 0)", "totalSpent")
+      .addSelect("COALESCE(AVG(o.totalAmount), 0)", "averageOrderPrice")
+      .addSelect("MAX(o.createdAt)", "lastOrderAt")
+      .where("o.workspaceId = :workspaceId", { workspaceId })
+      .andWhere("o.customerId = :clientId", { clientId })
+      .getRawOne<{
+        orderCount: string | number;
+        totalSpent: string;
+        averageOrderPrice: string;
+        lastOrderAt: Date | null;
+      }>();
+
+    const orderCount = Number(raw?.orderCount ?? 0);
+    const totalSpent = roundMoney(Number(raw?.totalSpent ?? 0));
+    const averageOrderPrice =
+      orderCount > 0 ? roundMoney(Number(raw?.averageOrderPrice ?? 0)) : 0;
+
+    return {
+      clientId,
+      orderCount,
+      totalSpent,
+      averageOrderPrice,
+      lastOrderAt: raw?.lastOrderAt ?? null,
     };
-    if (query.statusId != null) {
-      where.statusId = query.statusId;
-    }
-    const [items, total] = await this.orderRepo.findAndCount({
-      where,
-      relations: { status: true, customer: true },
-      order: { createdAt: "DESC", id: "DESC" },
-      take: pageSize,
-      skip,
-    });
-    return { items, total, page, pageSize };
   }
 
   private async insertOrderLineItem(
@@ -546,6 +689,36 @@ export class OrdersService {
       throw new NotFoundException("Order not found");
     }
     return order;
+  }
+
+  /** Workspace row with `is_default = true` (set via PATCH /orders/statuses/:id). */
+  private async resolveDefaultOrderStatusId(
+    workspaceId: number,
+  ): Promise<number> {
+    const defaultStatus = await this.orderStatusRepo.findOne({
+      where: { workspaceId, isDefault: true },
+    });
+    if (!defaultStatus) {
+      throw new ServiceUnavailableException(
+        "No default order status for workspace; mark one status as default in order settings",
+      );
+    }
+    return defaultStatus.id;
+  }
+
+  private toOrderStatusDto(row: OrderStatus): OrderStatusResponseDto {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      name: row.name,
+      category: row.category,
+      color: row.color,
+      sortOrder: row.sortOrder,
+      isDefault: row.isDefault,
+      isSystem: row.isSystem,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
   }
 
   private async requireCompanyForOwner(ownerId: number): Promise<Company> {

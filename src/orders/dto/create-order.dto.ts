@@ -67,16 +67,6 @@ export class CreateOrderDto {
   internalNote?: string;
 
   @ApiPropertyOptional({
-    description:
-      "Custom workspace order status. Omit to use the workspace default status.",
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  statusId?: number;
-
-  @ApiPropertyOptional({
     type: () => [AddOrderItemDto],
     description:
       "Line items to add on create (same shape as POST /orders/:orderId/items). Omit or `[]` for an empty order.",

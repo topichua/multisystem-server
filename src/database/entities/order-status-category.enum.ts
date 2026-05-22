@@ -7,6 +7,7 @@ export enum OrderStatusCategory {
   confirmed = "confirmed",
   packed = "packed",
   shipped = "shipped",
+  delivery = "delivery",
   completed = "completed",
   canceled = "canceled",
 }

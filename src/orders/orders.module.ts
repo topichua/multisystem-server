@@ -13,6 +13,7 @@ import {
   ProductVariant,
   Workspace,
 } from "../database/entities";
+import { OrderStatusesController } from "./order-statuses.controller";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
@@ -32,7 +33,7 @@ import { OrdersService } from "./orders.service";
       ProductVariant,
     ]),
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, OrderStatusesController],
   providers: [OrdersService],
   exports: [OrdersService],
 })

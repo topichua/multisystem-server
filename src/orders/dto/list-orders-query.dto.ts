@@ -26,4 +26,13 @@ export class ListOrdersQueryDto {
   @IsInt()
   @Min(1)
   statusId?: number;
+
+  @ApiPropertyOptional({
+    description: "Filter orders for this client (workspace customer id)",
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  clientId?: number;
 }

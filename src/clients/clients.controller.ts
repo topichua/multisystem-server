@@ -32,6 +32,7 @@ import { ClientResponseDto } from "./dto/client-response.dto";
 import { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import { CreateClientRequestDto } from "./dto/create-client-request.dto";
 import { ListClientsQueryDto } from "./dto/list-clients-query.dto";
+import { ClientOrderStatsResponseDto } from "./dto/client-order-stats-response.dto";
 import { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
 @ApiTags("clients")
@@ -84,6 +85,22 @@ export class ClientsController {
   ): Promise<ClientResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.clients.createForOwner(ownerId, dto);
+  }
+
+  @Get(":id/orders/stats")
+  @ApiOperation({
+    summary: "Order stats for client",
+    description:
+      "Aggregates over all orders where this client is the customer: count, total spent (`totalAmount` sum), average order total, and date of the latest order.",
+  })
+  @ApiOkResponse({ type: ClientOrderStatsResponseDto })
+  async getOrderStatsForClient(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ClientOrderStatsResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    const clientId = this.parsePositiveInt(id, "id");
+    return this.orders.getOrderStatsForClient(ownerId, clientId);
   }
 
   @Get(":id/orders")
