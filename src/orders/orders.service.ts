@@ -29,6 +29,7 @@ import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import type { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
 import type { OrderStatusResponseDto } from "./dto/order-status-response.dto";
 import type { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
+import type { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
 import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
 
@@ -197,6 +198,52 @@ export class OrdersService {
       order: { sortOrder: "ASC", id: "ASC" },
     });
     return rows.map((s) => this.toOrderStatusDto(s));
+  }
+
+  async setOrderStatusesOrderForOwner(
+    ownerId: number,
+    dto: SetOrderStatusesOrderDto,
+  ): Promise<OrderStatusResponseDto[]> {
+    const company = await this.requireCompanyForOwner(ownerId);
+    const workspaceId = company.workspaceId;
+
+    const uniqueIds = new Set(dto.ids);
+    if (uniqueIds.size !== dto.ids.length) {
+      throw new BadRequestException("ids must not contain duplicates");
+    }
+
+    return this.orderStatusRepo.manager.transaction(async (em) => {
+      const rows = await em.find(OrderStatus, {
+        where: { workspaceId },
+      });
+      if (rows.length === 0) {
+        throw new BadRequestException("No order statuses in workspace");
+      }
+      if (dto.ids.length !== rows.length) {
+        throw new BadRequestException(
+          `ids must include every workspace status exactly once (expected ${rows.length}, got ${dto.ids.length})`,
+        );
+      }
+
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      for (const id of dto.ids) {
+        if (!byId.has(id)) {
+          throw new BadRequestException(`Order status ${id} not found in workspace`);
+        }
+      }
+
+      for (let i = 0; i < dto.ids.length; i++) {
+        const row = byId.get(dto.ids[i])!;
+        row.sortOrder = i;
+        await em.save(row);
+      }
+
+      const updated = await em.find(OrderStatus, {
+        where: { workspaceId },
+        order: { sortOrder: "ASC", id: "ASC" },
+      });
+      return updated.map((s) => this.toOrderStatusDto(s));
+    });
   }
 
   async createOrderStatusDefinitionForOwner(

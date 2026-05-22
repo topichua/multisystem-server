@@ -9,6 +9,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Put,
   Patch,
   Query,
   Req,
@@ -30,6 +31,7 @@ import { AddOrderItemDto } from "./dto/add-order-item.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import { CreateOrderStatusDefinitionDto } from "./dto/create-order-status-definition.dto";
+import { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
 import { OrderStatusResponseDto } from "./dto/order-status-response.dto";
 import { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
 import { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
@@ -113,6 +115,22 @@ export class OrdersController {
   ): Promise<OrderStatusResponseDto[]> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.orders.listOrderStatusesForOwner(ownerId);
+  }
+
+  @Put("statuses/order")
+  @ApiOperation({
+    summary: "Set order status display order",
+    description:
+      "Reorders workspace statuses by `sortOrder`. Body `ids` must list every status id exactly once, in the desired sequence (first id → `sortOrder` 0).",
+  })
+  @ApiBody({ type: SetOrderStatusesOrderDto })
+  @ApiOkResponse({ type: [OrderStatusResponseDto] })
+  async setStatusesOrder(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: SetOrderStatusesOrderDto,
+  ): Promise<OrderStatusResponseDto[]> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.setOrderStatusesOrderForOwner(ownerId, dto);
   }
 
   @Post("statuses")
