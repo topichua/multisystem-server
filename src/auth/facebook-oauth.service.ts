@@ -20,10 +20,13 @@ const GRAPH_VERSION = "v25.0";
 
 /**
  * Scopes passed to `www.facebook.com/.../dialog/oauth`.
- * Do **not** include `pages_messaging` or `pages_manage_metadata` here — Meta often
- * shows “Invalid Scopes” for those in the standard Login dialog until the app has
- * the right use cases enabled; they are still obtainable via App Review / token
- * flows. Override with `FACEBOOK_OAUTH_SCOPES` or `FB_OAUTH_SCOPES` in `.env` if needed.
+ *
+ * Do **not** include `pages_messaging` or `pages_manage_metadata` here unless Meta
+ * shows them as valid for your app (App Review + use case enabled). Otherwise the
+ * dialog fails with “Invalid Scopes” in Development.
+ *
+ * Instagram DMs use `instagram_manage_messages` on the Page token. After App Review,
+ * you may add Page messaging scopes via `FACEBOOK_OAUTH_SCOPES` / `FB_OAUTH_SCOPES`.
  */
 const DEFAULT_OAUTH_SCOPES = [
   "pages_show_list",

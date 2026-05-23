@@ -25,8 +25,9 @@ import type {
 import type {
   InstagramMessageDto,
   InstagramMessagesResponseDto,
-  InstagramRepliedToMessageRefDto,
 } from "./dto/http/instagram-messages-response.dto";
+import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
+import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import type { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 import type {
@@ -57,6 +58,8 @@ export class ConversationsService {
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
+    private readonly messagePresenter: ConversationMessagePresenterService,
+    private readonly messageNotify: ConversationMessageNotifyService,
   ) {}
 
   async listConversationsForOwner(
@@ -527,7 +530,8 @@ export class ConversationsService {
           row.editedAt = options.editedAt;
         }
       }
-      await this.conversationMessageRepo.save(row);
+      const saved = await this.conversationMessageRepo.save(row);
+      await this.messageNotify.notifyPersistedMessage(saved);
     }
   }
 
@@ -614,35 +618,6 @@ export class ConversationsService {
     await this.instagramUserRepo.save(row);
   }
 
-  private buildRepliedToMessageRef(
-    row: ConversationMessage,
-  ): InstagramRepliedToMessageRefDto {
-    try {
-      const parsed = JSON.parse(row.instagramJson) as InstagramMessageDto;
-      if (
-        typeof parsed.created_time === "string" &&
-        parsed.created_time.length > 0
-      ) {
-        return {
-          id: row.externalId,
-          created_time: parsed.created_time,
-          message: (parsed.message ?? row.message) || undefined,
-          ...(parsed.attachments != null
-            ? { attachments: parsed.attachments }
-            : {}),
-          ...(parsed.from != null ? { from: parsed.from } : {}),
-        };
-      }
-    } catch {
-      /* use row columns */
-    }
-    return {
-      id: row.externalId,
-      created_time: row.createdAt.toISOString(),
-      ...(row.message.length > 0 ? { message: row.message } : {}),
-    };
-  }
-
   private async getConversationMessagesFromDb(
     conversationDbId: number,
     paging?: { page: number; pageSize: number },
@@ -683,69 +658,12 @@ export class ConversationsService {
       }
     }
 
-    const attachRepliedToSnapshot = (
-      dbRow: ConversationMessage,
-      dto: InstagramMessageDto,
-    ): InstagramMessageDto => {
-      const parentId = dbRow.repliedToExternalId?.trim();
-      if (!parentId) return dto;
-      const parent = messageRowsByExternalId.get(parentId);
-      const replied_to_message = parent
-        ? this.buildRepliedToMessageRef(parent)
-        : { id: parentId };
-      return { ...dto, replied_to_message };
-    };
-
     const data: InstagramMessageDto[] = rows.map((r) => {
-      /** `read_at` / `edited_at` come only from DB columns, not from stored Graph JSON. */
-      const addDbMeta = (m: InstagramMessageDto): InstagramMessageDto => {
-        const { read_at, edited_at, ...fromGraph } = m;
-        void read_at;
-        void edited_at;
-        return {
-          ...fromGraph,
-          ...(r.editedAt != null
-            ? { edited_at: r.editedAt.toISOString() }
-            : {}),
-          ...(r.readAt != null ? { read_at: r.readAt.toISOString() } : {}),
-          ...(r.repliedToExternalId != null
-            ? { reply_to_id: r.repliedToExternalId }
-            : {}),
-          system_updated_at: r.systemUpdatedAt.toISOString(),
-        };
-      };
-      try {
-        const parsed = JSON.parse(r.instagramJson) as Record<string, unknown>;
-        const createdTime = parsed.created_time;
-        if (typeof createdTime === "string" && createdTime.length > 0) {
-          return attachRepliedToSnapshot(
-            r,
-            addDbMeta({
-              ...(parsed as unknown as InstagramMessageDto),
-              id:
-                typeof parsed.id === "string" && parsed.id.length > 0
-                  ? parsed.id
-                  : r.externalId,
-            } as InstagramMessageDto),
-          );
-        }
-      } catch {
-        /* use fallback */
-      }
-      return attachRepliedToSnapshot(
-        r,
-        addDbMeta({
-          id: r.externalId,
-          created_time: r.createdAt.toISOString(),
-          message: r.message,
-          to: {
-            data:
-              r.receiverId && r.receiverId !== "0"
-                ? [{ id: r.receiverId }]
-                : [],
-          },
-        }),
-      );
+      const parentId = r.repliedToExternalId?.trim();
+      const parent = parentId
+        ? messageRowsByExternalId.get(parentId)
+        : undefined;
+      return this.messagePresenter.mapRowToDto(r, parent);
     });
     const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
     return {
