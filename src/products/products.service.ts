@@ -17,6 +17,7 @@ import {
 import { ProductSourceReferenceType } from "../database/entities/product-source-reference-type.enum";
 import { ProductSourceType } from "../database/entities/product-source-type.enum";
 import { ProductStatus } from "../database/entities/product-status.enum";
+import { ProductType } from "../database/entities/product-type.enum";
 import type { CreateProductDto } from "./dto/create-product.dto";
 import type { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import type { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
@@ -49,6 +50,7 @@ function buildVariantTitleSnapshot(
 export type ProductParentSummaryDto = {
   id: number;
   name: string;
+  productType: ProductType;
   categoryId: number | null;
   mainImageUrl: string | null;
   currency: string;
@@ -108,6 +110,7 @@ export type ProductCategorySummaryDto = {
 export type ProductListItemDto = {
   id: number;
   name: string;
+  productType: ProductType;
   status: ProductStatus;
   price: number | null;
   currency: string;
@@ -448,6 +451,7 @@ export class ProductsService {
         name,
         description: dto.description?.trim() || null,
         status: dto.status ?? ProductStatus.draft,
+        productType: dto.productType ?? ProductType.single,
         sourceType: dto.sourceType ?? null,
         sourceId: dto.sourceId?.trim() || null,
         referenceGroupId: dto.referenceGroupId?.trim() || null,
@@ -505,6 +509,8 @@ export class ProductsService {
         name,
         description,
         status: ProductStatus.draft,
+        productType:
+          variantSpecs.length > 1 ? ProductType.variants : ProductType.single,
         sourceType: params.sourceType,
         sourceId: params.instagramMediaId,
         referenceGroupId: null,
@@ -519,7 +525,12 @@ export class ProductsService {
       const saved = await em.save(product);
       productId = saved.id;
 
-      for (const spec of variantSpecs) {
+      const specsToInsert =
+        saved.productType === ProductType.single
+          ? variantSpecs.slice(0, 1)
+          : variantSpecs;
+
+      for (const spec of specsToInsert) {
         await em.insert(ProductVariant, {
           companyId: company.id,
           productId: saved.id,
@@ -576,6 +587,9 @@ export class ProductsService {
     }
     if (dto.status !== undefined) {
       product.status = dto.status;
+    }
+    if (dto.productType !== undefined) {
+      product.productType = dto.productType;
     }
     if (dto.sourceType !== undefined) {
       product.sourceType = dto.sourceType;
@@ -647,7 +661,8 @@ export class ProductsService {
     dto: CreateProductVariantDto,
   ): Promise<ProductDetailDto> {
     const company = await this.requireCompanyForOwner(ownerId);
-    await this.requireProduct(company.id, productId);
+    const product = await this.requireProduct(company.id, productId);
+    await this.assertCanAddVariantToProduct(product, company.id);
     const row = this.variantRepo.create({
       companyId: company.id,
       productId,
@@ -856,6 +871,23 @@ export class ProductsService {
     return product;
   }
 
+  private async assertCanAddVariantToProduct(
+    product: Product,
+    companyId: number,
+  ): Promise<void> {
+    if (product.productType !== ProductType.single) {
+      return;
+    }
+    const variantCount = await this.variantRepo.count({
+      where: { productId: product.id, companyId },
+    });
+    if (variantCount >= 1) {
+      throw new BadRequestException(
+        "Products with product_type single allow only one variant",
+      );
+    }
+  }
+
   private async assertCategoryBelongsToWorkspaceIfSet(
     workspaceId: number,
     categoryId: number | null | undefined,
@@ -1018,6 +1050,7 @@ export class ProductsService {
     return {
       id: p.id,
       name: p.name,
+      productType: p.productType,
       status: p.status,
       price: p.price,
       currency: p.currency,
@@ -1035,6 +1068,7 @@ export class ProductsService {
     return {
       id: p.id,
       name: p.name,
+      productType: p.productType,
       categoryId: p.categoryId,
       mainImageUrl: p.mainImageUrl,
       currency: p.currency,

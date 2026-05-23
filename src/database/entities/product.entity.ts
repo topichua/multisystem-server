@@ -16,6 +16,7 @@ import { ProductMedia } from "./product-media.entity";
 import { ProductSourceReference } from "./product-source-reference.entity";
 import { ProductSourceType } from "./product-source-type.enum";
 import { ProductStatus } from "./product-status.enum";
+import { ProductType } from "./product-type.enum";
 import { ProductVariant } from "./product-variant.entity";
 import { User } from "./user.entity";
 
@@ -58,6 +59,15 @@ export class Product {
     default: ProductStatus.draft,
   })
   status: ProductStatus;
+
+  @Column({
+    name: "product_type",
+    type: "enum",
+    enum: ProductType,
+    enumName: "products_product_type_enum",
+    default: ProductType.single,
+  })
+  productType: ProductType;
 
   @Column({
     name: "source_type",

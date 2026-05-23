@@ -194,6 +194,11 @@ export class ProductsController {
       properties: {
         name: { type: "string" },
         description: { type: "string" },
+        product_type: {
+          type: "string",
+          enum: ["single", "variants"],
+          default: "single",
+        },
         status: { type: "string" },
         sourceType: { type: "string" },
         sourceId: { type: "string" },

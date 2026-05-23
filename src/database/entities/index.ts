@@ -23,6 +23,7 @@ export { ProductSourceReference } from "./product-source-reference.entity";
 export { ProductSourceReferenceType } from "./product-source-reference-type.enum";
 export { ProductSourceType } from "./product-source-type.enum";
 export { ProductStatus } from "./product-status.enum";
+export { ProductType } from "./product-type.enum";
 export { ProductVariant } from "./product-variant.entity";
 export { User } from "./user.entity";
 export { UserStatus, UserStatusLabels } from "./user-status.enum";

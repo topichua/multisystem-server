@@ -32,6 +32,7 @@ import { WorkspaceDefaultCurrency1744200000030 } from "./migrations/174420000003
 import { ProductVariantStatus1744200000031 } from "./migrations/1744200000031-ProductVariantStatus";
 import { OrdersModule1744200000032 } from "./migrations/1744200000032-OrdersModule";
 import { OrderStatusIsSystemAndDeliveryCategory1744200000034 } from "./migrations/1744200000034-OrderStatusIsSystemAndDeliveryCategory";
+import { ProductType1744200000035 } from "./migrations/1744200000035-ProductType";
 import {
   Client,
   Company,
@@ -152,6 +153,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductVariantStatus1744200000031,
       OrdersModule1744200000032,
       OrderStatusIsSystemAndDeliveryCategory1744200000034,
+      ProductType1744200000035,
     ],
   };
 }

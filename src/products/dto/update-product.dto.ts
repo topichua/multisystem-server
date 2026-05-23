@@ -13,6 +13,7 @@ import {
 } from "class-validator";
 import { ProductSourceType } from "../../database/entities/product-source-type.enum";
 import { ProductStatus } from "../../database/entities/product-status.enum";
+import { ProductType } from "../../database/entities/product-type.enum";
 
 export class UpdateProductDto {
   @ApiPropertyOptional({ maxLength: 512 })
@@ -37,6 +38,11 @@ export class UpdateProductDto {
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
+
+  @ApiPropertyOptional({ enum: ProductType })
+  @IsOptional()
+  @IsEnum(ProductType)
+  productType?: ProductType;
 
   @ApiPropertyOptional({ enum: ProductSourceType, nullable: true })
   @IsOptional()

@@ -13,6 +13,7 @@ import {
 } from "class-validator";
 import { ProductSourceType } from "../../database/entities/product-source-type.enum";
 import { ProductStatus } from "../../database/entities/product-status.enum";
+import { ProductType } from "../../database/entities/product-type.enum";
 
 export class CreateProductDto {
   @ApiProperty({ maxLength: 512 })
@@ -37,6 +38,26 @@ export class CreateProductDto {
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
+
+  @ApiPropertyOptional({
+    name: "product_type",
+    enum: ProductType,
+    default: ProductType.single,
+    description:
+      "single = one SKU; variants = sold via product_variants. Accepts `product_type` or `productType`.",
+  })
+  @IsOptional()
+  @Transform(({ obj, value }: { obj: object; value: unknown }) => {
+    const raw =
+      value ?? (obj as { product_type?: unknown }).product_type;
+    if (typeof raw === "string") {
+      const t = raw.trim();
+      return t === "" ? undefined : t;
+    }
+    return raw;
+  })
+  @IsEnum(ProductType)
+  productType?: ProductType;
 
   @ApiPropertyOptional({ enum: ProductSourceType })
   @IsOptional()
