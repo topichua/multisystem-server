@@ -18,6 +18,7 @@ export class ConversationsRealtimeService {
 
   /**
    * Pushes one message in the same shape as `GET /conversations/:id/messages` items.
+   * Emitted on create, edit, read_at, and any other message row update.
    * Clients subscribed to room `conversation:{id}` receive `conversation.message`.
    */
   emitConversationMessage(

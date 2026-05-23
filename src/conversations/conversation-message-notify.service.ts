@@ -3,7 +3,7 @@ import { ConversationMessage } from "../database/entities";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
 import { ConversationsRealtimeService } from "./conversations-realtime.service";
 
-/** Maps persisted rows to API DTOs and pushes over WebSocket (no extra DB reads). */
+/** Maps persisted rows to API DTOs and pushes `conversation.message` over WebSocket. */
 @Injectable()
 export class ConversationMessageNotifyService {
   constructor(

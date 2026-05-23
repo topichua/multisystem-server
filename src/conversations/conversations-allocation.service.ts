@@ -5,7 +5,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { QueryFailedError, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import {
   Company,
   Conversation,
@@ -41,17 +41,6 @@ type WebhookCompanyContext = {
   instagramAccountId: string;
   accessToken: string;
   pageId: string;
-};
-
-type PersistedMessagePayload = {
-  conversationDbId: number;
-  externalId: string;
-  text: string;
-  instagramJson: string;
-  createdAt: Date;
-  senderId: string;
-  receiverId: string;
-  repliedToExternalId: string | null;
 };
 
 @Injectable()
@@ -603,134 +592,65 @@ export class ConversationsAllocationService {
       if (!ext) continue;
       const createdAt = new Date(m.created_time);
       if (Number.isNaN(createdAt.getTime())) continue;
+      const senderId = m.from?.id?.trim() ?? "";
+      const receiverId = m.to?.data?.[0]?.id?.trim() ?? "";
+      const text = m.message ?? "";
+      /** Graph includes `reply_to` when requested; webhooks often omit it (only `mid` + text). */
+      const parentMidRaw =
+        m.reply_to?.mid?.trim() ||
+        options?.webhookMessaging?.message?.reply_to?.mid?.trim();
+      const repliedToFromPayload =
+        parentMidRaw && parentMidRaw !== ext ? parentMidRaw : null;
+      const { reply_to, id, ...messageWithoutId } = m;
+      void reply_to;
+      void id;
+      const instagramJson = JSON.stringify({
+        ...messageWithoutId,
+        ...(options?.webhookMessaging != null
+          ? {
+              webhook_messaging: this.sanitizeWebhookMessagingForStorage(
+                options.webhookMessaging,
+              ),
+            }
+          : {}),
+      });
 
-      const payload = this.buildPersistedMessagePayload(
-        m,
-        conversationDbId,
-        ext,
-        createdAt,
-        options?.webhookMessaging,
-      );
-
-      if (options?.editedAt != null) {
-        await this.persistEditedInstagramMessage(payload, options.editedAt);
-        continue;
+      let row = await this.conversationMessageRepo.findOne({
+        where: { conversationId: conversationDbId, externalId: ext },
+      });
+      if (!row) {
+        row = this.conversationMessageRepo.create({
+          conversationId: conversationDbId,
+          externalId: ext,
+          message: text,
+          instagramJson,
+          createdAt,
+          senderId: senderId.length > 0 ? senderId : "0",
+          receiverId: receiverId.length > 0 ? receiverId : "0",
+          readAt: null,
+          repliedToExternalId: repliedToFromPayload,
+          ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
+        });
+      } else {
+        row.message = text;
+        row.instagramJson = instagramJson;
+        row.createdAt = createdAt;
+        row.senderId = senderId.length > 0 ? senderId : row.senderId;
+        row.receiverId = receiverId.length > 0 ? receiverId : row.receiverId;
+        if (repliedToFromPayload != null) {
+          row.repliedToExternalId = repliedToFromPayload;
+        }
+        if (options?.editedAt != null) {
+          row.editedAt = options.editedAt;
+        }
       }
-
-      await this.insertNewInstagramMessage(payload);
+      await this.saveMessageAndNotify(row);
     }
   }
 
-  private buildPersistedMessagePayload(
-    m: InstagramMessageDto,
-    conversationDbId: number,
-    externalId: string,
-    createdAt: Date,
-    webhookMessaging?: InstagramWebhookMessagingItem,
-  ): PersistedMessagePayload {
-    const senderId = m.from?.id?.trim() ?? "";
-    const receiverId = m.to?.data?.[0]?.id?.trim() ?? "";
-    const text = m.message ?? "";
-    const parentMidRaw =
-      m.reply_to?.mid?.trim() || webhookMessaging?.message?.reply_to?.mid?.trim();
-    const repliedToExternalId =
-      parentMidRaw && parentMidRaw !== externalId ? parentMidRaw : null;
-    const { reply_to, id, ...messageWithoutId } = m;
-    void reply_to;
-    void id;
-    const instagramJson = JSON.stringify({
-      ...messageWithoutId,
-      ...(webhookMessaging != null
-        ? {
-            webhook_messaging:
-              this.sanitizeWebhookMessagingForStorage(webhookMessaging),
-          }
-        : {}),
-    });
-
-    return {
-      conversationDbId,
-      externalId,
-      text,
-      instagramJson,
-      createdAt,
-      senderId: senderId.length > 0 ? senderId : "0",
-      receiverId: receiverId.length > 0 ? receiverId : "0",
-      repliedToExternalId,
-    };
-  }
-
-  private createConversationMessageRow(
-    payload: PersistedMessagePayload,
-    editedAt?: Date | null,
-  ): ConversationMessage {
-    return this.conversationMessageRepo.create({
-      conversationId: payload.conversationDbId,
-      externalId: payload.externalId,
-      message: payload.text,
-      instagramJson: payload.instagramJson,
-      createdAt: payload.createdAt,
-      senderId: payload.senderId,
-      receiverId: payload.receiverId,
-      readAt: null,
-      repliedToExternalId: payload.repliedToExternalId,
-      ...(editedAt != null ? { editedAt } : {}),
-    });
-  }
-
-  /** New inbound message: INSERT only (no SELECT). Duplicate `mid` is ignored. */
-  private async insertNewInstagramMessage(
-    payload: PersistedMessagePayload,
-  ): Promise<void> {
-    const row = this.createConversationMessageRow(payload);
-    try {
-      const saved = await this.conversationMessageRepo.save(row);
-      await this.messageNotify.notifyPersistedMessage(saved);
-    } catch (err) {
-      if (this.isDuplicateMessageKeyError(err)) {
-        return;
-      }
-      throw err;
-    }
-  }
-
-  /** `message_edit` webhook: load existing row and set `edited_at` (+ latest text/json). */
-  private async persistEditedInstagramMessage(
-    payload: PersistedMessagePayload,
-    editedAt: Date,
-  ): Promise<void> {
-    const existing = await this.conversationMessageRepo.findOne({
-      where: {
-        conversationId: payload.conversationDbId,
-        externalId: payload.externalId,
-      },
-    });
-
-    if (!existing) {
-      const saved = await this.conversationMessageRepo.save(
-        this.createConversationMessageRow(payload, editedAt),
-      );
-      await this.messageNotify.notifyPersistedMessage(saved);
-      return;
-    }
-
-    existing.editedAt = editedAt;
-    existing.message = payload.text;
-    existing.instagramJson = payload.instagramJson;
-    if (payload.repliedToExternalId != null) {
-      existing.repliedToExternalId = payload.repliedToExternalId;
-    }
-
-    const saved = await this.conversationMessageRepo.save(existing);
+  private async saveMessageAndNotify(row: ConversationMessage): Promise<void> {
+    const saved = await this.conversationMessageRepo.save(row);
     await this.messageNotify.notifyPersistedMessage(saved);
-  }
-
-  private isDuplicateMessageKeyError(err: unknown): boolean {
-    if (!(err instanceof QueryFailedError)) {
-      return false;
-    }
-    const driver = err.driverError as { code?: string };
-    return driver.code === "23505";
   }
 
   private async applyReadWebhookByMid(
@@ -740,31 +660,34 @@ export class ConversationsAllocationService {
     traceId: string,
   ): Promise<void> {
     const t = `[webhook trace=${traceId}]`;
-    const rows = await this.conversationMessageRepo
-      .createQueryBuilder("m")
-      .innerJoin(Conversation, "c", "c.id = m.conversation_id")
-      .where("m.external_id = :mid", { mid })
-      .andWhere("c.manager_id = :ownerId", { ownerId })
-      .getMany();
-
-    if (rows.length === 0) {
-      this.log.debug(`${t} read.mid not found in DB mid=${mid.slice(0, 64)}`);
+    const trimmedMid = mid.trim();
+    if (!trimmedMid) {
       return;
     }
 
-    const toSave: ConversationMessage[] = [];
-    for (const row of rows) {
-      if (row.readAt == null || row.readAt.getTime() < readAt.getTime()) {
-        row.readAt = readAt;
-        toSave.push(row);
-      }
-    }
-    if (toSave.length > 0) {
-      await this.conversationMessageRepo.save(toSave);
-      this.log.log(
-        `${t} read applied mid=${mid.slice(0, 64)} rows=${toSave.length} at=${readAt.toISOString()}`,
+    const row = await this.conversationMessageRepo.findOne({
+      where: {
+        externalId: trimmedMid,
+        conversation: { managerId: ownerId },
+      },
+    });
+
+    if (!row) {
+      this.log.debug(
+        `${t} read.mid not found in DB mid=${trimmedMid.slice(0, 64)} ownerId=${ownerId}`,
       );
+      return;
     }
+
+    if (row.readAt != null && row.readAt.getTime() >= readAt.getTime()) {
+      return;
+    }
+
+    row.readAt = readAt;
+    await this.saveMessageAndNotify(row);
+    this.log.log(
+      `${t} read applied mid=${trimmedMid.slice(0, 64)} conversation_id=${row.conversationId} at=${readAt.toISOString()}`,
+    );
   }
 
   private sanitizeWebhookMessagingForStorage(
