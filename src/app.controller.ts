@@ -11,4 +11,10 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get("health")
+  @ApiOperation({ summary: "Health check (JSON)" })
+  health(): { ok: true; service: string } {
+    return { ok: true, service: "multisystem-server" };
+  }
 }
