@@ -1,10 +1,13 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { Server } from "socket.io";
+import type { ConversationRowDto } from "./dto/http/conversations-list-response.dto";
 import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
 
-export type ConversationMessageRealtimePayload = {
+/** Single WebSocket payload — client upserts `conversation` / `message` by `id`. */
+export type ConversationsRealtimePayload = {
   conversationId: number;
-  message: InstagramMessageDto;
+  conversation?: ConversationRowDto;
+  message?: InstagramMessageDto;
 };
 
 @Injectable()
@@ -17,29 +20,30 @@ export class ConversationsRealtimeService {
   }
 
   /**
-   * Pushes one message in the same shape as `GET /conversations/:id/messages` items.
-   * Emitted on create, edit, read_at, and any other message row update.
-   * Clients subscribed to room `conversation:{id}` receive `conversation.message`.
+   * `conversations.update` — same DTOs as REST list / message items.
+   * Emitted to `conversation:{id}` and `owner:{ownerId}` (inbox).
    */
-  emitConversationMessage(
-    conversationDbId: number,
-    message: InstagramMessageDto,
+  emitUpdate(
+    ownerId: number,
+    conversationId: number,
+    payload: Omit<ConversationsRealtimePayload, "conversationId">,
   ): void {
     if (!this.server) {
       this.log.debug(
-        `WebSocket server not ready; skip push conversationId=${conversationDbId}`,
+        `WebSocket server not ready; skip push conversationId=${conversationId}`,
       );
       return;
     }
 
-    const payload: ConversationMessageRealtimePayload = {
-      conversationId: conversationDbId,
-      message,
+    const body: ConversationsRealtimePayload = {
+      conversationId,
+      ...payload,
     };
 
     this.server
-      .to(this.conversationRoom(conversationDbId))
-      .emit("conversation.message", payload);
+      .to(this.conversationRoom(conversationId))
+      .to(this.ownerRoom(ownerId))
+      .emit("conversations.update", body);
   }
 
   conversationRoom(conversationDbId: number): string {

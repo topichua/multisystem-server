@@ -4,6 +4,8 @@ import { Repository } from "typeorm";
 import { ConversationMessage } from "../database/entities";
 import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
 import type { InstagramRepliedToMessageRefDto } from "./dto/http/instagram-messages-response.dto";
+import { toLegacyInstagramMessageApiShape } from "./instagram-message-api-shape.util";
+import { resolveReactionsForApiFromStoredJson } from "./instagram-message-reactions.util";
 
 @Injectable()
 export class ConversationMessagePresenterService {
@@ -18,13 +20,15 @@ export class ConversationMessagePresenterService {
   ): InstagramMessageDto {
     const base = this.parseStoredMessage(row);
     const parentId = row.repliedToExternalId?.trim();
-    if (!parentId) {
-      return base;
-    }
-    const replied_to_message: InstagramRepliedToMessageRefDto = parentRow
-      ? this.buildRepliedToMessageRef(parentRow)
-      : { id: parentId };
-    return { ...base, replied_to_message };
+    const withReply = !parentId
+      ? base
+      : {
+          ...base,
+          replied_to_message: parentRow
+            ? this.buildRepliedToMessageRef(parentRow)
+            : ({ id: parentId } satisfies InstagramRepliedToMessageRefDto),
+        };
+    return toLegacyInstagramMessageApiShape(withReply) as InstagramMessageDto;
   }
 
   async mapPersistedRowToDto(
@@ -66,7 +70,6 @@ export class ConversationMessagePresenterService {
           ...(parsed.attachments != null
             ? { attachments: parsed.attachments }
             : {}),
-          ...(parsed.shares != null ? { shares: parsed.shares } : {}),
           ...(parsed.from != null ? { from: parsed.from } : {}),
         };
       }
@@ -80,11 +83,23 @@ export class ConversationMessagePresenterService {
     };
   }
 
+  private resolveSystemUpdatedAtIso(row: ConversationMessage): string {
+    const ts = row.systemUpdatedAt ?? row.createdAt;
+    if (ts != null && !Number.isNaN(ts.getTime())) {
+      return ts.toISOString();
+    }
+    return new Date().toISOString();
+  }
+
   private parseStoredMessage(row: ConversationMessage): InstagramMessageDto {
-    const addDbMeta = (m: InstagramMessageDto): InstagramMessageDto => {
-      const { read_at, edited_at, ...fromGraph } = m;
+    const addDbMeta = (
+      m: Omit<InstagramMessageDto, "system_updated_at"> &
+        Partial<Pick<InstagramMessageDto, "system_updated_at">>,
+    ): InstagramMessageDto => {
+      const { read_at, edited_at, system_updated_at, ...fromGraph } = m;
       void read_at;
       void edited_at;
+      void system_updated_at;
       return {
         ...fromGraph,
         ...(row.editedAt != null
@@ -94,7 +109,7 @@ export class ConversationMessagePresenterService {
         ...(row.repliedToExternalId != null
           ? { reply_to_id: row.repliedToExternalId }
           : {}),
-        system_updated_at: row.systemUpdatedAt.toISOString(),
+        system_updated_at: this.resolveSystemUpdatedAtIso(row),
       };
     };
 
@@ -102,11 +117,24 @@ export class ConversationMessagePresenterService {
       const parsed = JSON.parse(row.instagramJson) as Record<string, unknown>;
       const createdTime = parsed.created_time;
       if (typeof createdTime === "string" && createdTime.length > 0) {
+        const {
+          webhook_messaging,
+          reactions: _storedReactions,
+          conversation: _conversation,
+          reply_to: _replyTo,
+          ...forClient
+        } = parsed;
+        void webhook_messaging;
+        void _storedReactions;
+        void _conversation;
+        void _replyTo;
+        const reactions = resolveReactionsForApiFromStoredJson(parsed);
         return addDbMeta({
-          ...(parsed as unknown as InstagramMessageDto),
+          ...(forClient as unknown as InstagramMessageDto),
+          ...(reactions != null ? { reactions } : {}),
           id:
-            typeof parsed.id === "string" && parsed.id.length > 0
-              ? parsed.id
+            typeof forClient.id === "string" && forClient.id.length > 0
+              ? (forClient.id as string)
               : row.externalId,
         } as InstagramMessageDto);
       }

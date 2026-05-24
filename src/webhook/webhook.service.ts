@@ -46,9 +46,7 @@ export class WebhookService {
         instagram,
         traceId,
       );
-      this.log.log(
-        `[webhook trace=${traceId}] handler finished (allocation complete)`,
-      );
+      this.log.log(`[webhook trace=${traceId}] handler finished`);
     }
   }
 }

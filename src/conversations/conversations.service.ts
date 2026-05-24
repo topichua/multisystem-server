@@ -2,6 +2,8 @@ import {
   BadGatewayException,
   BadRequestException,
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -28,6 +30,7 @@ import type {
 } from "./dto/http/instagram-messages-response.dto";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
+import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import type { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 import type {
@@ -59,6 +62,7 @@ export class ConversationsService {
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
     private readonly messagePresenter: ConversationMessagePresenterService,
+    @Inject(forwardRef(() => ConversationMessageNotifyService))
     private readonly messageNotify: ConversationMessageNotifyService,
   ) {}
 
@@ -432,7 +436,7 @@ export class ConversationsService {
         "from{id,name,email,username}",
         "to{data{id,name,email,username}}",
         `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
-        "reactions{data{reaction,users{id,username}}}",
+        "reactions{data{reaction,emoji,users{id,username}}}",
       ].join(","),
     );
     url.searchParams.set("access_token", accessToken);
@@ -490,7 +494,7 @@ export class ConversationsService {
   private async persistInstagramMessages(
     conversationDbId: number,
     messages: InstagramMessageDto[],
-    options?: { editedAt?: Date },
+    options?: { editedAt?: Date; ownerId: number },
   ): Promise<void> {
     for (const m of messages) {
       const ext = m.id?.trim();
@@ -502,11 +506,18 @@ export class ConversationsService {
       const text = m.message ?? "";
       const { id, ...messageWithoutId } = m;
       void id;
-      const instagramJson = JSON.stringify(messageWithoutId);
 
       let row = await this.conversationMessageRepo.findOne({
         where: { conversationId: conversationDbId, externalId: ext },
       });
+      const payloadForJson = row
+        ? mergeMessageJsonPreservingReactions(
+            row.instagramJson,
+            messageWithoutId as Record<string, unknown>,
+          )
+        : (messageWithoutId as Record<string, unknown>);
+      const instagramJson = JSON.stringify(payloadForJson);
+
       if (!row) {
         row = this.conversationMessageRepo.create({
           conversationId: conversationDbId,
@@ -531,7 +542,9 @@ export class ConversationsService {
         }
       }
       const saved = await this.conversationMessageRepo.save(row);
-      await this.messageNotify.notifyPersistedMessage(saved);
+      if (options?.ownerId != null) {
+        await this.messageNotify.notifyPersistedMessage(saved, options.ownerId);
+      }
     }
   }
 
@@ -555,7 +568,8 @@ export class ConversationsService {
     for (const p of participantExtras ?? []) take(p.id);
     take(webhookSenderHintId ?? undefined);
     for (const item of msg.reactions?.data ?? []) {
-      for (const u of item.users ?? []) take(u.id);
+      const users = (item as { users?: Array<{ id?: string }> }).users;
+      for (const u of users ?? []) take(u.id);
     }
 
     for (const instagramUserId of ids) {
@@ -692,11 +706,6 @@ export class ConversationsService {
       page: options?.page ?? 1,
       pageSize: options?.pageSize ?? 50,
     });
-    const now = new Date();
-    await this.conversationRepo.update(
-      { id: conv.id, managerId: ownerId },
-      { readAt: now },
-    );
     return result;
   }
 

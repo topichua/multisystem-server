@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class InstagramMessageActorDto {
   @ApiProperty()
@@ -133,8 +133,15 @@ export class InstagramMessageReactionUserDto {
 }
 
 export class InstagramMessageReactionItemDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: "Reaction type or emoji from Graph / webhook",
+  })
   reaction?: string;
+
+  @ApiPropertyOptional({
+    description: "Emoji character from Instagram reaction webhook when available",
+  })
+  emoji?: string;
 
   @ApiPropertyOptional({ type: () => [InstagramMessageReactionUserDto] })
   users?: InstagramMessageReactionUserDto[];
@@ -166,8 +173,10 @@ export class InstagramRepliedToMessageRefDto {
   @ApiPropertyOptional()
   message?: string;
 
-  @ApiPropertyOptional({ type: () => InstagramMessageAttachmentsDto })
-  attachments?: InstagramMessageAttachmentsDto;
+  @ApiPropertyOptional({
+    description: "Parent attachments (opaque Graph shape).",
+  })
+  attachments?: unknown;
 
   @ApiPropertyOptional({ type: () => InstagramMessageActorDto })
   from?: InstagramMessageActorDto;
@@ -180,10 +189,8 @@ export class InstagramMessageDto {
   @ApiProperty()
   created_time: string;
 
-  @ApiPropertyOptional({
-    description:
-      "Present when requesting `conversation{id}` on the message node (fallback resolution)",
-  })
+  /** Graph-only; stripped from GET `/conversations/:id/messages` responses. */
+  @ApiHideProperty()
   conversation?: { id?: string };
 
   @ApiPropertyOptional({ type: () => InstagramMessageActorDto })
@@ -201,25 +208,39 @@ export class InstagramMessageDto {
   })
   is_unsupported?: boolean;
 
-  @ApiPropertyOptional({ type: () => InstagramMessageAttachmentsDto })
-  attachments?: InstagramMessageAttachmentsDto;
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: true,
+    description: "Graph attachments; `data` items are open objects.",
+  })
+  attachments?: { data?: Array<Record<string, unknown>> };
 
-  @ApiPropertyOptional({ type: () => InstagramMessageSharesDto })
-  shares?: InstagramMessageSharesDto;
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: true,
+    description: "Graph shares; `data` items are open objects.",
+  })
+  shares?: { data?: Array<Record<string, unknown>> };
 
-  @ApiPropertyOptional({ type: () => InstagramMessageStoryDto })
-  story?: InstagramMessageStoryDto;
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: true,
+    description: "Graph story payload (mention/reply nodes).",
+  })
+  story?: Record<string, unknown>;
 
-  @ApiPropertyOptional({ type: () => InstagramMessageReactionsDto })
-  reactions?: InstagramMessageReactionsDto;
+  @ApiPropertyOptional({
+    type: "object",
+    additionalProperties: true,
+    description: "Message reactions; `data` items are open objects.",
+  })
+  reactions?: { data?: Array<Record<string, unknown>> };
 
   @ApiPropertyOptional({ type: () => InstagramMessageTagsDto })
   tags?: InstagramMessageTagsDto;
 
-  @ApiPropertyOptional({
-    description:
-      "Present on some Graph payloads when the message is a reply (parent message id). Not persisted in `instagram_json` — see `reply_to_id` on API responses.",
-  })
+  /** Graph-only; use `reply_to_id` on API responses. */
+  @ApiHideProperty()
   reply_to?: { mid?: string; is_self_reply?: boolean };
 
   @ApiPropertyOptional({
@@ -234,11 +255,11 @@ export class InstagramMessageDto {
   })
   read_at?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
       "When this server last stored/updated the message row, ISO 8601",
   })
-  system_updated_at?: string;
+  system_updated_at: string;
 
   @ApiPropertyOptional({
     description:

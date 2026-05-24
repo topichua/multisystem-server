@@ -18,13 +18,25 @@ import type {
   InstagramConversationParticipantDto,
   InstagramConversationsResponseDto,
 } from "./dto/http/instagram-conversations-response.dto";
-import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
+import type {
+  InstagramMessageDto,
+  InstagramMessageReactionItemDto,
+  InstagramMessageReactionsDto,
+} from "./dto/http/instagram-messages-response.dto";
 import type {
   InstagramWebhookMessagingItem,
   InstagramWebhookPayload,
 } from "../webhook/instagram-webhook-payload.types";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
+import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
+
+type WebhookMessagingEventKind =
+  | "new_message"
+  | "reaction"
+  | "read"
+  | "edit"
+  | "skip";
 
 type InstagramErrorResponse = {
   error?: {
@@ -68,8 +80,7 @@ export class ConversationsAllocationService {
   }
 
   /**
-   * Webhook-driven allocation: load message by `mid`, upsert `conversations` (by participant or
-   * Graph thread id), persist `conversation_messages`, sync `instagram_users`.
+   * Webhook allocation by event kind: new message, reaction, read receipt, or edit.
    */
   async allocateInstagramMessagingWebhook(
     payload: InstagramWebhookPayload,
@@ -100,63 +111,433 @@ export class ConversationsAllocationService {
         `${t} entry[${ei}] company id=${companyCtx.id} owner_id=${companyCtx.ownerId}`,
       );
 
-      const businessInstagramId = companyCtx.instagramAccountId;
-      const accessToken = companyCtx.accessToken;
+      const ctx = {
+        traceId,
+        entry,
+        companyCtx,
+        businessInstagramId: companyCtx.instagramAccountId,
+        accessToken: companyCtx.accessToken,
+        pageId: companyCtx.pageId,
+      };
 
       for (let mi = 0; mi < messaging.length; mi++) {
         const ev = messaging[mi];
-        const readMid = ev.read?.mid?.trim();
-        if (readMid) {
-          const readAt = new Date(ev.timestamp ?? entry.time);
-          await this.applyReadWebhookByMid(
-            readMid,
-            companyCtx.ownerId,
-            Number.isNaN(readAt.getTime()) ? new Date() : readAt,
-            traceId,
-          );
-        }
-
-        const midJobs = this.mergeWebhookMidsForEvent(ev, entry.time);
-        if (midJobs.length === 0) {
-          this.log.log(
-            `${t} entry[${ei}] messaging[${mi}] skip (no mid in message/read/message_edit/reaction)`,
-          );
+        const kind = this.classifyWebhookMessagingEvent(ev);
+        if (kind === "skip") {
+          this.log.log(`${t} entry[${ei}] messaging[${mi}] skip (unclassified)`);
           continue;
         }
-        this.log.log(
-          `${t} entry[${ei}] messaging[${mi}] jobs=${JSON.stringify(
-            midJobs.map((j) => ({
-              mid: j.mid.length > 64 ? `${j.mid.slice(0, 64)}...` : j.mid,
-              editedAt: j.editedAt?.toISOString() ?? null,
-              senderHint: j.senderHintId,
-            })),
-          )}`,
-        );
-
-        for (const { mid, editedAt, senderHintId } of midJobs) {
-          try {
-            await this.allocateSingleWebhookMessage({
-              traceId,
-              mid,
-              businessInstagramId,
-              ownerId: companyCtx.ownerId,
-              accessToken,
-              ...(editedAt != null ? { editedAt } : {}),
-              senderHintId,
-              webhookMessaging: ev,
-              pageId: companyCtx.pageId,
-            });
-          } catch (e) {
-            const err = e instanceof Error ? e.message : String(e);
-            this.log.warn(
-              `${t} mid failed ig_business=${businessInstagramId}: ${err}`,
-            );
+        this.log.log(`${t} entry[${ei}] messaging[${mi}] kind=${kind}`);
+        try {
+          switch (kind) {
+            case "new_message":
+              await this.handleWebhookNewMessage(ev, ctx);
+              break;
+            case "reaction":
+              await this.handleWebhookReaction(ev, ctx);
+              break;
+            case "read":
+              await this.handleWebhookRead(ev, ctx);
+              break;
+            case "edit":
+              await this.handleWebhookEdit(ev, ctx);
+              break;
           }
+        } catch (e) {
+          const err = e instanceof Error ? e.message : String(e);
+          this.log.warn(`${t} ${kind} failed: ${err}`);
         }
       }
     }
 
     this.log.log(`${t} allocate done`);
+  }
+
+  private classifyWebhookMessagingEvent(
+    ev: InstagramWebhookMessagingItem,
+  ): WebhookMessagingEventKind {
+    if (ev.read?.mid?.trim()) {
+      return "read";
+    }
+    if (ev.reaction?.mid?.trim()) {
+      return "reaction";
+    }
+    const numEdit = ev.message_edit?.num_edit ?? 0;
+    if (numEdit > 0 && ev.message_edit?.mid?.trim()) {
+      return "edit";
+    }
+    if (ev.message_edit?.mid?.trim() && ev.message_edit?.num_edit == 0) {
+      return "new_message";
+    }
+    return "skip";
+  }
+
+  private graphMessageFieldsWithReactions(): string {
+    return [
+      "id",
+      "created_time",
+      "from",
+      "to",
+      "reply_to",
+      "message",
+      `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
+      "reactions{data{reaction,emoji,users{id,username}}}",
+    ].join(",");
+  }
+
+  /** (1) New message — numEdit 0, no read on event. */
+  private async handleWebhookNewMessage(
+    ev: InstagramWebhookMessagingItem,
+    ctx: {
+      traceId: string;
+      companyCtx: WebhookCompanyContext;
+      businessInstagramId: string;
+      accessToken: string;
+      pageId: string;
+    },
+  ): Promise<void> {
+    const t = `[webhook trace=${ctx.traceId}]`;
+    const mid = ev.message_edit?.mid?.trim();
+    if (!mid) {
+      return;
+    }
+
+    const msg = await this.fetchInstagramMessageById(
+      mid,
+      ctx.accessToken,
+      this.graphMessageFieldsWithReactions(),
+    );
+    const customerUserId = this.pickCustomerUserIdForWebhook(
+      msg,
+      ctx.businessInstagramId,
+      null,
+    );
+    if (!customerUserId) {
+      throw new Error("Could not resolve customer user_id from message");
+    }
+
+    const { row: conv, participantExtras, saveConversation } =
+      await this.ensureInstagramConversationRowForWebhook({
+        traceId: ctx.traceId,
+        msg,
+        mid,
+        customerUserId,
+        businessInstagramId: ctx.businessInstagramId,
+        ownerId: ctx.companyCtx.ownerId,
+        accessToken: ctx.accessToken,
+        pageId: ctx.pageId,
+      });
+
+    if (saveConversation) {
+      await this.conversationRepo.save(conv);
+    }
+
+    const existingMessage = await this.conversationMessageRepo.findOne({
+      where: { externalId: mid, conversationId: conv.id },
+    });
+    const messageRow = this.mergeMessageRowFromGraph(
+      existingMessage,
+      msg,
+      conv,
+      ev,
+      conv.readAt,
+    );
+
+    await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
+    await this.syncInstagramUsersForWebhookAllocation(
+      msg,
+      participantExtras,
+      ctx.accessToken,
+      ctx.traceId,
+      null,
+    );
+    this.log.log(`${t} new_message saved mid=${mid} conversation_id=${conv.id}`);
+  }
+
+  /** (2) Reaction — merge into `instagram_json.reactions` (+ optional Graph refresh). */
+  private async handleWebhookReaction(
+    ev: InstagramWebhookMessagingItem,
+    ctx: {
+      traceId: string;
+      companyCtx: WebhookCompanyContext;
+      accessToken: string;
+    },
+  ): Promise<void> {
+    const t = `[webhook trace=${ctx.traceId}]`;
+    const mid = ev.reaction?.mid?.trim();
+    if (!mid) {
+      return;
+    }
+
+    const row = await this.conversationMessageRepo.findOne({
+      where: { externalId: mid },
+    });
+    if (!row) {
+      this.log.warn(`${t} reaction: message not in DB mid=${mid.slice(0, 64)}`);
+      return;
+    }
+
+    try {
+      const graphMsg = await this.fetchInstagramMessageById(
+        mid,
+        ctx.accessToken,
+        this.graphMessageFieldsWithReactions(),
+      );
+      row.instagramJson = this.buildInstagramJsonWithWebhookReaction(graphMsg, ev);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `${t} reaction Graph refresh failed mid=${mid.slice(0, 64)}: ${err}; merging webhook into stored json`,
+      );
+      row.instagramJson = this.buildInstagramJsonWithWebhookReaction(
+        this.parseStoredInstagramJsonBase(row),
+        ev,
+      );
+    }
+
+    await this.persistAndNotify(row, ctx.companyCtx.ownerId);
+    this.log.log(`${t} reaction saved mid=${mid}`);
+  }
+
+  /** (3) Read receipt — bump conversation.read_at and message read_at when present. */
+  private async handleWebhookRead(
+    ev: InstagramWebhookMessagingItem,
+    ctx: {
+      traceId: string;
+      entry: { time: number };
+      companyCtx: WebhookCompanyContext;
+      businessInstagramId: string;
+      accessToken: string;
+      pageId: string;
+    },
+  ): Promise<void> {
+    const t = `[webhook trace=${ctx.traceId}]`;
+    const mid = ev.read?.mid?.trim();
+    if (!mid) {
+      return;
+    }
+
+    const readAt = new Date(ev.timestamp ?? ctx.entry.time);
+    if (Number.isNaN(readAt.getTime())) {
+      return;
+    }
+
+    const msg = await this.fetchInstagramMessageById(
+      mid,
+      ctx.accessToken,
+      this.graphMessageFieldsWithReactions(),
+    );
+    const customerUserId = this.pickCustomerUserIdForWebhook(
+      msg,
+      ctx.businessInstagramId,
+      ev.sender?.id,
+    );
+    if (!customerUserId) {
+      throw new Error("Could not resolve customer user_id for read event");
+    }
+
+    let { row: conv, saveConversation } =
+      await this.ensureInstagramConversationRowForWebhook({
+        traceId: ctx.traceId,
+        msg,
+        mid,
+        customerUserId,
+        businessInstagramId: ctx.businessInstagramId,
+        ownerId: ctx.companyCtx.ownerId,
+        accessToken: ctx.accessToken,
+        pageId: ctx.pageId,
+      });
+
+    if (saveConversation) {
+      conv = await this.conversationRepo.save(conv);
+    }
+
+    if (
+      conv.readAt == null ||
+      conv.readAt.getTime() < readAt.getTime()
+    ) {
+      conv.readAt = readAt;
+    }
+
+    const messageRow = await this.conversationMessageRepo.findOne({
+      where: { externalId: mid, conversationId: conv.id },
+    });
+    if (messageRow) {
+      if (
+        messageRow.readAt == null ||
+        messageRow.readAt.getTime() < readAt.getTime()
+      ) {
+        messageRow.readAt = readAt;
+      }
+    }
+
+    await this.conversationRepo.save(conv);
+    if (messageRow) {
+      await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
+    } else {
+      await this.messageNotify.notifyConversationForOwner(
+        ctx.companyCtx.ownerId,
+        conv.id,
+      );
+    }
+
+    this.log.log(
+      `${t} read applied conversation_id=${conv.id} mid=${mid.slice(0, 64)} message_in_db=${Boolean(messageRow)}`,
+    );
+  }
+
+  /** (4) Message edit — numEdit > 0, no read on event. */
+  private async handleWebhookEdit(
+    ev: InstagramWebhookMessagingItem,
+    ctx: {
+      traceId: string;
+      entry: { time: number };
+      accessToken: string;
+      companyCtx: WebhookCompanyContext;
+    },
+  ): Promise<void> {
+    const t = `[webhook trace=${ctx.traceId}]`;
+    const mid = ev.message_edit?.mid?.trim();
+    if (!mid) {
+      return;
+    }
+
+    const editedAt = new Date(ev.timestamp ?? ctx.entry.time);
+    if (Number.isNaN(editedAt.getTime())) {
+      return;
+    }
+
+    const msg = await this.fetchInstagramMessageById(
+      mid,
+      ctx.accessToken,
+      this.graphMessageFieldsWithReactions(),
+    );
+
+    const row = await this.conversationMessageRepo.findOne({
+      where: { externalId: mid },
+    });
+    if (!row) {
+      this.log.warn(`${t} edit: message not in DB mid=${mid.slice(0, 64)}`);
+      return;
+    }
+
+    const ext = msg.id?.trim() ?? mid;
+    const text = msg.message ?? "";
+    const { reply_to, id, ...messageWithoutId } = msg;
+    void reply_to;
+    void id;
+    row.message = text;
+    row.instagramJson = JSON.stringify(
+      mergeMessageJsonPreservingReactions(row.instagramJson, {
+        ...messageWithoutId,
+        webhook_messaging: this.sanitizeWebhookMessagingForStorage(ev),
+      }),
+    );
+    row.editedAt = editedAt;
+    const createdAt = new Date(msg.created_time);
+    if (!Number.isNaN(createdAt.getTime())) {
+      row.createdAt = createdAt;
+    }
+
+    await this.persistAndNotify(row, ctx.companyCtx.ownerId);
+    this.log.log(`${t} edit saved mid=${ext}`);
+  }
+
+  private buildMessageRowFromGraph(
+    msg: InstagramMessageDto,
+    conversationDbId: number,
+    ev: InstagramWebhookMessagingItem,
+    options?: { inheritReadAtFromConversation?: Date | null },
+  ): ConversationMessage {
+    const ext = msg.id?.trim() ?? "";
+    const createdAt = new Date(msg.created_time);
+    const senderId = msg.from?.id?.trim() ?? "";
+    const receiverId = msg.to?.data?.[0]?.id?.trim() ?? "";
+    const text = msg.message ?? "";
+    const parentMidRaw =
+      msg.reply_to?.mid?.trim() || ev.message?.reply_to?.mid?.trim();
+    const repliedToFromPayload =
+      parentMidRaw && parentMidRaw !== ext ? parentMidRaw : null;
+    const { reply_to, id, ...messageWithoutId } = msg;
+    void reply_to;
+    void id;
+
+    let readAt: Date | null = null;
+    const convRead = options?.inheritReadAtFromConversation;
+    if (
+      convRead != null &&
+      !Number.isNaN(createdAt.getTime()) &&
+      convRead.getTime() > createdAt.getTime()
+    ) {
+      readAt = convRead;
+    }
+
+    const instagramJson = JSON.stringify({
+      ...messageWithoutId,
+      webhook_messaging: this.sanitizeWebhookMessagingForStorage(ev),
+    });
+
+    return this.conversationMessageRepo.create({
+      conversationId: conversationDbId,
+      externalId: ext,
+      message: text,
+      instagramJson,
+      createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+      senderId: senderId.length > 0 ? senderId : "0",
+      receiverId: receiverId.length > 0 ? receiverId : "0",
+      readAt,
+      repliedToExternalId: repliedToFromPayload,
+    });
+  }
+
+  /** Caller loads `existing` (or passes null); no DB read inside. */
+  private mergeMessageRowFromGraph(
+    existing: ConversationMessage | null,
+    msg: InstagramMessageDto,
+    conversation: Conversation,
+    ev: InstagramWebhookMessagingItem,
+    convReadAt: Date | null,
+  ): ConversationMessage {
+    const ext = msg.id?.trim();
+    if (!ext) {
+      throw new Error("Message id missing from Graph");
+    }
+
+    const fresh = this.buildMessageRowFromGraph(msg, conversation.id, ev, {
+      inheritReadAtFromConversation: convReadAt,
+    });
+
+    if (!existing) {
+      if(conversation.readAt != null && conversation.readAt.getTime() > fresh.createdAt?.getTime()) {
+        fresh.readAt = conversation.readAt;
+      }
+      return fresh;
+    }
+
+    existing.message = fresh.message;
+    const freshPayload = JSON.parse(fresh.instagramJson) as Record<
+      string,
+      unknown
+    >;
+    existing.instagramJson = JSON.stringify(
+      mergeMessageJsonPreservingReactions(
+        existing.instagramJson,
+        freshPayload,
+      ),
+    );
+    existing.createdAt = fresh.createdAt;
+    existing.senderId = fresh.senderId;
+    existing.receiverId = fresh.receiverId;
+    if (fresh.repliedToExternalId != null) {
+      existing.repliedToExternalId = fresh.repliedToExternalId;
+    }
+    if (
+      (conversation.readAt == null ||
+        conversation.readAt.getTime() > fresh.createdAt?.getTime())
+    ) {
+      existing.readAt = fresh.readAt;
+    }
+    return existing;
   }
 
   private sweepExpiredCompanyContextCache(): void {
@@ -252,49 +633,6 @@ export class ConversationsAllocationService {
       nextUrl = batch.paging?.next ?? null;
     }
     return out;
-  }
-
-  /** One mid per key; `message_edit` wins `editedAt` for that mid. Reactions use `reaction.mid`. */
-  private mergeWebhookMidsForEvent(
-    ev: InstagramWebhookMessagingItem,
-    entryTimeMs: number,
-  ): { mid: string; editedAt?: Date; senderHintId?: string }[] {
-    const eventMs = ev.timestamp ?? entryTimeMs;
-    const asDate = (ms: number): Date => {
-      const d = new Date(ms);
-      return Number.isNaN(d.getTime()) ? new Date() : d;
-    };
-
-    const pairs: { mid: string; fromEdit: boolean }[] = [];
-    const pushMid = (raw: string | undefined, fromEdit: boolean) => {
-      const mid = raw?.trim();
-      if (mid) pairs.push({ mid, fromEdit });
-    };
-    pushMid(ev.message?.mid, false);
-    const numEdit = ev.message_edit?.num_edit;
-    pushMid(ev.message_edit?.mid, (numEdit ?? 0) > 0);
-    pushMid(ev.reaction?.mid, false);
-
-    const byMid = new Map<string, Date | undefined>();
-    for (const p of pairs) {
-      if (p.fromEdit) {
-        byMid.set(p.mid, asDate(eventMs));
-      } else if (!byMid.has(p.mid)) {
-        byMid.set(p.mid, undefined);
-      }
-    }
-
-    const reactionMid = ev.reaction?.mid?.trim();
-    const reactionSender = ev.sender?.id?.trim();
-    const reactionHint =
-      reactionMid && reactionSender ? reactionSender : undefined;
-
-    return [...byMid.entries()].map(([mid, editedAt]) => ({
-      mid,
-      editedAt,
-      senderHintId:
-        mid === reactionMid && reactionHint ? reactionHint : undefined,
-    }));
   }
 
   private pickCustomerUserIdFromMessage(
@@ -440,7 +778,7 @@ export class ConversationsAllocationService {
           "message",
           `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
           "conversation{id}",
-          "reactions{data{reaction,users{id,username}}}",
+          "reactions{data{reaction,emoji,users{id,username}}}",
         ].join(","),
       );
       graphConversationId = extended.conversation?.id?.trim();
@@ -502,192 +840,185 @@ export class ConversationsAllocationService {
     };
   }
 
-  private async allocateSingleWebhookMessage(opts: {
-    traceId: string;
-    pageId: string;
-    mid: string;
-    businessInstagramId: string;
-    ownerId: number;
-    accessToken: string;
-    editedAt?: Date;
-    /** Webhook `sender` when the event is a reaction (Graph message may not list both parties). */
-    senderHintId?: string | null;
-    webhookMessaging: InstagramWebhookMessagingItem;
-  }): Promise<void> {
-    const t = `[webhook trace=${opts.traceId}]`;
-    const messageFieldsWithReactions = [
-      "id",
-      "created_time",
-      "from",
-      "to",
-      "reply_to",
-      "message",
-      `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
-      "reactions{data{reaction,users{id,username}}}",
-    ].join(",");
-    const msg = await this.fetchInstagramMessageById(
-      opts.mid,
-      opts.accessToken,
-      messageFieldsWithReactions,
-    );
-    const graphMsgId = msg.id?.trim() ?? opts.mid;
-    this.log.log(
-      `${t} mid Graph message loaded id=${graphMsgId} created_time=${msg.created_time}`,
-    );
-
-    const customerUserId = this.pickCustomerUserIdForWebhook(
-      msg,
-      opts.businessInstagramId,
-      opts.senderHintId,
-    );
-    if (!customerUserId) {
-      throw new Error(
-        "Could not resolve customer user_id from message from/to or webhook sender",
-      );
-    }
-    this.log.log(`${t} mid customer user_id=${customerUserId}`);
-
-    const { row, participantExtras, saveConversation } =
-      await this.ensureInstagramConversationRowForWebhook({
-        traceId: opts.traceId,
-        msg,
-        mid: opts.mid,
-        customerUserId,
-        businessInstagramId: opts.businessInstagramId,
-        ownerId: opts.ownerId,
-        accessToken: opts.accessToken,
-        pageId: opts.pageId,
-      });
-
-    if (saveConversation) {
-      await this.conversationRepo.save(row);
-    }
-
-    await this.persistInstagramMessages(row.id, [msg], {
-      ...(opts.editedAt != null ? { editedAt: opts.editedAt } : {}),
-      webhookMessaging: opts.webhookMessaging,
-    });
-    await this.syncInstagramUsersForWebhookAllocation(
-      msg,
-      participantExtras,
-      opts.accessToken,
-      opts.traceId,
-      opts.senderHintId,
-    );
-    this.log.log(
-      `${t} mid OK persisted message external_id=${graphMsgId} conversation_db_id=${row.id}`,
-    );
+  /** Save row, then WS push with the same `InstagramMessageDto` as GET .../messages `data[]`. */
+  private async persistAndNotify(
+    row: ConversationMessage,
+    ownerId: number,
+  ): Promise<ConversationMessage> {
+    const saved = await this.conversationMessageRepo.save(row);
+    await this.messageNotify.notifyPersistedMessage(saved, ownerId);
+    return saved;
   }
 
-  private async persistInstagramMessages(
-    conversationDbId: number,
-    messages: InstagramMessageDto[],
-    options?: {
-      editedAt?: Date;
-      webhookMessaging?: InstagramWebhookMessagingItem;
-    },
-  ): Promise<void> {
-    for (const m of messages) {
-      const ext = m.id?.trim();
-      if (!ext) continue;
-      const createdAt = new Date(m.created_time);
-      if (Number.isNaN(createdAt.getTime())) continue;
-      const senderId = m.from?.id?.trim() ?? "";
-      const receiverId = m.to?.data?.[0]?.id?.trim() ?? "";
-      const text = m.message ?? "";
-      /** Graph includes `reply_to` when requested; webhooks often omit it (only `mid` + text). */
-      const parentMidRaw =
-        m.reply_to?.mid?.trim() ||
-        options?.webhookMessaging?.message?.reply_to?.mid?.trim();
-      const repliedToFromPayload =
-        parentMidRaw && parentMidRaw !== ext ? parentMidRaw : null;
-      const { reply_to, id, ...messageWithoutId } = m;
-      void reply_to;
-      void id;
-      const instagramJson = JSON.stringify({
-        ...messageWithoutId,
-        ...(options?.webhookMessaging != null
-          ? {
-              webhook_messaging: this.sanitizeWebhookMessagingForStorage(
-                options.webhookMessaging,
-              ),
-            }
-          : {}),
-      });
+  /** Base object stored in `instagram_json` (Graph message node without top-level `id`). */
+  private parseStoredInstagramJsonBase(
+    row: ConversationMessage,
+  ): Record<string, unknown> {
+    try {
+      const parsed = JSON.parse(row.instagramJson) as Record<string, unknown>;
+      const createdTime = parsed.created_time;
+      if (typeof createdTime === "string" && createdTime.length > 0) {
+        return parsed;
+      }
+    } catch {
+      /* rebuild from columns */
+    }
+    return {
+      id: row.externalId,
+      created_time: row.createdAt.toISOString(),
+      message: row.message,
+      ...(row.senderId && row.senderId !== "0"
+        ? { from: { id: row.senderId } }
+        : {}),
+      ...(row.receiverId && row.receiverId !== "0"
+        ? { to: { data: [{ id: row.receiverId }] } }
+        : {}),
+    };
+  }
 
-      let row = await this.conversationMessageRepo.findOne({
-        where: { conversationId: conversationDbId, externalId: ext },
-      });
-      if (!row) {
-        row = this.conversationMessageRepo.create({
-          conversationId: conversationDbId,
-          externalId: ext,
-          message: text,
-          instagramJson,
-          createdAt,
-          senderId: senderId.length > 0 ? senderId : "0",
-          receiverId: receiverId.length > 0 ? receiverId : "0",
-          readAt: null,
-          repliedToExternalId: repliedToFromPayload,
-          ...(options?.editedAt != null ? { editedAt: options.editedAt } : {}),
-        });
-      } else {
-        row.message = text;
-        row.instagramJson = instagramJson;
-        row.createdAt = createdAt;
-        row.senderId = senderId.length > 0 ? senderId : row.senderId;
-        row.receiverId = receiverId.length > 0 ? receiverId : row.receiverId;
-        if (repliedToFromPayload != null) {
-          row.repliedToExternalId = repliedToFromPayload;
+  private graphMessageToInstagramJsonBase(
+    msg: InstagramMessageDto,
+  ): Record<string, unknown> {
+    const { reply_to, id, ...messageWithoutId } = msg;
+    void reply_to;
+    void id;
+    return messageWithoutId as Record<string, unknown>;
+  }
+
+  private normalizeInstagramJsonBase(
+    base: InstagramMessageDto | Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (
+      typeof base === "object" &&
+      base !== null &&
+      "created_time" in base &&
+      typeof (base as InstagramMessageDto).created_time === "string" &&
+      "id" in base
+    ) {
+      return this.graphMessageToInstagramJsonBase(base as InstagramMessageDto);
+    }
+    const rec = { ...(base as Record<string, unknown>) };
+    delete rec.id;
+    return rec;
+  }
+
+  private buildInstagramJsonWithWebhookReaction(
+    base: InstagramMessageDto | Record<string, unknown>,
+    ev: InstagramWebhookMessagingItem,
+  ): string {
+    const record = this.normalizeInstagramJsonBase(base);
+    const withReactions = this.applyWebhookReactionToMessage(record, ev);
+    return JSON.stringify({
+      ...withReactions,
+      webhook_messaging: this.sanitizeWebhookMessagingForStorage(ev),
+    });
+  }
+
+  /**
+   * Instagram reaction webhooks carry `emoji` on the event; Graph `reactions` often omit it.
+   * Merge webhook react/unreact into `reactions` so REST + WebSocket emit include emoji.
+   */
+  private applyWebhookReactionToMessage(
+    message: Record<string, unknown>,
+    ev?: InstagramWebhookMessagingItem,
+  ): Record<string, unknown> {
+    const reactionEv = ev?.reaction;
+    if (!reactionEv) {
+      return message;
+    }
+
+    const senderId = ev?.sender?.id?.trim();
+    const emoji = reactionEv.emoji?.trim();
+    const reactionType = reactionEv.reaction?.trim();
+    if (!emoji && !reactionType) {
+      return message;
+    }
+    if (!senderId) {
+      return message;
+    }
+
+    const action = (reactionEv.action ?? "react").trim().toLowerCase();
+    const reactions = this.cloneReactionsForMerge(
+      message.reactions as InstagramMessageReactionsDto | undefined,
+    );
+
+    if (action === "unreact") {
+      for (const item of reactions.data ?? []) {
+        if (!this.reactionItemMatches(item, emoji, reactionType)) {
+          continue;
         }
-        if (options?.editedAt != null) {
-          row.editedAt = options.editedAt;
+        item.users = (item.users ?? []).filter(
+          (u) => u.id?.trim() !== senderId,
+        );
+      }
+      reactions.data = (reactions.data ?? []).filter(
+        (item) => (item.users?.length ?? 0) > 0,
+      );
+    } else {
+      for (const item of reactions.data ?? []) {
+        item.users = (item.users ?? []).filter(
+          (u) => u.id?.trim() !== senderId,
+        );
+      }
+      reactions.data = (reactions.data ?? []).filter(
+        (item) => (item.users?.length ?? 0) > 0,
+      );
+
+      let item = reactions.data.find((i) =>
+        this.reactionItemMatches(i, emoji, reactionType),
+      );
+      if (!item) {
+        item = {
+          reaction: reactionType || emoji,
+          ...(emoji ? { emoji } : {}),
+          users: [],
+        };
+        reactions.data.push(item);
+      } else {
+        if (emoji) {
+          item.emoji = emoji;
+        }
+        if (reactionType && !item.reaction) {
+          item.reaction = reactionType;
         }
       }
-      await this.saveMessageAndNotify(row);
+
+      const users = item.users ?? [];
+      if (!users.some((u) => u.id?.trim() === senderId)) {
+        users.push({ id: senderId });
+      }
+      item.users = users;
     }
+
+    return {
+      ...message,
+      reactions,
+    };
   }
 
-  private async saveMessageAndNotify(row: ConversationMessage): Promise<void> {
-    const saved = await this.conversationMessageRepo.save(row);
-    await this.messageNotify.notifyPersistedMessage(saved);
+  private cloneReactionsForMerge(
+    reactions?: InstagramMessageReactionsDto,
+  ): InstagramMessageReactionsDto {
+    return {
+      data: (reactions?.data ?? []).map((item) => ({
+        ...item,
+        users: [...(item.users ?? [])],
+      })),
+    };
   }
 
-  private async applyReadWebhookByMid(
-    mid: string,
-    ownerId: number,
-    readAt: Date,
-    traceId: string,
-  ): Promise<void> {
-    const t = `[webhook trace=${traceId}]`;
-    const trimmedMid = mid.trim();
-    if (!trimmedMid) {
-      return;
+  private reactionItemMatches(
+    item: InstagramMessageReactionItemDto,
+    emoji?: string,
+    reactionType?: string,
+  ): boolean {
+    if (emoji && (item.emoji === emoji || item.reaction === emoji)) {
+      return true;
     }
-
-    const row = await this.conversationMessageRepo.findOne({
-      where: {
-        externalId: trimmedMid,
-        conversation: { managerId: ownerId },
-      },
-    });
-
-    if (!row) {
-      this.log.debug(
-        `${t} read.mid not found in DB mid=${trimmedMid.slice(0, 64)} ownerId=${ownerId}`,
-      );
-      return;
+    if (reactionType && item.reaction === reactionType) {
+      return true;
     }
-
-    if (row.readAt != null && row.readAt.getTime() >= readAt.getTime()) {
-      return;
-    }
-
-    row.readAt = readAt;
-    await this.saveMessageAndNotify(row);
-    this.log.log(
-      `${t} read applied mid=${trimmedMid.slice(0, 64)} conversation_id=${row.conversationId} at=${readAt.toISOString()}`,
-    );
+    return false;
   }
 
   private sanitizeWebhookMessagingForStorage(
@@ -763,7 +1094,8 @@ export class ConversationsAllocationService {
     for (const p of participantExtras ?? []) take(p.id);
     take(webhookSenderHintId ?? undefined);
     for (const item of msg.reactions?.data ?? []) {
-      for (const u of item.users ?? []) take(u.id);
+      const users = (item as { users?: Array<{ id?: string }> }).users;
+      for (const u of users ?? []) take(u.id);
     }
 
     for (const instagramUserId of ids) {
