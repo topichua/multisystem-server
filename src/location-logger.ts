@@ -34,11 +34,40 @@ export class LocationLogger extends ConsoleLogger {
   }
 
   private decorateMessage(message: unknown): string {
-    const msg =
-      typeof message === "string" ? message : JSON.stringify(message ?? "");
+    const msg = this.formatLogMessage(message);
     const loc = this.detectCallerLocation();
     if (!loc) return msg;
     return `[${loc}] ${msg}`;
+  }
+
+  private formatLogMessage(message: unknown): string {
+    if (typeof message === "string") {
+      return message.length > 0 ? message : "(empty error message)";
+    }
+    if (message instanceof Error) {
+      return message.stack ?? message.message;
+    }
+    if (message == null) {
+      return String(message);
+    }
+    if (typeof message === "object") {
+      const record = message as Record<string, unknown>;
+      const nested =
+        (typeof record.message === "string" && record.message) ||
+        (typeof record.msg === "string" && record.msg);
+      if (nested) {
+        return nested;
+      }
+      try {
+        const serialized = JSON.stringify(message);
+        if (serialized !== "{}") {
+          return serialized;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    return String(message);
   }
 
   private detectCallerLocation(): string | null {

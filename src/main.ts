@@ -5,7 +5,30 @@ import { AppModule } from "./app.module";
 import { LocationLogger } from "./location-logger";
 import { setupSwagger } from "./swagger.setup";
 
+function assertStartupEnv(): void {
+  const missing: string[] = [];
+  if (!process.env.JWT_SECRET?.trim()) {
+    missing.push("JWT_SECRET");
+  }
+  const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
+  const hasDbParts = Boolean(
+    process.env.DB_HOST?.trim() &&
+      process.env.DB_USERNAME?.trim() &&
+      process.env.DB_NAME?.trim(),
+  );
+  if (!hasDatabaseUrl && !hasDbParts) {
+    missing.push("DATABASE_URL (or DB_HOST + DB_USERNAME + DB_NAME)");
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}`,
+    );
+  }
+}
+
 async function bootstrap() {
+  assertStartupEnv();
+
   const app = await NestFactory.create(AppModule, {
     logger: new LocationLogger(),
   });
@@ -30,4 +53,12 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 }
-void bootstrap();
+
+bootstrap().catch((err: unknown) => {
+  if (err instanceof Error) {
+    console.error(err.stack ?? err.message);
+  } else {
+    console.error(err);
+  }
+  process.exit(1);
+});

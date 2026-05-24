@@ -62,7 +62,45 @@ export type DatabaseEnv = {
   DB_PASSWORD?: string;
   DB_NAME?: string;
   DB_LOGGING?: string;
+  DB_SSL?: string;
+  NODE_ENV?: string;
 };
+
+function resolvePostgresSsl(
+  env: DatabaseEnv,
+  url?: string,
+  host?: string,
+): false | { rejectUnauthorized: boolean } {
+  const flag = env.DB_SSL?.trim().toLowerCase();
+  if (flag === "false" || flag === "0" || flag === "off") {
+    return false;
+  }
+  if (flag === "true" || flag === "1" || flag === "on") {
+    return { rejectUnauthorized: false };
+  }
+  if (env.NODE_ENV === "production") {
+    return { rejectUnauthorized: false };
+  }
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      const sslmode = parsed.searchParams.get("sslmode")?.toLowerCase();
+      if (sslmode === "require" || sslmode === "verify-full") {
+        return { rejectUnauthorized: false };
+      }
+      if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+        return { rejectUnauthorized: false };
+      }
+    } catch {
+      /* not a URL */
+    }
+  }
+  const h = host?.trim();
+  if (h && h !== "localhost" && h !== "127.0.0.1") {
+    return { rejectUnauthorized: false };
+  }
+  return false;
+}
 
 const entities = [
   User,
@@ -89,21 +127,26 @@ function baseOptions(env: DatabaseEnv) {
   const logging = env.DB_LOGGING === "true";
   const url = env.DATABASE_URL?.trim();
   if (url) {
+    const ssl = resolvePostgresSsl(env, url);
     return {
       type: "postgres" as const,
       url,
+      ...(ssl ? { ssl } : {}),
       entities,
       synchronize: false,
       logging,
     };
   }
+  const host = env.DB_HOST ?? "localhost";
+  const ssl = resolvePostgresSsl(env, undefined, host);
   return {
     type: "postgres" as const,
-    host: env.DB_HOST ?? "localhost",
+    host,
     port: parseInt(env.DB_PORT ?? "5432", 10),
     username: env.DB_USERNAME ?? "postgres",
     password: env.DB_PASSWORD ?? "postgres",
     database: env.DB_NAME ?? "multisystem",
+    ...(ssl ? { ssl } : {}),
     entities,
     synchronize: false,
     logging,
