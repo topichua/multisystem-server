@@ -1,5 +1,7 @@
 export { Client } from "./client.entity";
 export { Company } from "./company.entity";
+export { TelegramIntegration } from "./telegram-integration.entity";
+export { TelegramIntegrationStatus } from "./telegram-integration-status.enum";
 export { Conversation } from "./conversation.entity";
 export { ConversationGroup } from "./conversation-group.entity";
 export { ConversationMessage } from "./conversation-message.entity";

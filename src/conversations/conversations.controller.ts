@@ -158,7 +158,7 @@ export class ConversationsController {
   @Post(":conversationId/messages")
   @ApiOperation({
     summary:
-      "Send Instagram message in this thread. `reply_to_id` is optional: omit or null for a normal message; set it to the parent message id to send a reply. Recipient PSID comes from `participant_id` on the conversation row.",
+      "Send a message in this thread (Instagram or Telegram). `reply_to_id` is optional: omit for a normal message; set to a parent message id from GET .../messages (Instagram Graph `mid` or Telegram `tg:{chatId}:{messageId}`).",
   })
   @ApiBody({
     type: SendInstagramMessageRequestDto,
@@ -175,7 +175,7 @@ export class ConversationsController {
         "Current authorized user does not contain numeric owner id",
       );
     }
-    return this.conversationsService.sendInstagramMessageForConversation(
+    return this.conversationsService.sendMessageForConversation(
       ownerId,
       conversationId,
       dto.message,

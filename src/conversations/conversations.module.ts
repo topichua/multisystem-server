@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Company,
@@ -6,8 +6,10 @@ import {
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
+  TelegramIntegration,
 } from "../database/entities";
 import { AuthModule } from "../auth/auth.module";
+import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
 import { ConversationGroupsService } from "./conversation-groups.service";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
@@ -21,12 +23,14 @@ import { ConversationsService } from "./conversations.service";
 @Module({
   imports: [
     AuthModule,
+    forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
       Company,
       Conversation,
       ConversationGroup,
       ConversationMessage,
       InstagramUser,
+      TelegramIntegration,
     ]),
   ],
   controllers: [ConversationsController, ConversationGroupsController],
@@ -43,6 +47,7 @@ import { ConversationsService } from "./conversations.service";
     ConversationsService,
     ConversationsAllocationService,
     ConversationGroupsService,
+    ConversationMessageNotifyService,
   ],
 })
 export class ConversationsModule {}

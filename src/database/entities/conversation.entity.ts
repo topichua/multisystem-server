@@ -16,7 +16,7 @@ import { User } from "./user.entity";
 @Unique("UQ_conversations_manager_external_id", ["managerId", "externalId"])
 @Index("IDX_conversations_manager_id", ["managerId"])
 @Index("IDX_conversations_group_id", ["groupId"])
-@Check(`"source" IN (1)`)
+@Check(`"source" IN (1, 2)`)
 export class Conversation {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;

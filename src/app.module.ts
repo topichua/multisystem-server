@@ -17,6 +17,7 @@ import { ProductsModule } from "./products/products.module";
 import { OrdersModule } from "./orders/orders.module";
 import { WorkspaceSettingsModule } from "./workspace-settings/workspace-settings.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
+import { TelegramIntegrationsModule } from "./telegram-integrations/telegram-integrations.module";
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { IntegrationsModule } from "./integrations/integrations.module";
     OrdersModule,
     WorkspaceSettingsModule,
     IntegrationsModule,
+    TelegramIntegrationsModule,
     InstagramModule,
     AccountModule,
     WebhookModule,

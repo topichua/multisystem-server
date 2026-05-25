@@ -21,4 +21,10 @@ export class IntegrationListItemDto {
       "ISO 8601 when OAuth / tokens were connected (`token_connected_at`); omitted when not connected",
   })
   connectedAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Telegram connect progress (`pending_code`, `pending_password`, `active`, …)",
+  })
+  status?: string;
 }

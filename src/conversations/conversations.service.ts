@@ -18,6 +18,8 @@ import {
   ConversationMessage,
   ConversationSource,
   InstagramUser,
+  TelegramIntegration,
+  TelegramIntegrationStatus,
 } from "../database/entities";
 import type {
   InstagramConversationDto,
@@ -33,6 +35,10 @@ import { ConversationMessagePresenterService } from "./conversation-message-pres
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import type { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
+import {
+  TELEGRAM_CONVERSATION_MESSAGING,
+  type TelegramConversationMessagingPort,
+} from "../telegram-integrations/telegram-integrations.tokens";
 import type {
   ConversationRowDto,
   ConversationParticipantDto,
@@ -61,9 +67,13 @@ export class ConversationsService {
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
+    @InjectRepository(TelegramIntegration)
+    private readonly telegramIntegrationRepo: Repository<TelegramIntegration>,
     private readonly messagePresenter: ConversationMessagePresenterService,
     @Inject(forwardRef(() => ConversationMessageNotifyService))
     private readonly messageNotify: ConversationMessageNotifyService,
+    @Inject(TELEGRAM_CONVERSATION_MESSAGING)
+    private readonly telegramMessaging: TelegramConversationMessagingPort,
   ) {}
 
   async listConversationsForOwner(
@@ -73,7 +83,7 @@ export class ConversationsService {
     items: ConversationRowDto[];
   }> {
     const company = await this.requireCompanyForOwner(ownerId);
-    const myAccountIds = this.buildMyInstagramIds(company);
+    const myAccountIds = await this.buildMyAccountIds(ownerId, company);
 
     const groupIds = filters?.groupIds?.filter(
       (id) => Number.isInteger(id) && id > 0,
@@ -222,13 +232,13 @@ export class ConversationsService {
     id: number,
   ): Promise<ConversationRowDto> {
     const company = await this.requireCompanyForOwner(ownerId);
-    const myAccountIds = this.buildMyInstagramIds(company);
     const row = await this.conversationRepo.findOne({
       where: { id, managerId: ownerId },
     });
     if (!row) {
       throw new NotFoundException("Conversation not found");
     }
+    const myAccountIds = await this.buildMyAccountIds(ownerId, company, row);
     const lastMessageByConversationId =
       await this.getLastMessageByConversationIds([row.id]);
     const participantById = await this.getInstagramUsersByIds([
@@ -284,6 +294,7 @@ export class ConversationsService {
     const participant = this.toConversationParticipantDto(
       row.participantId,
       participantById,
+      row.source,
     );
     const isLastMessageFromMe = this.resolveIsLastMessageFromMe(
       lastMessage,
@@ -341,10 +352,48 @@ export class ConversationsService {
     );
   }
 
+  private async buildMyAccountIds(
+    ownerId: number,
+    company: Company,
+    conversation?: Conversation,
+  ): Promise<Set<string>> {
+    const ids = this.buildMyInstagramIds(company);
+    const integrations = await this.telegramIntegrationRepo.find({
+      where: { ownerId, status: TelegramIntegrationStatus.ACTIVE },
+    });
+    for (const row of integrations) {
+      const telegramUserId = row.telegramUserId?.trim();
+      if (telegramUserId) {
+        ids.add(telegramUserId);
+      }
+    }
+    if (
+      conversation?.source === ConversationSource.TELEGRAM &&
+      conversation.externalSourceId
+    ) {
+      const integrationId = Number.parseInt(
+        conversation.externalSourceId.trim(),
+        10,
+      );
+      if (Number.isInteger(integrationId) && integrationId > 0) {
+        const linked = integrations.find((i) => i.id === integrationId);
+        const linkedUserId = linked?.telegramUserId?.trim();
+        if (linkedUserId) {
+          ids.add(linkedUserId);
+        }
+      }
+    }
+    return ids;
+  }
+
   private toConversationParticipantDto(
     participantId: string | undefined,
     participantById: Map<string, InstagramUser>,
+    source: ConversationSource,
   ): ConversationParticipantDto | null {
+    if (source === ConversationSource.TELEGRAM) {
+      return this.emptyTelegramParticipant();
+    }
     const participantKey = participantId?.trim();
     if (!participantKey || participantKey === "unknown") return null;
     const participant = participantById.get(participantKey);
@@ -354,6 +403,15 @@ export class ConversationsService {
       name: participant.name,
       username: participant.username,
       profilePic: participant.profilePic,
+    };
+  }
+
+  private emptyTelegramParticipant(): ConversationParticipantDto {
+    return {
+      id: "",
+      name: "",
+      username: "",
+      profilePic: "",
     };
   }
 
@@ -723,11 +781,41 @@ export class ConversationsService {
   }
 
   /**
+   * Sends a message in the conversation thread (Instagram or Telegram).
+   * @param replyToId Instagram Graph `mid` or Telegram `tg:{chatId}:{messageId}` from GET .../messages.
+   */
+  async sendMessageForConversation(
+    ownerId: number,
+    conversationIdParam: string,
+    message: string,
+    replyToId?: string,
+  ): Promise<SendInstagramMessageResponseDto> {
+    const conv = await this.requireConversationForOwnerFromParam(
+      ownerId,
+      conversationIdParam,
+    );
+    if (conv.source === ConversationSource.TELEGRAM) {
+      return this.telegramMessaging.sendMessageForConversation(
+        ownerId,
+        conv,
+        message,
+        replyToId,
+      );
+    }
+    return this.sendInstagramMessageForConversation(
+      ownerId,
+      conv,
+      message,
+      replyToId,
+    );
+  }
+
+  /**
    * @param replyToMid When unset: plain text message. When set: Graph `message.reply_to.mid` (reply).
    */
   async sendInstagramMessageForConversation(
     ownerId: number,
-    conversationIdParam: string,
+    convOrParam: Conversation | string,
     message: string,
     replyToMid?: string,
   ): Promise<SendInstagramMessageResponseDto> {
@@ -738,10 +826,13 @@ export class ConversationsService {
         "No Page Graph token: set company.access_token (Page token from OAuth) for this company.",
       );
     }
-    const conv = await this.requireConversationForOwnerFromParam(
-      ownerId,
-      conversationIdParam,
-    );
+    const conv =
+      typeof convOrParam === "string"
+        ? await this.requireConversationForOwnerFromParam(ownerId, convOrParam)
+        : convOrParam;
+    if (conv.source !== ConversationSource.INSTAGRAM) {
+      throw new BadRequestException("Conversation is not an Instagram thread");
+    }
 
     const recipient = conv.participantId?.trim() ?? "";
     if (!this.isLikelyInstagramPsid(recipient)) {

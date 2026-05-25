@@ -34,6 +34,8 @@ import { OrdersModule1744200000032 } from "./migrations/1744200000032-OrdersModu
 import { OrderStatusIsSystemAndDeliveryCategory1744200000034 } from "./migrations/1744200000034-OrderStatusIsSystemAndDeliveryCategory";
 import { ProductType1744200000035 } from "./migrations/1744200000035-ProductType";
 import { IntegrationRenameToInstagramIntegration1744200000036 } from "./migrations/1744200000036-IntegrationRenameToInstagramIntegration";
+import { TelegramIntegrations1744200000037 } from "./migrations/1744200000037-TelegramIntegrations";
+import { ConversationSourceTelegram1744200000038 } from "./migrations/1744200000038-ConversationSourceTelegram";
 import {
   Client,
   Company,
@@ -51,6 +53,7 @@ import {
   ProductMedia,
   ProductSourceReference,
   ProductVariant,
+  TelegramIntegration,
   User,
   Workspace,
 } from "./entities";
@@ -107,6 +110,7 @@ const entities = [
   User,
   Workspace,
   Company,
+  TelegramIntegration,
   InstagramUser,
   Client,
   ConversationGroup,
@@ -199,6 +203,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderStatusIsSystemAndDeliveryCategory1744200000034,
       ProductType1744200000035,
       IntegrationRenameToInstagramIntegration1744200000036,
+      TelegramIntegrations1744200000037,
+      ConversationSourceTelegram1744200000038,
     ],
   };
 }

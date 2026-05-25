@@ -6,7 +6,13 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { FacebookOAuthService } from "../auth/facebook-oauth.service";
-import { Company, Workspace } from "../database/entities";
+import {
+  Company,
+  TelegramIntegrationStatus,
+  Workspace,
+} from "../database/entities";
+import type { TelegramIntegration } from "../database/entities";
+import { TelegramIntegrationsService } from "../telegram-integrations/telegram-integrations.service";
 import type { CreateIntegrationRequestDto } from "./dto/http/create-integration-request.dto";
 import type { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import type { IntegrationListItemDto } from "./dto/http/integration-list-item.dto";
@@ -20,6 +26,7 @@ export class IntegrationsService {
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
     private readonly facebookOAuth: FacebookOAuthService,
+    private readonly telegramIntegrations: TelegramIntegrationsService,
   ) {}
 
   async startForOwner(
@@ -29,7 +36,7 @@ export class IntegrationsService {
     const type = dto.integration_type;
     if (type !== "instagram") {
       throw new BadRequestException(
-        `integration_type "${type}" is not supported yet`,
+        `integration_type "${type}" is not supported on this endpoint`,
       );
     }
 
@@ -70,9 +77,26 @@ export class IntegrationsService {
       this.mapInstagramRow(row),
     );
 
-    // Telegram integrations will be appended here when a table exists.
+    const telegramRows =
+      await this.telegramIntegrations.findAllByWorkspace(workspaceId);
+    for (const tg of telegramRows) {
+      items.push(this.mapTelegramRow(tg));
+    }
 
     return { workspaceId, items };
+  }
+
+  private mapTelegramRow(row: TelegramIntegration): IntegrationListItemDto {
+    const mapped = this.telegramIntegrations.mapToIntegrationListItem(row);
+    return {
+      type: mapped.type,
+      id: mapped.id,
+      name: mapped.name,
+      ...(mapped.connectedAt ? { connectedAt: mapped.connectedAt } : {}),
+      ...(mapped.status !== TelegramIntegrationStatus.ACTIVE
+        ? { status: mapped.status }
+        : {}),
+    };
   }
 
   private mapInstagramRow(row: Company): IntegrationListItemDto {
