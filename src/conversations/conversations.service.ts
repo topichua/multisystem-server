@@ -732,7 +732,12 @@ export class ConversationsService {
     replyToMid?: string,
   ): Promise<SendInstagramMessageResponseDto> {
     const company = await this.requireCompanyForOwner(ownerId);
-    const accessToken = await this.resolveGraphAccessToken(company.id);
+    const accessToken = company?.accessToken?.trim();
+    if (!accessToken) {
+      throw new ServiceUnavailableException(
+        "No Page Graph token: set company.access_token (Page token from OAuth) for this company.",
+      );
+    }
     const conv = await this.requireConversationForOwnerFromParam(
       ownerId,
       conversationIdParam,
