@@ -13,7 +13,7 @@ export type Workspace = {
   ownerId: number;
 };
 
-/** Matches `integration` table + `Company` entity (page tokens for Meta / Instagram). */
+/** Matches `instagram_integration` table + `Company` entity (page tokens for Meta / Instagram). */
 export type Company = {
   id: number;
   name: string;

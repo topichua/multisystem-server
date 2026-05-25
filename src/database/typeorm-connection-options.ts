@@ -33,6 +33,7 @@ import { ProductVariantStatus1744200000031 } from "./migrations/1744200000031-Pr
 import { OrdersModule1744200000032 } from "./migrations/1744200000032-OrdersModule";
 import { OrderStatusIsSystemAndDeliveryCategory1744200000034 } from "./migrations/1744200000034-OrderStatusIsSystemAndDeliveryCategory";
 import { ProductType1744200000035 } from "./migrations/1744200000035-ProductType";
+import { IntegrationRenameToInstagramIntegration1744200000036 } from "./migrations/1744200000036-IntegrationRenameToInstagramIntegration";
 import {
   Client,
   Company,
@@ -197,6 +198,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrdersModule1744200000032,
       OrderStatusIsSystemAndDeliveryCategory1744200000034,
       ProductType1744200000035,
+      IntegrationRenameToInstagramIntegration1744200000036,
     ],
   };
 }

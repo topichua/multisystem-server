@@ -10,9 +10,9 @@ import {
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 
-@Entity("integration")
-@Index("IDX_integration_owner_id", ["ownerId"])
-@Index("IDX_integration_workspace_id", ["workspaceId"])
+@Entity("instagram_integration")
+@Index("IDX_instagram_integration_owner_id", ["ownerId"])
+@Index("IDX_instagram_integration_workspace_id", ["workspaceId"])
 export class Company {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;

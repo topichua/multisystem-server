@@ -132,7 +132,23 @@ export class FacebookOAuthService {
       throw new UnauthorizedException("JWT subject must be a numeric user id");
     }
 
-    return this.buildAuthorizeUrlForUser(userId, appId, redirectUri);
+    return this.buildAuthorizeUrlForOwnerId(userId);
+  }
+
+  /**
+   * Facebook Login URL for the owner's latest `instagram_integration` row.
+   * Open in a new browser window/tab to complete OAuth.
+   */
+  async buildAuthorizeUrlForOwnerId(ownerId: number): Promise<string> {
+    const appId = this.requireEnvEither("FACEBOOK_APP_ID", "FB_APP_ID");
+    const redirectUri = this.requireEnvEither(
+      "FACEBOOK_REDIRECT_URI",
+      "FB_REDIRECT_URI",
+    );
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException("owner id must be a positive integer");
+    }
+    return this.buildAuthorizeUrlForUser(ownerId, appId, redirectUri);
   }
 
   private async buildAuthorizeUrlForUser(
