@@ -30,3 +30,8 @@ export { ProductVariant } from "./product-variant.entity";
 export { User } from "./user.entity";
 export { UserStatus, UserStatusLabels } from "./user-status.enum";
 export { Workspace } from "./workspace.entity";
+export { WorkspaceRole } from "./workspace-role.entity";
+export { WorkspaceMember } from "./workspace-member.entity";
+export { WorkspaceMemberStatus } from "./workspace-member-status.enum";
+export { WorkspaceInvitation } from "./workspace-invitation.entity";
+export { WorkspaceInvitationStatus } from "./workspace-invitation-status.enum";

@@ -36,6 +36,8 @@ import { ProductType1744200000035 } from "./migrations/1744200000035-ProductType
 import { IntegrationRenameToInstagramIntegration1744200000036 } from "./migrations/1744200000036-IntegrationRenameToInstagramIntegration";
 import { TelegramIntegrations1744200000037 } from "./migrations/1744200000037-TelegramIntegrations";
 import { ConversationSourceTelegram1744200000038 } from "./migrations/1744200000038-ConversationSourceTelegram";
+import { WorkspaceRolesAndMembers1744200000039 } from "./migrations/1744200000039-WorkspaceRolesAndMembers";
+import { WorkspaceMemberIntegrationScopes1744200000040 } from "./migrations/1744200000040-WorkspaceMemberIntegrationScopes";
 import {
   Client,
   Company,
@@ -56,6 +58,9 @@ import {
   TelegramIntegration,
   User,
   Workspace,
+  WorkspaceInvitation,
+  WorkspaceMember,
+  WorkspaceRole,
 } from "./entities";
 
 export type DatabaseEnv = {
@@ -109,6 +114,9 @@ function resolvePostgresSsl(
 const entities = [
   User,
   Workspace,
+  WorkspaceRole,
+  WorkspaceMember,
+  WorkspaceInvitation,
   Company,
   TelegramIntegration,
   InstagramUser,
@@ -205,6 +213,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       IntegrationRenameToInstagramIntegration1744200000036,
       TelegramIntegrations1744200000037,
       ConversationSourceTelegram1744200000038,
+      WorkspaceRolesAndMembers1744200000039,
+      WorkspaceMemberIntegrationScopes1744200000040,
     ],
   };
 }

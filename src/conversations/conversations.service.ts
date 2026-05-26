@@ -43,7 +43,6 @@ import type {
   ConversationRowDto,
   ConversationParticipantDto,
 } from "./dto/http/conversations-list-response.dto";
-
 type InstagramErrorResponse = {
   error?: {
     message?: string;
