@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { In, IsNull, Repository, type SelectQueryBuilder } from "typeorm";
+import { In, IsNull, Repository, type EntityManager, type SelectQueryBuilder } from "typeorm";
 import {
   InstagramIntegration,
   Product,
@@ -13,7 +13,10 @@ import {
   ProductMedia,
   ProductSourceReference,
   ProductVariant,
+  UploadMedia,
+  WorkspaceVariantCustomField,
 } from "../database/entities";
+import { ProductMediaType } from "../database/entities/product-media-type.enum";
 import { ProductSourceReferenceType } from "../database/entities/product-source-reference-type.enum";
 import { ProductSourceType } from "../database/entities/product-source-type.enum";
 import { ProductStatus } from "../database/entities/product-status.enum";
@@ -21,6 +24,7 @@ import { ProductType } from "../database/entities/product-type.enum";
 import type { CreateProductDto } from "./dto/create-product.dto";
 import type { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import type { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
+import type { CreateProductVariantInputDto } from "./dto/create-product-variant-input.dto";
 import type { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import type { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
 import type { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
@@ -36,16 +40,16 @@ import {
   tryParsePriceFromOfferText,
 } from "./instagram-analysis-draft.util";
 import { ProductMediaService } from "./product-media.service";
+import { mediaSort, pickMainMediaUrl } from "./product-media.util";
+import { UploadMediaService } from "./upload-media.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
-
-function buildVariantTitleSnapshot(
-  color: string | null,
-  size: string | null,
-): string | null {
-  const parts = [color?.trim(), size?.trim()].filter(Boolean) as string[];
-  if (parts.length === 0) return null;
-  return parts.join(" / ");
-}
+import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
+import {
+  buildVariantTitleFromFields,
+  colorSizeSpecToFieldValues,
+  serializeVariantCustomFields,
+} from "../variant-custom-fields/variant-custom-fields.util";
+import type { VariantCustomFieldValueDto as VariantCustomFieldValueResponse } from "../variant-custom-fields/variant-custom-fields.util";
 
 /** Parent product snapshot embedded on each variant (list/detail). */
 export type ProductParentSummaryDto = {
@@ -61,8 +65,7 @@ export type ProductParentSummaryDto = {
 /** Variant row as nested under `GET /products/:id` (no parent denormalization). */
 export type ProductVariantDto = {
   id: number;
-  color: string | null;
-  size: string | null;
+  customFields: VariantCustomFieldValueResponse[];
   price: number | null;
   inStock: boolean | null;
   quantity: number | null;
@@ -85,6 +88,7 @@ export type ProductMediaDto = {
   id: number;
   productId: number;
   variantId: number | null;
+  uploadMediaId: number | null;
   url: string;
   type: string;
   sourceUrl: string | null;
@@ -118,7 +122,6 @@ export type ProductListItemDto = {
   inStock: boolean | null;
   quantity: number | null;
   mainImageUrl: string | null;
-  referenceGroupId: string | null;
   categoryId: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -127,7 +130,6 @@ export type ProductListItemDto = {
 export type ProductDetailDto = ProductListItemDto & {
   description: string | null;
   sourceType: string | null;
-  sourceId: string | null;
   createdByUserId: number;
   updatedByUserId: number | null;
   category: ProductCategorySummaryDto | null;
@@ -251,6 +253,8 @@ export class ProductsService {
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
     private readonly productMedia: ProductMediaService,
+    private readonly uploadMedia: UploadMediaService,
+    private readonly variantCustomFields: VariantCustomFieldsService,
     private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
@@ -308,8 +312,11 @@ export class ProductsService {
     }
     applyProductListSort(qb, query.sort);
     const [rows, total] = await qb.skip(offset).take(limit).getManyAndCount();
+    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
+      rows.map((p) => p.id),
+    );
     return {
-      items: rows.map((p) => this.toListItem(p)),
+      items: rows.map((p) => this.toListItem(p, mainImageByProductId)),
       total,
       page,
       pageSize,
@@ -352,7 +359,8 @@ export class ProductsService {
 
     const dataQb = this.variantRepo
       .createQueryBuilder("v")
-      .innerJoinAndSelect("v.product", "p");
+      .innerJoinAndSelect("v.product", "p")
+      .leftJoinAndSelect("v.customFieldValues", "cfv");
     this.applyCatalogVariantFilters(
       dataQb,
       workspace.id,
@@ -365,9 +373,17 @@ export class ProductsService {
       .skip(offset)
       .take(pageSize);
     const rows = await dataQb.getMany();
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
+    );
+    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
+      [...new Set(rows.map((v) => v.productId))],
+    );
 
     return {
-      items: rows.map((v) => this.toCatalogVariantItem(v)),
+      items: rows.map((v) =>
+        this.toCatalogVariantItem(v, fieldDefs, mainImageByProductId),
+      ),
       total,
       page,
       pageSize,
@@ -402,13 +418,22 @@ export class ProductsService {
     const dataQb = this.variantRepo
       .createQueryBuilder("v")
       .innerJoinAndSelect("v.product", "p")
-      .leftJoinAndSelect("v.media", "m");
+      .leftJoinAndSelect("v.media", "m")
+      .leftJoinAndSelect("v.customFieldValues", "cfv");
     this.applyVariantListFilters(dataQb, workspace.id, categoryIdFilter, query);
     applyVariantListSort(dataQb, query.sort);
     const rows = await dataQb.skip(offset).take(limit).getMany();
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
+    );
+    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
+      [...new Set(rows.map((v) => v.productId))],
+    );
 
     return {
-      items: rows.map((v) => this.toVariantListItem(v)),
+      items: rows.map((v) =>
+        this.toVariantListItem(v, fieldDefs, mainImageByProductId),
+      ),
       total,
       page,
       pageSize,
@@ -428,7 +453,7 @@ export class ProductsService {
       where: { id: productId, workspaceId: workspace.id },
       relations: {
         category: true,
-        variants: true,
+        variants: { customFieldValues: true },
         media: true,
         sourceReferences: true,
       },
@@ -436,13 +461,13 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-    return this.toDetail(product);
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
+    );
+    return this.toDetail(product, fieldDefs);
   }
 
-  async createForOwner(
-    ownerId: number,
-    dto: CreateProductDto,
-  ): Promise<ProductDetailDto> {
+  async createForOwner(ownerId: number, dto: CreateProductDto): Promise<void> {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
@@ -457,7 +482,29 @@ export class ProductsService {
       dto.categoryId,
     );
 
-    let productId = 0;
+    const productType = dto.productType ?? ProductType.single;
+    const variantInputs = dto.variants ?? [];
+
+    if (productType === ProductType.variants && variantInputs.length === 0) {
+      throw new BadRequestException(
+        "At least one variant is required when product_type is variants",
+      );
+    }
+    if (productType === ProductType.single && variantInputs.length > 1) {
+      throw new BadRequestException(
+        "product_type single allows at most one variant",
+      );
+    }
+
+    const stagedMediaIds = this.collectStagedMediaIds(dto);
+    const stagedById = await this.uploadMedia.requireForWorkspace(
+      workspace.id,
+      stagedMediaIds,
+    );
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
+    );
+
     await this.productRepo.manager.transaction(async (em) => {
       const product = em.create(Product, {
         workspaceId: workspace.id,
@@ -465,23 +512,61 @@ export class ProductsService {
         name,
         description: dto.description?.trim() || null,
         status: dto.status ?? ProductStatus.draft,
-        productType: dto.productType ?? ProductType.single,
+        productType,
         sourceType: dto.sourceType ?? null,
-        sourceId: dto.sourceId?.trim() || null,
-        referenceGroupId: dto.referenceGroupId?.trim() || null,
         price: dto.price ?? null,
         currency: (dto.currency?.trim() || defaultCurrency).slice(0, 8),
         inStock: dto.inStock ?? null,
         quantity: dto.quantity ?? null,
-        mainImageUrl: dto.mainImageUrl?.trim() || null,
         createdByUserId: ownerId,
         updatedByUserId: null,
       });
       const saved = await em.save(product);
-      productId = saved.id;
-    });
 
-    return this.findOneForOwner(ownerId, productId);
+      for (const spec of variantInputs) {
+        const resolved = this.variantCustomFields.resolveVariantStorage(
+          fieldDefs,
+          { customFields: spec.customFields },
+        );
+        const variant = await em.save(
+          em.create(ProductVariant, {
+            productId: saved.id,
+            price: spec.price ?? null,
+            inStock: spec.inStock ?? null,
+            quantity: spec.quantity ?? null,
+            sku: spec.sku?.trim() || null,
+            status: spec.status ?? ProductStatus.draft,
+            createdByUserId: ownerId,
+            updatedByUserId: null,
+          }),
+        );
+        await this.variantCustomFields.upsertValuesForVariant(
+          em,
+          variant.id,
+          resolved,
+        );
+
+        if (spec.mediaIds?.length) {
+          await this.insertProductMediaFromStaged(
+            em,
+            saved.id,
+            variant.id,
+            spec.mediaIds,
+            stagedById,
+          );
+        }
+      }
+
+      if (dto.mediaIds?.length) {
+        await this.insertProductMediaFromStaged(
+          em,
+          saved.id,
+          null,
+          dto.mediaIds,
+          stagedById,
+        );
+      }
+    });
   }
 
   /**
@@ -514,6 +599,9 @@ export class ProductsService {
     );
     const price = tryParsePriceFromOfferText(params.visiblePriceOrOffer);
     const variantSpecs = expandVariantColorSize(params.colors, params.sizes);
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
+    );
     const refType =
       params.sourceType === ProductSourceType.instagram_story
         ? ProductSourceReferenceType.instagram_story
@@ -530,18 +618,27 @@ export class ProductsService {
         productType:
           variantSpecs.length > 1 ? ProductType.variants : ProductType.single,
         sourceType: params.sourceType,
-        sourceId: params.instagramMediaId,
-        referenceGroupId: null,
         price,
         currency: defaultCurrency,
         inStock: null,
         quantity: null,
-        mainImageUrl: params.mainImageUrl.trim() || null,
         createdByUserId: ownerId,
         updatedByUserId: null,
       });
       const saved = await em.save(product);
       productId = saved.id;
+
+      const coverUrl = params.mainImageUrl.trim();
+      if (coverUrl) {
+        await em.insert(ProductMedia, {
+          productId: saved.id,
+          variantId: null,
+          url: coverUrl,
+          type: ProductMediaType.image,
+          sourceUrl: null,
+          sortOrder: 0,
+        });
+      }
 
       const specsToInsert =
         saved.productType === ProductType.single
@@ -549,19 +646,22 @@ export class ProductsService {
           : variantSpecs;
 
       for (const spec of specsToInsert) {
-        await em.insert(ProductVariant, {
+        const insertResult = await em.insert(ProductVariant, {
           productId: saved.id,
-          color: spec.color,
-          size: spec.size,
           price: null,
           inStock: null,
           quantity: null,
-          imageUrl: null,
           sku: null,
           status: ProductStatus.draft,
           createdByUserId: ownerId,
           updatedByUserId: null,
         });
+        const variantId = insertResult.identifiers[0].id as number;
+        await this.variantCustomFields.upsertValuesForVariant(
+          em,
+          variantId,
+          colorSizeSpecToFieldValues(fieldDefs, spec),
+        );
       }
 
       await em.insert(ProductSourceReference, {
@@ -613,16 +713,6 @@ export class ProductsService {
     if (dto.sourceType !== undefined) {
       product.sourceType = dto.sourceType;
     }
-    if (dto.sourceId !== undefined) {
-      product.sourceId =
-        dto.sourceId === null ? null : dto.sourceId.trim() || null;
-    }
-    if (dto.referenceGroupId !== undefined) {
-      product.referenceGroupId =
-        dto.referenceGroupId === null
-          ? null
-          : dto.referenceGroupId.trim() || null;
-    }
     if (dto.price !== undefined) {
       product.price = dto.price;
     }
@@ -639,9 +729,18 @@ export class ProductsService {
     if (dto.quantity !== undefined) {
       product.quantity = dto.quantity;
     }
-    if (dto.mainImageUrl !== undefined) {
-      product.mainImageUrl =
-        dto.mainImageUrl === null ? null : dto.mainImageUrl.trim() || null;
+    if (dto.mediaIds?.length) {
+      const stagedById = await this.uploadMedia.requireForWorkspace(
+        workspace.id,
+        dto.mediaIds,
+      );
+      await this.insertProductMediaFromStaged(
+        this.productRepo.manager,
+        product.id,
+        null,
+        dto.mediaIds,
+        stagedById,
+      );
     }
     if (dto.categoryId !== undefined) {
       if (dto.categoryId !== null) {
@@ -686,20 +785,41 @@ export class ProductsService {
     );
     const product = await this.requireProduct(workspace.id, productId);
     await this.assertCanAddVariantToProduct(product);
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
+    );
+    const resolved = this.variantCustomFields.resolveVariantStorage(fieldDefs, {
+      customFields: dto.customFields,
+    });
+    const stagedMediaIds = dto.mediaIds ?? [];
+    const stagedById = stagedMediaIds.length
+      ? await this.uploadMedia.requireForWorkspace(workspace.id, stagedMediaIds)
+      : new Map<number, { cdnUrl: string }>();
     const row = this.variantRepo.create({
       productId,
-      color: dto.color?.trim() || null,
-      size: dto.size?.trim() || null,
       price: dto.price ?? null,
       inStock: dto.inStock ?? null,
       quantity: dto.quantity ?? null,
-      imageUrl: dto.imageUrl?.trim() || null,
       sku: dto.sku?.trim() || null,
       status: dto.status ?? ProductStatus.draft,
       createdByUserId: ownerId,
       updatedByUserId: null,
     });
-    await this.variantRepo.save(row);
+    const saved = await this.variantRepo.save(row);
+    await this.variantCustomFields.upsertValuesForVariant(
+      this.variantRepo.manager,
+      saved.id,
+      resolved,
+    );
+    if (stagedMediaIds.length > 0) {
+      await this.insertProductMediaFromStaged(
+        this.variantRepo.manager,
+        productId,
+        saved.id,
+        stagedMediaIds,
+        stagedById,
+      );
+    }
     return this.findOneForOwner(ownerId, productId);
   }
 
@@ -719,11 +839,20 @@ export class ProductsService {
     if (!variant) {
       throw new NotFoundException("Variant not found");
     }
-    if (dto.color !== undefined) {
-      variant.color = dto.color === null ? null : dto.color.trim() || null;
-    }
-    if (dto.size !== undefined) {
-      variant.size = dto.size === null ? null : dto.size.trim() || null;
+    if (dto.customFields !== undefined) {
+      const fieldDefs =
+        await this.variantCustomFields.listDefinitionsForWorkspace(
+          workspace.id,
+        );
+      const resolved = this.variantCustomFields.resolveVariantStorage(
+        fieldDefs,
+        { customFields: dto.customFields },
+      );
+      await this.variantCustomFields.upsertValuesForVariant(
+        this.variantRepo.manager,
+        variant.id,
+        resolved,
+      );
     }
     if (dto.price !== undefined) {
       variant.price = dto.price;
@@ -734,9 +863,18 @@ export class ProductsService {
     if (dto.quantity !== undefined) {
       variant.quantity = dto.quantity;
     }
-    if (dto.imageUrl !== undefined) {
-      variant.imageUrl =
-        dto.imageUrl === null ? null : dto.imageUrl.trim() || null;
+    if (dto.mediaIds?.length) {
+      const stagedById = await this.uploadMedia.requireForWorkspace(
+        workspace.id,
+        dto.mediaIds,
+      );
+      await this.insertProductMediaFromStaged(
+        this.variantRepo.manager,
+        productId,
+        variant.id,
+        dto.mediaIds,
+        stagedById,
+      );
     }
     if (dto.sku !== undefined) {
       variant.sku = dto.sku === null ? null : dto.sku.trim() || null;
@@ -818,7 +956,6 @@ export class ProductsService {
     if (dto.sortOrder !== undefined) {
       media.sortOrder = dto.sortOrder;
     }
-    media.updatedByUserId = ownerId;
     await this.mediaRepo.save(media);
     return this.findOneForOwner(ownerId, productId);
   }
@@ -879,6 +1016,57 @@ export class ProductsService {
       throw new NotFoundException("Source reference not found");
     }
     await this.sourceRefRepo.remove(ref);
+  }
+
+  private collectStagedMediaIds(dto: CreateProductDto): number[] {
+    const ids = new Set<number>();
+    for (const id of dto.mediaIds ?? []) {
+      ids.add(id);
+    }
+    for (const variant of dto.variants ?? []) {
+      for (const id of variant.mediaIds ?? []) {
+        ids.add(id);
+      }
+    }
+    return [...ids];
+  }
+
+  private firstStagedCdnUrl(
+    mediaIds: number[] | undefined,
+    stagedById: Map<number, { cdnUrl: string }>,
+  ): string | null {
+    const firstId = mediaIds?.[0];
+    if (firstId == null) {
+      return null;
+    }
+    return stagedById.get(firstId)?.cdnUrl ?? null;
+  }
+
+  private async insertProductMediaFromStaged(
+    em: EntityManager,
+    productId: number,
+    variantId: number | null,
+    mediaIds: number[],
+    stagedById: Map<number, { cdnUrl: string }>,
+  ): Promise<void> {
+    if (mediaIds.length === 0) {
+      return;
+    }
+    for (let i = 0; i < mediaIds.length; i++) {
+      const staged = stagedById.get(mediaIds[i]);
+      if (!staged) {
+        continue;
+      }
+      await em.insert(ProductMedia, {
+        productId,
+        variantId,
+        uploadMediaId: mediaIds[i],
+        url: staged.cdnUrl,
+        type: ProductMediaType.image,
+        sourceUrl: null,
+        sortOrder: i,
+      });
+    }
   }
 
   private async requireProduct(
@@ -960,8 +1148,11 @@ export class ProductsService {
         `(
           p.name ILIKE :catalogSearch ESCAPE '\\'
           OR COALESCE(v.sku, '') ILIKE :catalogSearch ESCAPE '\\'
-          OR COALESCE(v.color, '') ILIKE :catalogSearch ESCAPE '\\'
-          OR COALESCE(v.size, '') ILIKE :catalogSearch ESCAPE '\\'
+          OR EXISTS (
+            SELECT 1 FROM product_variant_custom_field_value cfv
+            WHERE cfv.variant_id = v.id
+              AND cfv.value ILIKE :catalogSearch ESCAPE '\\'
+          )
         )`,
         { catalogSearch: pattern },
       );
@@ -970,22 +1161,24 @@ export class ProductsService {
 
   private toCatalogVariantItem(
     v: ProductVariant,
+    fieldDefs: WorkspaceVariantCustomField[],
+    mainImageByProductId: Map<number, string>,
   ): CatalogVariantListResponseDto["items"][number] {
     const p = v.product;
     if (p == null) {
       throw new Error("ProductVariant row missing product (invariant)");
     }
-    const variantTitle = buildVariantTitleSnapshot(v.color, v.size);
+    const productMainImage = this.resolveMainImageUrl(p, mainImageByProductId);
+    const variantTitle = buildVariantTitleFromFields(fieldDefs, v);
     const label = variantTitle ? `${p.name} — ${variantTitle}` : p.name;
     const unitPrice = v.price ?? p.price ?? null;
-    const imageUrl =
-      v.imageUrl?.trim() || p.mainImageUrl?.trim() || null;
+    const variantImage = pickMainMediaUrl(v.media ?? []);
+    const imageUrl = variantImage || productMainImage;
 
     return {
       id: v.id,
       productId: p.id,
-      color: v.color,
-      size: v.size,
+      customFields: serializeVariantCustomFields(v, fieldDefs),
       sku: v.sku,
       unitPrice,
       imageUrl,
@@ -997,7 +1190,7 @@ export class ProductsService {
         id: p.id,
         name: p.name,
         categoryId: p.categoryId,
-        mainImageUrl: p.mainImageUrl,
+        mainImageUrl: productMainImage,
         currency: p.currency,
         status: p.status,
         price: p.price,
@@ -1057,7 +1250,52 @@ export class ProductsService {
     }
   }
 
-  private toListItem(p: Product): ProductListItemDto {
+  private async loadFirstProductLevelMediaUrls(
+    productIds: number[],
+  ): Promise<Map<number, string>> {
+    if (productIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.mediaRepo.find({
+      where: {
+        productId: In(productIds),
+        variantId: IsNull(),
+      },
+      order: { sortOrder: "ASC", id: "ASC" },
+    });
+    const map = new Map<number, string>();
+    for (const row of rows) {
+      if (map.has(row.productId)) {
+        continue;
+      }
+      const url = row.url?.trim();
+      if (url) {
+        map.set(row.productId, url);
+      }
+    }
+    return map;
+  }
+
+  private resolveMainImageUrl(
+    product: Product,
+    cached?: Map<number, string>,
+  ): string | null {
+    const fromCache = cached?.get(product.id);
+    if (fromCache) {
+      return fromCache;
+    }
+    return this.firstProductLevelMediaUrlFromLoaded(product);
+  }
+
+  private firstProductLevelMediaUrlFromLoaded(product: Product): string | null {
+    const items = (product.media ?? []).filter((m) => m.variantId == null);
+    return pickMainMediaUrl(items);
+  }
+
+  private toListItem(
+    p: Product,
+    mainImageByProductId?: Map<number, string>,
+  ): ProductListItemDto {
     return {
       id: p.id,
       name: p.name,
@@ -1067,27 +1305,32 @@ export class ProductsService {
       currency: p.currency,
       inStock: p.inStock,
       quantity: p.quantity,
-      mainImageUrl: p.mainImageUrl,
-      referenceGroupId: p.referenceGroupId,
+      mainImageUrl: this.resolveMainImageUrl(p, mainImageByProductId),
       categoryId: p.categoryId,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     };
   }
 
-  private toProductParentSummary(p: Product): ProductParentSummaryDto {
+  private toProductParentSummary(
+    p: Product,
+    mainImageByProductId?: Map<number, string>,
+  ): ProductParentSummaryDto {
     return {
       id: p.id,
       name: p.name,
       productType: p.productType,
       categoryId: p.categoryId,
-      mainImageUrl: p.mainImageUrl,
+      mainImageUrl: this.resolveMainImageUrl(p, mainImageByProductId),
       currency: p.currency,
       status: p.status,
     };
   }
 
-  private buildVariantDtos(p: Product): ProductVariantDto[] {
+  private buildVariantDtos(
+    p: Product,
+    fieldDefs: WorkspaceVariantCustomField[],
+  ): ProductVariantDto[] {
     const variants = [...(p.variants ?? [])].sort((a, b) => a.id - b.id);
     const allMedia = [...(p.media ?? [])];
     const mediaByVariant = new Map<number, ProductMedia[]>();
@@ -1099,17 +1342,15 @@ export class ProductsService {
       }
     }
     return variants.map((v) => {
-      const vMedia = (mediaByVariant.get(v.id) ?? []).sort((a, b) =>
-        this.mediaSort(a, b),
-      );
+      const vMedia = (mediaByVariant.get(v.id) ?? []).sort(mediaSort);
+      const variantImage = pickMainMediaUrl(vMedia);
       return {
         id: v.id,
-        color: v.color,
-        size: v.size,
+        customFields: serializeVariantCustomFields(v, fieldDefs),
         price: v.price,
         inStock: v.inStock,
         quantity: v.quantity,
-        imageUrl: v.imageUrl,
+        imageUrl: variantImage,
         sku: v.sku,
         status: v.status,
         createdAt: v.createdAt,
@@ -1119,20 +1360,24 @@ export class ProductsService {
     });
   }
 
-  private toVariantListItem(v: ProductVariant): ProductVariantListItemDto {
+  private toVariantListItem(
+    v: ProductVariant,
+    fieldDefs: WorkspaceVariantCustomField[],
+    mainImageByProductId: Map<number, string>,
+  ): ProductVariantListItemDto {
     const p = v.product;
     if (p == null) {
       throw new Error("ProductVariant row missing product (invariant)");
     }
-    const media = [...(v.media ?? [])].sort((a, b) => this.mediaSort(a, b));
+    const media = [...(v.media ?? [])].sort(mediaSort);
+    const variantImage = pickMainMediaUrl(media);
     return {
       id: v.id,
-      color: v.color,
-      size: v.size,
+      customFields: serializeVariantCustomFields(v, fieldDefs),
       price: v.price,
       inStock: v.inStock,
       quantity: v.quantity,
-      imageUrl: v.imageUrl,
+      imageUrl: variantImage,
       sku: v.sku,
       status: v.status,
       createdAt: v.createdAt,
@@ -1140,15 +1385,8 @@ export class ProductsService {
       media: media.map((m) => this.toMediaDto(m)),
       categoryId: p.categoryId,
       name: p.name,
-      product_parent: this.toProductParentSummary(p),
+      product_parent: this.toProductParentSummary(p, mainImageByProductId),
     };
-  }
-
-  private mediaSort(a: ProductMedia, b: ProductMedia): number {
-    if (a.sortOrder !== b.sortOrder) {
-      return a.sortOrder - b.sortOrder;
-    }
-    return a.id - b.id;
   }
 
   private toMediaDto(m: ProductMedia): ProductMediaDto {
@@ -1156,6 +1394,7 @@ export class ProductsService {
       id: m.id,
       productId: m.productId,
       variantId: m.variantId,
+      uploadMediaId: m.uploadMediaId,
       url: m.url,
       type: m.type,
       sourceUrl: m.sourceUrl,
@@ -1165,11 +1404,14 @@ export class ProductsService {
     };
   }
 
-  private toDetail(p: Product): ProductDetailDto {
+  private toDetail(
+    p: Product,
+    fieldDefs: WorkspaceVariantCustomField[],
+  ): ProductDetailDto {
     const allMedia = [...(p.media ?? [])];
     const productLevelMedia = allMedia
       .filter((m) => m.variantId == null)
-      .sort((a, b) => this.mediaSort(a, b));
+      .sort(mediaSort);
     const refs = [...(p.sourceReferences ?? [])].sort((a, b) => a.id - b.id);
     const categoryNode = p.category;
     const categorySummary: ProductCategorySummaryDto | null = categoryNode
@@ -1181,14 +1423,13 @@ export class ProductsService {
       : null;
 
     return {
-      ...this.toListItem(p),
+      ...this.toListItem(p, undefined),
       description: p.description,
       sourceType: p.sourceType,
-      sourceId: p.sourceId,
       createdByUserId: p.createdByUserId,
       updatedByUserId: p.updatedByUserId,
       category: categorySummary,
-      variants: this.buildVariantDtos(p),
+      variants: this.buildVariantDtos(p, fieldDefs),
       media: productLevelMedia.map((m) => this.toMediaDto(m)),
       sourceReferences: refs.map((r) => ({
         id: r.id,

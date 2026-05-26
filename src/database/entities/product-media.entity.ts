@@ -12,11 +12,12 @@ import {
 import { ProductMediaType } from "./product-media-type.enum";
 import { Product } from "./product.entity";
 import { ProductVariant } from "./product-variant.entity";
-import { User } from "./user.entity";
+import { UploadMedia } from "./upload-media.entity";
 
 @Entity({ name: "product_media" })
 @Index("IDX_product_media_product_id", ["productId"])
 @Index("IDX_product_media_variant_id", ["variantId"])
+@Index("IDX_product_media_upload_media_id", ["uploadMediaId"])
 export class ProductMedia {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
@@ -38,6 +39,13 @@ export class ProductMedia {
   @JoinColumn({ name: "variant_id" })
   variant: ProductVariant | null;
 
+  @Column({ name: "upload_media_id", type: "int", nullable: true })
+  uploadMediaId: number | null;
+
+  @ManyToOne(() => UploadMedia, { onDelete: "SET NULL", nullable: true })
+  @JoinColumn({ name: "upload_media_id" })
+  uploadMedia: UploadMedia | null;
+
   @Column({ type: "text" })
   url: string;
 
@@ -53,20 +61,6 @@ export class ProductMedia {
 
   @Column({ name: "sort_order", type: "int", default: 0 })
   sortOrder: number;
-
-  @Column({ name: "created_by_user_id", type: "int" })
-  createdByUserId: number;
-
-  @ManyToOne(() => User, { onDelete: "RESTRICT" })
-  @JoinColumn({ name: "created_by_user_id" })
-  createdByUser: User;
-
-  @Column({ name: "updated_by_user_id", type: "int", nullable: true })
-  updatedByUserId: number | null;
-
-  @ManyToOne(() => User, { onDelete: "SET NULL", nullable: true })
-  @JoinColumn({ name: "updated_by_user_id" })
-  updatedByUser: User | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

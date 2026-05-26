@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -10,10 +11,12 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from "class-validator";
 import { ProductSourceType } from "../../database/entities/product-source-type.enum";
 import { ProductStatus } from "../../database/entities/product-status.enum";
 import { ProductType } from "../../database/entities/product-type.enum";
+import { CreateProductVariantInputDto } from "./create-product-variant-input.dto";
 
 export class CreateProductDto {
   @ApiProperty({ maxLength: 512 })
@@ -40,22 +43,11 @@ export class CreateProductDto {
   status?: ProductStatus;
 
   @ApiPropertyOptional({
-    name: "product_type",
     enum: ProductType,
     default: ProductType.single,
-    description:
-      "single = one SKU; variants = sold via product_variants. Accepts `product_type` or `productType`.",
+    description: "single = one SKU; variants = sold via product_variants.",
   })
   @IsOptional()
-  @Transform(({ obj, value }: { obj: object; value: unknown }) => {
-    const raw =
-      value ?? (obj as { product_type?: unknown }).product_type;
-    if (typeof raw === "string") {
-      const t = raw.trim();
-      return t === "" ? undefined : t;
-    }
-    return raw;
-  })
   @IsEnum(ProductType)
   productType?: ProductType;
 
@@ -63,24 +55,6 @@ export class CreateProductDto {
   @IsOptional()
   @IsEnum(ProductSourceType)
   sourceType?: ProductSourceType;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  @MaxLength(255)
-  sourceId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  @MaxLength(255)
-  referenceGroupId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -119,13 +93,17 @@ export class CreateProductDto {
   @Min(0)
   quantity?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      "Staged upload_media ids for product-level gallery (from POST /products/upload-media).",
+    type: [Number],
+  })
   @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  mainImageUrl?: string;
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  mediaIds?: number[];
 
   @ApiPropertyOptional({
     description:
@@ -141,4 +119,15 @@ export class CreateProductDto {
   @IsInt()
   @Min(1)
   categoryId?: number;
+
+  @ApiPropertyOptional({
+    type: [CreateProductVariantInputDto],
+    description:
+      "Required when productType is variants (at least one). For single, omit or send at most one row.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateProductVariantInputDto)
+  variants?: CreateProductVariantInputDto[];
 }

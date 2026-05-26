@@ -8,6 +8,7 @@ import { IsNull, Repository } from "typeorm";
 import { Product, ProductMedia, ProductVariant } from "../database/entities";
 import { ProductMediaType } from "../database/entities/product-media-type.enum";
 import { resolveEffectiveMediaOrder } from "./product-media.effective";
+import { mediaSort } from "./product-media.util";
 
 export type AddProductMediaPayload = {
   productId: number;
@@ -38,7 +39,7 @@ export class ProductMediaService {
 
   async addMedia(
     workspaceId: number,
-    userId: number,
+    _userId: number,
     payload: AddProductMediaPayload,
   ): Promise<ProductMedia> {
     await this.requireProduct(workspaceId, payload.productId);
@@ -65,8 +66,6 @@ export class ProductMediaService {
       type: payload.type,
       sourceUrl: payload.sourceUrl?.trim() || null,
       sortOrder: payload.sortOrder ?? 0,
-      createdByUserId: userId,
-      updatedByUserId: null,
     });
     return this.mediaRepo.save(row);
   }
@@ -131,7 +130,7 @@ export class ProductMediaService {
    */
   async replaceMedia(
     workspaceId: number,
-    userId: number,
+    _userId: number,
     productId: number,
     items: ReplaceProductMediaItem[],
   ): Promise<void> {
@@ -155,8 +154,6 @@ export class ProductMediaService {
           type: item.type,
           sourceUrl: item.sourceUrl?.trim() || null,
           sortOrder: item.sortOrder ?? order,
-          createdByUserId: userId,
-          updatedByUserId: null,
         });
         order += 1;
       }
@@ -168,7 +165,7 @@ export class ProductMediaService {
    */
   async replaceVariantMedia(
     workspaceId: number,
-    userId: number,
+    _userId: number,
     productId: number,
     variantId: number,
     items: ReplaceProductMediaItem[],
@@ -196,8 +193,6 @@ export class ProductMediaService {
           type: item.type,
           sourceUrl: item.sourceUrl?.trim() || null,
           sortOrder: item.sortOrder ?? order,
-          createdByUserId: userId,
-          updatedByUserId: null,
         });
         order += 1;
       }
@@ -205,12 +200,7 @@ export class ProductMediaService {
   }
 
   private sortedMedia(rows: ProductMedia[]): ProductMedia[] {
-    return [...rows].sort((a, b) => {
-      if (a.sortOrder !== b.sortOrder) {
-        return a.sortOrder - b.sortOrder;
-      }
-      return a.id - b.id;
-    });
+    return [...rows].sort(mediaSort);
   }
 
   private async requireProduct(

@@ -9,15 +9,18 @@ import {
   OrderItem,
   OrderStatus,
   Product,
+  ProductMedia,
   ProductVariant,
   Workspace,
 } from "../database/entities";
+import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
 import { OrderStatusesController } from "./order-statuses.controller";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
 @Module({
   imports: [
+    VariantCustomFieldsModule,
     TypeOrmModule.forFeature([
       Client,
       Conversation,
@@ -27,6 +30,7 @@ import { OrdersService } from "./orders.service";
       OrderDeliveryInfo,
       OrderEvent,
       Product,
+      ProductMedia,
       ProductVariant,
     ]),
   ],

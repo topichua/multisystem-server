@@ -20,7 +20,7 @@ function trimOptionalString(value: unknown): string | undefined {
 export class ListCatalogVariantsQueryDto {
   @ApiPropertyOptional({
     description:
-      "Search product name, variant SKU, color, and size (case-insensitive).",
+      "Search product name, variant SKU, and custom field values (case-insensitive).",
   })
   @IsOptional()
   @Transform(({ value }) => trimOptionalString(value))

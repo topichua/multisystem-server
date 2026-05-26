@@ -23,7 +23,6 @@ import { Workspace } from "./workspace.entity";
 @Entity({ name: "products" })
 @Index("IDX_products_workspace_id", ["workspaceId"])
 @Index("IDX_products_workspace_id_status", ["workspaceId", "status"])
-@Index("IDX_products_reference_group_id", ["referenceGroupId"])
 @Index("IDX_products_category_id", ["categoryId"])
 export class Product {
   @PrimaryGeneratedColumn({ name: "id" })
@@ -78,17 +77,6 @@ export class Product {
   })
   sourceType: ProductSourceType | null;
 
-  @Column({ name: "source_id", type: "varchar", length: 255, nullable: true })
-  sourceId: string | null;
-
-  @Column({
-    name: "reference_group_id",
-    type: "varchar",
-    length: 255,
-    nullable: true,
-  })
-  referenceGroupId: string | null;
-
   @Column({
     type: "decimal",
     precision: 12,
@@ -109,9 +97,6 @@ export class Product {
 
   @Column({ type: "int", nullable: true })
   quantity: number | null;
-
-  @Column({ name: "main_image_url", type: "text", nullable: true })
-  mainImageUrl: string | null;
 
   @Column({ name: "created_by_user_id", type: "int" })
   createdByUserId: number;

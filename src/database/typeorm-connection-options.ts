@@ -40,6 +40,16 @@ import { WorkspaceRolesAndMembers1744200000039 } from "./migrations/174420000003
 import { WorkspaceMemberIntegrationScopes1744200000040 } from "./migrations/1744200000040-WorkspaceMemberIntegrationScopes";
 import { ProductMoveToWorkspaceId1744200000042 } from "./migrations/1744200000042-ProductMoveToWorkspaceId";
 import { ProductMediaDropCompanyId1744200000043 } from "./migrations/1744200000043-ProductMediaDropCompanyId";
+import { UploadMedia1744200000044 } from "./migrations/1744200000044-UploadMedia";
+import { WorkspaceVariantCustomFields1744200000045 } from "./migrations/1744200000045-WorkspaceVariantCustomFields";
+import { ProductMediaUploadMediaId1744200000046 } from "./migrations/1744200000046-ProductMediaUploadMediaId";
+import { ProductVariantDropColorSize1744200000047 } from "./migrations/1744200000047-ProductVariantDropColorSize";
+import { ProductVariantCustomFieldValues1744200000048 } from "./migrations/1744200000048-ProductVariantCustomFieldValues";
+import { ProductDropSourceIdReferenceGroupId1744200000049 } from "./migrations/1744200000049-ProductDropSourceIdReferenceGroupId";
+import { ProductDropMainImageUrl1744200000050 } from "./migrations/1744200000050-ProductDropMainImageUrl";
+import { ProductVariantDropImageUrl1744200000051 } from "./migrations/1744200000051-ProductVariantDropImageUrl";
+import { ProductMediaMainMediaDropUserIds1744200000052 } from "./migrations/1744200000052-ProductMediaMainMediaDropUserIds";
+import { ProductMediaDropMainMedia1744200000053 } from "./migrations/1744200000053-ProductMediaDropMainMedia";
 import {
   Client,
   InstagramIntegration,
@@ -57,6 +67,9 @@ import {
   ProductMedia,
   ProductSourceReference,
   ProductVariant,
+  ProductVariantCustomFieldValue,
+  UploadMedia,
+  WorkspaceVariantCustomField,
   TelegramIntegration,
   User,
   Workspace,
@@ -129,8 +142,11 @@ const entities = [
   ProductCategory,
   Product,
   ProductVariant,
+  ProductVariantCustomFieldValue,
   ProductMedia,
   ProductSourceReference,
+  UploadMedia,
+  WorkspaceVariantCustomField,
   OrderStatus,
   Order,
   OrderItem,
@@ -219,6 +235,16 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceMemberIntegrationScopes1744200000040,
       ProductMoveToWorkspaceId1744200000042,
       ProductMediaDropCompanyId1744200000043,
+      UploadMedia1744200000044,
+      WorkspaceVariantCustomFields1744200000045,
+      ProductMediaUploadMediaId1744200000046,
+      ProductVariantDropColorSize1744200000047,
+      ProductVariantCustomFieldValues1744200000048,
+      ProductDropSourceIdReferenceGroupId1744200000049,
+      ProductDropMainImageUrl1744200000050,
+      ProductVariantDropImageUrl1744200000051,
+      ProductMediaMainMediaDropUserIds1744200000052,
+      ProductMediaDropMainMedia1744200000053,
     ],
   };
 }

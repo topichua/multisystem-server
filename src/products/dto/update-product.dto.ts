@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -51,24 +52,6 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  @MaxLength(255)
-  sourceId?: string | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  @MaxLength(255)
-  referenceGroupId?: string | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
@@ -105,13 +88,17 @@ export class UpdateProductDto {
   @Min(0)
   quantity?: number | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    description:
+      "Append product-level gallery images from staged upload_media ids (POST /products/upload-media).",
+    type: [Number],
+  })
   @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  mainImageUrl?: string | null;
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  mediaIds?: number[];
 
   @ApiPropertyOptional({
     nullable: true,

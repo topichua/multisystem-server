@@ -82,7 +82,7 @@ export class InstagramController {
     summary: "Infer product fields and category from an Instagram media id",
     description:
       "Loads the media from Instagram Graph, downloads the image (or carousel first image / video thumbnail), sends it to OpenAI with the caption and your workspace category list, and returns structured JSON. " +
-      "Also creates a draft row in the catalog (`products`) with variants (colors × sizes), optional `category_id`, `mainImageUrl`, and a `product_source_references` row — see `catalogProductId` / `savedProduct` in the response. " +
+      "Also creates a draft row in the catalog (`products`) with variants (colors × sizes), optional `category_id`, product gallery media, and a `product_source_references` row — see `catalogProductId` / `savedProduct` in the response. " +
       "Requires OPENAI_API_KEY and a vision-capable model (default OPENAI_PRODUCT_VISION_MODEL=gpt-4o-mini).",
   })
   @ApiBody({ type: AnalyzeInstagramProductRequestDto })

@@ -11,6 +11,7 @@ import {
 } from "typeorm";
 
 import { ProductMedia } from "./product-media.entity";
+import { ProductVariantCustomFieldValue } from "./product-variant-custom-field-value.entity";
 import { Product } from "./product.entity";
 import { ProductStatus } from "./product-status.enum";
 import { User } from "./user.entity";
@@ -32,11 +33,8 @@ export class ProductVariant {
   @OneToMany(() => ProductMedia, (m) => m.variant)
   media: ProductMedia[];
 
-  @Column({ type: "varchar", length: 128, nullable: true })
-  color: string | null;
-
-  @Column({ type: "varchar", length: 128, nullable: true })
-  size: string | null;
+  @OneToMany(() => ProductVariantCustomFieldValue, (v) => v.variant)
+  customFieldValues: ProductVariantCustomFieldValue[];
 
   @Column({
     type: "decimal",
@@ -55,9 +53,6 @@ export class ProductVariant {
 
   @Column({ type: "int", nullable: true })
   quantity: number | null;
-
-  @Column({ name: "image_url", type: "text", nullable: true })
-  imageUrl: string | null;
 
   @Column({ type: "varchar", length: 128, nullable: true })
   sku: string | null;

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -9,8 +10,10 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from "class-validator";
 import { ProductStatus } from "../../database/entities/product-status.enum";
+import { VariantCustomFieldValueDto } from "./variant-custom-field-value.dto";
 
 export class UpdateProductVariantDto {
   @ApiPropertyOptional({ enum: ProductStatus })
@@ -18,23 +21,12 @@ export class UpdateProductVariantDto {
   @IsEnum(ProductStatus)
   status?: ProductStatus;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({ type: [VariantCustomFieldValueDto] })
   @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  @MaxLength(128)
-  color?: string | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  @MaxLength(128)
-  size?: string | null;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VariantCustomFieldValueDto)
+  customFields?: VariantCustomFieldValueDto[];
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
@@ -65,13 +57,17 @@ export class UpdateProductVariantDto {
   @Min(0)
   quantity?: number | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    description:
+      "Append variant gallery images from staged upload_media ids.",
+    type: [Number],
+  })
   @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  imageUrl?: string | null;
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  mediaIds?: number[];
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()

@@ -15,13 +15,16 @@ import {
 import { ProductStatus } from "../../database/entities/product-status.enum";
 import { VariantCustomFieldValueDto } from "./variant-custom-field-value.dto";
 
-export class CreateProductVariantDto {
+export class CreateProductVariantInputDto {
   @ApiPropertyOptional({ enum: ProductStatus, default: ProductStatus.draft })
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
 
-  @ApiPropertyOptional({ type: [VariantCustomFieldValueDto] })
+  @ApiPropertyOptional({
+    type: [VariantCustomFieldValueDto],
+    description: "Variant attribute values by workspace custom field id",
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
@@ -56,18 +59,6 @@ export class CreateProductVariantDto {
   @Min(0)
   quantity?: number;
 
-  @ApiPropertyOptional({
-    description:
-      "Staged upload_media ids for this variant (from POST /products/upload-media)",
-    type: [Number],
-  })
-  @IsOptional()
-  @IsArray()
-  @Type(() => Number)
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  mediaIds?: number[];
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -76,4 +67,16 @@ export class CreateProductVariantDto {
   )
   @MaxLength(128)
   sku?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Staged upload_media ids for this variant; the same id may appear on multiple variants",
+    type: [Number],
+  })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  mediaIds?: number[];
 }

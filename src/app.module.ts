@@ -18,6 +18,7 @@ import { OrdersModule } from "./orders/orders.module";
 import { WorkspaceSettingsModule } from "./workspace-settings/workspace-settings.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { TelegramIntegrationsModule } from "./telegram-integrations/telegram-integrations.module";
+import { VariantCustomFieldsModule } from "./variant-custom-fields/variant-custom-fields.module";
 import { WorkspaceAccessModule } from "./workspace-access/workspace-access.module";
 
 @Module({
@@ -51,6 +52,7 @@ import { WorkspaceAccessModule } from "./workspace-access/workspace-access.modul
     IntegrationsModule,
     TelegramIntegrationsModule,
     WorkspaceAccessModule,
+    VariantCustomFieldsModule,
     InstagramModule,
     AccountModule,
     WebhookModule,

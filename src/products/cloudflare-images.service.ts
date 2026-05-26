@@ -20,12 +20,17 @@ type UploadedImageFile = {
   originalname?: string;
 };
 
+type CloudflareImageUploadResult = {
+  cdnUrl: string;
+  cloudflareImageId: string | null;
+};
+
 @Injectable()
 export class CloudflareImagesService {
   private readonly accountId = process.env.CF_ACCOUNT_ID?.trim();
   private readonly apiToken = process.env.CF_API_KEY?.trim();
 
-  async uploadImage(file: UploadedImageFile): Promise<string> {
+  async uploadImage(file: UploadedImageFile): Promise<CloudflareImageUploadResult> {
     if (!this.accountId || !this.apiToken) {
       throw new ServiceUnavailableException(
         "Cloudflare image upload is not configured (CF_ACCOUNT_ID / CF_API_KEY).",
@@ -76,6 +81,7 @@ export class CloudflareImagesService {
       );
     }
 
+    const cloudflareImageId = payload.result?.id?.trim() || null;
     const deliveryUrl = payload.result?.variants?.[0]?.trim();
     if (!deliveryUrl) {
       throw new BadGatewayException(
@@ -83,11 +89,35 @@ export class CloudflareImagesService {
       );
     }
 
-    return deliveryUrl;
+    return { cdnUrl: deliveryUrl, cloudflareImageId };
+  }
+
+  async deleteImage(cloudflareImageId: string): Promise<void> {
+    if (!this.accountId || !this.apiToken) {
+      return;
+    }
+    const id = cloudflareImageId.trim();
+    if (!id) {
+      return;
+    }
+    const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/images/v1/${encodeURIComponent(id)}`;
+    try {
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${this.apiToken}` },
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+      }
+    } catch {
+      /* best effort — DB row is still removed */
+    }
   }
 
   /** Backward-compatible alias for existing product create flow. */
   async uploadProductMainImage(file: UploadedImageFile): Promise<string> {
-    return this.uploadImage(file);
+    const result = await this.uploadImage(file);
+    return result.cdnUrl;
   }
 }

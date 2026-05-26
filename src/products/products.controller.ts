@@ -22,6 +22,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -42,6 +43,8 @@ import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateProductMediaDto } from "./dto/update-product-media.dto";
 import { UpdateProductVariantDto } from "./dto/update-product-variant.dto";
 import { ProductMediaService } from "./product-media.service";
+import { UploadMediaResponseDto } from "./dto/upload-media-response.dto";
+import { UploadMediaService } from "./upload-media.service";
 import {
   ProductsService,
   type ProductDetailDto,
@@ -66,6 +69,7 @@ export class ProductsController {
     private readonly cloudflareImages: CloudflareImagesService,
     private readonly products: ProductsService,
     private readonly productMedia: ProductMediaService,
+    private readonly uploadMedia: UploadMediaService,
   ) {}
 
   @Get()
@@ -82,7 +86,7 @@ export class ProductsController {
     summary: "Search catalog variants (flat list with product info)",
     description:
       "Paginated flat list of variants with embedded `product` fields — for order line pickers and catalog search. " +
-      "Search via `q` or `keyword` (product name, SKU, color, size). Defaults to `active` products only.",
+      "Search via `q` or `keyword` (product name, SKU, custom field values). Defaults to `active` products only.",
   })
   @ApiOkResponse({ type: CatalogVariantListResponseDto })
   async listCatalogVariants(
@@ -105,6 +109,57 @@ export class ProductsController {
   ): Promise<ProductVariantListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.products.listVariantsForOwner(ownerId, query);
+  }
+
+  @Post("upload-media")
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor("image", {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary: "Upload image before product exists",
+    description:
+      "Uploads to Cloudflare CDN and stores a row in `upload_media`. " +
+      "Reference returned `id` in POST /products via mediaIds (product or variant). " +
+      "Call `DELETE /products/upload-media/:id` if the user removes the image before save.",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: { image: { type: "string", format: "binary" } },
+      required: ["image"],
+    },
+  })
+  @ApiOkResponse({ type: UploadMediaResponseDto })
+  async uploadStagingMedia(
+    @Req() req: { user?: AuthUser },
+    @UploadedFile() image?: UploadedImageFile,
+  ): Promise<UploadMediaResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    if (!image) {
+      throw new BadRequestException("Multipart field `image` is required.");
+    }
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
+    return this.uploadMedia.uploadForWorkspace(workspaceId, ownerId, image);
+  }
+
+  @Delete("upload-media/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Remove staged upload before product is saved",
+    description:
+      "Only allowed while no product_media row references this upload_media id (409 if already attached to a product).",
+  })
+  async deleteStagingMedia(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<void> {
+    const ownerId = this.requireNumericOwnerId(req);
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
+    await this.uploadMedia.deleteForWorkspace(workspaceId, id);
   }
 
   @Get(":id/media/effective")
@@ -187,96 +242,36 @@ export class ProductsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(
-    FileInterceptor("mainImage", {
-      limits: { fileSize: 10 * 1024 * 1024 },
-    }),
-  )
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        name: { type: "string" },
-        description: { type: "string" },
-        product_type: {
-          type: "string",
-          enum: ["single", "variants"],
-          default: "single",
-        },
-        status: { type: "string" },
-        sourceType: { type: "string" },
-        sourceId: { type: "string" },
-        referenceGroupId: { type: "string" },
-        price: { type: "number" },
-        currency: { type: "string" },
-        inStock: { type: "boolean" },
-        quantity: { type: "number" },
-        mainImageUrl: { type: "string" },
-        categoryId: { type: "number" },
-        mainImage: { type: "string", format: "binary" },
-      },
-      required: ["name"],
-    },
+  @ApiOperation({
+    summary: "Create product (single or variants)",
+    description:
+      "JSON body. Upload images first via POST /products/upload-media, then pass mediaIds on the product " +
+      "and/or on each variant in `variants`. Returns 201 with an empty body; use GET /products/:id to load the created product.",
   })
+  @ApiBody({ type: CreateProductDto })
+  @ApiCreatedResponse({ description: "Product created (empty body)." })
   async create(
     @Req() req: { user?: AuthUser },
     @Body() dto: CreateProductDto,
-    @UploadedFile() mainImage?: UploadedImageFile,
-  ): Promise<ProductDetailDto> {
+  ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
-    const uploadedMainImageUrl = mainImage
-      ? await this.cloudflareImages.uploadImage(mainImage)
-      : undefined;
-    const payload: CreateProductDto = {
-      ...dto,
-      ...(uploadedMainImageUrl ? { mainImageUrl: uploadedMainImageUrl } : {}),
-    };
-    return this.products.createForOwner(ownerId, payload);
+    await this.products.createForOwner(ownerId, dto);
   }
 
   @Patch(":id")
-  @UseInterceptors(
-    FileInterceptor("mainImage", {
-      limits: { fileSize: 10 * 1024 * 1024 },
-    }),
-  )
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        name: { type: "string" },
-        description: { type: "string", nullable: true },
-        status: { type: "string" },
-        sourceType: { type: "string", nullable: true },
-        sourceId: { type: "string", nullable: true },
-        referenceGroupId: { type: "string", nullable: true },
-        price: { type: "number", nullable: true },
-        currency: { type: "string" },
-        inStock: { type: "boolean", nullable: true },
-        quantity: { type: "number", nullable: true },
-        mainImageUrl: { type: "string", nullable: true },
-        categoryId: { type: "number", nullable: true },
-        mainImage: { type: "string", format: "binary" },
-      },
-    },
+  @ApiOperation({
+    summary: "Update product",
+    description:
+      "JSON body. Use mediaIds to append gallery images from staged uploads (POST /products/upload-media).",
   })
+  @ApiBody({ type: UpdateProductDto })
   async update(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateProductDto,
-    @UploadedFile() mainImage?: UploadedImageFile,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    const uploadedMainImageUrl = mainImage
-      ? await this.cloudflareImages.uploadImage(mainImage)
-      : undefined;
-    const payload: UpdateProductDto = {
-      ...dto,
-      ...(uploadedMainImageUrl ? { mainImageUrl: uploadedMainImageUrl } : {}),
-    };
-    return this.products.updateForOwner(ownerId, id, payload);
+    return this.products.updateForOwner(ownerId, id, dto);
   }
 
   @Delete(":id")
@@ -291,84 +286,36 @@ export class ProductsController {
 
   @Post(":id/variants")
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(
-    FileInterceptor("image", {
-      limits: { fileSize: 10 * 1024 * 1024 },
-    }),
-  )
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        color: { type: "string" },
-        size: { type: "string" },
-        price: { type: "number" },
-        inStock: { type: "boolean" },
-        quantity: { type: "number" },
-        imageUrl: { type: "string" },
-        sku: { type: "string" },
-        status: { type: "string", enum: ["draft", "active", "archived"] },
-        image: { type: "string", format: "binary" },
-      },
-    },
+  @ApiOperation({
+    summary: "Add variant to product",
+    description:
+      "JSON body. Use mediaIds from POST /products/upload-media for variant images.",
   })
+  @ApiBody({ type: CreateProductVariantDto })
   async addVariant(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: CreateProductVariantDto,
-    @UploadedFile() image?: UploadedImageFile,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    const uploadedImageUrl = image
-      ? await this.cloudflareImages.uploadImage(image)
-      : undefined;
-    const payload: CreateProductVariantDto = {
-      ...dto,
-      ...(uploadedImageUrl ? { imageUrl: uploadedImageUrl } : {}),
-    };
-    return this.products.createVariantForOwner(ownerId, id, payload);
+    return this.products.createVariantForOwner(ownerId, id, dto);
   }
 
   @Patch(":id/variants/:variantId")
-  @UseInterceptors(
-    FileInterceptor("image", {
-      limits: { fileSize: 10 * 1024 * 1024 },
-    }),
-  )
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        color: { type: "string", nullable: true },
-        size: { type: "string", nullable: true },
-        price: { type: "number", nullable: true },
-        inStock: { type: "boolean", nullable: true },
-        quantity: { type: "number", nullable: true },
-        imageUrl: { type: "string", nullable: true },
-        sku: { type: "string", nullable: true },
-        status: { type: "string", enum: ["draft", "active", "archived"] },
-        image: { type: "string", format: "binary" },
-      },
-    },
+  @ApiOperation({
+    summary: "Update variant",
+    description:
+      "JSON body. Use mediaIds to append variant images from staged uploads.",
   })
+  @ApiBody({ type: UpdateProductVariantDto })
   async updateVariant(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
     @Param("variantId", ParseIntPipe) variantId: number,
     @Body() dto: UpdateProductVariantDto,
-    @UploadedFile() image?: UploadedImageFile,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    const uploadedImageUrl = image
-      ? await this.cloudflareImages.uploadImage(image)
-      : undefined;
-    const payload: UpdateProductVariantDto = {
-      ...dto,
-      ...(uploadedImageUrl ? { imageUrl: uploadedImageUrl } : {}),
-    };
-    return this.products.updateVariantForOwner(ownerId, id, variantId, payload);
+    return this.products.updateVariantForOwner(ownerId, id, variantId, dto);
   }
 
   @Delete(":id/variants/:variantId")
@@ -456,7 +403,7 @@ export class ProductsController {
       throw new BadRequestException("Multipart field `image` is required.");
     }
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
-    const url = await this.cloudflareImages.uploadImage(image);
+    const url = (await this.cloudflareImages.uploadImage(image)).cdnUrl;
     await this.productMedia.addMedia(workspaceId, ownerId, {
       productId: id,
       url,

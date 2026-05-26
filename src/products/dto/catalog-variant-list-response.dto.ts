@@ -1,5 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ProductStatus } from "../../database/entities/product-status.enum";
+import { VariantCustomFieldType } from "../../database/entities/variant-custom-field-type.enum";
+
+export class CatalogVariantCustomFieldDto {
+  @ApiProperty()
+  fieldId: number;
+
+  @ApiProperty()
+  key: string;
+
+  @ApiProperty()
+  label: string;
+
+  @ApiProperty({ enum: VariantCustomFieldType })
+  type: VariantCustomFieldType;
+
+  @ApiPropertyOptional({ nullable: true })
+  value: string | null;
+}
 
 export class CatalogVariantProductDto {
   @ApiProperty()
@@ -31,11 +49,8 @@ export class CatalogVariantItemDto {
   @ApiProperty()
   productId: number;
 
-  @ApiPropertyOptional({ nullable: true })
-  color: string | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  size: string | null;
+  @ApiProperty({ type: [CatalogVariantCustomFieldDto] })
+  customFields: CatalogVariantCustomFieldDto[];
 
   @ApiPropertyOptional({ nullable: true })
   sku: string | null;

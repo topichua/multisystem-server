@@ -31,6 +31,12 @@ import type { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dt
 import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
+import {
+  buildVariantAttributesSnapshot,
+  buildVariantTitleFromFields,
+} from "../variant-custom-fields/variant-custom-fields.util";
+import { pickMainMediaUrl } from "../products/product-media.util";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -44,19 +50,11 @@ function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function buildVariantTitleSnapshot(
-  color: string | null,
-  size: string | null,
-): string | null {
-  const parts = [color?.trim(), size?.trim()].filter(Boolean) as string[];
-  if (parts.length === 0) return null;
-  return parts.join(" / ").slice(0, 512);
-}
-
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly variantCustomFields: VariantCustomFieldsService,
     @InjectRepository(Client)
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(Conversation)
@@ -628,7 +626,7 @@ export class OrdersService {
         id: dto.variantId,
         productId: dto.productId,
       },
-      relations: { product: true },
+      relations: { product: { media: true }, media: true, customFieldValues: true },
     });
     if (
       !variant ||
@@ -645,9 +643,15 @@ export class OrdersService {
       );
     }
     const totalLine = roundMoney(unitPrice * dto.quantity);
-    const variantTitle = buildVariantTitleSnapshot(variant.color, variant.size);
-    const imageUrl =
-      variant.imageUrl?.trim() || product.mainImageUrl?.trim() || null;
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspaceId);
+    const variantTitleRaw = buildVariantTitleFromFields(fieldDefs, variant);
+    const variantTitle = variantTitleRaw?.slice(0, 512) ?? null;
+    const productMainImage = pickMainMediaUrl(
+      (product.media ?? []).filter((m) => m.variantId == null),
+    );
+    const variantMainImage = pickMainMediaUrl(variant.media ?? []);
+    const imageUrl = variantMainImage || productMainImage || null;
 
     const item = this.orderItemRepo.create({
       orderId: order.id,
@@ -660,10 +664,10 @@ export class OrdersService {
       variantTitleSnapshot: variantTitle,
       skuSnapshot: variant.sku?.trim() || null,
       imageUrlSnapshot: imageUrl,
-      variantAttributesSnapshot: {
-        color: variant.color,
-        size: variant.size,
-      },
+      variantAttributesSnapshot: buildVariantAttributesSnapshot(
+        fieldDefs,
+        variant,
+      ),
     });
     const saved = await this.orderItemRepo.save(item);
 
