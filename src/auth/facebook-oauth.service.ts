@@ -14,6 +14,10 @@ import { Repository } from "typeorm";
 import { InstagramIntegration, Workspace } from "../database/entities";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
 import type { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
+import {
+  INSTAGRAM_TOKEN_STATUS_ACTIVE,
+  INSTAGRAM_TOKEN_STATUS_DISCONNECTED,
+} from "../integrations/instagram-integration.util";
 
 const GRAPH_VERSION = "v25.0";
 
@@ -34,8 +38,6 @@ const DEFAULT_OAUTH_SCOPES = [
   "instagram_manage_messages",
   "pages_read_engagement",
 ];
-
-const TOKEN_STATUS_ACTIVE = "active";
 
 const STATE_TTL_SECONDS = 15 * 60;
 
@@ -309,7 +311,7 @@ export class FacebookOAuthService {
     integration.instagramAccountId = igId;
     integration.facebookPageName = pageName.length > 0 ? pageName : null;
     integration.tokenConnectedAt = now;
-    integration.tokenStatus = TOKEN_STATUS_ACTIVE;
+    integration.tokenStatus = INSTAGRAM_TOKEN_STATUS_ACTIVE;
     await this.instagramIntegrationRepo.save(integration);
 
     this.log.log(
@@ -322,8 +324,43 @@ export class FacebookOAuthService {
       pageName,
       instagramAccountId: igId,
       tokenConnectedAt: now.toISOString(),
-      tokenStatus: TOKEN_STATUS_ACTIVE,
+      tokenStatus: INSTAGRAM_TOKEN_STATUS_ACTIVE,
     };
+  }
+
+  /**
+   * Disconnect Instagram for a workspace: revoke Meta permissions (best effort),
+   * clear stored tokens, keep the integration row (catalog source refs may still reference it).
+   */
+  async deactivateIntegrationForOwner(
+    ownerId: number,
+    integrationId: number,
+  ): Promise<InstagramIntegration> {
+    const row = await this.instagramIntegrationRepo.findOne({
+      where: { id: integrationId },
+    });
+    if (!row || row.ownerId !== ownerId) {
+      throw new NotFoundException("Instagram integration not found");
+    }
+
+    const userToken = row.userAccessToken?.trim();
+    if (userToken) {
+      await this.revokeMetaPermissionsBestEffort(userToken);
+    }
+
+    row.userAccessToken = null;
+    row.accessToken = null;
+    row.instagramAccountId = null;
+    row.facebookPageName = null;
+    row.pageId = "pending";
+    row.tokenConnectedAt = null;
+    row.tokenStatus = INSTAGRAM_TOKEN_STATUS_DISCONNECTED;
+
+    const saved = await this.instagramIntegrationRepo.save(row);
+    this.log.log(
+      `Instagram integration deactivated integrationId=${saved.id} workspaceId=${saved.workspaceId}`,
+    );
+    return saved;
   }
 
   async getStatusForOwner(
@@ -504,6 +541,38 @@ export class FacebookOAuthService {
     );
 
     return withIg;
+  }
+
+  /** Removes this app's permissions for the user token (Meta `DELETE /me/permissions`). */
+  private async revokeMetaPermissionsBestEffort(
+    userAccessToken: string,
+  ): Promise<void> {
+    const url = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/me/permissions`,
+    );
+    url.searchParams.set("access_token", userAccessToken);
+    try {
+      const response = await fetch(url.toString(), { method: "DELETE" });
+      const text = await response.text();
+      if (!response.ok) {
+        let message = text.slice(0, 300);
+        try {
+          const body = JSON.parse(text) as MetaErrorBody;
+          message = body.error?.message ?? message;
+        } catch {
+          /* keep raw snippet */
+        }
+        this.log.warn(
+          `Meta permission revoke HTTP ${response.status}: ${message}`,
+        );
+        return;
+      }
+      this.log.log("Meta permission revoke succeeded");
+    } catch (err) {
+      this.log.warn(
+        `Meta permission revoke failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async graphGet<T>(url: URL): Promise<T> {

@@ -8,6 +8,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ROLE_SUPER_ADMIN } from "../auth/constants";
 import { InstagramIntegration, Workspace } from "../database/entities";
+import { isInstagramIntegrationConnected } from "../integrations/instagram-integration.util";
 
 @Injectable()
 export class WorkspaceAccessContextService {
@@ -77,6 +78,11 @@ export class WorkspaceAccessContextService {
     if (!row) {
       throw new NotFoundException(
         "Instagram integration not found; connect Instagram via POST /integrations",
+      );
+    }
+    if (!isInstagramIntegrationConnected(row)) {
+      throw new NotFoundException(
+        "Instagram is not connected; connect via POST /integrations",
       );
     }
     return row;
