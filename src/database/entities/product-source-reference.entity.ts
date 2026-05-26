@@ -8,7 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 
-import { Company } from "./company.entity";
+import { InstagramIntegration } from "./instagram-integration.entity";
 import { ProductSourceReferenceType } from "./product-source-reference-type.enum";
 import { Product } from "./product.entity";
 import { User } from "./user.entity";
@@ -23,9 +23,9 @@ export class ProductSourceReference {
   @Column({ name: "company_id", type: "int" })
   companyId: number;
 
-  @ManyToOne(() => Company, { onDelete: "RESTRICT" })
+  @ManyToOne(() => InstagramIntegration, { onDelete: "RESTRICT" })
   @JoinColumn({ name: "company_id" })
-  company: Company;
+  company: InstagramIntegration;
 
   @Column({ name: "product_id", type: "int" })
   productId: number;

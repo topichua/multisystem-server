@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { FindOptionsWhere, Not, Repository } from "typeorm";
-import { Client, Company, InstagramUser } from "../database/entities";
+import { Client, InstagramIntegration, InstagramUser } from "../database/entities";
 import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import type { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
 import type { ClientResponseDto } from "./dto/client-response.dto";
@@ -16,8 +16,8 @@ import type { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 @Injectable()
 export class ClientsService {
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Client)
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(InstagramUser)

@@ -2,7 +2,12 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
   Post,
   Query,
   Req,
@@ -11,13 +16,16 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
+import { INTEGRATION_TYPES } from "./integration-type";
 import { CreateIntegrationRequestDto } from "./dto/http/create-integration-request.dto";
 import { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import { IntegrationsListResponseDto } from "./dto/http/integrations-list-response.dto";
@@ -87,5 +95,31 @@ export class IntegrationsController {
       );
     }
     return this.integrations.startForOwner(ownerId, dto);
+  }
+
+  @Delete(":type/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Delete an integration by type and id",
+    description:
+      "Removes the integration row for the authenticated owner. " +
+      "`instagram` deletes from `instagram_integration` (fails with 409 if catalog source references still point at it). " +
+      "`telegram` detaches the live session and deletes from `telegram_integrations`.",
+  })
+  @ApiParam({ name: "type", enum: INTEGRATION_TYPES })
+  @ApiParam({ name: "id", type: Number })
+  @ApiNoContentResponse()
+  async delete(
+    @Req() req: { user?: AuthUser },
+    @Param("type") type: string,
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<void> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    await this.integrations.deleteForOwner(ownerId, type, id);
   }
 }

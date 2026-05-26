@@ -37,30 +37,28 @@ export class ProductMediaService {
   ) {}
 
   async addMedia(
-    companyId: number,
+    workspaceId: number,
     userId: number,
     payload: AddProductMediaPayload,
   ): Promise<ProductMedia> {
-    await this.requireProduct(companyId, payload.productId);
+    await this.requireProduct(workspaceId, payload.productId);
     let variantId: number | null = null;
     if (payload.variantId != null) {
       const variant = await this.variantRepo.findOne({
         where: {
           id: payload.variantId,
           productId: payload.productId,
-          companyId,
         },
       });
       if (!variant) {
         throw new BadRequestException(
-          "Variant not found or does not belong to this product and company",
+          "Variant not found or does not belong to this product",
         );
       }
       variantId = variant.id;
     }
 
     const row = this.mediaRepo.create({
-      companyId,
       productId: payload.productId,
       variantId,
       url: payload.url.trim(),
@@ -74,56 +72,56 @@ export class ProductMediaService {
   }
 
   async getProductMedia(
-    companyId: number,
+    workspaceId: number,
     productId: number,
   ): Promise<ProductMedia[]> {
-    await this.requireProduct(companyId, productId);
+    await this.requireProduct(workspaceId, productId);
     return this.sortedMedia(
       await this.mediaRepo.find({
-        where: { companyId, productId, variantId: IsNull() },
+        where: { productId, variantId: IsNull() },
       }),
     );
   }
 
   async getVariantMedia(
-    companyId: number,
+    workspaceId: number,
     productId: number,
     variantId: number,
   ): Promise<ProductMedia[]> {
-    await this.requireProduct(companyId, productId);
+    await this.requireProduct(workspaceId, productId);
     const variant = await this.variantRepo.findOne({
-      where: { id: variantId, companyId, productId },
+      where: { id: variantId, productId },
     });
     if (!variant) {
       throw new NotFoundException("Variant not found");
     }
     return this.sortedMedia(
       await this.mediaRepo.find({
-        where: { companyId, productId, variantId },
+        where: { productId, variantId },
       }),
     );
   }
 
   async getEffectiveMedia(
-    companyId: number,
+    workspaceId: number,
     productId: number,
     variantId?: number,
   ): Promise<ProductMedia[]> {
-    await this.requireProduct(companyId, productId);
+    await this.requireProduct(workspaceId, productId);
     const productRows = await this.mediaRepo.find({
-      where: { companyId, productId, variantId: IsNull() },
+      where: { productId, variantId: IsNull() },
     });
     if (variantId == null) {
       return this.sortedMedia(productRows);
     }
     const variant = await this.variantRepo.findOne({
-      where: { id: variantId, productId, companyId },
+      where: { id: variantId, productId },
     });
     if (!variant) {
       throw new NotFoundException("Variant not found");
     }
     const variantRows = await this.mediaRepo.find({
-      where: { companyId, productId, variantId },
+      where: { productId, variantId },
     });
     return resolveEffectiveMediaOrder(variantRows, productRows);
   }
@@ -132,26 +130,25 @@ export class ProductMediaService {
    * Deletes all product-level media (variant_id IS NULL) and inserts `items` in order.
    */
   async replaceMedia(
-    companyId: number,
+    workspaceId: number,
     userId: number,
     productId: number,
     items: ReplaceProductMediaItem[],
   ): Promise<void> {
-    await this.requireProduct(companyId, productId);
+    await this.requireProduct(workspaceId, productId);
     await this.mediaRepo.manager.transaction(async (em) => {
       await em
         .createQueryBuilder()
         .delete()
         .from(ProductMedia)
         .where(
-          '"company_id" = :companyId AND "product_id" = :productId AND "variant_id" IS NULL',
-          { companyId, productId },
+          '"product_id" = :productId AND "variant_id" IS NULL',
+          { productId },
         )
         .execute();
       let order = 0;
       for (const item of items) {
         await em.insert(ProductMedia, {
-          companyId,
           productId,
           variantId: null,
           url: item.url.trim(),
@@ -170,15 +167,15 @@ export class ProductMediaService {
    * Deletes all media for the variant and inserts `items`.
    */
   async replaceVariantMedia(
-    companyId: number,
+    workspaceId: number,
     userId: number,
     productId: number,
     variantId: number,
     items: ReplaceProductMediaItem[],
   ): Promise<void> {
-    await this.requireProduct(companyId, productId);
+    await this.requireProduct(workspaceId, productId);
     const variant = await this.variantRepo.findOne({
-      where: { id: variantId, companyId, productId },
+      where: { id: variantId, productId },
     });
     if (!variant) {
       throw new NotFoundException("Variant not found");
@@ -188,15 +185,11 @@ export class ProductMediaService {
         .createQueryBuilder()
         .delete()
         .from(ProductMedia)
-        .where('"company_id" = :companyId AND "variant_id" = :variantId', {
-          companyId,
-          variantId,
-        })
+        .where('"variant_id" = :variantId', { variantId })
         .execute();
       let order = 0;
       for (const item of items) {
         await em.insert(ProductMedia, {
-          companyId,
           productId: variant.productId,
           variantId,
           url: item.url.trim(),
@@ -221,11 +214,11 @@ export class ProductMediaService {
   }
 
   private async requireProduct(
-    companyId: number,
+    workspaceId: number,
     productId: number,
   ): Promise<void> {
     const ok = await this.productRepo.exist({
-      where: { id: productId, companyId },
+      where: { id: productId, workspaceId },
     });
     if (!ok) {
       throw new NotFoundException("Product not found");

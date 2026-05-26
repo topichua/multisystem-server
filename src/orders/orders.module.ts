@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Client,
-  Company,
+  InstagramIntegration,
   Conversation,
   Order,
   OrderDeliveryInfo,
@@ -20,7 +20,7 @@ import { OrdersService } from "./orders.service";
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Company,
+      InstagramIntegration,
       Workspace,
       Client,
       Conversation,

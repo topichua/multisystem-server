@@ -1,18 +1,23 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { QueryFailedError, Repository } from "typeorm";
 import { FacebookOAuthService } from "../auth/facebook-oauth.service";
 import {
-  Company,
+  InstagramIntegration,
   TelegramIntegrationStatus,
   Workspace,
 } from "../database/entities";
 import type { TelegramIntegration } from "../database/entities";
 import { TelegramIntegrationsService } from "../telegram-integrations/telegram-integrations.service";
+import {
+  INTEGRATION_TYPES,
+  type IntegrationType,
+} from "./integration-type";
 import type { CreateIntegrationRequestDto } from "./dto/http/create-integration-request.dto";
 import type { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import type { IntegrationListItemDto } from "./dto/http/integration-list-item.dto";
@@ -21,8 +26,8 @@ import type { IntegrationsListResponseDto } from "./dto/http/integrations-list-r
 @Injectable()
 export class IntegrationsService {
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
     private readonly facebookOAuth: FacebookOAuthService,
@@ -41,7 +46,10 @@ export class IntegrationsService {
     }
 
     const row = await this.requireLatestInstagramIntegrationForOwner(ownerId);
-    const url = await this.facebookOAuth.buildAuthorizeUrlForOwnerId(ownerId);
+    const url = await this.facebookOAuth.buildAuthorizeUrlForOwnerId(
+      ownerId,
+      row.workspaceId,
+    );
     const name =
       row.facebookPageName?.trim() ||
       row.name?.trim() ||
@@ -68,7 +76,7 @@ export class IntegrationsService {
       workspaceIdParam,
     );
 
-    const instagramRows = await this.companyRepo.find({
+    const instagramRows = await this.instagramIntegrationRepo.find({
       where: { workspaceId },
       order: { id: "ASC" },
     });
@@ -86,6 +94,68 @@ export class IntegrationsService {
     return { workspaceId, items };
   }
 
+  async deleteForOwner(
+    ownerId: number,
+    type: string,
+    id: number,
+  ): Promise<void> {
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    const integrationType = this.parseIntegrationType(type);
+
+    switch (integrationType) {
+      case "instagram":
+        await this.deleteInstagramForOwner(ownerId, id);
+        return;
+      case "telegram":
+        await this.telegramIntegrations.deleteForOwner(ownerId, id);
+        return;
+    }
+  }
+
+  private parseIntegrationType(raw: string): IntegrationType {
+    const type = raw.trim().toLowerCase();
+    if (!(INTEGRATION_TYPES as readonly string[]).includes(type)) {
+      throw new BadRequestException(
+        `type must be one of: ${INTEGRATION_TYPES.join(", ")}`,
+      );
+    }
+    return type as IntegrationType;
+  }
+
+  private async deleteInstagramForOwner(
+    ownerId: number,
+    id: number,
+  ): Promise<void> {
+    const row = await this.instagramIntegrationRepo.findOne({ where: { id } });
+    if (!row || row.ownerId !== ownerId) {
+      throw new NotFoundException("Instagram integration not found");
+    }
+
+    const workspace = await this.workspaceRepo.findOne({
+      where: { id: row.workspaceId, ownerId },
+    });
+    if (!workspace) {
+      throw new NotFoundException("Instagram integration not found");
+    }
+
+    try {
+      await this.instagramIntegrationRepo.remove(row);
+    } catch (err) {
+      if (
+        err instanceof QueryFailedError &&
+        (err as QueryFailedError & { driverError?: { code?: string } })
+          .driverError?.code === "23503"
+      ) {
+        throw new ConflictException(
+          "Cannot delete Instagram integration while products or source references still reference it",
+        );
+      }
+      throw err;
+    }
+  }
+
   private mapTelegramRow(row: TelegramIntegration): IntegrationListItemDto {
     const mapped = this.telegramIntegrations.mapToIntegrationListItem(row);
     return {
@@ -99,7 +169,7 @@ export class IntegrationsService {
     };
   }
 
-  private mapInstagramRow(row: Company): IntegrationListItemDto {
+  private mapInstagramRow(row: InstagramIntegration): IntegrationListItemDto {
     const name =
       row.facebookPageName?.trim() ||
       row.name?.trim() ||
@@ -146,13 +216,13 @@ export class IntegrationsService {
 
   private async requireLatestInstagramIntegrationForOwner(
     ownerId: number,
-  ): Promise<Company> {
+  ): Promise<InstagramIntegration> {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
         "Current authorized user does not contain a numeric owner id",
       );
     }
-    const row = await this.companyRepo.findOne({
+    const row = await this.instagramIntegrationRepo.findOne({
       where: { ownerId },
       order: { id: "DESC" },
     });

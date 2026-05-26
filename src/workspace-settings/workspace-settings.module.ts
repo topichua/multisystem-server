@@ -1,11 +1,11 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { Company, Workspace } from "../database/entities";
+import { InstagramIntegration, Workspace } from "../database/entities";
 import { WorkspaceSettingsController } from "./workspace-settings.controller";
 import { WorkspaceSettingsService } from "./workspace-settings.service";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Company, Workspace])],
+  imports: [TypeOrmModule.forFeature([InstagramIntegration, Workspace])],
   controllers: [WorkspaceSettingsController],
   providers: [WorkspaceSettingsService],
   exports: [WorkspaceSettingsService],

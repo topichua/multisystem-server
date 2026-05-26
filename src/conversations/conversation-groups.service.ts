@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { Company, ConversationGroup } from "../database/entities";
+import { InstagramIntegration, ConversationGroup } from "../database/entities";
 import type { ConversationGroupResponseDto } from "./dto/http/conversation-group-response.dto";
 import type { CreateConversationGroupRequestDto } from "./dto/http/create-conversation-group-request.dto";
 import type { UpdateConversationGroupRequestDto } from "./dto/http/update-conversation-group-request.dto";
@@ -13,8 +13,8 @@ import type { UpdateConversationGroupRequestDto } from "./dto/http/update-conver
 @Injectable()
 export class ConversationGroupsService {
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(ConversationGroup)
     private readonly groupRepo: Repository<ConversationGroup>,
   ) {}

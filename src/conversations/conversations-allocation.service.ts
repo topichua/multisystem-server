@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
-  Company,
+  InstagramIntegration,
   Conversation,
   ConversationMessage,
   ConversationSource,
@@ -66,8 +66,8 @@ export class ConversationsAllocationService {
   private readonly companyContextCacheTtlMs = 5 * 60 * 1000;
 
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationMessage)

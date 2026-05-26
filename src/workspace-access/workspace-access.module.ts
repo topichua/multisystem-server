@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
-  Company,
+  InstagramIntegration,
   User,
   Workspace,
   WorkspaceInvitation,
@@ -19,7 +19,7 @@ import { WorkspaceRolesService } from "./workspace-roles.service";
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Company,
+      InstagramIntegration,
       Workspace,
       WorkspaceRole,
       WorkspaceMember,

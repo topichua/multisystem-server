@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { Company } from "../database/entities";
+import { InstagramIntegration } from "../database/entities";
 import type { InstagramMediaItemDto } from "./dto/instagram-media-response.dto";
 
 const GRAPH_VERSION = "v25.0";
@@ -56,8 +56,8 @@ export type InstagramGraphMediaDetail = {
 @Injectable()
 export class InstagramService {
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
   ) {}
 
   /**
@@ -197,13 +197,13 @@ export class InstagramService {
     );
   }
 
-  private async requireCompanyForOwner(ownerId: number): Promise<Company> {
+  private async requireCompanyForOwner(ownerId: number): Promise<InstagramIntegration> {
     const company = await this.companyRepo.findOne({
       where: { ownerId },
       order: { id: "DESC" },
     });
     if (!company) {
-      throw new NotFoundException("Company not found for current user");
+      throw new NotFoundException("InstagramIntegration not found for current user");
     }
     return company;
   }

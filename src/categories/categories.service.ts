@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Not, Repository } from "typeorm";
-import { Company, ProductCategory } from "../database/entities";
+import { InstagramIntegration, ProductCategory } from "../database/entities";
 import type { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
 import type { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
@@ -34,8 +34,8 @@ function compareCategoriesForSort(
 @Injectable()
 export class CategoriesService {
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
   ) {}

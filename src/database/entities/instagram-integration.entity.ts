@@ -13,7 +13,7 @@ import { Workspace } from "./workspace.entity";
 @Entity("instagram_integration")
 @Index("IDX_instagram_integration_owner_id", ["ownerId"])
 @Index("IDX_instagram_integration_workspace_id", ["workspaceId"])
-export class Company {
+export class InstagramIntegration {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
 

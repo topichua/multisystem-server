@@ -4,7 +4,7 @@ import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
 import { Repository } from "typeorm";
-import { Company, User, UserStatus } from "../database/entities";
+import { InstagramIntegration, User, UserStatus } from "../database/entities";
 import { ROLE_SUPER_ADMIN } from "./constants";
 import type { AuthUser } from "./types/auth-user.type";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
@@ -25,8 +25,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
   ) {}
 
   async getMe(authUser: AuthUser): Promise<MeResponseDto> {

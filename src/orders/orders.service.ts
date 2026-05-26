@@ -9,7 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
   Client,
-  Company,
+  InstagramIntegration,
   Conversation,
   ConversationSource,
   Order,
@@ -57,8 +57,8 @@ function buildVariantTitleSnapshot(
 @Injectable()
 export class OrdersService {
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
     @InjectRepository(Client)
@@ -601,7 +601,7 @@ export class OrdersService {
   }
 
   private async insertOrderLineItem(
-    company: Company,
+    company: InstagramIntegration,
     order: Order,
     dto: AddOrderItemDto,
     ownerId: number,
@@ -610,11 +610,14 @@ export class OrdersService {
       where: {
         id: dto.variantId,
         productId: dto.productId,
-        companyId: company.id,
       },
       relations: { product: true },
     });
-    if (!variant || !variant.product) {
+    if (
+      !variant ||
+      !variant.product ||
+      variant.product.workspaceId !== company.workspaceId
+    ) {
       throw new BadRequestException("Variant not found for this integration");
     }
     const product = variant.product;
@@ -768,7 +771,7 @@ export class OrdersService {
     };
   }
 
-  private async requireCompanyForOwner(ownerId: number): Promise<Company> {
+  private async requireCompanyForOwner(ownerId: number): Promise<InstagramIntegration> {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
         "Current authorized user does not contain a numeric owner id",

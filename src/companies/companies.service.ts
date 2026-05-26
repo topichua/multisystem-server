@@ -2,7 +2,7 @@ import { ConflictException, Injectable } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import type { CreateCompanyWithOwnerInput } from "./dto/create-company.dto";
-import { Company, User, UserStatus, Workspace } from "../database/entities";
+import { InstagramIntegration, User, UserStatus, Workspace } from "../database/entities";
 import { PasswordService } from "../users/crypto/password.service";
 
 @Injectable()
@@ -15,7 +15,7 @@ export class CompaniesService {
 
   async createCompanyWithOwner(
     input: CreateCompanyWithOwnerInput,
-  ): Promise<{ company: Company; workspace: Workspace; user: User }> {
+  ): Promise<{ company: InstagramIntegration; workspace: Workspace; user: User }> {
     const email = input.userEmail.trim().toLowerCase();
     const existing = await this.dataSource
       .getRepository(User)
@@ -29,7 +29,7 @@ export class CompaniesService {
     return this.dataSource.transaction(async (mgr) => {
       const userRepo = mgr.getRepository(User);
       const workspaceRepo = mgr.getRepository(Workspace);
-      const companyRepo = mgr.getRepository(Company);
+      const companyRepo = mgr.getRepository(InstagramIntegration);
 
       const user = userRepo.create({
         email,

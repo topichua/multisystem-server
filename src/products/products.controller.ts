@@ -116,7 +116,7 @@ export class ProductsController {
     const ownerId = this.requireNumericOwnerId(req);
     const company = await this.products.getIntegrationForOwner(ownerId);
     const variantId = this.parseOptionalVariantId(variantIdRaw);
-    return this.productMedia.getEffectiveMedia(company.id, id, variantId);
+    return this.productMedia.getEffectiveMedia(company.workspaceId, id, variantId);
   }
 
   @Get(":id/media")
@@ -126,7 +126,7 @@ export class ProductsController {
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
     const company = await this.products.getIntegrationForOwner(ownerId);
-    return this.productMedia.getProductMedia(company.id, id);
+    return this.productMedia.getProductMedia(company.workspaceId, id);
   }
 
   @Put(":id/media")
@@ -137,7 +137,12 @@ export class ProductsController {
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
     const company = await this.products.getIntegrationForOwner(ownerId);
-    await this.productMedia.replaceMedia(company.id, ownerId, id, dto.items);
+    await this.productMedia.replaceMedia(
+      company.workspaceId,
+      ownerId,
+      id,
+      dto.items,
+    );
     return this.products.findOneForOwner(ownerId, id);
   }
 
@@ -149,7 +154,7 @@ export class ProductsController {
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
     const company = await this.products.getIntegrationForOwner(ownerId);
-    return this.productMedia.getVariantMedia(company.id, id, variantId);
+    return this.productMedia.getVariantMedia(company.workspaceId, id, variantId);
   }
 
   @Put(":id/variants/:variantId/media")
@@ -162,7 +167,7 @@ export class ProductsController {
     const ownerId = this.requireNumericOwnerId(req);
     const company = await this.products.getIntegrationForOwner(ownerId);
     await this.productMedia.replaceVariantMedia(
-      company.id,
+      company.workspaceId,
       ownerId,
       id,
       variantId,
@@ -452,7 +457,7 @@ export class ProductsController {
     }
     const company = await this.products.getIntegrationForOwner(ownerId);
     const url = await this.cloudflareImages.uploadImage(image);
-    await this.productMedia.addMedia(company.id, ownerId, {
+    await this.productMedia.addMedia(company.workspaceId, ownerId, {
       productId: id,
       url,
       type: ProductMediaType.image,

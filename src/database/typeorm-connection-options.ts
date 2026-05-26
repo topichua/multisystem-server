@@ -38,9 +38,11 @@ import { TelegramIntegrations1744200000037 } from "./migrations/1744200000037-Te
 import { ConversationSourceTelegram1744200000038 } from "./migrations/1744200000038-ConversationSourceTelegram";
 import { WorkspaceRolesAndMembers1744200000039 } from "./migrations/1744200000039-WorkspaceRolesAndMembers";
 import { WorkspaceMemberIntegrationScopes1744200000040 } from "./migrations/1744200000040-WorkspaceMemberIntegrationScopes";
+import { ProductMoveToWorkspaceId1744200000042 } from "./migrations/1744200000042-ProductMoveToWorkspaceId";
+import { ProductMediaDropCompanyId1744200000043 } from "./migrations/1744200000043-ProductMediaDropCompanyId";
 import {
   Client,
-  Company,
+  InstagramIntegration,
   Conversation,
   ConversationGroup,
   ConversationMessage,
@@ -117,7 +119,7 @@ const entities = [
   WorkspaceRole,
   WorkspaceMember,
   WorkspaceInvitation,
-  Company,
+  InstagramIntegration,
   TelegramIntegration,
   InstagramUser,
   Client,
@@ -215,6 +217,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationSourceTelegram1744200000038,
       WorkspaceRolesAndMembers1744200000039,
       WorkspaceMemberIntegrationScopes1744200000040,
+      ProductMoveToWorkspaceId1744200000042,
+      ProductMediaDropCompanyId1744200000043,
     ],
   };
 }

@@ -12,7 +12,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { FindOptionsWhere, In, Repository } from "typeorm";
 import {
-  Company,
+  InstagramIntegration,
   Conversation,
   ConversationGroup,
   ConversationMessage,
@@ -56,8 +56,8 @@ export class ConversationsService {
   private readonly log = new Logger(ConversationsService.name);
 
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationGroup)
@@ -136,7 +136,7 @@ export class ConversationsService {
     const pageId = company.pageId?.trim();
     if (!pageId || pageId === "pending") {
       throw new BadRequestException(
-        "Company Instagram / Facebook page id is not configured; set page_id before sync.",
+        "InstagramIntegration Instagram / Facebook page id is not configured; set page_id before sync.",
       );
     }
     const token = await this.resolveGraphAccessToken(company.id);
@@ -343,7 +343,7 @@ export class ConversationsService {
     return myAccountIds.has(senderId);
   }
 
-  private buildMyInstagramIds(company: Company): Set<string> {
+  private buildMyInstagramIds(company: InstagramIntegration): Set<string> {
     return new Set(
       [company.instagramAccountId, company.pageId]
         .map((x) => x?.trim())
@@ -353,7 +353,7 @@ export class ConversationsService {
 
   private async buildMyAccountIds(
     ownerId: number,
-    company: Company,
+    company: InstagramIntegration,
     conversation?: Conversation,
   ): Promise<Set<string>> {
     const ids = this.buildMyInstagramIds(company);
@@ -1031,13 +1031,13 @@ export class ConversationsService {
     return { page, pageSize };
   }
 
-  private async requireCompanyForOwner(ownerId: number): Promise<Company> {
+  private async requireCompanyForOwner(ownerId: number): Promise<InstagramIntegration> {
     const company = await this.companyRepo.findOne({
       where: { ownerId },
       order: { id: "DESC" },
     });
     if (!company) {
-      throw new NotFoundException("Company not found for current user");
+      throw new NotFoundException("InstagramIntegration not found for current user");
     }
     return company;
   }

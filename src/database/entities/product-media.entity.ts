@@ -9,7 +9,6 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 
-import { Company } from "./company.entity";
 import { ProductMediaType } from "./product-media-type.enum";
 import { Product } from "./product.entity";
 import { ProductVariant } from "./product-variant.entity";
@@ -21,13 +20,6 @@ import { User } from "./user.entity";
 export class ProductMedia {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
-
-  @Column({ name: "company_id", type: "int" })
-  companyId: number;
-
-  @ManyToOne(() => Company, { onDelete: "RESTRICT" })
-  @JoinColumn({ name: "company_id" })
-  company: Company;
 
   @Column({ name: "product_id", type: "int" })
   productId: number;

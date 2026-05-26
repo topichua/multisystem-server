@@ -7,15 +7,15 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ROLE_SUPER_ADMIN } from "../auth/constants";
-import { Company, Workspace } from "../database/entities";
+import { InstagramIntegration, Workspace } from "../database/entities";
 
 @Injectable()
 export class WorkspaceAccessContextService {
   constructor(
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
   ) {}
 
   /**

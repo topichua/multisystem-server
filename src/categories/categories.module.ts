@@ -1,11 +1,11 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { Company, ProductCategory } from "../database/entities";
+import { InstagramIntegration, ProductCategory } from "../database/entities";
 import { CategoriesController } from "./categories.controller";
 import { CategoriesService } from "./categories.service";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ProductCategory, Company])],
+  imports: [TypeOrmModule.forFeature([ProductCategory, InstagramIntegration])],
   controllers: [CategoriesController],
   providers: [CategoriesService],
   exports: [CategoriesService],

@@ -5,15 +5,15 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { Company, Workspace } from "../database/entities";
+import { InstagramIntegration, Workspace } from "../database/entities";
 import type { UpdateWorkspaceSettingsDto } from "./dto/update-workspace-settings.dto";
 import type { WorkspaceSettingsResponseDto } from "./dto/workspace-settings-response.dto";
 
 @Injectable()
 export class WorkspaceSettingsService {
   constructor(
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
   ) {}

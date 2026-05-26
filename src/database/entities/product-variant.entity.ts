@@ -10,7 +10,6 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 
-import { Company } from "./company.entity";
 import { ProductMedia } from "./product-media.entity";
 import { Product } from "./product.entity";
 import { ProductStatus } from "./product-status.enum";
@@ -18,18 +17,10 @@ import { User } from "./user.entity";
 
 @Entity({ name: "product_variants" })
 @Index("IDX_product_variants_product_id", ["productId"])
-@Index("IDX_product_variants_company_id", ["companyId"])
 @Index("IDX_product_variants_status", ["status"])
 export class ProductVariant {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
-
-  @Column({ name: "company_id", type: "int" })
-  companyId: number;
-
-  @ManyToOne(() => Company, { onDelete: "RESTRICT" })
-  @JoinColumn({ name: "company_id" })
-  company: Company;
 
   @Column({ name: "product_id", type: "int" })
   productId: number;

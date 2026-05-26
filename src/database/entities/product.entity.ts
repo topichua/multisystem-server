@@ -10,7 +10,6 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 
-import { Company } from "./company.entity";
 import { ProductCategory } from "./product-category.entity";
 import { ProductMedia } from "./product-media.entity";
 import { ProductSourceReference } from "./product-source-reference.entity";
@@ -19,22 +18,23 @@ import { ProductStatus } from "./product-status.enum";
 import { ProductType } from "./product-type.enum";
 import { ProductVariant } from "./product-variant.entity";
 import { User } from "./user.entity";
+import { Workspace } from "./workspace.entity";
 
 @Entity({ name: "products" })
-@Index("IDX_products_company_id", ["companyId"])
-@Index("IDX_products_company_id_status", ["companyId", "status"])
+@Index("IDX_products_workspace_id", ["workspaceId"])
+@Index("IDX_products_workspace_id_status", ["workspaceId", "status"])
 @Index("IDX_products_reference_group_id", ["referenceGroupId"])
 @Index("IDX_products_category_id", ["categoryId"])
 export class Product {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
 
-  @Column({ name: "company_id", type: "int" })
-  companyId: number;
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
 
-  @ManyToOne(() => Company, { onDelete: "RESTRICT" })
-  @JoinColumn({ name: "company_id" })
-  company: Company;
+  @ManyToOne(() => Workspace, { onDelete: "RESTRICT" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace: Workspace;
 
   @Column({ name: "category_id", type: "int", nullable: true })
   categoryId: number | null;

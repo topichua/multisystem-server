@@ -10,9 +10,8 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
-import * as crypto from "crypto";
 import { Repository } from "typeorm";
-import { Company } from "../database/entities";
+import { InstagramIntegration, Workspace } from "../database/entities";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
 import type { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 
@@ -38,12 +37,12 @@ const DEFAULT_OAUTH_SCOPES = [
 
 const TOKEN_STATUS_ACTIVE = "active";
 
-const STATE_TTL_MS = 15 * 60 * 1000;
+const STATE_TTL_SECONDS = 15 * 60;
 
-type PendingOAuth = {
+type OAuthStatePayload = {
+  sub: "facebook-oauth";
   userId: number;
-  companyId: number;
-  expiresAt: number;
+  workspaceId: number;
 };
 
 type MetaErrorBody = {
@@ -71,23 +70,15 @@ type MeAccountsResponse = {
 @Injectable()
 export class FacebookOAuthService {
   private readonly log = new Logger(FacebookOAuthService.name);
-  private readonly pendingByState = new Map<string, PendingOAuth>();
 
   constructor(
     private readonly config: ConfigService,
     private readonly jwtService: JwtService,
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
-  ) {
-    setInterval(() => this.sweepExpiredStates(), 60_000).unref?.();
-  }
-
-  private sweepExpiredStates(): void {
-    const now = Date.now();
-    for (const [k, v] of this.pendingByState.entries()) {
-      if (v.expiresAt <= now) this.pendingByState.delete(k);
-    }
-  }
+    @InjectRepository(Workspace)
+    private readonly workspaceRepo: Repository<Workspace>,
+    @InjectRepository(InstagramIntegration)
+    private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
+  ) {}
 
   private maskToken(t: string): string {
     if (t.length <= 8) return "***";
@@ -123,7 +114,7 @@ export class FacebookOAuthService {
 
     if (payload.sub === "super-admin") {
       throw new ForbiddenException(
-        "Facebook OAuth requires a company user. Log in as a user that owns a company, not the env super-admin login.",
+        "Facebook OAuth requires a workspace owner. Log in as a user that owns a workspace, not the env super-admin login.",
       );
     }
 
@@ -136,10 +127,12 @@ export class FacebookOAuthService {
   }
 
   /**
-   * Facebook Login URL for the owner's latest `instagram_integration` row.
-   * Open in a new browser window/tab to complete OAuth.
+   * Facebook Login URL for the owner's workspace (and its `instagram_integration` row).
    */
-  async buildAuthorizeUrlForOwnerId(ownerId: number): Promise<string> {
+  async buildAuthorizeUrlForOwnerId(
+    ownerId: number,
+    workspaceId?: number,
+  ): Promise<string> {
     const appId = this.requireEnvEither("FACEBOOK_APP_ID", "FB_APP_ID");
     const redirectUri = this.requireEnvEither(
       "FACEBOOK_REDIRECT_URI",
@@ -148,34 +141,31 @@ export class FacebookOAuthService {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException("owner id must be a positive integer");
     }
-    return this.buildAuthorizeUrlForUser(ownerId, appId, redirectUri);
+    return this.buildAuthorizeUrlForUser(ownerId, appId, redirectUri, workspaceId);
   }
 
   private async buildAuthorizeUrlForUser(
     userId: number,
     appId: string,
     redirectUri: string,
+    workspaceIdParam?: number,
   ): Promise<string> {
-    const row = await this.companyRepo.findOne({
-      where: { ownerId: userId },
-      order: { id: "DESC" },
-    });
-    if (!row) {
-      throw new NotFoundException(
-        "No company found for this user; create a company first.",
-      );
-    }
+    const workspace =
+      workspaceIdParam != null
+        ? await this.requireWorkspaceForOwner(userId, workspaceIdParam)
+        : await this.requireWorkspaceForOwner(userId);
 
-    const state = crypto.randomBytes(32).toString("hex");
-    this.pendingByState.set(state, {
-      userId,
-      companyId: row.id,
-      expiresAt: Date.now() + STATE_TTL_MS,
-    });
-    this.sweepExpiredStates();
+    const state = this.jwtService.sign(
+      {
+        sub: "facebook-oauth",
+        userId,
+        workspaceId: workspace.id,
+      } satisfies OAuthStatePayload,
+      { expiresIn: STATE_TTL_SECONDS },
+    );
 
     this.log.log(
-      `Facebook OAuth start companyId=${row.id} userId=${userId} state=${state.slice(0, 8)}…`,
+      `Facebook OAuth start workspaceId=${workspace.id} userId=${userId} state=${state.slice(0, 8)}…`,
     );
 
     const u = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`);
@@ -251,14 +241,19 @@ export class FacebookOAuthService {
       throw new BadRequestException("Missing state parameter");
     }
 
-    const pending = this.pendingByState.get(state.trim());
-    if (!pending || pending.expiresAt < Date.now()) {
+    let pending: OAuthStatePayload;
+    try {
+      const decoded = this.jwtService.verify<OAuthStatePayload>(state.trim());
+      if (decoded.sub !== "facebook-oauth") {
+        throw new Error("unexpected state subject");
+      }
+      pending = decoded;
+    } catch {
       this.log.warn("Facebook OAuth invalid or expired state");
       throw new BadRequestException(
         "Invalid or expired state; start again from GET /auth/facebook",
       );
     }
-    this.pendingByState.delete(state.trim());
 
     const appId = this.requireEnvEither("FACEBOOK_APP_ID", "FB_APP_ID");
     const appSecret = this.requireEnvEither(
@@ -271,7 +266,7 @@ export class FacebookOAuthService {
     );
 
     this.log.log(
-      `Facebook OAuth callback exchanging code (companyId=${pending.companyId} userId=${pending.userId})`,
+      `Facebook OAuth callback exchanging code (workspaceId=${pending.workspaceId} userId=${pending.userId})`,
     );
 
     const shortLived = await this.exchangeCodeForShortLivedUserToken(
@@ -301,25 +296,24 @@ export class FacebookOAuthService {
       `Selected Page pageId=${pageId} pageName=${pageName} instagramAccountId=${igId}`,
     );
 
-    const company = await this.companyRepo.findOne({
-      where: { id: pending.companyId, ownerId: pending.userId },
-    });
-    if (!company) {
-      throw new NotFoundException("Company not found for OAuth state");
-    }
+    const workspace = await this.requireWorkspaceForOwner(
+      pending.userId,
+      pending.workspaceId,
+    );
+    const integration = await this.findOrCreateInstagramIntegration(workspace);
 
     const now = new Date();
-    company.pageId = pageId;
-    company.userAccessToken = longLived;
-    company.accessToken = page.access_token!.trim();
-    company.instagramAccountId = igId;
-    company.facebookPageName = pageName.length > 0 ? pageName : null;
-    company.tokenConnectedAt = now;
-    company.tokenStatus = TOKEN_STATUS_ACTIVE;
-    await this.companyRepo.save(company);
+    integration.pageId = pageId;
+    integration.userAccessToken = longLived;
+    integration.accessToken = page.access_token!.trim();
+    integration.instagramAccountId = igId;
+    integration.facebookPageName = pageName.length > 0 ? pageName : null;
+    integration.tokenConnectedAt = now;
+    integration.tokenStatus = TOKEN_STATUS_ACTIVE;
+    await this.instagramIntegrationRepo.save(integration);
 
     this.log.log(
-      `Facebook OAuth completed companyId=${company.id} pageId=${pageId} igBiz=${igId}`,
+      `Facebook OAuth completed workspaceId=${workspace.id} integrationId=${integration.id} pageId=${pageId} igBiz=${igId}`,
     );
 
     return {
@@ -332,21 +326,87 @@ export class FacebookOAuthService {
     };
   }
 
-  async getStatusForOwner(ownerId: number): Promise<FacebookOAuthStatusDto> {
-    const company = await this.companyRepo.findOne({
+  async getStatusForOwner(
+    ownerId: number,
+    workspaceId?: number,
+  ): Promise<FacebookOAuthStatusDto> {
+    const workspace = await this.requireWorkspaceForOwner(ownerId, workspaceId);
+    const integration = await this.instagramIntegrationRepo.findOne({
+      where: { workspaceId: workspace.id, ownerId },
+      order: { id: "DESC" },
+    });
+    if (!integration) {
+      return {
+        pageId: null,
+        pageName: null,
+        instagramAccountId: null,
+        tokenStatus: null,
+        tokenConnectedAt: null,
+      };
+    }
+    return {
+      pageId: integration.pageId?.trim() || null,
+      pageName: integration.facebookPageName?.trim() ?? null,
+      instagramAccountId: integration.instagramAccountId?.trim() ?? null,
+      tokenStatus: integration.tokenStatus?.trim() ?? null,
+      tokenConnectedAt: integration.tokenConnectedAt,
+    };
+  }
+
+  private async requireWorkspaceForOwner(
+    ownerId: number,
+    workspaceId?: number,
+  ): Promise<Workspace> {
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException("owner id must be a positive integer");
+    }
+
+    if (workspaceId != null) {
+      if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+        throw new BadRequestException("workspace id must be a positive integer");
+      }
+      const workspace = await this.workspaceRepo.findOne({
+        where: { id: workspaceId, ownerId },
+      });
+      if (!workspace) {
+        throw new NotFoundException("Workspace not found for current user");
+      }
+      return workspace;
+    }
+
+    const workspace = await this.workspaceRepo.findOne({
       where: { ownerId },
       order: { id: "DESC" },
     });
-    if (!company) {
-      throw new NotFoundException("Company not found for current user");
+    if (!workspace) {
+      throw new NotFoundException(
+        "Workspace not found for this user; create a workspace first",
+      );
     }
-    return {
-      pageId: company.pageId?.trim() || null,
-      pageName: company.facebookPageName?.trim() ?? null,
-      instagramAccountId: company.instagramAccountId?.trim() ?? null,
-      tokenStatus: company.tokenStatus?.trim() ?? null,
-      tokenConnectedAt: company.tokenConnectedAt,
-    };
+    return workspace;
+  }
+
+  private async findOrCreateInstagramIntegration(
+    workspace: Workspace,
+  ): Promise<InstagramIntegration> {
+    const existing = await this.instagramIntegrationRepo.findOne({
+      where: { workspaceId: workspace.id, ownerId: workspace.ownerId },
+      order: { id: "DESC" },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    const row = this.instagramIntegrationRepo.create({
+      name: workspace.name,
+      pageId: "pending",
+      userAccessToken: null,
+      accessToken: null,
+      instagramAccountId: null,
+      ownerId: workspace.ownerId,
+      workspaceId: workspace.id,
+    });
+    return this.instagramIntegrationRepo.save(row);
   }
 
   private async exchangeCodeForShortLivedUserToken(
@@ -402,9 +462,7 @@ export class FacebookOAuthService {
 
   /**
    * Calls Graph `me/accounts` with the long-lived **user** token (`access_token` query param),
-   * picks the first Page with `instagram_business_account`, and returns the Page node (caller
-   * sets `company.user_access_token` and `company.access_token` from the user token and
-   * `page.access_token`).
+   * picks the first Page with `instagram_business_account`, and returns the Page node.
    */
   private async findPageWithInstagramBusinessAccount(
     userAccessToken: string,

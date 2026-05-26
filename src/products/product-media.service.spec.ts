@@ -66,7 +66,6 @@ describe("ProductMediaService", () => {
     variantFindOne.mockResolvedValue({
       id: 2,
       productId: 5,
-      companyId: 1,
     });
     const productRow = {
       id: 1,
@@ -76,7 +75,6 @@ describe("ProductMediaService", () => {
       type: ProductMediaType.image,
       sourceUrl: null,
       sortOrder: 0,
-      companyId: 1,
       createdAt: new Date(),
       updatedAt: new Date(),
     } as ProductMedia;
@@ -92,7 +90,6 @@ describe("ProductMediaService", () => {
     variantFindOne.mockResolvedValue({
       id: 2,
       productId: 5,
-      companyId: 1,
     });
     const productRow = {
       id: 1,

@@ -6,7 +6,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
-  Company,
+  InstagramIntegration,
   TelegramIntegration,
   TelegramIntegrationStatus,
   Workspace,
@@ -25,8 +25,8 @@ export class TelegramIntegrationsService {
   constructor(
     @InjectRepository(TelegramIntegration)
     private readonly telegramRepo: Repository<TelegramIntegration>,
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(InstagramIntegration)
+    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
     private readonly telegramApi: TelegramUserApiService,
@@ -203,6 +203,13 @@ export class TelegramIntegrationsService {
     row.connectedAt = null;
     await this.telegramRepo.save(row);
     return this.toDto(row);
+  }
+
+  /** Removes the integration row after detaching the live Telegram session. */
+  async deleteForOwner(ownerId: number, id: number): Promise<void> {
+    const row = await this.requireOwnedRow(ownerId, id);
+    await this.updatesListener.detachIntegration(id);
+    await this.telegramRepo.remove(row);
   }
 
   async listDialogsForOwner(

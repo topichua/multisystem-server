@@ -1,7 +1,7 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
-  Company,
+  InstagramIntegration,
   Conversation,
   ConversationGroup,
   ConversationMessage,
@@ -25,7 +25,7 @@ import { ConversationsService } from "./conversations.service";
     AuthModule,
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
-      Company,
+      InstagramIntegration,
       Conversation,
       ConversationGroup,
       ConversationMessage,
