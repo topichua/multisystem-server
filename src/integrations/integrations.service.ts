@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { QueryFailedError, Repository } from "typeorm";
+import { Not, IsNull, QueryFailedError, Repository } from "typeorm";
 import { FacebookOAuthService } from "../auth/facebook-oauth.service";
 import {
   InstagramIntegration,
@@ -22,10 +22,6 @@ import type { CreateIntegrationRequestDto } from "./dto/http/create-integration-
 import type { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import type { IntegrationListItemDto } from "./dto/http/integration-list-item.dto";
 import type { IntegrationsListResponseDto } from "./dto/http/integrations-list-response.dto";
-import {
-  INSTAGRAM_TOKEN_STATUS_DISCONNECTED,
-  isInstagramIntegrationConnected,
-} from "./instagram-integration.util";
 
 @Injectable()
 export class IntegrationsService {
@@ -50,27 +46,40 @@ export class IntegrationsService {
 
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    const row = await this.findOrCreateInstagramIntegration(workspace);
+    const existing = await this.instagramIntegrationRepo.findOne({
+      where: {
+        workspaceId: workspace.id,
+        ownerId: workspace.ownerId,
+        accessToken: Not(IsNull()),
+      },
+      order: { id: "DESC" },
+    });
     const url = await this.facebookOAuth.buildAuthorizeUrlForOwnerId(
       ownerId,
       workspace.id,
     );
-    const name =
-      row.facebookPageName?.trim() ||
-      row.name?.trim() ||
-      `Instagram #${row.id}`;
-    const connected = isInstagramIntegrationConnected(row);
-    const connectedAt = row.tokenConnectedAt;
+
+    if (existing) {
+      const name =
+        existing.facebookPageName?.trim() ||
+        existing.name?.trim() ||
+        `Instagram #${existing.id}`;
+      const connectedAt = existing.tokenConnectedAt;
+      return {
+        type: "instagram",
+        id: existing.id,
+        name,
+        url,
+        ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
+          ? { connectedAt: connectedAt.toISOString() }
+          : {}),
+      };
+    }
 
     return {
       type: "instagram",
-      id: row.id,
-      name,
+      name: workspace.name,
       url,
-      ...(connected && connectedAt != null && !Number.isNaN(connectedAt.getTime())
-        ? { connectedAt: connectedAt.toISOString() }
-        : {}),
-      ...(!connected ? { status: INSTAGRAM_TOKEN_STATUS_DISCONNECTED } : {}),
     };
   }
 
@@ -84,7 +93,7 @@ export class IntegrationsService {
     );
 
     const instagramRows = await this.instagramIntegrationRepo.find({
-      where: { workspaceId },
+      where: { workspaceId, accessToken: Not(IsNull()) },
       order: { id: "ASC" },
     });
 
@@ -105,7 +114,6 @@ export class IntegrationsService {
     ownerId: number,
     type: string,
     id: number,
-    options?: { permanent?: boolean },
   ): Promise<void> {
     if (!Number.isInteger(id) || id <= 0) {
       throw new BadRequestException("id must be a positive integer");
@@ -114,38 +122,12 @@ export class IntegrationsService {
 
     switch (integrationType) {
       case "instagram":
-        if (options?.permanent) {
-          await this.purgeInstagramForOwner(ownerId, id);
-        } else {
-          await this.disconnectInstagramForOwner(ownerId, id);
-        }
+        await this.deleteInstagramForOwner(ownerId, id);
         return;
       case "telegram":
         await this.telegramIntegrations.deleteForOwner(ownerId, id);
         return;
     }
-  }
-
-  /** Clears Meta tokens and marks the row disconnected; row is kept for reconnect and source refs. */
-  private async disconnectInstagramForOwner(
-    ownerId: number,
-    id: number,
-  ): Promise<void> {
-    const row = await this.instagramIntegrationRepo.findOne({ where: { id } });
-    if (!row || row.ownerId !== ownerId) {
-      throw new NotFoundException("Instagram integration not found");
-    }
-
-    await this.workspaceContext.requireWorkspaceOwner(
-      ownerId,
-      row.workspaceId,
-    );
-
-    if (!isInstagramIntegrationConnected(row)) {
-      return;
-    }
-
-    await this.facebookOAuth.deactivateIntegrationForOwner(ownerId, id);
   }
 
   private parseIntegrationType(raw: string): IntegrationType {
@@ -158,8 +140,7 @@ export class IntegrationsService {
     return type as IntegrationType;
   }
 
-  /** Hard-deletes the integration row (only when nothing references `company_id`). */
-  private async purgeInstagramForOwner(
+  private async deleteInstagramForOwner(
     ownerId: number,
     id: number,
   ): Promise<void> {
@@ -173,30 +154,7 @@ export class IntegrationsService {
       row.workspaceId,
     );
 
-    if (isInstagramIntegrationConnected(row)) {
-      await this.facebookOAuth.deactivateIntegrationForOwner(ownerId, id);
-      const refreshed = await this.instagramIntegrationRepo.findOne({
-        where: { id },
-      });
-      if (!refreshed) {
-        return;
-      }
-      try {
-        await this.instagramIntegrationRepo.remove(refreshed);
-      } catch (err) {
-        if (
-          err instanceof QueryFailedError &&
-          (err as QueryFailedError & { driverError?: { code?: string } })
-            .driverError?.code === "23503"
-        ) {
-          throw new ConflictException(
-            "Cannot delete Instagram integration while products or source references still reference it",
-          );
-        }
-        throw err;
-      }
-      return;
-    }
+    await this.facebookOAuth.revokeIntegrationPermissionsBestEffort(row);
 
     try {
       await this.instagramIntegrationRepo.remove(row);
@@ -232,17 +190,13 @@ export class IntegrationsService {
       row.facebookPageName?.trim() ||
       row.name?.trim() ||
       `Instagram #${row.id}`;
-    const connected = isInstagramIntegrationConnected(row);
     const connectedAt = row.tokenConnectedAt;
     return {
       type: "instagram",
       name,
       id: row.id,
-      ...(connected && connectedAt != null && !Number.isNaN(connectedAt.getTime())
+      ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
         ? { connectedAt: connectedAt.toISOString() }
-        : {}),
-      ...(!connected
-        ? { status: INSTAGRAM_TOKEN_STATUS_DISCONNECTED }
         : {}),
     };
   }
@@ -254,30 +208,6 @@ export class IntegrationsService {
     return this.workspaceContext.resolveWorkspaceIdForOwner(
       ownerId,
       workspaceIdParam,
-    );
-  }
-
-  private async findOrCreateInstagramIntegration(
-    workspace: { id: number; ownerId: number; name: string },
-  ): Promise<InstagramIntegration> {
-    const existing = await this.instagramIntegrationRepo.findOne({
-      where: { workspaceId: workspace.id, ownerId: workspace.ownerId },
-      order: { id: "DESC" },
-    });
-    if (existing) {
-      return existing;
-    }
-
-    return this.instagramIntegrationRepo.save(
-      this.instagramIntegrationRepo.create({
-        name: workspace.name,
-        pageId: "pending",
-        userAccessToken: null,
-        accessToken: null,
-        instagramAccountId: null,
-        ownerId: workspace.ownerId,
-        workspaceId: workspace.id,
-      }),
     );
   }
 }

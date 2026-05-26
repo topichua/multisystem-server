@@ -14,10 +14,7 @@ import { Repository } from "typeorm";
 import { InstagramIntegration, Workspace } from "../database/entities";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
 import type { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
-import {
-  INSTAGRAM_TOKEN_STATUS_ACTIVE,
-  INSTAGRAM_TOKEN_STATUS_DISCONNECTED,
-} from "../integrations/instagram-integration.util";
+const TOKEN_STATUS_ACTIVE = "active";
 
 const GRAPH_VERSION = "v25.0";
 
@@ -129,7 +126,7 @@ export class FacebookOAuthService {
   }
 
   /**
-   * Facebook Login URL for the owner's workspace (and its `instagram_integration` row).
+   * Facebook Login URL for the owner's workspace (creates `instagram_integration` only after OAuth succeeds).
    */
   async buildAuthorizeUrlForOwnerId(
     ownerId: number,
@@ -302,17 +299,15 @@ export class FacebookOAuthService {
       pending.userId,
       pending.workspaceId,
     );
-    const integration = await this.findOrCreateInstagramIntegration(workspace);
-
-    const now = new Date();
-    integration.pageId = pageId;
-    integration.userAccessToken = longLived;
-    integration.accessToken = page.access_token!.trim();
-    integration.instagramAccountId = igId;
-    integration.facebookPageName = pageName.length > 0 ? pageName : null;
-    integration.tokenConnectedAt = now;
-    integration.tokenStatus = INSTAGRAM_TOKEN_STATUS_ACTIVE;
-    await this.instagramIntegrationRepo.save(integration);
+    const integration = await this.saveConnectedInstagramIntegration({
+      workspace,
+      pageId,
+      pageName,
+      igId,
+      longLivedUserToken: longLived,
+      pageAccessToken: page.access_token!.trim(),
+    });
+    const now = integration.tokenConnectedAt!;
 
     this.log.log(
       `Facebook OAuth completed workspaceId=${workspace.id} integrationId=${integration.id} pageId=${pageId} igBiz=${igId}`,
@@ -324,43 +319,18 @@ export class FacebookOAuthService {
       pageName,
       instagramAccountId: igId,
       tokenConnectedAt: now.toISOString(),
-      tokenStatus: INSTAGRAM_TOKEN_STATUS_ACTIVE,
+      tokenStatus: TOKEN_STATUS_ACTIVE,
     };
   }
 
-  /**
-   * Disconnect Instagram for a workspace: revoke Meta permissions (best effort),
-   * clear stored tokens, keep the integration row (catalog source refs may still reference it).
-   */
-  async deactivateIntegrationForOwner(
-    ownerId: number,
-    integrationId: number,
-  ): Promise<InstagramIntegration> {
-    const row = await this.instagramIntegrationRepo.findOne({
-      where: { id: integrationId },
-    });
-    if (!row || row.ownerId !== ownerId) {
-      throw new NotFoundException("Instagram integration not found");
-    }
-
-    const userToken = row.userAccessToken?.trim();
+  /** Revoke Meta app permissions for a stored user token (best effort). */
+  async revokeIntegrationPermissionsBestEffort(
+    integration: InstagramIntegration,
+  ): Promise<void> {
+    const userToken = integration.userAccessToken?.trim();
     if (userToken) {
       await this.revokeMetaPermissionsBestEffort(userToken);
     }
-
-    row.userAccessToken = null;
-    row.accessToken = null;
-    row.instagramAccountId = null;
-    row.facebookPageName = null;
-    row.pageId = "pending";
-    row.tokenConnectedAt = null;
-    row.tokenStatus = INSTAGRAM_TOKEN_STATUS_DISCONNECTED;
-
-    const saved = await this.instagramIntegrationRepo.save(row);
-    this.log.log(
-      `Instagram integration deactivated integrationId=${saved.id} workspaceId=${saved.workspaceId}`,
-    );
-    return saved;
   }
 
   async getStatusForOwner(
@@ -423,27 +393,49 @@ export class FacebookOAuthService {
     return workspace;
   }
 
-  private async findOrCreateInstagramIntegration(
-    workspace: Workspace,
-  ): Promise<InstagramIntegration> {
+  private async saveConnectedInstagramIntegration(params: {
+    workspace: Workspace;
+    pageId: string;
+    pageName: string;
+    igId: string;
+    longLivedUserToken: string;
+    pageAccessToken: string;
+  }): Promise<InstagramIntegration> {
+    const now = new Date();
     const existing = await this.instagramIntegrationRepo.findOne({
-      where: { workspaceId: workspace.id, ownerId: workspace.ownerId },
+      where: {
+        workspaceId: params.workspace.id,
+        ownerId: params.workspace.ownerId,
+      },
       order: { id: "DESC" },
     });
+
     if (existing) {
-      return existing;
+      existing.pageId = params.pageId;
+      existing.userAccessToken = params.longLivedUserToken;
+      existing.accessToken = params.pageAccessToken;
+      existing.instagramAccountId = params.igId;
+      existing.facebookPageName =
+        params.pageName.length > 0 ? params.pageName : null;
+      existing.tokenConnectedAt = now;
+      existing.tokenStatus = TOKEN_STATUS_ACTIVE;
+      return this.instagramIntegrationRepo.save(existing);
     }
 
-    const row = this.instagramIntegrationRepo.create({
-      name: workspace.name,
-      pageId: "pending",
-      userAccessToken: null,
-      accessToken: null,
-      instagramAccountId: null,
-      ownerId: workspace.ownerId,
-      workspaceId: workspace.id,
-    });
-    return this.instagramIntegrationRepo.save(row);
+    return this.instagramIntegrationRepo.save(
+      this.instagramIntegrationRepo.create({
+        name: params.workspace.name,
+        pageId: params.pageId,
+        userAccessToken: params.longLivedUserToken,
+        accessToken: params.pageAccessToken,
+        instagramAccountId: params.igId,
+        facebookPageName: params.pageName.length > 0 ? params.pageName : null,
+        tokenConnectedAt: now,
+        tokenStatus: TOKEN_STATUS_ACTIVE,
+        ownerId: params.workspace.ownerId,
+        workspaceId: params.workspace.id,
+      }),
+    );
   }
 
   private async exchangeCodeForShortLivedUserToken(

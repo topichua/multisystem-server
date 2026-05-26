@@ -2,7 +2,7 @@ import { ConflictException, Injectable } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import type { CreateCompanyWithOwnerInput } from "./dto/create-company.dto";
-import { InstagramIntegration, User, UserStatus, Workspace } from "../database/entities";
+import { User, UserStatus, Workspace } from "../database/entities";
 import { PasswordService } from "../users/crypto/password.service";
 
 @Injectable()
@@ -15,7 +15,7 @@ export class CompaniesService {
 
   async createCompanyWithOwner(
     input: CreateCompanyWithOwnerInput,
-  ): Promise<{ company: InstagramIntegration; workspace: Workspace; user: User }> {
+  ): Promise<{ workspace: Workspace; user: User }> {
     const email = input.userEmail.trim().toLowerCase();
     const existing = await this.dataSource
       .getRepository(User)
@@ -29,7 +29,6 @@ export class CompaniesService {
     return this.dataSource.transaction(async (mgr) => {
       const userRepo = mgr.getRepository(User);
       const workspaceRepo = mgr.getRepository(Workspace);
-      const companyRepo = mgr.getRepository(InstagramIntegration);
 
       const user = userRepo.create({
         email,
@@ -47,18 +46,7 @@ export class CompaniesService {
       });
       await workspaceRepo.save(workspace);
 
-      const company = companyRepo.create({
-        name: input.workspaceName.trim(),
-        pageId: "pending",
-        userAccessToken: null,
-        accessToken: null,
-        instagramAccountId: null,
-        ownerId: user.id,
-        workspaceId: workspace.id,
-      });
-      await companyRepo.save(company);
-
-      return { company, workspace, user };
+      return { workspace, user };
     });
   }
 }

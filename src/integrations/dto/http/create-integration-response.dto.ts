@@ -5,8 +5,11 @@ export class CreateIntegrationResponseDto {
   @ApiProperty({ enum: INTEGRATION_TYPES })
   type: IntegrationType;
 
-  @ApiProperty({ description: "`instagram_integration.id` for this row" })
-  id: number;
+  @ApiPropertyOptional({
+    description:
+      "`instagram_integration.id` when already connected; omitted until OAuth completes",
+  })
+  id?: number;
 
   @ApiProperty()
   name: string;

@@ -100,29 +100,19 @@ export class IntegrationsController {
   @Delete(":type/:id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: "Disconnect or delete an integration",
+    summary: "Disconnect an integration",
     description:
-      "**Instagram (default):** deactivates the connection — revokes Meta app permissions (best effort), " +
-      "clears stored tokens, sets `token_status` to `disconnected`, and keeps the `instagram_integration` row " +
-      "(so catalog source references stay valid). Reconnect with `POST /integrations`. " +
-      "**Instagram (`permanent=true`):** deactivates then hard-deletes the row; returns 409 if `product_source_references` still reference it. " +
+      "**Instagram:** revokes Meta app permissions (best effort) and deletes the `instagram_integration` row. " +
+      "Returns 409 if `product_source_references` still reference it. Reconnect with `POST /integrations` (row is created on OAuth success). " +
       "**Telegram:** detaches the live session and removes the `telegram_integrations` row.",
   })
   @ApiParam({ name: "type", enum: INTEGRATION_TYPES })
   @ApiParam({ name: "id", type: Number })
-  @ApiQuery({
-    name: "permanent",
-    required: false,
-    description:
-      "Instagram only: when `true`, remove the row after deactivating (fails with 409 if source references exist).",
-    schema: { type: "boolean" },
-  })
   @ApiNoContentResponse()
   async delete(
     @Req() req: { user?: AuthUser },
     @Param("type") type: string,
     @Param("id", ParseIntPipe) id: number,
-    @Query("permanent") permanentRaw?: string,
   ): Promise<void> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
@@ -130,10 +120,7 @@ export class IntegrationsController {
         "Current authorized user does not contain numeric owner id",
       );
     }
-    const permanent =
-      permanentRaw != null &&
-      ["1", "true", "yes"].includes(permanentRaw.trim().toLowerCase());
 
-    await this.integrations.deleteForOwner(ownerId, type, id, { permanent });
+    await this.integrations.deleteForOwner(ownerId, type, id);
   }
 }

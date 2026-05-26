@@ -138,9 +138,9 @@ export class ConversationsService {
     const integration =
       await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
     const pageId = integration.pageId?.trim();
-    if (!pageId || pageId === "pending") {
+    if (!pageId) {
       throw new BadRequestException(
-        "InstagramIntegration Instagram / Facebook page id is not configured; set page_id before sync.",
+        "Instagram page id is not configured; connect Instagram via POST /integrations",
       );
     }
     const token = await this.resolveGraphAccessToken(integration.id);

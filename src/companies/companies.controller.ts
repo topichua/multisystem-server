@@ -20,16 +20,16 @@ export class CompaniesController {
 
   @Post()
   @ApiOperation({
-    summary: "Create workspace, owner user, and integration",
+    summary: "Create workspace and owner user",
     description:
       "Creates a `workspace` and an active `users` row (owner) with the given bcrypt-backed password. " +
-      "Creates one `integration` row (`page_id` pending, tokens null) until the owner completes GET /auth/facebook.",
+      "No Instagram row is created until the owner completes Facebook Login via POST /integrations.",
   })
   @ApiOkResponse({ type: CreateWorkspaceWithOwnerResponseDto })
   async create(
     @Body() dto: CreateCompanyWithOwnerRequestDto,
   ): Promise<CreateWorkspaceWithOwnerResponseDto> {
-    const { company, workspace, user } =
+    const { workspace, user } =
       await this.companiesService.createCompanyWithOwner({
         workspaceName: dto.workspace_name.trim(),
         userEmail: dto.user_email.trim(),
@@ -38,14 +38,7 @@ export class CompaniesController {
         password: dto.password,
       });
     return {
-      id: company.id,
-      name: company.name,
-      pageId: company.pageId,
-      userAccessToken: company.userAccessToken,
-      accessToken: company.accessToken,
-      instagramAccountId: company.instagramAccountId,
-      ownerId: company.ownerId,
-      workspaceId: company.workspaceId,
+      workspaceId: workspace.id,
       workspaceName: workspace.name,
       userId: user.id,
       userEmail: user.email,

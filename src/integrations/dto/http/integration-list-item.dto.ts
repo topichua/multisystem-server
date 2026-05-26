@@ -24,7 +24,7 @@ export class IntegrationListItemDto {
 
   @ApiPropertyOptional({
     description:
-      "Connection state: Telegram (`pending_code`, `active`, …) or Instagram (`disconnected` after DELETE without `permanent`)",
+      "Telegram connect progress (`pending_code`, `active`, …); Instagram rows are only listed when connected",
   })
   status?: string;
 }

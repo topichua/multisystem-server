@@ -1,7 +1,9 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { CompanyResponseDto } from "./company-response.dto";
 
-export class CreateWorkspaceWithOwnerResponseDto extends CompanyResponseDto {
+export class CreateWorkspaceWithOwnerResponseDto {
+  @ApiProperty()
+  workspaceId: number;
+
   @ApiProperty()
   workspaceName: string;
 
