@@ -5,7 +5,8 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { InstagramIntegration, ConversationGroup } from "../database/entities";
+import { ConversationGroup } from "../database/entities";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { ConversationGroupResponseDto } from "./dto/http/conversation-group-response.dto";
 import type { CreateConversationGroupRequestDto } from "./dto/http/create-conversation-group-request.dto";
 import type { UpdateConversationGroupRequestDto } from "./dto/http/update-conversation-group-request.dto";
@@ -13,16 +14,16 @@ import type { UpdateConversationGroupRequestDto } from "./dto/http/update-conver
 @Injectable()
 export class ConversationGroupsService {
   constructor(
-    @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(ConversationGroup)
     private readonly groupRepo: Repository<ConversationGroup>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
   async listForOwner(
     ownerId: number,
   ): Promise<{ items: ConversationGroupResponseDto[] }> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const rows = await this.groupRepo.find({
       where: { workspaceId },
       order: { sortOrder: "ASC", id: "ASC" },
@@ -34,7 +35,8 @@ export class ConversationGroupsService {
     ownerId: number,
     groupId: number,
   ): Promise<ConversationGroupResponseDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.groupRepo.findOne({
       where: { id: groupId, workspaceId },
     });
@@ -48,7 +50,8 @@ export class ConversationGroupsService {
     ownerId: number,
     dto: CreateConversationGroupRequestDto,
   ): Promise<ConversationGroupResponseDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const sortOrder = dto.sort_order ?? 0;
     const row = this.groupRepo.create({
       workspaceId,
@@ -67,7 +70,8 @@ export class ConversationGroupsService {
     groupId: number,
     dto: UpdateConversationGroupRequestDto,
   ): Promise<ConversationGroupResponseDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.groupRepo.findOne({
       where: { id: groupId, workspaceId },
     });
@@ -91,29 +95,12 @@ export class ConversationGroupsService {
   }
 
   async deleteForOwner(ownerId: number, groupId: number): Promise<void> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const res = await this.groupRepo.delete({ id: groupId, workspaceId });
     if (res.affected === 0) {
       throw new NotFoundException("Conversation group not found");
     }
-  }
-
-  private async requireWorkspaceIdForOwner(ownerId: number): Promise<number> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-    const company = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!company) {
-      throw new NotFoundException(
-        "Integration not found for current user; create a workspace first",
-      );
-    }
-    return company.workspaceId;
   }
 
   private toDto(row: ConversationGroup): ConversationGroupResponseDto {

@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Global, Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   InstagramIntegration,
@@ -16,6 +16,7 @@ import { WorkspaceMembersService } from "./workspace-members.service";
 import { WorkspaceRolesController } from "./workspace-roles.controller";
 import { WorkspaceRolesService } from "./workspace-roles.service";
 
+@Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -38,6 +39,10 @@ import { WorkspaceRolesService } from "./workspace-roles.service";
     WorkspaceRolesService,
     WorkspaceMembersService,
   ],
-  exports: [WorkspaceRolesService, WorkspaceMembersService],
+  exports: [
+    WorkspaceAccessContextService,
+    WorkspaceRolesService,
+    WorkspaceMembersService,
+  ],
 })
 export class WorkspaceAccessModule {}

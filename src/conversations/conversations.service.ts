@@ -39,6 +39,7 @@ import {
   TELEGRAM_CONVERSATION_MESSAGING,
   type TelegramConversationMessagingPort,
 } from "../telegram-integrations/telegram-integrations.tokens";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type {
   ConversationRowDto,
   ConversationParticipantDto,
@@ -57,7 +58,8 @@ export class ConversationsService {
 
   constructor(
     @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
+    private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationGroup)
@@ -81,8 +83,9 @@ export class ConversationsService {
   ): Promise<{
     items: ConversationRowDto[];
   }> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const myAccountIds = await this.buildMyAccountIds(ownerId, company);
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    const myAccountIds = await this.buildMyAccountIds(ownerId, integration);
 
     const groupIds = filters?.groupIds?.filter(
       (id) => Number.isInteger(id) && id > 0,
@@ -91,7 +94,7 @@ export class ConversationsService {
     if (groupIds != null && groupIds.length > 0) {
       const unique = [...new Set(groupIds)];
       const groups = await this.conversationGroupRepo.find({
-        where: { workspaceId: company.workspaceId, id: In(unique) },
+        where: { workspaceId: integration.workspaceId, id: In(unique) },
       });
       const found = new Set(groups.map((g) => g.id));
       const missing = unique.filter((id) => !found.has(id));
@@ -132,14 +135,15 @@ export class ConversationsService {
   async syncInstagramConversationsForOwner(
     ownerId: number,
   ): Promise<{ upserted: number }> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const pageId = company.pageId?.trim();
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    const pageId = integration.pageId?.trim();
     if (!pageId || pageId === "pending") {
       throw new BadRequestException(
         "InstagramIntegration Instagram / Facebook page id is not configured; set page_id before sync.",
       );
     }
-    const token = await this.resolveGraphAccessToken(company.id);
+    const token = await this.resolveGraphAccessToken(integration.id);
     const conversations = await this.fetchAllInstagramConversations(
       pageId,
       token,
@@ -230,14 +234,15 @@ export class ConversationsService {
     ownerId: number,
     id: number,
   ): Promise<ConversationRowDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
     const row = await this.conversationRepo.findOne({
       where: { id, managerId: ownerId },
     });
     if (!row) {
       throw new NotFoundException("Conversation not found");
     }
-    const myAccountIds = await this.buildMyAccountIds(ownerId, company, row);
+    const myAccountIds = await this.buildMyAccountIds(ownerId, integration, row);
     const lastMessageByConversationId =
       await this.getLastMessageByConversationIds([row.id]);
     const participantById = await this.getInstagramUsersByIds([
@@ -259,8 +264,10 @@ export class ConversationsService {
     conversationId: number,
     groupId: number,
   ): Promise<ConversationRowDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const workspaceId = company.workspaceId;
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
 
     const conv = await this.conversationRepo.findOne({
       where: { id: conversationId, managerId: ownerId },
@@ -818,11 +825,12 @@ export class ConversationsService {
     message: string,
     replyToMid?: string,
   ): Promise<SendInstagramMessageResponseDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const accessToken = company?.accessToken?.trim();
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    const accessToken = integration.accessToken?.trim();
     if (!accessToken) {
       throw new ServiceUnavailableException(
-        "No Page Graph token: set company.access_token (Page token from OAuth) for this company.",
+        "No Page Graph token: complete Facebook Login so integration.access_token is set.",
       );
     }
     const conv =
@@ -886,14 +894,14 @@ export class ConversationsService {
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {
-    const company = await this.companyRepo.findOne({
+    const integration = await this.instagramIntegrationRepo.findOne({
       where: { id: companyId },
     });
-    const pageToken = company?.accessToken?.trim();
+    const pageToken = integration?.accessToken?.trim();
     if (pageToken) return pageToken;
 
     throw new ServiceUnavailableException(
-      "No Page Graph token: set company.access_token (Page token from OAuth) for this company.",
+      "No Page Graph token: complete Facebook Login so integration.access_token is set.",
     );
   }
 
@@ -1029,17 +1037,6 @@ export class ConversationsService {
       throw new BadRequestException(`pageSize must be <= ${maxPageSize}`);
     }
     return { page, pageSize };
-  }
-
-  private async requireCompanyForOwner(ownerId: number): Promise<InstagramIntegration> {
-    const company = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!company) {
-      throw new NotFoundException("InstagramIntegration not found for current user");
-    }
-    return company;
   }
 
   /**

@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { InstagramIntegration } from "../database/entities";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { InstagramMediaItemDto } from "./dto/instagram-media-response.dto";
 
 const GRAPH_VERSION = "v25.0";
@@ -57,7 +58,8 @@ export type InstagramGraphMediaDetail = {
 export class InstagramService {
   constructor(
     @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
+    private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
   /**
@@ -67,14 +69,15 @@ export class InstagramService {
   async listMediaForOwner(
     ownerId: number,
   ): Promise<{ data: InstagramMediaItemDto[] }> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const igUserId = company.instagramAccountId?.trim();
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    const igUserId = integration.instagramAccountId?.trim();
     if (!igUserId) {
       throw new BadRequestException(
         "No Instagram Business account on this integration. Connect Instagram to your Facebook Page and complete OAuth so instagram_account_id is set.",
       );
     }
-    const accessToken = await this.resolveGraphAccessToken(company.id);
+    const accessToken = await this.resolveGraphAccessToken(integration.id);
 
     const out: InstagramMediaItemDto[] = [];
     let nextUrl: string | null =
@@ -104,8 +107,9 @@ export class InstagramService {
     ownerId: number,
     mediaId: string,
   ): Promise<{ detail: InstagramGraphMediaDetail; accessToken: string }> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const accessToken = await this.resolveGraphAccessToken(company.id);
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    const accessToken = await this.resolveGraphAccessToken(integration.id);
     const fields =
       "caption,media_type,media_url,thumbnail_url,permalink,shortcode," +
       "children{id,media_type,media_url,thumbnail_url,permalink}";
@@ -186,26 +190,15 @@ export class InstagramService {
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {
-    const company = await this.companyRepo.findOne({
+    const integration = await this.instagramIntegrationRepo.findOne({
       where: { id: companyId },
     });
-    const pageToken = company?.accessToken?.trim();
+    const pageToken = integration?.accessToken?.trim();
     if (pageToken) return pageToken;
 
     throw new ServiceUnavailableException(
       "No Page Graph token: complete Facebook Login for this workspace so integration.access_token is set.",
     );
-  }
-
-  private async requireCompanyForOwner(ownerId: number): Promise<InstagramIntegration> {
-    const company = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!company) {
-      throw new NotFoundException("InstagramIntegration not found for current user");
-    }
-    return company;
   }
 
   private throwIfInstagramGraphFailure(

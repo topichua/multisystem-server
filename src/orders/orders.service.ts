@@ -9,7 +9,6 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
   Client,
-  InstagramIntegration,
   Conversation,
   ConversationSource,
   Order,
@@ -20,7 +19,6 @@ import {
   OrderStatus,
   Product,
   ProductVariant,
-  Workspace,
 } from "../database/entities";
 import type { AddOrderItemDto } from "./dto/add-order-item.dto";
 import type { CreateOrderDto } from "./dto/create-order.dto";
@@ -32,6 +30,7 @@ import type { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-d
 import type { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
 import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -57,10 +56,7 @@ function buildVariantTitleSnapshot(
 @Injectable()
 export class OrdersService {
   constructor(
-    @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
-    @InjectRepository(Workspace)
-    private readonly workspaceRepo: Repository<Workspace>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
     @InjectRepository(Client)
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(Conversation)
@@ -82,14 +78,13 @@ export class OrdersService {
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const workspaceId = company.workspaceId;
-    const workspace = await this.workspaceRepo.findOne({
-      where: { id: workspaceId },
-    });
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
     const currency = (
       dto.currency?.trim() ||
-      workspace?.defaultCurrency?.trim() ||
+      workspace.defaultCurrency?.trim() ||
       "UAH"
     ).slice(0, 8);
 
@@ -161,7 +156,7 @@ export class OrdersService {
     const lineItems = dto.items ?? [];
     if (lineItems.length > 0) {
       for (const line of lineItems) {
-        await this.insertOrderLineItem(company, saved, line, ownerId);
+        await this.insertOrderLineItem(workspaceId, saved, line, ownerId);
       }
       await this.recalculateOrderTotals(saved.id, ownerId);
     }
@@ -178,13 +173,15 @@ export class OrdersService {
     orderId: number,
     dto: AddOrderItemDto,
   ): Promise<Order> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const order = await this.requireOrderForWorkspace(
       orderId,
-      company.workspaceId,
+      workspace.id,
     );
 
-    await this.insertOrderLineItem(company, order, dto, ownerId);
+    await this.insertOrderLineItem(workspace.id, order, dto, ownerId);
     await this.recalculateOrderTotals(order.id, ownerId);
     return this.getOrderById(ownerId, order.id);
   }
@@ -192,9 +189,11 @@ export class OrdersService {
   async listOrderStatusesForOwner(
     ownerId: number,
   ): Promise<OrderStatusResponseDto[]> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const rows = await this.orderStatusRepo.find({
-      where: { workspaceId: company.workspaceId },
+      where: { workspaceId: workspace.id },
       order: { sortOrder: "ASC", id: "ASC" },
     });
     return rows.map((s) => this.toOrderStatusDto(s));
@@ -204,8 +203,10 @@ export class OrdersService {
     ownerId: number,
     dto: SetOrderStatusesOrderDto,
   ): Promise<OrderStatusResponseDto[]> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const workspaceId = company.workspaceId;
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
 
     const uniqueIds = new Set(dto.ids);
     if (uniqueIds.size !== dto.ids.length) {
@@ -250,8 +251,10 @@ export class OrdersService {
     ownerId: number,
     dto: CreateOrderStatusDefinitionDto,
   ): Promise<OrderStatusResponseDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const workspaceId = company.workspaceId;
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
 
     return this.orderStatusRepo.manager.transaction(async (em) => {
       const raw = await em
@@ -301,8 +304,10 @@ export class OrdersService {
       );
     }
 
-    const company = await this.requireCompanyForOwner(ownerId);
-    const workspaceId = company.workspaceId;
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
 
     return this.orderStatusRepo.manager.transaction(async (em) => {
       const status = await em.findOne(OrderStatus, {
@@ -346,8 +351,10 @@ export class OrdersService {
     ownerId: number,
     statusId: number,
   ): Promise<void> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const workspaceId = company.workspaceId;
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
 
     const status = await this.orderStatusRepo.findOne({
       where: { id: statusId, workspaceId },
@@ -381,14 +388,16 @@ export class OrdersService {
     orderId: number,
     dto: UpdateOrderStatusDto,
   ): Promise<Order> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const order = await this.requireOrderForWorkspace(
       orderId,
-      company.workspaceId,
+      workspace.id,
     );
 
     const newStatus = await this.orderStatusRepo.findOne({
-      where: { id: dto.statusId, workspaceId: company.workspaceId },
+      where: { id: dto.statusId, workspaceId: workspace.id },
     });
     if (!newStatus) {
       throw new BadRequestException(
@@ -413,10 +422,12 @@ export class OrdersService {
     orderId: number,
     dto: UpdateOrderDeliveryDto,
   ): Promise<Order> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const order = await this.requireOrderForWorkspace(
       orderId,
-      company.workspaceId,
+      workspace.id,
     );
 
     let row = await this.orderDeliveryRepo.findOne({
@@ -464,9 +475,11 @@ export class OrdersService {
   }
 
   async getOrderById(ownerId: number, orderId: number): Promise<Order> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const order = await this.orderRepo.findOne({
-      where: { id: orderId, workspaceId: company.workspaceId },
+      where: { id: orderId, workspaceId: workspace.id },
       relations: {
         items: true,
         status: true,
@@ -511,7 +524,9 @@ export class OrdersService {
     page: number;
     pageSize: number;
   }> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const pageSize = query.pageSize ?? 50;
     const page = query.page ?? 1;
     const skip = (page - 1) * pageSize;
@@ -520,11 +535,11 @@ export class OrdersService {
       statusId?: number;
       customerId?: number;
     } = {
-      workspaceId: company.workspaceId,
+      workspaceId: workspace.id,
     };
     if (query.clientId != null) {
       const client = await this.clientRepo.findOne({
-        where: { id: query.clientId, workspaceId: company.workspaceId },
+        where: { id: query.clientId, workspaceId: workspace.id },
       });
       if (!client) {
         throw new NotFoundException("Client not found");
@@ -561,8 +576,10 @@ export class OrdersService {
     ownerId: number,
     clientId: number,
   ): Promise<ClientOrderStatsResponseDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const workspaceId = company.workspaceId;
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
 
     const client = await this.clientRepo.findOne({
       where: { id: clientId, workspaceId },
@@ -601,7 +618,7 @@ export class OrdersService {
   }
 
   private async insertOrderLineItem(
-    company: InstagramIntegration,
+    workspaceId: number,
     order: Order,
     dto: AddOrderItemDto,
     ownerId: number,
@@ -616,7 +633,7 @@ export class OrdersService {
     if (
       !variant ||
       !variant.product ||
-      variant.product.workspaceId !== company.workspaceId
+      variant.product.workspaceId !== workspaceId
     ) {
       throw new BadRequestException("Variant not found for this integration");
     }
@@ -771,21 +788,4 @@ export class OrdersService {
     };
   }
 
-  private async requireCompanyForOwner(ownerId: number): Promise<InstagramIntegration> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-    const company = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!company) {
-      throw new NotFoundException(
-        "Integration not found for current user; create a workspace first",
-      );
-    }
-    return company;
-  }
 }

@@ -15,32 +15,86 @@ export class WorkspaceAccessContextService {
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
     @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
+    private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
   ) {}
 
   /**
-   * Current user's workspace from their latest instagram_integration row
-   * (same resolution as GET /workspace/settings).
+   * Primary workspace for the owner (`workspace.owner_id`), optionally by explicit id.
    */
   async requireWorkspaceForOwner(
     ownerId: number,
     appRole?: string,
+    workspaceIdParam?: number,
   ): Promise<Workspace> {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException(
-        "Current authorized user does not contain numeric owner id",
+        "Current authorized user does not contain a numeric owner id",
       );
     }
-    const company = await this.companyRepo.findOne({
+
+    if (workspaceIdParam != null) {
+      return this.requireWorkspaceOwner(ownerId, workspaceIdParam, appRole);
+    }
+
+    const workspace = await this.workspaceRepo.findOne({
       where: { ownerId },
       order: { id: "DESC" },
     });
-    if (!company) {
+    if (!workspace) {
       throw new NotFoundException(
-        "Integration not found for current user; create a workspace first",
+        "Workspace not found for current user; create a workspace first",
       );
     }
-    return this.requireWorkspaceOwner(ownerId, company.workspaceId, appRole);
+    return workspace;
+  }
+
+  async resolveWorkspaceIdForOwner(
+    ownerId: number,
+    workspaceIdParam?: number,
+  ): Promise<number> {
+    const workspace = await this.requireWorkspaceForOwner(
+      ownerId,
+      undefined,
+      workspaceIdParam,
+    );
+    return workspace.id;
+  }
+
+  /** Instagram row when Meta tokens / page id are required (conversations, OAuth, etc.). */
+  async requireInstagramIntegrationForOwner(
+    ownerId: number,
+    workspaceIdParam?: number,
+  ): Promise<InstagramIntegration> {
+    const workspace = await this.requireWorkspaceForOwner(
+      ownerId,
+      undefined,
+      workspaceIdParam,
+    );
+    const row = await this.instagramIntegrationRepo.findOne({
+      where: { ownerId, workspaceId: workspace.id },
+      order: { id: "DESC" },
+    });
+    if (!row) {
+      throw new NotFoundException(
+        "Instagram integration not found; connect Instagram via POST /integrations",
+      );
+    }
+    return row;
+  }
+
+  async findInstagramIntegrationForOwner(
+    ownerId: number,
+    workspaceIdParam?: number,
+  ): Promise<InstagramIntegration | null> {
+    const workspace = await this.requireWorkspaceForOwner(
+      ownerId,
+      undefined,
+      workspaceIdParam,
+    );
+    return this.instagramIntegrationRepo.findOne({
+      where: { ownerId, workspaceId: workspace.id },
+      order: { id: "DESC" },
+    });
   }
 
   /** Workspace owner or platform super_admin. */
@@ -49,6 +103,9 @@ export class WorkspaceAccessContextService {
     workspaceId: number,
     appRole?: string,
   ): Promise<Workspace> {
+    if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+      throw new BadRequestException("workspace_id must be a positive integer");
+    }
     const workspace = await this.workspaceRepo.findOne({
       where: { id: workspaceId },
     });

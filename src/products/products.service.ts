@@ -36,6 +36,7 @@ import {
   tryParsePriceFromOfferText,
 } from "./instagram-analysis-draft.util";
 import { ProductMediaService } from "./product-media.service";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 
 function buildVariantTitleSnapshot(
   color: string | null,
@@ -239,8 +240,6 @@ function applyProductListSort(
 @Injectable()
 export class ProductsService {
   constructor(
-    @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
     @InjectRepository(ProductVariant)
@@ -253,32 +252,39 @@ export class ProductsService {
     private readonly categoryRepo: Repository<ProductCategory>,
     private readonly productMedia: ProductMediaService,
     private readonly workspaceSettings: WorkspaceSettingsService,
+    private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
-  /** Used by HTTP layer for media endpoints that need integration context. */
+  async getWorkspaceIdForOwner(ownerId: number): Promise<number> {
+    return this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+  }
+
+  /** Used when Instagram source-reference rows or Graph context is required. */
   async getIntegrationForOwner(ownerId: number): Promise<InstagramIntegration> {
-    return this.requireCompanyForOwner(ownerId);
+    return this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
   }
 
   async listForOwner(
     ownerId: number,
     query: ListProductsQueryDto,
   ): Promise<ProductListResponseDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const pageSize = query.pageSize ?? query.limit ?? 50;
     const page = query.page ?? 1;
     const offset =
       query.page != null ? (page - 1) * pageSize : (query.offset ?? 0);
     const limit = pageSize;
     const categoryIdFilter = await this.parseAndValidateCategoryIdsForList(
-      company,
+      workspace.id,
       query,
     );
     assertListPriceRange(query);
 
     const qb = this.productRepo
       .createQueryBuilder("p")
-      .where("p.workspaceId = :workspaceId", { workspaceId: company.workspaceId });
+      .where("p.workspaceId = :workspaceId", { workspaceId: workspace.id });
     if (query.status !== undefined) {
       qb.andWhere("p.status = :status", { status: query.status });
     }
@@ -324,7 +330,9 @@ export class ProductsService {
     ownerId: number,
     query: ListCatalogVariantsQueryDto,
   ): Promise<CatalogVariantListResponseDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const pageSize = query.pageSize ?? 50;
     const page = query.page ?? 1;
     const offset = (page - 1) * pageSize;
@@ -336,7 +344,7 @@ export class ProductsService {
       .innerJoin("v.product", "p");
     this.applyCatalogVariantFilters(
       countQb,
-      company,
+      workspace.id,
       productStatus,
       searchText,
     );
@@ -347,7 +355,7 @@ export class ProductsService {
       .innerJoinAndSelect("v.product", "p");
     this.applyCatalogVariantFilters(
       dataQb,
-      company,
+      workspace.id,
       productStatus,
       searchText,
     );
@@ -370,7 +378,9 @@ export class ProductsService {
     ownerId: number,
     query: ListProductsQueryDto,
   ): Promise<ProductVariantListResponseDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const pageSize = query.pageSize ?? query.limit ?? 50;
     const page = query.page ?? 1;
     const offset =
@@ -379,21 +389,21 @@ export class ProductsService {
 
     assertListPriceRange(query);
     const categoryIdFilter = await this.parseAndValidateCategoryIdsForList(
-      company,
+      workspace.id,
       query,
     );
 
     const countQb = this.variantRepo
       .createQueryBuilder("v")
       .innerJoin("v.product", "p");
-    this.applyVariantListFilters(countQb, company, categoryIdFilter, query);
+    this.applyVariantListFilters(countQb, workspace.id, categoryIdFilter, query);
     const total = await countQb.getCount();
 
     const dataQb = this.variantRepo
       .createQueryBuilder("v")
       .innerJoinAndSelect("v.product", "p")
       .leftJoinAndSelect("v.media", "m");
-    this.applyVariantListFilters(dataQb, company, categoryIdFilter, query);
+    this.applyVariantListFilters(dataQb, workspace.id, categoryIdFilter, query);
     applyVariantListSort(dataQb, query.sort);
     const rows = await dataQb.skip(offset).take(limit).getMany();
 
@@ -411,9 +421,11 @@ export class ProductsService {
     ownerId: number,
     productId: number,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const product = await this.productRepo.findOne({
-      where: { id: productId, workspaceId: company.workspaceId },
+      where: { id: productId, workspaceId: workspace.id },
       relations: {
         category: true,
         variants: true,
@@ -431,7 +443,9 @@ export class ProductsService {
     ownerId: number,
     dto: CreateProductDto,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const defaultCurrency =
       await this.workspaceSettings.getDefaultCurrencyForOwner(ownerId);
     const name = dto.name.trim();
@@ -439,14 +453,14 @@ export class ProductsService {
       throw new BadRequestException("name is required");
     }
     await this.assertCategoryBelongsToWorkspaceIfSet(
-      company.workspaceId,
+      workspace.id,
       dto.categoryId,
     );
 
     let productId = 0;
     await this.productRepo.manager.transaction(async (em) => {
       const product = em.create(Product, {
-        workspaceId: company.workspaceId,
+        workspaceId: workspace.id,
         categoryId: dto.categoryId ?? null,
         name,
         description: dto.description?.trim() || null,
@@ -478,7 +492,11 @@ export class ProductsService {
     ownerId: number,
     params: CatalogProductFromAnalysisParams,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
     const defaultCurrency =
       await this.workspaceSettings.getDefaultCurrencyForOwner(ownerId);
     const name = params.name.trim().slice(0, 512);
@@ -486,7 +504,7 @@ export class ProductsService {
       throw new BadRequestException("Product name is required");
     }
     await this.assertCategoryBelongsToWorkspaceIfSet(
-      company.workspaceId,
+      workspace.id,
       params.matchedCategoryId,
     );
 
@@ -504,7 +522,7 @@ export class ProductsService {
     let productId = 0;
     await this.productRepo.manager.transaction(async (em) => {
       const product = em.create(Product, {
-        workspaceId: company.workspaceId,
+        workspaceId: workspace.id,
         categoryId: params.matchedCategoryId ?? null,
         name,
         description,
@@ -547,7 +565,7 @@ export class ProductsService {
       }
 
       await em.insert(ProductSourceReference, {
-        companyId: company.id,
+        companyId: integration.id,
         productId: saved.id,
         sourceType: refType,
         sourceId: params.instagramMediaId,
@@ -565,9 +583,11 @@ export class ProductsService {
     productId: number,
     dto: UpdateProductDto,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const product = await this.productRepo.findOne({
-      where: { id: productId, workspaceId: company.workspaceId },
+      where: { id: productId, workspaceId: workspace.id },
     });
     if (!product) {
       throw new NotFoundException("Product not found");
@@ -626,7 +646,7 @@ export class ProductsService {
     if (dto.categoryId !== undefined) {
       if (dto.categoryId !== null) {
         await this.assertCategoryBelongsToWorkspaceIfSet(
-          company.workspaceId,
+          workspace.id,
           dto.categoryId,
         );
       }
@@ -639,9 +659,11 @@ export class ProductsService {
   }
 
   async removeForOwner(ownerId: number, productId: number): Promise<void> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const product = await this.productRepo.findOne({
-      where: { id: productId, workspaceId: company.workspaceId },
+      where: { id: productId, workspaceId: workspace.id },
     });
     if (!product) {
       throw new NotFoundException("Product not found");
@@ -659,8 +681,10 @@ export class ProductsService {
     productId: number,
     dto: CreateProductVariantDto,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    const product = await this.requireProduct(company.workspaceId, productId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const product = await this.requireProduct(workspace.id, productId);
     await this.assertCanAddVariantToProduct(product);
     const row = this.variantRepo.create({
       productId,
@@ -685,8 +709,10 @@ export class ProductsService {
     variantId: number,
     dto: UpdateProductVariantDto,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    await this.requireProduct(company.workspaceId, productId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    await this.requireProduct(workspace.id, productId);
     const variant = await this.variantRepo.findOne({
       where: { id: variantId, productId },
     });
@@ -728,8 +754,10 @@ export class ProductsService {
     productId: number,
     variantId: number,
   ): Promise<void> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    await this.requireProduct(company.workspaceId, productId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    await this.requireProduct(workspace.id, productId);
     const variant = await this.variantRepo.findOne({
       where: { id: variantId, productId },
     });
@@ -744,8 +772,10 @@ export class ProductsService {
     productId: number,
     dto: CreateProductMediaDto,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    await this.productMedia.addMedia(company.workspaceId, ownerId, {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    await this.productMedia.addMedia(workspace.id, ownerId, {
       productId,
       variantId: dto.variantId,
       url: dto.url,
@@ -762,8 +792,10 @@ export class ProductsService {
     mediaId: number,
     dto: UpdateProductMediaDto,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    await this.requireProduct(company.workspaceId, productId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    await this.requireProduct(workspace.id, productId);
     const media = await this.mediaRepo.findOne({
       where: { id: mediaId, productId },
     });
@@ -796,8 +828,10 @@ export class ProductsService {
     productId: number,
     mediaId: number,
   ): Promise<void> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    await this.requireProduct(company.workspaceId, productId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    await this.requireProduct(workspace.id, productId);
     const media = await this.mediaRepo.findOne({
       where: { id: mediaId, productId },
     });
@@ -812,10 +846,14 @@ export class ProductsService {
     productId: number,
     dto: CreateProductSourceReferenceDto,
   ): Promise<ProductDetailDto> {
-    const company = await this.requireCompanyForOwner(ownerId);
-    await this.requireProduct(company.workspaceId, productId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    await this.requireProduct(workspace.id, productId);
     const row = this.sourceRefRepo.create({
-      companyId: company.id,
+      companyId: integration.id,
       productId,
       sourceType: dto.sourceType,
       sourceId: dto.sourceId.trim(),
@@ -832,32 +870,15 @@ export class ProductsService {
     productId: number,
     referenceId: number,
   ): Promise<void> {
-    const company = await this.requireCompanyForOwner(ownerId);
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
     const ref = await this.sourceRefRepo.findOne({
-      where: { id: referenceId, productId, companyId: company.id },
+      where: { id: referenceId, productId, companyId: integration.id },
     });
     if (!ref) {
       throw new NotFoundException("Source reference not found");
     }
     await this.sourceRefRepo.remove(ref);
-  }
-
-  private async requireCompanyForOwner(ownerId: number): Promise<InstagramIntegration> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-    const company = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!company) {
-      throw new NotFoundException(
-        "Integration not found for current user; create a workspace first",
-      );
-    }
-    return company;
   }
 
   private async requireProduct(
@@ -909,7 +930,7 @@ export class ProductsService {
   }
 
   private async parseAndValidateCategoryIdsForList(
-    company: InstagramIntegration,
+    workspaceId: number,
     query: ListProductsQueryDto,
   ): Promise<number[] | undefined> {
     if (!query.categoryIds) {
@@ -920,22 +941,17 @@ export class ProductsService {
         query.categoryIds.split(",").map((s) => Number.parseInt(s.trim(), 10)),
       ),
     ];
-    await this.assertCategoriesInWorkspace(
-      company.workspaceId,
-      categoryIdFilter,
-    );
+    await this.assertCategoriesInWorkspace(workspaceId, categoryIdFilter);
     return categoryIdFilter;
   }
 
   private applyCatalogVariantFilters(
     qb: SelectQueryBuilder<ProductVariant>,
-    company: InstagramIntegration,
+    workspaceId: number,
     productStatus: ProductStatus,
     searchText: string | undefined,
   ): void {
-    qb.where("p.workspaceId = :workspaceId", {
-      workspaceId: company.workspaceId,
-    });
+    qb.where("p.workspaceId = :workspaceId", { workspaceId });
     qb.andWhere("p.status = :productStatus", { productStatus });
 
     if (searchText) {
@@ -991,13 +1007,11 @@ export class ProductsService {
 
   private applyVariantListFilters(
     qb: SelectQueryBuilder<ProductVariant>,
-    company: InstagramIntegration,
+    workspaceId: number,
     categoryIdFilter: number[] | undefined,
     query: ListProductsQueryDto,
   ): void {
-    qb.where("p.workspaceId = :workspaceId", {
-      workspaceId: company.workspaceId,
-    });
+    qb.where("p.workspaceId = :workspaceId", { workspaceId });
 
     if (query.status !== undefined) {
       qb.andWhere("p.status = :status", { status: query.status });

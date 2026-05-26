@@ -1,11 +1,9 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
-  InstagramIntegration,
   Conversation,
   ConversationMessage,
   TelegramIntegration,
-  Workspace,
 } from "../database/entities";
 import { ConversationsModule } from "../conversations/conversations.module";
 import { TelegramIntegrationsController } from "./telegram-integrations.controller";
@@ -20,8 +18,6 @@ import { TELEGRAM_CONVERSATION_MESSAGING } from "./telegram-integrations.tokens"
   imports: [
     TypeOrmModule.forFeature([
       TelegramIntegration,
-      InstagramIntegration,
-      Workspace,
       Conversation,
       ConversationMessage,
     ]),

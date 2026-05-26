@@ -6,7 +6,8 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { FindOptionsWhere, Not, Repository } from "typeorm";
-import { Client, InstagramIntegration, InstagramUser } from "../database/entities";
+import { Client, InstagramUser } from "../database/entities";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import type { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
 import type { ClientResponseDto } from "./dto/client-response.dto";
@@ -16,19 +17,19 @@ import type { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 @Injectable()
 export class ClientsService {
   constructor(
-    @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(Client)
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
   async createForOwner(
     ownerId: number,
     dto: CreateClientRequestDto,
   ): Promise<ClientResponseDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const instagramUserId = await this.resolveInstagramUserIdForWorkspace(
       workspaceId,
       dto.instagramId,
@@ -52,7 +53,8 @@ export class ClientsService {
     clientId: number,
     dto: UpdateClientRequestDto,
   ): Promise<ClientResponseDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.clientRepo.findOne({
       where: { id: clientId, workspaceId },
     });
@@ -88,7 +90,8 @@ export class ClientsService {
   }
 
   async deleteForOwner(ownerId: number, clientId: number): Promise<void> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const res = await this.clientRepo.delete({ id: clientId, workspaceId });
     if (res.affected === 0) {
       throw new NotFoundException("Client not found");
@@ -104,7 +107,8 @@ export class ClientsService {
     page: number,
     pageSize: number,
   ): Promise<ClientsListResponseDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const [rows, total] = await this.clientRepo.findAndCount({
       where: { workspaceId },
       order: { createdAt: "DESC" },
@@ -130,7 +134,8 @@ export class ClientsService {
       );
     }
 
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
 
     const row = await this.clientRepo.findOne({
       where: { instagramUserId, workspaceId },
@@ -150,7 +155,8 @@ export class ClientsService {
     ownerId: number,
     clientId: number,
   ): Promise<ClientResponseDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.clientRepo.findOne({
       where: { id: clientId, workspaceId },
     });
@@ -200,24 +206,6 @@ export class ClientsService {
     }
 
     return id;
-  }
-
-  private async requireWorkspaceIdForOwner(ownerId: number): Promise<number> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-    const company = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!company) {
-      throw new NotFoundException(
-        "Integration not found for current user; create a workspace first",
-      );
-    }
-    return company.workspaceId;
   }
 
   private toClientDto(row: Client): ClientResponseDto {

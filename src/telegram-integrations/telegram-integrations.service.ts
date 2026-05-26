@@ -6,11 +6,10 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
-  InstagramIntegration,
   TelegramIntegration,
   TelegramIntegrationStatus,
-  Workspace,
 } from "../database/entities";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { ConfirmTelegramCodeRequestDto } from "./dto/http/confirm-telegram-code-request.dto";
 import type { ConfirmTelegramPasswordRequestDto } from "./dto/http/confirm-telegram-password-request.dto";
 import type { StartTelegramIntegrationRequestDto } from "./dto/http/start-telegram-integration-request.dto";
@@ -25,10 +24,7 @@ export class TelegramIntegrationsService {
   constructor(
     @InjectRepository(TelegramIntegration)
     private readonly telegramRepo: Repository<TelegramIntegration>,
-    @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
-    @InjectRepository(Workspace)
-    private readonly workspaceRepo: Repository<Workspace>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly telegramApi: TelegramUserApiService,
     private readonly updatesListener: TelegramUpdatesListenerService,
   ) {}
@@ -313,34 +309,9 @@ export class TelegramIntegrationsService {
     ownerId: number,
     workspaceIdParam?: number,
   ): Promise<number> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-
-    const anchor = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!anchor) {
-      throw new NotFoundException(
-        "Workspace not found; create a workspace / Instagram integration first",
-      );
-    }
-
-    const workspaceId = workspaceIdParam ?? anchor.workspaceId;
-    if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
-      throw new BadRequestException("workspace_id must be a positive integer");
-    }
-
-    const workspace = await this.workspaceRepo.findOne({
-      where: { id: workspaceId },
-    });
-    if (!workspace || workspace.ownerId !== ownerId) {
-      throw new NotFoundException("Workspace not found for current user");
-    }
-
-    return workspaceId;
+    return this.workspaceContext.resolveWorkspaceIdForOwner(
+      ownerId,
+      workspaceIdParam,
+    );
   }
 }

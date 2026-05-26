@@ -114,9 +114,9 @@ export class ProductsController {
     @Query("variantId") variantIdRaw?: string,
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
-    const company = await this.products.getIntegrationForOwner(ownerId);
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     const variantId = this.parseOptionalVariantId(variantIdRaw);
-    return this.productMedia.getEffectiveMedia(company.workspaceId, id, variantId);
+    return this.productMedia.getEffectiveMedia(workspaceId, id, variantId);
   }
 
   @Get(":id/media")
@@ -125,8 +125,8 @@ export class ProductsController {
     @Param("id", ParseIntPipe) id: number,
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
-    const company = await this.products.getIntegrationForOwner(ownerId);
-    return this.productMedia.getProductMedia(company.workspaceId, id);
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
+    return this.productMedia.getProductMedia(workspaceId, id);
   }
 
   @Put(":id/media")
@@ -136,9 +136,9 @@ export class ProductsController {
     @Body() dto: ReplaceProductMediaRequestDto,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    const company = await this.products.getIntegrationForOwner(ownerId);
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     await this.productMedia.replaceMedia(
-      company.workspaceId,
+      workspaceId,
       ownerId,
       id,
       dto.items,
@@ -153,8 +153,8 @@ export class ProductsController {
     @Param("variantId", ParseIntPipe) variantId: number,
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
-    const company = await this.products.getIntegrationForOwner(ownerId);
-    return this.productMedia.getVariantMedia(company.workspaceId, id, variantId);
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
+    return this.productMedia.getVariantMedia(workspaceId, id, variantId);
   }
 
   @Put(":id/variants/:variantId/media")
@@ -165,9 +165,9 @@ export class ProductsController {
     @Body() dto: ReplaceProductMediaRequestDto,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    const company = await this.products.getIntegrationForOwner(ownerId);
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     await this.productMedia.replaceVariantMedia(
-      company.workspaceId,
+      workspaceId,
       ownerId,
       id,
       variantId,
@@ -455,9 +455,9 @@ export class ProductsController {
     if (!image) {
       throw new BadRequestException("Multipart field `image` is required.");
     }
-    const company = await this.products.getIntegrationForOwner(ownerId);
+    const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     const url = await this.cloudflareImages.uploadImage(image);
-    await this.productMedia.addMedia(company.workspaceId, ownerId, {
+    await this.productMedia.addMedia(workspaceId, ownerId, {
       productId: id,
       url,
       type: ProductMediaType.image,

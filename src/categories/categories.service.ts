@@ -6,7 +6,8 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Not, Repository } from "typeorm";
-import { InstagramIntegration, ProductCategory } from "../database/entities";
+import { ProductCategory } from "../database/entities";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
 import type { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
@@ -34,14 +35,14 @@ function compareCategoriesForSort(
 @Injectable()
 export class CategoriesService {
   constructor(
-    @InjectRepository(InstagramIntegration)
-    private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
   async findTreeForOwner(ownerId: number): Promise<CategoryTreeNodeDto[]> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const rows = await this.categoryRepo.find({
       where: { workspaceId, deletedAt: IsNull() },
       order: { sortOrder: "ASC", name: "ASC" },
@@ -53,7 +54,8 @@ export class CategoriesService {
     ownerId: number,
     id: number,
   ): Promise<CategoryTreeNodeDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
       where: { id, workspaceId, deletedAt: IsNull() },
     });
@@ -76,7 +78,8 @@ export class CategoriesService {
     ownerId: number,
     dto: CreateCategoryRequestDto,
   ): Promise<CategoryTreeNodeDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const name = dto.name.trim();
     if (!name) {
       throw new BadRequestException("name is required");
@@ -113,7 +116,8 @@ export class CategoriesService {
     id: number,
     dto: UpdateCategoryRequestDto,
   ): Promise<CategoryTreeNodeDto> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
       where: { id, workspaceId, deletedAt: IsNull() },
     });
@@ -167,7 +171,8 @@ export class CategoriesService {
   }
 
   async removeForOwner(ownerId: number, id: number): Promise<void> {
-    const workspaceId = await this.requireWorkspaceIdForOwner(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
       where: { id, workspaceId, deletedAt: IsNull() },
     });
@@ -226,24 +231,6 @@ export class CategoriesService {
 
     const roots = byParent.get(null) ?? [];
     return roots.map(toDto);
-  }
-
-  private async requireWorkspaceIdForOwner(ownerId: number): Promise<number> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-    const company = await this.companyRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
-    });
-    if (!company) {
-      throw new NotFoundException(
-        "Integration not found for current user; create a workspace first",
-      );
-    }
-    return company.workspaceId;
   }
 
   /**

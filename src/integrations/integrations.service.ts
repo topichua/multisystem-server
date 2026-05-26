@@ -10,10 +10,10 @@ import { FacebookOAuthService } from "../auth/facebook-oauth.service";
 import {
   InstagramIntegration,
   TelegramIntegrationStatus,
-  Workspace,
 } from "../database/entities";
 import type { TelegramIntegration } from "../database/entities";
 import { TelegramIntegrationsService } from "../telegram-integrations/telegram-integrations.service";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import {
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -28,8 +28,7 @@ export class IntegrationsService {
   constructor(
     @InjectRepository(InstagramIntegration)
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
-    @InjectRepository(Workspace)
-    private readonly workspaceRepo: Repository<Workspace>,
+    private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly facebookOAuth: FacebookOAuthService,
     private readonly telegramIntegrations: TelegramIntegrationsService,
   ) {}
@@ -45,10 +44,12 @@ export class IntegrationsService {
       );
     }
 
-    const row = await this.requireLatestInstagramIntegrationForOwner(ownerId);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const row = await this.findOrCreateInstagramIntegration(workspace);
     const url = await this.facebookOAuth.buildAuthorizeUrlForOwnerId(
       ownerId,
-      row.workspaceId,
+      workspace.id,
     );
     const name =
       row.facebookPageName?.trim() ||
@@ -133,12 +134,10 @@ export class IntegrationsService {
       throw new NotFoundException("Instagram integration not found");
     }
 
-    const workspace = await this.workspaceRepo.findOne({
-      where: { id: row.workspaceId, ownerId },
-    });
-    if (!workspace) {
-      throw new NotFoundException("Instagram integration not found");
-    }
+    await this.workspaceContext.requireWorkspaceOwner(
+      ownerId,
+      row.workspaceId,
+    );
 
     try {
       await this.instagramIntegrationRepo.remove(row);
@@ -189,48 +188,33 @@ export class IntegrationsService {
     ownerId: number,
     workspaceIdParam?: number,
   ): Promise<number> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-
-    const anchor = await this.requireLatestInstagramIntegrationForOwner(
+    return this.workspaceContext.resolveWorkspaceIdForOwner(
       ownerId,
+      workspaceIdParam,
     );
-
-    const workspaceId = workspaceIdParam ?? anchor.workspaceId;
-    if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
-      throw new BadRequestException("workspace_id must be a positive integer");
-    }
-
-    const workspace = await this.workspaceRepo.findOne({
-      where: { id: workspaceId },
-    });
-    if (!workspace || workspace.ownerId !== ownerId) {
-      throw new NotFoundException("Workspace not found for current user");
-    }
-
-    return workspaceId;
   }
 
-  private async requireLatestInstagramIntegrationForOwner(
-    ownerId: number,
+  private async findOrCreateInstagramIntegration(
+    workspace: { id: number; ownerId: number; name: string },
   ): Promise<InstagramIntegration> {
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain a numeric owner id",
-      );
-    }
-    const row = await this.instagramIntegrationRepo.findOne({
-      where: { ownerId },
+    const existing = await this.instagramIntegrationRepo.findOne({
+      where: { workspaceId: workspace.id, ownerId: workspace.ownerId },
       order: { id: "DESC" },
     });
-    if (!row) {
-      throw new NotFoundException(
-        "Integration not found for current user; create a workspace first",
-      );
+    if (existing) {
+      return existing;
     }
-    return row;
+
+    return this.instagramIntegrationRepo.save(
+      this.instagramIntegrationRepo.create({
+        name: workspace.name,
+        pageId: "pending",
+        userAccessToken: null,
+        accessToken: null,
+        instagramAccountId: null,
+        ownerId: workspace.ownerId,
+        workspaceId: workspace.id,
+      }),
+    );
   }
 }

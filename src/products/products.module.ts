@@ -1,7 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
-  InstagramIntegration,
   Product,
   ProductCategory,
   ProductMedia,
@@ -18,7 +17,6 @@ import { ProductsService } from "./products.service";
   imports: [
     WorkspaceSettingsModule,
     TypeOrmModule.forFeature([
-      InstagramIntegration,
       Product,
       ProductVariant,
       ProductMedia,
