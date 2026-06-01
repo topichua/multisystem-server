@@ -538,10 +538,6 @@ export class ProductsService {
       workspace.id,
       stagedMediaIds,
     );
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
-
     await this.productRepo.manager.transaction(async (em) => {
       const product = em.create(Product, {
         workspaceId: workspace.id,
@@ -561,10 +557,13 @@ export class ProductsService {
       const saved = await em.save(product);
 
       for (const spec of variantInputs) {
-        const resolved = this.variantCustomFields.resolveVariantStorage(
-          fieldDefs,
-          { customFields: spec.customFields },
-        );
+        const resolved =
+          await this.variantCustomFields.resolveVariantAttributesFromPayload(
+            ownerId,
+            workspace.id,
+            spec.customFields,
+            em,
+          );
         const variant = await em.save(
           em.create(ProductVariant, {
             productId: saved.id,
@@ -694,10 +693,17 @@ export class ProductsService {
           updatedByUserId: null,
         });
         const variantId = insertResult.identifiers[0].id as number;
+        const legacyValues = colorSizeSpecToFieldValues(fieldDefs, spec);
+        const resolved =
+          await this.variantCustomFields.resolveLegacyFieldIdValues(
+            workspace.id,
+            legacyValues,
+            em,
+          );
         await this.variantCustomFields.upsertValuesForVariant(
           em,
           variantId,
-          colorSizeSpecToFieldValues(fieldDefs, spec),
+          resolved,
         );
       }
 
@@ -817,12 +823,12 @@ export class ProductsService {
     );
     const product = await this.requireProduct(workspace.id, productId);
     await this.assertCanAddVariantToProduct(product);
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
-    const resolved = this.variantCustomFields.resolveVariantStorage(fieldDefs, {
-      customFields: dto.customFields,
-    });
+    const resolved =
+      await this.variantCustomFields.resolveVariantAttributesFromPayload(
+        ownerId,
+        workspace.id,
+        dto.customFields,
+      );
     const stagedMediaIds = dto.mediaIds ?? [];
     const stagedById = stagedMediaIds.length
       ? await this.uploadMedia.requireForWorkspace(workspace.id, stagedMediaIds)
@@ -872,14 +878,12 @@ export class ProductsService {
       throw new NotFoundException("Variant not found");
     }
     if (dto.customFields !== undefined) {
-      const fieldDefs =
-        await this.variantCustomFields.listDefinitionsForWorkspace(
+      const resolved =
+        await this.variantCustomFields.resolveVariantAttributesFromPayload(
+          ownerId,
           workspace.id,
+          dto.customFields,
         );
-      const resolved = this.variantCustomFields.resolveVariantStorage(
-        fieldDefs,
-        { customFields: dto.customFields },
-      );
       await this.variantCustomFields.upsertValuesForVariant(
         this.variantRepo.manager,
         variant.id,
@@ -1237,9 +1241,6 @@ export class ProductsService {
       ownerId,
     );
 
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspaceId,
-    );
     const stagedMediaIds = this.collectStagedMediaIdsFromVariantSync(
       variantInputs,
     );
@@ -1255,18 +1256,21 @@ export class ProductsService {
         }
         await this.applyVariantSyncInput(
           em,
+          workspaceId,
           product.id,
           variant,
           spec,
-          fieldDefs,
           ownerId,
           stagedById,
         );
       } else {
-        const resolved = this.variantCustomFields.resolveVariantStorage(
-          fieldDefs,
-          { customFields: spec.customFields },
-        );
+        const resolved =
+          await this.variantCustomFields.resolveVariantAttributesFromPayload(
+            ownerId,
+            workspaceId,
+            spec.customFields,
+            em,
+          );
         const variant = await em.save(
           em.create(ProductVariant, {
             productId: product.id,
@@ -1311,18 +1315,21 @@ export class ProductsService {
 
   private async applyVariantSyncInput(
     em: EntityManager,
+    workspaceId: number,
     productId: number,
     variant: ProductVariant,
     spec: UpdateProductVariantSyncDto,
-    fieldDefs: WorkspaceVariantCustomField[],
     ownerId: number,
     stagedById: Map<number, { cdnUrl: string }>,
   ): Promise<void> {
     if (spec.customFields !== undefined) {
-      const resolved = this.variantCustomFields.resolveVariantStorage(
-        fieldDefs,
-        { customFields: spec.customFields },
-      );
+      const resolved =
+        await this.variantCustomFields.resolveVariantAttributesFromPayload(
+          ownerId,
+          workspaceId,
+          spec.customFields,
+          em,
+        );
       await this.variantCustomFields.upsertValuesForVariant(
         em,
         variant.id,

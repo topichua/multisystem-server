@@ -13,7 +13,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import { ProductStatus } from "../../database/entities/product-status.enum";
-import { VariantCustomFieldValueDto } from "./variant-custom-field-value.dto";
+import { VariantCustomFieldAttributeDto } from "./variant-custom-field-attribute.dto";
 
 export class CreateProductVariantDto {
   @ApiPropertyOptional({ enum: ProductStatus, default: ProductStatus.draft })
@@ -21,12 +21,12 @@ export class CreateProductVariantDto {
   @IsEnum(ProductStatus)
   status?: ProductStatus;
 
-  @ApiPropertyOptional({ type: [VariantCustomFieldValueDto] })
+  @ApiPropertyOptional({ type: [VariantCustomFieldAttributeDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => VariantCustomFieldValueDto)
-  customFields?: VariantCustomFieldValueDto[];
+  @Type(() => VariantCustomFieldAttributeDto)
+  customFields?: VariantCustomFieldAttributeDto[];
 
   @ApiPropertyOptional()
   @IsOptional()

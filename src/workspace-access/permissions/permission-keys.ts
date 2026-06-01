@@ -14,6 +14,8 @@ export const PERMISSION_KEYS = [
   "conversations.write",
   "products.read",
   "products.write",
+  "products.variant_custom_fields.create",
+  "products.variant_custom_field_options.create",
   "orders.read",
   "orders.write",
   "clients.read",

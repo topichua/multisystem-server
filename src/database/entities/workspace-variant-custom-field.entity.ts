@@ -5,11 +5,13 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
 import { VariantCustomFieldType } from "./variant-custom-field-type.enum";
 import { Workspace } from "./workspace.entity";
+import { WorkspaceVariantCustomFieldOption } from "./workspace-variant-custom-field-option.entity";
 
 @Entity({ name: "workspace_variant_custom_field" })
 @Index("UQ_workspace_variant_custom_field_workspace_key", ["workspaceId", "key"], {
@@ -41,12 +43,11 @@ export class WorkspaceVariantCustomField {
   })
   type: VariantCustomFieldType;
 
-  /** Allowed values when `type` is `options`. */
-  @Column({ type: "jsonb", nullable: true })
-  options: string[] | null;
-
   @Column({ name: "sort_order", type: "int", default: 0 })
   sortOrder: number;
+
+  @OneToMany(() => WorkspaceVariantCustomFieldOption, (o) => o.field)
+  fieldOptions: WorkspaceVariantCustomFieldOption[];
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

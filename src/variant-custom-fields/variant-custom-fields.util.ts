@@ -2,7 +2,18 @@ import {
   ProductVariantCustomFieldValue,
   VariantCustomFieldType,
   WorkspaceVariantCustomField,
+  WorkspaceVariantCustomFieldOption,
 } from "../database/entities";
+
+export type WorkspaceVariantCustomFieldWithOptions = WorkspaceVariantCustomField & {
+  fieldOptions?: WorkspaceVariantCustomFieldOption[];
+};
+
+export function getFieldOptionLabels(
+  def: WorkspaceVariantCustomFieldWithOptions,
+): string[] {
+  return (def.fieldOptions ?? []).map((o) => o.label);
+}
 
 export type VariantCustomFieldValueInput = {
   fieldId: number;
@@ -99,7 +110,7 @@ export function buildVariantAttributesSnapshot(
 }
 
 export function resolveVariantCustomFieldValues(
-  definitions: WorkspaceVariantCustomField[],
+  definitions: WorkspaceVariantCustomFieldWithOptions[],
   input: {
     customFields?: VariantCustomFieldValueInput[];
   },
@@ -120,8 +131,14 @@ export function resolveVariantCustomFieldValues(
       throw new Error(`Custom field "${def.key}" value is too long`);
     }
     if (def.type === VariantCustomFieldType.options) {
-      const allowed = (def.options ?? []).map((o) => o.trim());
-      if (allowed.length > 0 && !allowed.includes(value)) {
+      const allowed = getFieldOptionLabels(def).map((o) => o.trim());
+      const normalizedValue = value.toLowerCase();
+      const allowedNormalized = allowed.map((o) => o.toLowerCase());
+      if (
+        allowed.length > 0 &&
+        !allowed.includes(value) &&
+        !allowedNormalized.includes(normalizedValue)
+      ) {
         throw new Error(
           `Custom field "${def.key}" value must be one of: ${allowed.join(", ")}`,
         );

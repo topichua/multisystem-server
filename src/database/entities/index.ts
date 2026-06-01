@@ -31,6 +31,7 @@ export { ProductVariantCustomFieldValue } from "./product-variant-custom-field-v
 export { UploadMedia } from "./upload-media.entity";
 export { VariantCustomFieldType } from "./variant-custom-field-type.enum";
 export { WorkspaceVariantCustomField } from "./workspace-variant-custom-field.entity";
+export { WorkspaceVariantCustomFieldOption } from "./workspace-variant-custom-field-option.entity";
 export { User } from "./user.entity";
 export { UserStatus, UserStatusLabels } from "./user-status.enum";
 export { Workspace } from "./workspace.entity";

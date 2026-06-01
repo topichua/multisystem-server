@@ -13,7 +13,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import { ProductStatus } from "../../database/entities/product-status.enum";
-import { VariantCustomFieldValueDto } from "./variant-custom-field-value.dto";
+import { VariantCustomFieldAttributeDto } from "./variant-custom-field-attribute.dto";
 
 export class CreateProductVariantInputDto {
   @ApiPropertyOptional({ enum: ProductStatus, default: ProductStatus.draft })
@@ -22,14 +22,15 @@ export class CreateProductVariantInputDto {
   status?: ProductStatus;
 
   @ApiPropertyOptional({
-    type: [VariantCustomFieldValueDto],
-    description: "Variant attribute values by workspace custom field id",
+    type: [VariantCustomFieldAttributeDto],
+    description:
+      "Variant attributes: reference an existing field by `field.id`, or create one with `field.name` + `field.type` (OPTION | TEXT).",
   })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => VariantCustomFieldValueDto)
-  customFields?: VariantCustomFieldValueDto[];
+  @Type(() => VariantCustomFieldAttributeDto)
+  customFields?: VariantCustomFieldAttributeDto[];
 
   @ApiPropertyOptional()
   @IsOptional()

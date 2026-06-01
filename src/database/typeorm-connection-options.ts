@@ -50,6 +50,9 @@ import { ProductDropMainImageUrl1744200000050 } from "./migrations/1744200000050
 import { ProductVariantDropImageUrl1744200000051 } from "./migrations/1744200000051-ProductVariantDropImageUrl";
 import { ProductMediaMainMediaDropUserIds1744200000052 } from "./migrations/1744200000052-ProductMediaMainMediaDropUserIds";
 import { ProductMediaDropMainMedia1744200000053 } from "./migrations/1744200000053-ProductMediaDropMainMedia";
+import { VariantCustomFieldOptions1744200000054 } from "./migrations/1744200000054-VariantCustomFieldOptions";
+import { VariantCustomFieldOptionDropNormalizedValue1744200000055 } from "./migrations/1744200000055-VariantCustomFieldOptionDropNormalizedValue";
+import { WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056 } from "./migrations/1744200000056-WorkspaceVariantCustomFieldDropOptionsJsonb";
 import {
   Client,
   InstagramIntegration,
@@ -70,6 +73,7 @@ import {
   ProductVariantCustomFieldValue,
   UploadMedia,
   WorkspaceVariantCustomField,
+  WorkspaceVariantCustomFieldOption,
   TelegramIntegration,
   User,
   Workspace,
@@ -147,6 +151,7 @@ const entities = [
   ProductSourceReference,
   UploadMedia,
   WorkspaceVariantCustomField,
+  WorkspaceVariantCustomFieldOption,
   OrderStatus,
   Order,
   OrderItem,
@@ -245,6 +250,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductVariantDropImageUrl1744200000051,
       ProductMediaMainMediaDropUserIds1744200000052,
       ProductMediaDropMainMedia1744200000053,
+      VariantCustomFieldOptions1744200000054,
+      VariantCustomFieldOptionDropNormalizedValue1744200000055,
+      WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056,
     ],
   };
 }

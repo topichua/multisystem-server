@@ -67,6 +67,14 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
     permissions: [
       { key: "products.read", description: "View products and catalog" },
       { key: "products.write", description: "Create and edit products" },
+      {
+        key: "products.variant_custom_fields.create",
+        description: "Create variant custom field definitions from product payloads",
+      },
+      {
+        key: "products.variant_custom_field_options.create",
+        description: "Create new option values for OPTION-type custom fields",
+      },
     ],
   },
   {

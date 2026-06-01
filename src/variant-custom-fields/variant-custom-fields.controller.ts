@@ -46,7 +46,7 @@ export class VariantCustomFieldsController {
     description:
       "Returns workspace-configured variant attributes (e.g. Color, Size). " +
       "Defaults are created automatically when none exist. " +
-      "Use field ids in customFields when creating product variants.",
+      "Product variants use customFields: [{ field: { id? | name?, type? }, value }].",
   })
   @ApiOkResponse({ type: VariantCustomFieldsListResponseDto })
   list(

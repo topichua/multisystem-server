@@ -11,6 +11,7 @@ import {
 
 import { ProductVariant } from "./product-variant.entity";
 import { WorkspaceVariantCustomField } from "./workspace-variant-custom-field.entity";
+import { WorkspaceVariantCustomFieldOption } from "./workspace-variant-custom-field-option.entity";
 
 @Entity({ name: "product_variant_custom_field_value" })
 @Index("UQ_product_variant_custom_field_value_variant_field", ["variantId", "fieldId"], {
@@ -38,8 +39,22 @@ export class ProductVariantCustomFieldValue {
   @JoinColumn({ name: "field_id" })
   field: WorkspaceVariantCustomField;
 
+  /** Denormalized display value for search and API responses. */
   @Column({ type: "varchar", length: 128 })
   value: string;
+
+  @Column({ name: "option_id", type: "int", nullable: true })
+  optionId: number | null;
+
+  @ManyToOne(() => WorkspaceVariantCustomFieldOption, {
+    onDelete: "RESTRICT",
+    nullable: true,
+  })
+  @JoinColumn({ name: "option_id" })
+  option: WorkspaceVariantCustomFieldOption | null;
+
+  @Column({ name: "text_value", type: "varchar", length: 512, nullable: true })
+  textValue: string | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
