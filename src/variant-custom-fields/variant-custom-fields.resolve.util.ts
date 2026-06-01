@@ -8,6 +8,7 @@ export type VariantCustomFieldAttributeInput = {
     type?: VariantCustomFieldApiType;
   };
   value: string;
+  order?: number;
 };
 
 export type ResolvedVariantAttribute = {
@@ -16,6 +17,7 @@ export type ResolvedVariantAttribute = {
   textValue: string | null;
   /** Denormalized display string (search, list responses). */
   value: string;
+  sortOrder: number;
 };
 
 export function normalizeCustomFieldName(name: string): string {

@@ -17,6 +17,9 @@ export class CatalogVariantCustomFieldDto {
 
   @ApiProperty()
   value: string;
+
+  @ApiProperty({ description: "Display order among variant custom fields." })
+  order: number;
 }
 
 export class CatalogVariantProductDto {

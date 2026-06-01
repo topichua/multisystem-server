@@ -202,11 +202,13 @@ export class VariantCustomFieldsService {
       : this.fieldRepo;
 
     const out: ResolvedVariantAttribute[] = [];
-    for (const item of attributes) {
+    for (let i = 0; i < attributes.length; i++) {
+      const item = attributes[i];
       const displayValue = item.value.trim();
       if (!displayValue) {
         continue;
       }
+      const sortOrder = item.order ?? i;
 
       const field = await this.resolveFieldFromPayload(
         ownerId,
@@ -233,6 +235,7 @@ export class VariantCustomFieldsService {
           optionId: option.id,
           textValue: null,
           value: option.label,
+          sortOrder,
         });
       } else {
         if (displayValue.length > 512) {
@@ -245,6 +248,7 @@ export class VariantCustomFieldsService {
           optionId: null,
           textValue: displayValue,
           value: displayValue,
+          sortOrder,
         });
       }
     }
@@ -269,7 +273,8 @@ export class VariantCustomFieldsService {
       : this.optionRepo;
 
     const out: ResolvedVariantAttribute[] = [];
-    for (const { fieldId, value } of values) {
+    for (let i = 0; i < values.length; i++) {
+      const { fieldId, value } = values[i];
       const trimmed = value.trim();
       if (!trimmed) {
         continue;
@@ -313,6 +318,7 @@ export class VariantCustomFieldsService {
           optionId: option.id,
           textValue: null,
           value: option.label,
+          sortOrder: i,
         });
       } else {
         if (trimmed.length > 512) {
@@ -325,6 +331,7 @@ export class VariantCustomFieldsService {
           optionId: null,
           textValue: trimmed,
           value: trimmed,
+          sortOrder: i,
         });
       }
     }
@@ -348,6 +355,7 @@ export class VariantCustomFieldsService {
           value: row.value,
           optionId: row.optionId,
           textValue: row.textValue,
+          sortOrder: row.sortOrder,
         },
         { conflictPaths: ["variantId", "fieldId"] },
       );

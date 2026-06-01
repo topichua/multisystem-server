@@ -53,6 +53,7 @@ import { ProductMediaDropMainMedia1744200000053 } from "./migrations/17442000000
 import { VariantCustomFieldOptions1744200000054 } from "./migrations/1744200000054-VariantCustomFieldOptions";
 import { VariantCustomFieldOptionDropNormalizedValue1744200000055 } from "./migrations/1744200000055-VariantCustomFieldOptionDropNormalizedValue";
 import { WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056 } from "./migrations/1744200000056-WorkspaceVariantCustomFieldDropOptionsJsonb";
+import { ProductVariantCustomFieldValueSortOrder1744200000057 } from "./migrations/1744200000057-ProductVariantCustomFieldValueSortOrder";
 import {
   Client,
   InstagramIntegration,
@@ -253,6 +254,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       VariantCustomFieldOptions1744200000054,
       VariantCustomFieldOptionDropNormalizedValue1744200000055,
       WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056,
+      ProductVariantCustomFieldValueSortOrder1744200000057,
     ],
   };
 }

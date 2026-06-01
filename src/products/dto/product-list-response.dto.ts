@@ -18,6 +18,9 @@ export class ProductListVariantCustomFieldDto {
 
   @ApiProperty()
   value: string;
+
+  @ApiProperty({ description: "Display order among variant custom fields." })
+  order: number;
 }
 
 export class ProductListMediaDto {

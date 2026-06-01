@@ -26,6 +26,7 @@ export type VariantCustomFieldValueDto = {
   label: string;
   type: VariantCustomFieldType;
   value: string;
+  order: number;
 };
 
 export type VariantWithCustomFieldValues = {
@@ -46,51 +47,43 @@ export function serializeVariantCustomFields(
   definitions: WorkspaceVariantCustomField[],
 ): VariantCustomFieldValueDto[] {
   const defById = new Map(definitions.map((d) => [d.id, d]));
-  const sortOrderByFieldId = new Map(
-    definitions.map((d) => [d.id, d.sortOrder]),
-  );
-  const out: VariantCustomFieldValueDto[] = [];
-  for (const row of variant.customFieldValues ?? []) {
-    const def = defById.get(row.fieldId);
-    const value = row.value?.trim();
-    if (!def || !value) {
-      continue;
-    }
-    out.push({
+  const rows = [...(variant.customFieldValues ?? [])]
+    .filter((row) => {
+      const def = defById.get(row.fieldId);
+      const value = row.value?.trim();
+      return Boolean(def && value);
+    })
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+
+  return rows.map((row) => {
+    const def = defById.get(row.fieldId)!;
+    return {
       fieldId: def.id,
       key: def.key,
       label: def.label,
       type: def.type,
-      value,
-    });
-  }
-  out.sort(
-    (a, b) =>
-      (sortOrderByFieldId.get(a.fieldId) ?? 0) -
-      (sortOrderByFieldId.get(b.fieldId) ?? 0),
-  );
-  return out;
+      value: row.value.trim(),
+      order: row.sortOrder,
+    };
+  });
 }
 
 export function buildVariantTitleFromFields(
   definitions: WorkspaceVariantCustomField[],
   variant: VariantWithCustomFieldValues,
 ): string | null {
-  const byFieldId = customFieldValuesByFieldId(variant);
+  const defById = new Map(definitions.map((d) => [d.id, d]));
   const parts: string[] = [];
-  for (const def of definitions) {
-    const v = byFieldId.get(def.id)?.trim();
-    if (v) {
+  const rows = [...(variant.customFieldValues ?? [])].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.id - b.id,
+  );
+  for (const row of rows) {
+    const v = row.value?.trim();
+    if (v && defById.has(row.fieldId)) {
       parts.push(v);
     }
   }
-  if (parts.length > 0) {
-    return parts.join(" / ");
-  }
-  const fallback = [...byFieldId.values()]
-    .map((v) => v?.trim())
-    .filter(Boolean) as string[];
-  return fallback.length > 0 ? fallback.join(" / ") : null;
+  return parts.length > 0 ? parts.join(" / ") : null;
 }
 
 export function buildVariantAttributesSnapshot(

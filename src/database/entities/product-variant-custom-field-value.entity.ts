@@ -56,6 +56,9 @@ export class ProductVariantCustomFieldValue {
   @Column({ name: "text_value", type: "varchar", length: 512, nullable: true })
   textValue: string | null;
 
+  @Column({ name: "sort_order", type: "int", default: 0 })
+  sortOrder: number;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 
