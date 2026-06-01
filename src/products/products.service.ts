@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -15,6 +14,7 @@ import {
   ProductVariant,
   UploadMedia,
   WorkspaceVariantCustomField,
+  OrderItem,
 } from "../database/entities";
 import { ProductMediaType } from "../database/entities/product-media-type.enum";
 import { ProductSourceReferenceType } from "../database/entities/product-source-reference-type.enum";
@@ -25,6 +25,7 @@ import type { CreateProductDto } from "./dto/create-product.dto";
 import type { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import type { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
 import type { CreateProductVariantInputDto } from "./dto/create-product-variant-input.dto";
+import type { UpdateProductVariantSyncDto } from "./dto/update-product-variant-sync.dto";
 import type { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import type { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
 import type { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
@@ -112,7 +113,7 @@ export type ProductCategorySummaryDto = {
   parentId: number | null;
 };
 
-export type ProductListItemDto = {
+export type ProductListItemBaseDto = {
   id: number;
   name: string;
   productType: ProductType;
@@ -127,7 +128,11 @@ export type ProductListItemDto = {
   updatedAt: Date;
 };
 
-export type ProductDetailDto = ProductListItemDto & {
+export type ProductListItemDto = ProductListItemBaseDto & {
+  variants: ProductVariantDto[];
+};
+
+export type ProductDetailDto = ProductListItemBaseDto & {
   description: string | null;
   sourceType: string | null;
   createdByUserId: number;
@@ -252,6 +257,8 @@ export class ProductsService {
     private readonly sourceRefRepo: Repository<ProductSourceReference>,
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
+    @InjectRepository(OrderItem)
+    private readonly orderItemRepo: Repository<OrderItem>,
     private readonly productMedia: ProductMediaService,
     private readonly uploadMedia: UploadMediaService,
     private readonly variantCustomFields: VariantCustomFieldsService,
@@ -312,11 +319,41 @@ export class ProductsService {
     }
     applyProductListSort(qb, query.sort);
     const [rows, total] = await qb.skip(offset).take(limit).getManyAndCount();
-    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
-      rows.map((p) => p.id),
+    if (rows.length === 0) {
+      return {
+        items: [],
+        total,
+        page,
+        pageSize,
+        limit,
+        offset,
+      };
+    }
+
+    const productIds = rows.map((p) => p.id);
+    const loaded = await this.productRepo.find({
+      where: { id: In(productIds), workspaceId: workspace.id },
+      relations: {
+        variants: { customFieldValues: true },
+        media: true,
+      },
+    });
+    const byId = new Map(loaded.map((p) => [p.id, p]));
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
     );
+    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
+      productIds,
+    );
+
     return {
-      items: rows.map((p) => this.toListItem(p, mainImageByProductId)),
+      items: rows.map((row) => {
+        const p = byId.get(row.id) ?? row;
+        return {
+          ...this.toListItem(p, mainImageByProductId),
+          variants: this.buildVariantDtos(p, fieldDefs),
+        };
+      }),
       total,
       page,
       pageSize,
@@ -692,68 +729,48 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
+    await this.applyProductFieldUpdates(workspace.id, product, ownerId, dto);
+    return this.findOneForOwner(ownerId, productId);
+  }
 
-    if (dto.name !== undefined) {
-      const name = dto.name.trim();
-      if (!name) {
-        throw new BadRequestException("name must not be empty");
-      }
-      product.name = name;
+  /**
+   * Full product replace (PUT). When `variants` is sent, syncs the variant set:
+   * missing rows are hard-deleted or archived if referenced by order items.
+   */
+  async replaceForOwner(
+    ownerId: number,
+    productId: number,
+    dto: UpdateProductDto,
+  ): Promise<ProductDetailDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const product = await this.productRepo.findOne({
+      where: { id: productId, workspaceId: workspace.id },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
     }
-    if (dto.description !== undefined) {
-      product.description =
-        dto.description === null ? null : dto.description.trim() || null;
-    }
-    if (dto.status !== undefined) {
-      product.status = dto.status;
-    }
-    if (dto.productType !== undefined) {
-      product.productType = dto.productType;
-    }
-    if (dto.sourceType !== undefined) {
-      product.sourceType = dto.sourceType;
-    }
-    if (dto.price !== undefined) {
-      product.price = dto.price;
-    }
-    if (dto.currency !== undefined) {
-      const c = dto.currency.trim();
-      if (!c) {
-        throw new BadRequestException("currency must not be empty");
-      }
-      product.currency = c.slice(0, 8);
-    }
-    if (dto.inStock !== undefined) {
-      product.inStock = dto.inStock;
-    }
-    if (dto.quantity !== undefined) {
-      product.quantity = dto.quantity;
-    }
-    if (dto.mediaIds?.length) {
-      const stagedById = await this.uploadMedia.requireForWorkspace(
+
+    await this.productRepo.manager.transaction(async (em) => {
+      await this.applyProductFieldUpdates(
         workspace.id,
-        dto.mediaIds,
+        product,
+        ownerId,
+        dto,
+        em,
       );
-      await this.insertProductMediaFromStaged(
-        this.productRepo.manager,
-        product.id,
-        null,
-        dto.mediaIds,
-        stagedById,
-      );
-    }
-    if (dto.categoryId !== undefined) {
-      if (dto.categoryId !== null) {
-        await this.assertCategoryBelongsToWorkspaceIfSet(
+      if (dto.variants !== undefined) {
+        await this.syncProductVariants(
+          em,
           workspace.id,
-          dto.categoryId,
+          product,
+          ownerId,
+          dto.variants,
         );
       }
-      product.categoryId = dto.categoryId;
-    }
+    });
 
-    product.updatedByUserId = ownerId;
-    await this.productRepo.save(product);
     return this.findOneForOwner(ownerId, productId);
   }
 
@@ -767,12 +784,27 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-    if (product.status !== ProductStatus.draft) {
-      throw new ConflictException(
-        "Only products in draft status can be deleted",
-      );
+
+    const variants = await this.variantRepo.find({ where: { productId } });
+    const orderLinkedVariantIds =
+      await this.findVariantIdsReferencedByOrders(productId);
+
+    if (orderLinkedVariantIds.size === 0) {
+      await this.productRepo.remove(product);
+      return;
     }
-    await this.productRepo.remove(product);
+
+    await this.productRepo.manager.transaction(async (em) => {
+      await this.archiveOrRemoveVariants(
+        em,
+        variants,
+        orderLinkedVariantIds,
+        ownerId,
+      );
+      product.status = ProductStatus.archived;
+      product.updatedByUserId = ownerId;
+      await em.save(product);
+    });
   }
 
   async createVariantForOwner(
@@ -902,7 +934,16 @@ export class ProductsService {
     if (!variant) {
       throw new NotFoundException("Variant not found");
     }
-    await this.variantRepo.remove(variant);
+    const orderLinkedVariantIds =
+      await this.findVariantIdsReferencedByOrders(productId);
+    await this.variantRepo.manager.transaction(async (em) => {
+      await this.archiveOrRemoveVariants(
+        em,
+        [variant],
+        orderLinkedVariantIds,
+        ownerId,
+      );
+    });
   }
 
   async createMediaForOwner(
@@ -1066,6 +1107,285 @@ export class ProductsService {
         sourceUrl: null,
         sortOrder: i,
       });
+    }
+  }
+
+  private async applyProductFieldUpdates(
+    workspaceId: number,
+    product: Product,
+    ownerId: number,
+    dto: UpdateProductDto,
+    em?: EntityManager,
+  ): Promise<void> {
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      if (!name) {
+        throw new BadRequestException("name must not be empty");
+      }
+      product.name = name;
+    }
+    if (dto.description !== undefined) {
+      product.description =
+        dto.description === null ? null : dto.description.trim() || null;
+    }
+    if (dto.status !== undefined) {
+      product.status = dto.status;
+    }
+    if (dto.productType !== undefined) {
+      product.productType = dto.productType;
+    }
+    if (dto.sourceType !== undefined) {
+      product.sourceType = dto.sourceType;
+    }
+    if (dto.price !== undefined) {
+      product.price = dto.price;
+    }
+    if (dto.currency !== undefined) {
+      const c = dto.currency.trim();
+      if (!c) {
+        throw new BadRequestException("currency must not be empty");
+      }
+      product.currency = c.slice(0, 8);
+    }
+    if (dto.inStock !== undefined) {
+      product.inStock = dto.inStock;
+    }
+    if (dto.quantity !== undefined) {
+      product.quantity = dto.quantity;
+    }
+    if (dto.mediaIds?.length) {
+      const stagedById = await this.uploadMedia.requireForWorkspace(
+        workspaceId,
+        dto.mediaIds,
+      );
+      const manager = em ?? this.productRepo.manager;
+      await this.insertProductMediaFromStaged(
+        manager,
+        product.id,
+        null,
+        dto.mediaIds,
+        stagedById,
+      );
+    }
+    if (dto.categoryId !== undefined) {
+      if (dto.categoryId !== null) {
+        await this.assertCategoryBelongsToWorkspaceIfSet(
+          workspaceId,
+          dto.categoryId,
+        );
+      }
+      product.categoryId = dto.categoryId;
+    }
+
+    product.updatedByUserId = ownerId;
+    if (em) {
+      await em.save(product);
+    } else {
+      await this.productRepo.save(product);
+    }
+  }
+
+  private async syncProductVariants(
+    em: EntityManager,
+    workspaceId: number,
+    product: Product,
+    ownerId: number,
+    variantInputs: UpdateProductVariantSyncDto[],
+  ): Promise<void> {
+    const productType = product.productType;
+    if (productType === ProductType.variants && variantInputs.length === 0) {
+      throw new BadRequestException(
+        "At least one variant is required when product_type is variants",
+      );
+    }
+    if (productType === ProductType.single && variantInputs.length > 1) {
+      throw new BadRequestException(
+        "product_type single allows at most one variant",
+      );
+    }
+
+    const existing = await em.find(ProductVariant, {
+      where: { productId: product.id },
+    });
+    const existingById = new Map(existing.map((v) => [v.id, v]));
+    const payloadIds = new Set<number>();
+    for (const spec of variantInputs) {
+      if (spec.id != null) {
+        if (!existingById.has(spec.id)) {
+          throw new BadRequestException(
+            `Variant id ${spec.id} does not belong to this product`,
+          );
+        }
+        if (payloadIds.has(spec.id)) {
+          throw new BadRequestException(
+            `Duplicate variant id ${spec.id} in variants payload`,
+          );
+        }
+        payloadIds.add(spec.id);
+      }
+    }
+
+    const orderLinkedVariantIds = await this.findVariantIdsReferencedByOrders(
+      product.id,
+      em,
+    );
+    const toRemove = existing.filter((v) => !payloadIds.has(v.id));
+    await this.archiveOrRemoveVariants(
+      em,
+      toRemove,
+      orderLinkedVariantIds,
+      ownerId,
+    );
+
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspaceId,
+    );
+    const stagedMediaIds = this.collectStagedMediaIdsFromVariantSync(
+      variantInputs,
+    );
+    const stagedById = stagedMediaIds.length
+      ? await this.uploadMedia.requireForWorkspace(workspaceId, stagedMediaIds)
+      : new Map<number, { cdnUrl: string }>();
+
+    for (const spec of variantInputs) {
+      if (spec.id != null) {
+        const variant = existingById.get(spec.id);
+        if (!variant) {
+          continue;
+        }
+        await this.applyVariantSyncInput(
+          em,
+          product.id,
+          variant,
+          spec,
+          fieldDefs,
+          ownerId,
+          stagedById,
+        );
+      } else {
+        const resolved = this.variantCustomFields.resolveVariantStorage(
+          fieldDefs,
+          { customFields: spec.customFields },
+        );
+        const variant = await em.save(
+          em.create(ProductVariant, {
+            productId: product.id,
+            price: spec.price ?? null,
+            inStock: spec.inStock ?? null,
+            quantity: spec.quantity ?? null,
+            sku: spec.sku?.trim() || null,
+            status: spec.status ?? ProductStatus.draft,
+            createdByUserId: ownerId,
+            updatedByUserId: null,
+          }),
+        );
+        await this.variantCustomFields.upsertValuesForVariant(
+          em,
+          variant.id,
+          resolved,
+        );
+        if (spec.mediaIds?.length) {
+          await this.insertProductMediaFromStaged(
+            em,
+            product.id,
+            variant.id,
+            spec.mediaIds,
+            stagedById,
+          );
+        }
+      }
+    }
+  }
+
+  private collectStagedMediaIdsFromVariantSync(
+    variants: UpdateProductVariantSyncDto[],
+  ): number[] {
+    const ids = new Set<number>();
+    for (const spec of variants) {
+      for (const id of spec.mediaIds ?? []) {
+        ids.add(id);
+      }
+    }
+    return [...ids];
+  }
+
+  private async applyVariantSyncInput(
+    em: EntityManager,
+    productId: number,
+    variant: ProductVariant,
+    spec: UpdateProductVariantSyncDto,
+    fieldDefs: WorkspaceVariantCustomField[],
+    ownerId: number,
+    stagedById: Map<number, { cdnUrl: string }>,
+  ): Promise<void> {
+    if (spec.customFields !== undefined) {
+      const resolved = this.variantCustomFields.resolveVariantStorage(
+        fieldDefs,
+        { customFields: spec.customFields },
+      );
+      await this.variantCustomFields.upsertValuesForVariant(
+        em,
+        variant.id,
+        resolved,
+      );
+    }
+    if (spec.price !== undefined) {
+      variant.price = spec.price;
+    }
+    if (spec.inStock !== undefined) {
+      variant.inStock = spec.inStock;
+    }
+    if (spec.quantity !== undefined) {
+      variant.quantity = spec.quantity;
+    }
+    if (spec.sku !== undefined) {
+      variant.sku = spec.sku?.trim() || null;
+    }
+    if (spec.status !== undefined) {
+      variant.status = spec.status;
+    }
+    variant.updatedByUserId = ownerId;
+    await em.save(variant);
+
+    if (spec.mediaIds?.length) {
+      await this.insertProductMediaFromStaged(
+        em,
+        productId,
+        variant.id,
+        spec.mediaIds,
+        stagedById,
+      );
+    }
+  }
+
+  private async findVariantIdsReferencedByOrders(
+    productId: number,
+    em?: EntityManager,
+  ): Promise<Set<number>> {
+    const repo = em
+      ? em.getRepository(OrderItem)
+      : this.orderItemRepo;
+    const rows = await repo.find({
+      where: { productId },
+      select: ["variantId"],
+    });
+    return new Set(rows.map((r) => r.variantId));
+  }
+
+  private async archiveOrRemoveVariants(
+    em: EntityManager,
+    variants: ProductVariant[],
+    orderLinkedVariantIds: Set<number>,
+    ownerId: number,
+  ): Promise<void> {
+    for (const variant of variants) {
+      if (orderLinkedVariantIds.has(variant.id)) {
+        variant.status = ProductStatus.archived;
+        variant.updatedByUserId = ownerId;
+        await em.save(variant);
+      } else {
+        await em.remove(variant);
+      }
     }
   }
 
@@ -1295,7 +1615,7 @@ export class ProductsService {
   private toListItem(
     p: Product,
     mainImageByProductId?: Map<number, string>,
-  ): ProductListItemDto {
+  ): ProductListItemBaseDto {
     return {
       id: p.id,
       name: p.name,

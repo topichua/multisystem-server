@@ -14,7 +14,7 @@ export type VariantCustomFieldValueDto = {
   key: string;
   label: string;
   type: VariantCustomFieldType;
-  value: string | null;
+  value: string;
 };
 
 export type VariantWithCustomFieldValues = {
@@ -29,23 +29,36 @@ export function customFieldValuesByFieldId(
   );
 }
 
+/** Only custom fields with a non-empty stored value (workspace definition order). */
 export function serializeVariantCustomFields(
   variant: VariantWithCustomFieldValues,
   definitions: WorkspaceVariantCustomField[],
 ): VariantCustomFieldValueDto[] {
-  const byFieldId = customFieldValuesByFieldId(variant);
-  return definitions.map((def) => {
-    const raw = byFieldId.get(def.id);
-    const value =
-      typeof raw === "string" && raw.trim() ? raw.trim() : null;
-    return {
+  const defById = new Map(definitions.map((d) => [d.id, d]));
+  const sortOrderByFieldId = new Map(
+    definitions.map((d) => [d.id, d.sortOrder]),
+  );
+  const out: VariantCustomFieldValueDto[] = [];
+  for (const row of variant.customFieldValues ?? []) {
+    const def = defById.get(row.fieldId);
+    const value = row.value?.trim();
+    if (!def || !value) {
+      continue;
+    }
+    out.push({
       fieldId: def.id,
       key: def.key,
       label: def.label,
       type: def.type,
       value,
-    };
-  });
+    });
+  }
+  out.sort(
+    (a, b) =>
+      (sortOrderByFieldId.get(a.fieldId) ?? 0) -
+      (sortOrderByFieldId.get(b.fieldId) ?? 0),
+  );
+  return out;
 }
 
 export function buildVariantTitleFromFields(

@@ -7,6 +7,7 @@ import {
   ProductSourceReference,
   ProductVariant,
   UploadMedia,
+  OrderItem,
 } from "../database/entities";
 import { CloudflareImagesService } from "./cloudflare-images.service";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
@@ -27,6 +28,7 @@ import { ProductsService } from "./products.service";
       ProductSourceReference,
       ProductCategory,
       UploadMedia,
+      OrderItem,
     ]),
   ],
   controllers: [ProductsController],

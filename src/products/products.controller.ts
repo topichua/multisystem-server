@@ -38,6 +38,7 @@ import { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
 import { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto";
+import { ProductListResponseDto as ProductListResponseSwaggerDto } from "./dto/product-list-response.dto";
 import { ReplaceProductMediaRequestDto } from "./dto/replace-product-media.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { UpdateProductMediaDto } from "./dto/update-product-media.dto";
@@ -73,6 +74,13 @@ export class ProductsController {
   ) {}
 
   @Get()
+  @ApiOperation({
+    summary: "List products",
+    description:
+      "Paginated products for the authenticated owner's workspace. Each item includes nested `variants` " +
+      "(custom fields, price/stock, and variant media). Supports filters: status, categoryIds, keyword, price range, sort.",
+  })
+  @ApiOkResponse({ type: ProductListResponseSwaggerDto })
   async list(
     @Req() req: { user?: AuthUser },
     @Query() query: ListProductsQueryDto,
@@ -260,9 +268,9 @@ export class ProductsController {
 
   @Patch(":id")
   @ApiOperation({
-    summary: "Update product",
+    summary: "Update product (partial)",
     description:
-      "JSON body. Use mediaIds to append gallery images from staged uploads (POST /products/upload-media).",
+      "Partial JSON update. Does not sync variants — use PUT /products/:id for variant set changes.",
   })
   @ApiBody({ type: UpdateProductDto })
   async update(
@@ -274,8 +282,31 @@ export class ProductsController {
     return this.products.updateForOwner(ownerId, id, dto);
   }
 
+  @Put(":id")
+  @ApiOperation({
+    summary: "Replace product",
+    description:
+      "Updates product fields and, when `variants` is provided, syncs the full variant list. " +
+      "Variants omitted from `variants` are hard-deleted, or archived when referenced by order line items.",
+  })
+  @ApiBody({ type: UpdateProductDto })
+  async replace(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateProductDto,
+  ): Promise<ProductDetailDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.products.replaceForOwner(ownerId, id, dto);
+  }
+
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Delete product",
+    description:
+      "Hard-deletes the product when no variants are referenced by order items. " +
+      "When any variant appears on an order, order-linked variants and the product are archived; other variants are hard-deleted.",
+  })
   async remove(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
@@ -320,6 +351,11 @@ export class ProductsController {
 
   @Delete(":id/variants/:variantId")
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Delete variant",
+    description:
+      "Hard-deletes the variant unless it is referenced by order line items, in which case it is archived.",
+  })
   async removeVariant(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,

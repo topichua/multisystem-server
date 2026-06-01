@@ -15,8 +15,8 @@ export class CatalogVariantCustomFieldDto {
   @ApiProperty({ enum: VariantCustomFieldType })
   type: VariantCustomFieldType;
 
-  @ApiPropertyOptional({ nullable: true })
-  value: string | null;
+  @ApiProperty()
+  value: string;
 }
 
 export class CatalogVariantProductDto {

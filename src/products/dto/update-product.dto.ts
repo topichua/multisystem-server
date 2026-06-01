@@ -11,10 +11,12 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from "class-validator";
 import { ProductSourceType } from "../../database/entities/product-source-type.enum";
 import { ProductStatus } from "../../database/entities/product-status.enum";
 import { ProductType } from "../../database/entities/product-type.enum";
+import { UpdateProductVariantSyncDto } from "./update-product-variant-sync.dto";
 
 export class UpdateProductDto {
   @ApiPropertyOptional({ maxLength: 512 })
@@ -110,4 +112,16 @@ export class UpdateProductDto {
   @IsInt()
   @Min(1)
   categoryId?: number | null;
+
+  @ApiPropertyOptional({
+    type: [UpdateProductVariantSyncDto],
+    description:
+      "Full variant set for PUT /products/:id. Variants missing from this list are removed " +
+      "(hard-deleted, or archived when referenced by order items). Rows without `id` are created.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateProductVariantSyncDto)
+  variants?: UpdateProductVariantSyncDto[];
 }
