@@ -59,7 +59,7 @@ export class UpdateProductVariantDto {
 
   @ApiPropertyOptional({
     description:
-      "Append variant gallery images from staged upload_media ids.",
+      "Replace variant gallery from staged upload_media ids. Omitted ids are removed. Send `[]` to clear all.",
     type: [Number],
   })
   @IsOptional()

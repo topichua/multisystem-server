@@ -92,7 +92,8 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional({
     description:
-      "Append product-level gallery images from staged upload_media ids (POST /products/upload-media).",
+      "Replace product-level gallery from staged upload_media ids (POST /products/upload-media). " +
+      "Send `[]` to clear. Omit to leave existing gallery unchanged.",
     type: [Number],
   })
   @IsOptional()

@@ -899,12 +899,15 @@ export class ProductsService {
     if (dto.quantity !== undefined) {
       variant.quantity = dto.quantity;
     }
-    if (dto.mediaIds?.length) {
-      const stagedById = await this.uploadMedia.requireForWorkspace(
-        workspace.id,
-        dto.mediaIds,
-      );
-      await this.insertProductMediaFromStaged(
+    if (dto.mediaIds !== undefined) {
+      const stagedById =
+        dto.mediaIds.length > 0
+          ? await this.uploadMedia.requireForWorkspace(
+              workspace.id,
+              dto.mediaIds,
+            )
+          : new Map<number, UploadMedia>();
+      await this.replaceVariantMediaFromStaged(
         this.variantRepo.manager,
         productId,
         variant.id,
@@ -1114,6 +1117,54 @@ export class ProductsService {
     }
   }
 
+  /** Replaces product-level gallery (variant_id IS NULL) from staged upload_media ids. */
+  private async replaceProductMediaFromStaged(
+    em: EntityManager,
+    productId: number,
+    mediaIds: number[],
+    stagedById: Map<number, { cdnUrl: string }>,
+  ): Promise<void> {
+    await em
+      .createQueryBuilder()
+      .delete()
+      .from(ProductMedia)
+      .where(
+        '"product_id" = :productId AND "variant_id" IS NULL',
+        { productId },
+      )
+      .execute();
+    await this.insertProductMediaFromStaged(
+      em,
+      productId,
+      null,
+      mediaIds,
+      stagedById,
+    );
+  }
+
+  /** Replaces a variant gallery from staged upload_media ids (same semantics as POST create). */
+  private async replaceVariantMediaFromStaged(
+    em: EntityManager,
+    productId: number,
+    variantId: number,
+    mediaIds: number[],
+    stagedById: Map<number, { cdnUrl: string }>,
+  ): Promise<void> {
+    await em
+      .createQueryBuilder()
+      .delete()
+      .from(ProductMedia)
+      .where('"variant_id" = :variantId', { variantId })
+      .execute();
+    await this.insertProductMediaFromStaged(
+      em,
+      productId,
+      variantId,
+      mediaIds,
+      stagedById,
+    );
+  }
+
   private async applyProductFieldUpdates(
     workspaceId: number,
     product: Product,
@@ -1157,16 +1208,18 @@ export class ProductsService {
     if (dto.quantity !== undefined) {
       product.quantity = dto.quantity;
     }
-    if (dto.mediaIds?.length) {
-      const stagedById = await this.uploadMedia.requireForWorkspace(
-        workspaceId,
-        dto.mediaIds,
-      );
+    if (dto.mediaIds !== undefined) {
+      const stagedById =
+        dto.mediaIds.length > 0
+          ? await this.uploadMedia.requireForWorkspace(
+              workspaceId,
+              dto.mediaIds,
+            )
+          : new Map<number, UploadMedia>();
       const manager = em ?? this.productRepo.manager;
-      await this.insertProductMediaFromStaged(
+      await this.replaceProductMediaFromStaged(
         manager,
         product.id,
-        null,
         dto.mediaIds,
         stagedById,
       );
@@ -1288,15 +1341,13 @@ export class ProductsService {
           variant.id,
           resolved,
         );
-        if (spec.mediaIds?.length) {
-          await this.insertProductMediaFromStaged(
-            em,
-            product.id,
-            variant.id,
-            spec.mediaIds,
-            stagedById,
-          );
-        }
+        await this.replaceVariantMediaFromStaged(
+          em,
+          product.id,
+          variant.id,
+          spec.mediaIds ?? [],
+          stagedById,
+        );
       }
     }
   }
@@ -1354,15 +1405,13 @@ export class ProductsService {
     variant.updatedByUserId = ownerId;
     await em.save(variant);
 
-    if (spec.mediaIds?.length) {
-      await this.insertProductMediaFromStaged(
-        em,
-        productId,
-        variant.id,
-        spec.mediaIds,
-        stagedById,
-      );
-    }
+    await this.replaceVariantMediaFromStaged(
+      em,
+      productId,
+      variant.id,
+      spec.mediaIds ?? [],
+      stagedById,
+    );
   }
 
   private async findVariantIdsReferencedByOrders(

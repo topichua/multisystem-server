@@ -71,7 +71,9 @@ export class CreateProductVariantInputDto {
 
   @ApiPropertyOptional({
     description:
-      "Staged upload_media ids for this variant; the same id may appear on multiple variants",
+      "Staged upload_media ids for this variant (POST /products/upload-media). " +
+      "On PUT /products/:id with `variants`, this is the full gallery: ids not listed are removed. " +
+      "Omit or send `[]` for no images. The same id may appear on multiple variants.",
     type: [Number],
   })
   @IsOptional()

@@ -287,6 +287,7 @@ export class ProductsController {
     summary: "Replace product",
     description:
       "Updates product fields and, when `variants` is provided, syncs the full variant list. " +
+      "Each variant's `mediaIds` is the full gallery (unlisted staged ids are removed; omit for no images). " +
       "Variants omitted from `variants` are hard-deleted, or archived when referenced by order line items.",
   })
   @ApiBody({ type: UpdateProductDto })
@@ -336,7 +337,7 @@ export class ProductsController {
   @ApiOperation({
     summary: "Update variant",
     description:
-      "JSON body. Use mediaIds to append variant images from staged uploads.",
+      "JSON body. `mediaIds` replaces the variant gallery (staged upload ids not in the list are removed).",
   })
   @ApiBody({ type: UpdateProductVariantDto })
   async updateVariant(
