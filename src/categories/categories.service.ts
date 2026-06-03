@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Not, Repository } from "typeorm";
-import { ProductCategory } from "../database/entities";
+import { Product, ProductCategory } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
 import type { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
@@ -20,6 +20,23 @@ export type CategoryTreeNodeDto = {
   createdAt: Date;
   updatedAt: Date;
   children: CategoryTreeNodeDto[];
+};
+
+export type CategorySubcategoryDto = {
+  id: number;
+  name: string;
+  parentId: number;
+  sortOrder: number;
+  createdByUserId: number;
+  createdAt: Date;
+  updatedAt: Date;
+  productCount: number;
+};
+
+export type CategoryDetailDto = CategoryTreeNodeDto & {
+  productCount: number;
+  totalProductCount: number;
+  subcategories: CategorySubcategoryDto[];
 };
 
 function compareCategoriesForSort(
@@ -37,6 +54,8 @@ export class CategoriesService {
   constructor(
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
     private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
@@ -53,7 +72,7 @@ export class CategoriesService {
   async findOneForOwner(
     ownerId: number,
     id: number,
-  ): Promise<CategoryTreeNodeDto> {
+  ): Promise<CategoryDetailDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
@@ -62,22 +81,88 @@ export class CategoriesService {
     if (!row) {
       throw new NotFoundException("Category not found");
     }
-    const rows = await this.categoryRepo.find({
-      where: { workspaceId, deletedAt: IsNull() },
-      order: { sortOrder: "ASC", name: "ASC" },
-    });
-    const tree = this.buildTree(rows);
-    const found = this.findNodeInForest(tree, id);
-    if (!found) {
-      throw new NotFoundException("Category not found");
+
+    const subcategoryRows =
+      row.parentId === null
+        ? await this.categoryRepo.find({
+            where: { workspaceId, parentId: id, deletedAt: IsNull() },
+            order: { sortOrder: "ASC", name: "ASC" },
+          })
+        : [];
+
+    const categoryIds = [row.id, ...subcategoryRows.map((s) => s.id)];
+    const productCounts = await this.countProductsByCategoryIds(
+      workspaceId,
+      categoryIds,
+    );
+
+    const productCount = productCounts.get(row.id) ?? 0;
+    const subcategories: CategorySubcategoryDto[] = subcategoryRows.map(
+      (sub) => ({
+        id: sub.id,
+        name: sub.name,
+        parentId: sub.parentId as number,
+        sortOrder: sub.sortOrder,
+        createdByUserId: sub.createdByUserId,
+        createdAt: sub.createdAt,
+        updatedAt: sub.updatedAt,
+        productCount: productCounts.get(sub.id) ?? 0,
+      }),
+    );
+    const subcategoriesProductCount = subcategories.reduce(
+      (sum, s) => sum + s.productCount,
+      0,
+    );
+
+    const children: CategoryTreeNodeDto[] = subcategories.map((sub) => ({
+      id: sub.id,
+      name: sub.name,
+      parentId: sub.parentId,
+      sortOrder: sub.sortOrder,
+      createdByUserId: sub.createdByUserId,
+      createdAt: sub.createdAt,
+      updatedAt: sub.updatedAt,
+      children: [],
+    }));
+
+    return {
+      id: row.id,
+      name: row.name,
+      parentId: row.parentId,
+      sortOrder: row.sortOrder,
+      createdByUserId: row.createdByUserId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      children,
+      productCount,
+      totalProductCount: productCount + subcategoriesProductCount,
+      subcategories,
+    };
+  }
+
+  private async countProductsByCategoryIds(
+    workspaceId: number,
+    categoryIds: number[],
+  ): Promise<Map<number, number>> {
+    if (categoryIds.length === 0) {
+      return new Map();
     }
-    return found;
+    const rows = await this.productRepo
+      .createQueryBuilder("p")
+      .select("p.categoryId", "categoryId")
+      .addSelect("COUNT(*)::int", "count")
+      .where("p.workspaceId = :workspaceId", { workspaceId })
+      .andWhere("p.categoryId IN (:...categoryIds)", { categoryIds })
+      .groupBy("p.categoryId")
+      .getRawMany<{ categoryId: number; count: number }>();
+
+    return new Map(rows.map((r) => [Number(r.categoryId), Number(r.count)]));
   }
 
   async createForOwner(
     ownerId: number,
     dto: CreateCategoryRequestDto,
-  ): Promise<CategoryTreeNodeDto> {
+  ): Promise<CategoryDetailDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const name = dto.name.trim();
@@ -115,7 +200,7 @@ export class CategoriesService {
     ownerId: number,
     id: number,
     dto: UpdateCategoryRequestDto,
-  ): Promise<CategoryTreeNodeDto> {
+  ): Promise<CategoryDetailDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
@@ -189,21 +274,40 @@ export class CategoriesService {
       );
     }
 
+    await this.softDeleteCategory(row, ownerId);
+  }
+
+  async removeSubcategoryForOwner(
+    ownerId: number,
+    parentId: number,
+    subcategoryId: number,
+  ): Promise<void> {
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    await this.requireExistingTopLevelParent(workspaceId, parentId);
+
+    const row = await this.categoryRepo.findOne({
+      where: {
+        id: subcategoryId,
+        workspaceId,
+        parentId,
+        deletedAt: IsNull(),
+      },
+    });
+    if (!row) {
+      throw new NotFoundException("Subcategory not found");
+    }
+
+    await this.softDeleteCategory(row, ownerId);
+  }
+
+  private async softDeleteCategory(
+    row: ProductCategory,
+    ownerId: number,
+  ): Promise<void> {
     row.deletedAt = new Date();
     row.deletedByUserId = ownerId;
     await this.categoryRepo.save(row);
-  }
-
-  private findNodeInForest(
-    forest: CategoryTreeNodeDto[],
-    id: number,
-  ): CategoryTreeNodeDto | null {
-    for (const node of forest) {
-      if (node.id === id) return node;
-      const nested = this.findNodeInForest(node.children, id);
-      if (nested) return nested;
-    }
-    return null;
   }
 
   private buildTree(rows: ProductCategory[]): CategoryTreeNodeDto[] {

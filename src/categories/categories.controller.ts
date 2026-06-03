@@ -13,11 +13,12 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
   CategoriesService,
+  type CategoryDetailDto,
   type CategoryTreeNodeDto,
 } from "./categories.service";
 import { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
@@ -36,10 +37,17 @@ export class CategoriesController {
   }
 
   @Get(":id")
+  @ApiOperation({
+    summary: "Get category",
+    description:
+      "Returns the category with subcategories (for top-level parents), " +
+      "productCount (products assigned directly to this category), and totalProductCount " +
+      "(direct + all subcategories).",
+  })
   async getById(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
-  ): Promise<CategoryTreeNodeDto> {
+  ): Promise<CategoryDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.categories.findOneForOwner(ownerId, id);
   }
@@ -48,7 +56,7 @@ export class CategoriesController {
   async create(
     @Req() req: { user?: AuthUser },
     @Body() dto: CreateCategoryRequestDto,
-  ): Promise<CategoryTreeNodeDto> {
+  ): Promise<CategoryDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.categories.createForOwner(ownerId, dto);
   }
@@ -58,13 +66,40 @@ export class CategoriesController {
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateCategoryRequestDto,
-  ): Promise<CategoryTreeNodeDto> {
+  ): Promise<CategoryDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.categories.updateForOwner(ownerId, id, dto);
   }
 
+  @Delete(":parentId/subcategories/:subcategoryId")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Delete subcategory",
+    description:
+      "Soft-deletes a subcategory under the given top-level parent. " +
+      "Use DELETE /categories/:id only for top-level categories (without subcategories).",
+  })
+  async removeSubcategory(
+    @Req() req: { user?: AuthUser },
+    @Param("parentId", ParseIntPipe) parentId: number,
+    @Param("subcategoryId", ParseIntPipe) subcategoryId: number,
+  ): Promise<void> {
+    const ownerId = this.requireNumericOwnerId(req);
+    await this.categories.removeSubcategoryForOwner(
+      ownerId,
+      parentId,
+      subcategoryId,
+    );
+  }
+
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Delete category",
+    description:
+      "Soft-deletes a category. Top-level categories must have no subcategories. " +
+      "Subcategories may also be removed via DELETE /categories/:parentId/subcategories/:subcategoryId.",
+  })
   async remove(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
