@@ -40,9 +40,8 @@ export class CategoriesController {
   @ApiOperation({
     summary: "Get category",
     description:
-      "Returns the category with subcategories (for top-level parents), " +
-      "productCount (products assigned directly to this category), and totalProductCount " +
-      "(direct + all subcategories).",
+      "Returns the category with subcategories (for top-level parents). " +
+      "productCount counts only products assigned directly to this category (parent or subcategory row).",
   })
   async getById(
     @Req() req: { user?: AuthUser },

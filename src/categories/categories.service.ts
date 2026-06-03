@@ -33,9 +33,16 @@ export type CategorySubcategoryDto = {
   productCount: number;
 };
 
-export type CategoryDetailDto = CategoryTreeNodeDto & {
+export type CategoryDetailDto = {
+  id: number;
+  name: string;
+  parentId: number | null;
+  sortOrder: number;
+  createdByUserId: number;
+  createdAt: Date;
+  updatedAt: Date;
+  /** Products assigned directly to this category (not subcategories). */
   productCount: number;
-  totalProductCount: number;
   subcategories: CategorySubcategoryDto[];
 };
 
@@ -109,22 +116,6 @@ export class CategoriesService {
         productCount: productCounts.get(sub.id) ?? 0,
       }),
     );
-    const subcategoriesProductCount = subcategories.reduce(
-      (sum, s) => sum + s.productCount,
-      0,
-    );
-
-    const children: CategoryTreeNodeDto[] = subcategories.map((sub) => ({
-      id: sub.id,
-      name: sub.name,
-      parentId: sub.parentId,
-      sortOrder: sub.sortOrder,
-      createdByUserId: sub.createdByUserId,
-      createdAt: sub.createdAt,
-      updatedAt: sub.updatedAt,
-      children: [],
-    }));
-
     return {
       id: row.id,
       name: row.name,
@@ -133,9 +124,7 @@ export class CategoriesService {
       createdByUserId: row.createdByUserId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      children,
       productCount,
-      totalProductCount: productCount + subcategoriesProductCount,
       subcategories,
     };
   }
