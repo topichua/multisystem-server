@@ -802,11 +802,8 @@ export class VariantCustomFieldsService {
     options: string[] | undefined,
   ): void {
     if (type === VariantCustomFieldType.options) {
-      if (!options?.length) {
-        throw new BadRequestException(
-          "options is required and must contain at least one value when type is options",
-        );
-      }
+      // Allow creating options-type fields without initial options
+      // Options can be added later via POST /workspace/variant-custom-fields/:id/option
       return;
     }
     if (options?.length) {

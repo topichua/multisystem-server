@@ -44,7 +44,7 @@ export class CreateVariantCustomFieldDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: "Required when type is `options`",
+    description: "Predefined option labels for type `options`; can be added later via POST /workspace/variant-custom-fields/:id/option",
   })
   @IsOptional()
   @IsArray()
