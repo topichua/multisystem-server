@@ -9,6 +9,7 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Put,
   Post,
   Req,
   UseGuards,
@@ -27,6 +28,10 @@ import {
   CreateVariantCustomFieldDto,
   UpdateVariantCustomFieldDto,
 } from "./dto/variant-custom-field-request.dto";
+import {
+  VariantCustomFieldOptionDto,
+  VariantCustomFieldOptionRequestDto,
+} from "./dto/variant-custom-field-option.dto";
 import {
   VariantCustomFieldDefinitionDto,
   VariantCustomFieldsListResponseDto,
@@ -104,6 +109,46 @@ export class VariantCustomFieldsController {
     @Param("id", ParseIntPipe) id: number,
   ): Promise<void> {
     return this.fields.deleteForOwner(this.requireOwnerId(req), id);
+  }
+
+  @Post(":id/option")
+  @ApiCreatedResponse({ type: VariantCustomFieldOptionDto })
+  createOption(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: VariantCustomFieldOptionRequestDto,
+  ): Promise<VariantCustomFieldOptionDto> {
+    return this.fields
+      .addOptionForOwner(this.requireOwnerId(req), id, dto.label)
+      .then((r) => ({ id: r.id, label: r.label }));
+  }
+
+  @Put(":id/option/:optionId")
+  @ApiOkResponse({ type: VariantCustomFieldOptionDto })
+  updateOption(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Param("optionId", ParseIntPipe) optionId: number,
+    @Body() dto: VariantCustomFieldOptionRequestDto,
+  ): Promise<VariantCustomFieldOptionDto> {
+    return this.fields
+      .updateOptionForOwner(this.requireOwnerId(req), id, optionId, dto.label)
+      .then((r) => ({ id: r.id, label: r.label }));
+  }
+
+  @Delete(":id/option/:optionId")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse()
+  deleteOption(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Param("optionId", ParseIntPipe) optionId: number,
+  ): Promise<void> {
+    return this.fields.deleteOptionForOwner(
+      this.requireOwnerId(req),
+      id,
+      optionId,
+    );
   }
 
   private requireOwnerId(req: { user?: AuthUser }): number {

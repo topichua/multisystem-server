@@ -171,6 +171,93 @@ export class VariantCustomFieldsService {
     await this.fieldRepo.remove(row);
   }
 
+  async addOptionForOwner(
+    ownerId: number,
+    fieldId: number,
+    label: string,
+  ): Promise<WorkspaceVariantCustomFieldOption> {
+    const field = await this.requireOwnedField(ownerId, fieldId);
+    if (field.type !== VariantCustomFieldType.options) {
+      throw new BadRequestException("Field is not an options type");
+    }
+
+    const existing = await this.findOptionByNormalizedLabel(
+      this.optionRepo,
+      field.id,
+      label,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    await this.assertWorkspacePermission(
+      ownerId,
+      field.workspaceId,
+      "products.variant_custom_field_options.create",
+    );
+
+    return this.optionRepo.save(
+      this.optionRepo.create({ fieldId: field.id, label: label.trim() }),
+    );
+  }
+
+  async updateOptionForOwner(
+    ownerId: number,
+    fieldId: number,
+    optionId: number,
+    label: string,
+  ): Promise<WorkspaceVariantCustomFieldOption> {
+    const field = await this.requireOwnedField(ownerId, fieldId);
+    if (field.type !== VariantCustomFieldType.options) {
+      throw new BadRequestException("Field is not an options type");
+    }
+
+    const option = await this.optionRepo.findOne({ where: { id: optionId } });
+    if (!option || option.fieldId !== field.id) {
+      throw new NotFoundException("Option not found for this field");
+    }
+
+    const normalized = normalizeCustomFieldOptionValue(label);
+    if (!normalized) {
+      throw new BadRequestException("value must not be empty");
+    }
+
+    const duplicate = await this.findOptionByNormalizedLabel(
+      this.optionRepo,
+      field.id,
+      label,
+    );
+    if (duplicate && duplicate.id !== option.id) {
+      throw new ConflictException("Another option with the same label exists");
+    }
+
+    option.label = label.trim();
+    return this.optionRepo.save(option);
+  }
+
+  async deleteOptionForOwner(
+    ownerId: number,
+    fieldId: number,
+    optionId: number,
+  ): Promise<void> {
+    const field = await this.requireOwnedField(ownerId, fieldId);
+    if (field.type !== VariantCustomFieldType.options) {
+      throw new BadRequestException("Field is not an options type");
+    }
+
+    const option = await this.optionRepo.findOne({ where: { id: optionId } });
+    if (!option || option.fieldId !== field.id) {
+      throw new NotFoundException("Option not found for this field");
+    }
+
+    const usage = await this.valueRepo.count({ where: { optionId: option.id } });
+    if (usage > 0) {
+      throw new ConflictException("Option is in use and cannot be deleted");
+    }
+
+    await this.optionRepo.remove(option);
+  }
+
   async getUsageForOwner(
     ownerId: number,
     fieldId: number,
