@@ -31,6 +31,7 @@ export type CategorySubcategoryDto = {
   createdAt: Date;
   updatedAt: Date;
   productCount: number;
+  productVariantCount: number;
 };
 
 export type CategoryDetailDto = {
@@ -43,6 +44,7 @@ export type CategoryDetailDto = {
   updatedAt: Date;
   /** Products assigned directly to this category (not subcategories). */
   productCount: number;
+  productVariantCount: number;
   subcategories: CategorySubcategoryDto[];
 };
 
@@ -98,12 +100,13 @@ export class CategoriesService {
         : [];
 
     const categoryIds = [row.id, ...subcategoryRows.map((s) => s.id)];
-    const productCounts = await this.countProductsByCategoryIds(
+    const counts = await this.countProductsAndVariantsByCategoryIds(
       workspaceId,
       categoryIds,
     );
 
-    const productCount = productCounts.get(row.id) ?? 0;
+    const productCount = counts.get(row.id)?.productCount ?? 0;
+    const productVariantCount = counts.get(row.id)?.productVariantCount ?? 0;
     const subcategories: CategorySubcategoryDto[] = subcategoryRows.map(
       (sub) => ({
         id: sub.id,
@@ -113,7 +116,8 @@ export class CategoriesService {
         createdByUserId: sub.createdByUserId,
         createdAt: sub.createdAt,
         updatedAt: sub.updatedAt,
-        productCount: productCounts.get(sub.id) ?? 0,
+        productCount: counts.get(sub.id)?.productCount ?? 0,
+        productVariantCount: counts.get(sub.id)?.productVariantCount ?? 0,
       }),
     );
     return {
@@ -125,27 +129,44 @@ export class CategoriesService {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       productCount,
+      productVariantCount,
       subcategories,
     };
   }
 
-  private async countProductsByCategoryIds(
+  private async countProductsAndVariantsByCategoryIds(
     workspaceId: number,
     categoryIds: number[],
-  ): Promise<Map<number, number>> {
+  ): Promise<
+    Map<number, { productCount: number; productVariantCount: number }>
+  > {
     if (categoryIds.length === 0) {
       return new Map();
     }
     const rows = await this.productRepo
       .createQueryBuilder("p")
       .select("p.categoryId", "categoryId")
-      .addSelect("COUNT(*)::int", "count")
+      .addSelect("COUNT(*)::int", "product_count")
+      .addSelect("COUNT(v.id)::int", "product_variant_count")
+      .leftJoin("product_variants", "v", "v.product_id = p.id")
       .where("p.workspaceId = :workspaceId", { workspaceId })
       .andWhere("p.categoryId IN (:...categoryIds)", { categoryIds })
       .groupBy("p.categoryId")
-      .getRawMany<{ categoryId: number; count: number }>();
+      .getRawMany<{
+        categoryId: number;
+        product_count: number;
+        product_variant_count: number;
+      }>();
 
-    return new Map(rows.map((r) => [Number(r.categoryId), Number(r.count)]));
+    return new Map(
+      rows.map((r) => [
+        Number(r.categoryId),
+        {
+          productCount: Number(r.product_count),
+          productVariantCount: Number(r.product_variant_count),
+        },
+      ]),
+    );
   }
 
   async createForOwner(

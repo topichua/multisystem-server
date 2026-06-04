@@ -31,6 +31,7 @@ import {
   VariantCustomFieldDefinitionDto,
   VariantCustomFieldsListResponseDto,
 } from "./dto/variant-custom-field-definition.dto";
+import { VariantCustomFieldUsageDto } from "./dto/variant-custom-field-usage.dto";
 import { VariantCustomFieldsService } from "./variant-custom-fields.service";
 
 @ApiTags("workspace")
@@ -53,6 +54,22 @@ export class VariantCustomFieldsController {
     @Req() req: { user?: AuthUser },
   ): Promise<VariantCustomFieldsListResponseDto> {
     return this.fields.listForOwner(this.requireOwnerId(req));
+  }
+
+  @Get(":id")
+  @ApiOperation({
+    summary: "Get custom field usage statistics",
+    description:
+      "Returns usage statistics for a workspace variant custom field. " +
+      "Option fields return all options and how many products use each option. " +
+      "Text fields return top 10 text values by usage count plus the total number of products using the field.",
+  })
+  @ApiOkResponse({ type: VariantCustomFieldUsageDto })
+  usage(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<VariantCustomFieldUsageDto> {
+    return this.fields.getUsageForOwner(this.requireOwnerId(req), id);
   }
 
   @Post()

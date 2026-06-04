@@ -68,6 +68,8 @@ export class VariantCustomFieldsService {
     private readonly fieldRepo: Repository<WorkspaceVariantCustomField>,
     @InjectRepository(WorkspaceVariantCustomFieldOption)
     private readonly optionRepo: Repository<WorkspaceVariantCustomFieldOption>,
+    @InjectRepository(ProductVariantCustomFieldValue)
+    private readonly valueRepo: Repository<ProductVariantCustomFieldValue>,
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
     @InjectRepository(WorkspaceMember)
@@ -167,6 +169,99 @@ export class VariantCustomFieldsService {
   async deleteForOwner(ownerId: number, fieldId: number): Promise<void> {
     const row = await this.requireOwnedField(ownerId, fieldId);
     await this.fieldRepo.remove(row);
+  }
+
+  async getUsageForOwner(
+    ownerId: number,
+    fieldId: number,
+  ): Promise<import("./dto/variant-custom-field-usage.dto").VariantCustomFieldUsageDto> {
+    const field = await this.requireOwnedField(ownerId, fieldId);
+    const totalProducts = await this.countProductsUsingField(field.id);
+
+    if (field.type === VariantCustomFieldType.options) {
+      const options = await this.optionRepo.find({
+        where: { fieldId: field.id },
+        order: { id: "ASC" },
+      });
+      const rawCounts = await this.valueRepo
+        .createQueryBuilder("v")
+        .leftJoin("v.variant", "variant")
+        .select("v.option_id", "option_id")
+        .addSelect("COUNT(DISTINCT variant.product_id)", "product_count")
+        .addSelect("COUNT(*)", "variant_count")
+        .where("v.field_id = :fieldId", { fieldId: field.id })
+        .andWhere("v.option_id IS NOT NULL")
+        .groupBy("v.option_id")
+        .getRawMany();
+
+      const countsMap = new Map<number, { productCount: number; productVariantCount: number }>();
+      for (const row of rawCounts) {
+        countsMap.set(Number(row.option_id), {
+          productCount: Number(row.product_count),
+          productVariantCount: Number(row.variant_count),
+        });
+      }
+      const optionUsages = options.map((option) => {
+        const counts = countsMap.get(option.id) ?? {
+          productCount: 0,
+          productVariantCount: 0,
+        };
+        return {
+          optionId: option.id,
+          label: option.label,
+          productCount: counts.productCount,
+          productVariantCount: counts.productVariantCount,
+        };
+      });
+
+      return {
+        id: field.id,
+        key: field.key,
+        label: field.label,
+        type: field.type,
+        totalProducts,
+        options: optionUsages,
+      };
+    }
+
+    const topTextValues = await this.valueRepo
+      .createQueryBuilder("v")
+      .leftJoin("v.variant", "variant")
+      .select("v.text_value", "value")
+      .addSelect("COUNT(DISTINCT variant.product_id)", "product_count")
+      .addSelect("COUNT(*)", "product_variant_count")
+      .where("v.field_id = :fieldId", { fieldId: field.id })
+      .andWhere("v.text_value IS NOT NULL")
+      .andWhere("v.text_value <> ''")
+      .groupBy("v.text_value")
+      .orderBy("product_variant_count", "DESC")
+      .addOrderBy("v.text_value", "ASC")
+      .limit(10)
+      .getRawMany();
+
+    return {
+      id: field.id,
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      totalProducts,
+      topTextValues: topTextValues.map((row) => ({
+        value: row.value as string,
+        productCount: Number(row.product_count),
+        productVariantCount: Number(row.product_variant_count),
+      })),
+    };
+  }
+
+  private async countProductsUsingField(fieldId: number): Promise<number> {
+    const raw = await this.valueRepo
+      .createQueryBuilder("v")
+      .leftJoin("v.variant", "variant")
+      .select("COUNT(DISTINCT variant.product_id)", "count")
+      .where("v.field_id = :fieldId", { fieldId })
+      .getRawOne();
+
+    return Number(raw?.count ?? 0);
   }
 
   /** Legacy `{ fieldId, value }` resolution (Instagram drafts, internal). */
