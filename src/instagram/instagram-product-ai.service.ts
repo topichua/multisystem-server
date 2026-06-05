@@ -8,17 +8,14 @@ import { ConfigService } from "@nestjs/config";
 import OpenAI from "openai";
 import type { CategoryTreeNodeDto } from "../categories/categories.service";
 import { CategoriesService } from "../categories/categories.service";
-import { ProductSourceType } from "../database/entities/product-source-type.enum";
 import {
   expandVariantColorSize,
   mergeAnalysisDescription,
   tryParsePriceFromOfferText,
 } from "../products/instagram-analysis-draft.util";
-import { ProductsService } from "../products/products.service";
 import type {
   AnalyzedCategoryDto,
   AnalyzedProductDto,
-  AnalyzeInstagramProductResponseDto,
   InstagramAnalyzeProductPreviewDto,
 } from "./dto/analyze-instagram-product.dto";
 import {
@@ -125,13 +122,8 @@ export class InstagramProductAiService {
     private readonly config: ConfigService,
     private readonly instagram: InstagramService,
     private readonly categories: CategoriesService,
-    private readonly products: ProductsService,
   ) {}
 
-  /**
-   * Vision + OpenAI analysis only — no catalog writes. Same model input as
-   * {@link analyzeProductFromMedia}.
-   */
   async analyzeProductPreviewFromMedia(
     ownerId: number,
     instagramMediaId: string,
@@ -163,42 +155,6 @@ export class InstagramProductAiService {
       categoryId: parsed.category.matchedCategoryId,
       variants,
       brandOrLabel: parsed.product.brandOrLabel ?? "",
-    };
-  }
-
-  async analyzeProductFromMedia(
-    ownerId: number,
-    instagramMediaId: string,
-  ): Promise<AnalyzeInstagramProductResponseDto> {
-    const { parsed, detail, assetUrl } = await this.runOpenAiProductAnalysis(
-      ownerId,
-      instagramMediaId,
-    );
-
-    const savedProduct = await this.products.createDraftFromInstagramAnalysis(
-      ownerId,
-      {
-        instagramMediaId,
-        mainImageUrl: assetUrl,
-        sourceType: ProductSourceType.instagram_post,
-        permalink: detail.permalink?.trim() ?? null,
-        caption: detail.caption?.trim() ?? null,
-        name: parsed.product.name,
-        shortDescription: parsed.product.shortDescription,
-        longDescription: parsed.product.longDescription,
-        colors: parsed.product.colors,
-        sizes: parsed.product.sizes,
-        visiblePriceOrOffer: parsed.product.visiblePriceOrOffer,
-        matchedCategoryId: parsed.category.matchedCategoryId,
-      },
-    );
-
-    return {
-      instagramMediaId,
-      product: parsed.product,
-      category: parsed.category,
-      catalogProductId: savedProduct.id,
-      savedProduct,
     };
   }
 

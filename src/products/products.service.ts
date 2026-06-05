@@ -17,8 +17,6 @@ import {
   OrderItem,
 } from "../database/entities";
 import { ProductMediaType } from "../database/entities/product-media-type.enum";
-import { ProductSourceReferenceType } from "../database/entities/product-source-reference-type.enum";
-import { ProductSourceType } from "../database/entities/product-source-type.enum";
 import { ProductStatus } from "../database/entities/product-status.enum";
 import { ProductType } from "../database/entities/product-type.enum";
 import type { CreateProductDto } from "./dto/create-product.dto";
@@ -35,11 +33,6 @@ import type { UpdateProductDto } from "./dto/update-product.dto";
 import type { UpdateProductMediaDto } from "./dto/update-product-media.dto";
 import type { UpdateProductVariantDto } from "./dto/update-product-variant.dto";
 import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
-import {
-  expandVariantColorSize,
-  mergeAnalysisDescription,
-  tryParsePriceFromOfferText,
-} from "./instagram-analysis-draft.util";
 import { ProductMediaService } from "./product-media.service";
 import { mediaSort, pickMainMediaUrl } from "./product-media.util";
 import { UploadMediaService } from "./upload-media.service";
@@ -47,7 +40,6 @@ import { WorkspaceAccessContextService } from "../workspace-access/workspace-acc
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
 import {
   buildVariantTitleFromFields,
-  colorSizeSpecToFieldValues,
   serializeVariantCustomFields,
 } from "../variant-custom-fields/variant-custom-fields.util";
 import type { VariantCustomFieldValueDto as VariantCustomFieldValueResponse } from "../variant-custom-fields/variant-custom-fields.util";
@@ -159,22 +151,6 @@ export type ProductVariantListResponseDto = {
   pageSize: number;
   limit: number;
   offset: number;
-};
-
-/** Neutral payload from Instagram (or other) analysis — keeps `products` free of Instagram imports. */
-export type CatalogProductFromAnalysisParams = {
-  instagramMediaId: string;
-  mainImageUrl: string;
-  sourceType: ProductSourceType;
-  permalink: string | null;
-  caption: string | null;
-  name: string;
-  shortDescription: string;
-  longDescription: string;
-  colors: string[];
-  sizes: string[];
-  visiblePriceOrOffer: string | null;
-  matchedCategoryId: number | null;
 };
 
 function assertListPriceRange(query: ListProductsQueryDto): void {
@@ -603,122 +579,6 @@ export class ProductsService {
         );
       }
     });
-  }
-
-  /**
-   * Creates a draft catalog product from vision/text analysis: variants = colors × sizes
-   * (or a single row when both lists are empty), optional category, and a source reference row.
-   */
-  async createDraftFromInstagramAnalysis(
-    ownerId: number,
-    params: CatalogProductFromAnalysisParams,
-  ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
-    const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
-    const defaultCurrency =
-      await this.workspaceSettings.getDefaultCurrencyForOwner(ownerId);
-    const name = params.name.trim().slice(0, 512);
-    if (!name) {
-      throw new BadRequestException("Product name is required");
-    }
-    await this.assertCategoryBelongsToWorkspaceIfSet(
-      workspace.id,
-      params.matchedCategoryId,
-    );
-
-    const description = mergeAnalysisDescription(
-      params.shortDescription,
-      params.longDescription,
-    );
-    const price = tryParsePriceFromOfferText(params.visiblePriceOrOffer);
-    const variantSpecs = expandVariantColorSize(params.colors, params.sizes);
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
-    const refType =
-      params.sourceType === ProductSourceType.instagram_story
-        ? ProductSourceReferenceType.instagram_story
-        : ProductSourceReferenceType.instagram_post;
-
-    let productId = 0;
-    await this.productRepo.manager.transaction(async (em) => {
-      const product = em.create(Product, {
-        workspaceId: workspace.id,
-        categoryId: params.matchedCategoryId ?? null,
-        name,
-        description,
-        status: ProductStatus.draft,
-        productType:
-          variantSpecs.length > 1 ? ProductType.variants : ProductType.single,
-        sourceType: params.sourceType,
-        price,
-        currency: defaultCurrency,
-        inStock: null,
-        quantity: null,
-        createdByUserId: ownerId,
-        updatedByUserId: null,
-      });
-      const saved = await em.save(product);
-      productId = saved.id;
-
-      const coverUrl = params.mainImageUrl.trim();
-      if (coverUrl) {
-        await em.insert(ProductMedia, {
-          productId: saved.id,
-          variantId: null,
-          url: coverUrl,
-          type: ProductMediaType.image,
-          sourceUrl: null,
-          sortOrder: 0,
-        });
-      }
-
-      const specsToInsert =
-        saved.productType === ProductType.single
-          ? variantSpecs.slice(0, 1)
-          : variantSpecs;
-
-      for (const spec of specsToInsert) {
-        const insertResult = await em.insert(ProductVariant, {
-          productId: saved.id,
-          price: null,
-          inStock: null,
-          quantity: null,
-          sku: null,
-          status: ProductStatus.draft,
-          createdByUserId: ownerId,
-          updatedByUserId: null,
-        });
-        const variantId = insertResult.identifiers[0].id as number;
-        const legacyValues = colorSizeSpecToFieldValues(fieldDefs, spec);
-        const resolved =
-          await this.variantCustomFields.resolveLegacyFieldIdValues(
-            workspace.id,
-            legacyValues,
-            em,
-          );
-        await this.variantCustomFields.upsertValuesForVariant(
-          em,
-          variantId,
-          resolved,
-        );
-      }
-
-      await em.insert(ProductSourceReference, {
-        companyId: integration.id,
-        productId: saved.id,
-        sourceType: refType,
-        sourceId: params.instagramMediaId,
-        permalink: params.permalink,
-        caption: params.caption,
-        createdByUserId: ownerId,
-      });
-    });
-
-    return this.findOneForOwner(ownerId, productId);
   }
 
   async updateForOwner(

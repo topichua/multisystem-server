@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsNotEmpty, IsString, MaxLength } from "class-validator";
-import type { ProductDetailDto } from "../../products/products.service";
 
 export class AnalyzeInstagramProductQueryDto {
   @ApiProperty({
@@ -68,18 +67,7 @@ export class InstagramAnalyzeProductPreviewDto {
   brandOrLabel: string;
 }
 
-export class AnalyzeInstagramProductRequestDto {
-  @ApiProperty({
-    description:
-      "Instagram Graph media id (from GET /api/instagram/media `id` field).",
-    example: "17841400008460056_1234567890",
-  })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(128)
-  mediaId: string;
-}
-
+/** Internal OpenAI JSON shape for legacy media preview analysis. */
 export class AnalyzedProductDto {
   @ApiProperty()
   name: string;
@@ -128,27 +116,4 @@ export class AnalyzedCategoryDto {
 
   @ApiProperty()
   reason: string;
-}
-
-export class AnalyzeInstagramProductResponseDto {
-  @ApiProperty()
-  instagramMediaId: string;
-
-  @ApiProperty({ type: () => AnalyzedProductDto })
-  product: AnalyzedProductDto;
-
-  @ApiProperty({ type: () => AnalyzedCategoryDto })
-  category: AnalyzedCategoryDto;
-
-  @ApiProperty({
-    description:
-      "Id of the draft catalog row created from this analysis (products + variants + source reference).",
-  })
-  catalogProductId: number;
-
-  @ApiProperty({
-    description:
-      "Full catalog product payload (same shape as GET /products/:id), including variants.",
-  })
-  savedProduct: ProductDetailDto;
 }

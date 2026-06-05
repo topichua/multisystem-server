@@ -1,28 +1,22 @@
 import {
   BadRequestException,
-  Body,
   Controller,
   Get,
-  Post,
+  Param,
   Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiOkResponse,
-  ApiOperation,
-} from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOkResponse, ApiOperation } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
   AnalyzeInstagramProductQueryDto,
-  AnalyzeInstagramProductRequestDto,
-  AnalyzeInstagramProductResponseDto,
   InstagramAnalyzeProductPreviewDto,
 } from "./dto/analyze-instagram-product.dto";
+import { InstagramPostAiExtractionResponseDto } from "./dto/instagram-post-ai-extraction-response.dto";
 import { InstagramMediaListResponseDto } from "./dto/instagram-media-response.dto";
+import { InstagramPostAiExtractionService } from "./instagram-post-ai-extraction.service";
 import { InstagramProductAiService } from "./instagram-product-ai.service";
 import { InstagramService } from "./instagram.service";
 
@@ -33,6 +27,7 @@ export class InstagramController {
   constructor(
     private readonly instagram: InstagramService,
     private readonly instagramProductAi: InstagramProductAiService,
+    private readonly instagramPostAiExtraction: InstagramPostAiExtractionService,
   ) {}
 
   @Get("media")
@@ -54,11 +49,37 @@ export class InstagramController {
     return this.instagram.listMediaForOwner(ownerId);
   }
 
+  @Get("posts/:instagramPostId/ai-extraction")
+  @ApiOperation({
+    summary: "AI extraction from Instagram post (read-only)",
+    description:
+      "Analyzes post caption, media, images/video previews, and categories with OpenAI. " +
+      "Returns product fields, generic attributes, and matchedFields mapped to workspace custom fields. " +
+      "Read-only — does not write to the database.",
+  })
+  @ApiOkResponse({ type: InstagramPostAiExtractionResponseDto })
+  async extractPostForProductForm(
+    @Req() req: { user?: AuthUser },
+    @Param("instagramPostId") instagramPostId: string,
+  ): Promise<InstagramPostAiExtractionResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const id = instagramPostId?.trim();
+    if (!id || id.length > 128) {
+      throw new BadRequestException("instagramPostId is invalid");
+    }
+    return this.instagramPostAiExtraction.extractPostForProductForm(ownerId, id);
+  }
+
   @Get("analyze-product")
   @ApiOperation({
     summary: "Preview product fields from Instagram media (no catalog write)",
     description:
-      "Same Graph + OpenAI flow as POST /api/instagram/media/analyze-product, but returns only suggested fields. Pass the Graph media id as query `mediaId`. Does not create a product or source reference.",
+      "Loads a single Graph media item, runs vision + OpenAI, and returns suggested fields. Pass the Graph media id as query `mediaId`. Does not create a product or source reference.",
   })
   @ApiOkResponse({ type: InstagramAnalyzeProductPreviewDto })
   async analyzeProductPreview(
@@ -74,32 +95,6 @@ export class InstagramController {
     return this.instagramProductAi.analyzeProductPreviewFromMedia(
       ownerId,
       query.mediaId.trim(),
-    );
-  }
-
-  @Post("media/analyze-product")
-  @ApiOperation({
-    summary: "Infer product fields and category from an Instagram media id",
-    description:
-      "Loads the media from Instagram Graph, downloads the image (or carousel first image / video thumbnail), sends it to OpenAI with the caption and your workspace category list, and returns structured JSON. " +
-      "Also creates a draft row in the catalog (`products`) with variants (colors × sizes), optional `category_id`, product gallery media, and a `product_source_references` row — see `catalogProductId` / `savedProduct` in the response. " +
-      "Requires OPENAI_API_KEY and a vision-capable model (default OPENAI_PRODUCT_VISION_MODEL=gpt-4o-mini).",
-  })
-  @ApiBody({ type: AnalyzeInstagramProductRequestDto })
-  @ApiOkResponse({ type: AnalyzeInstagramProductResponseDto })
-  async analyzeProduct(
-    @Req() req: { user?: AuthUser },
-    @Body() body: AnalyzeInstagramProductRequestDto,
-  ): Promise<AnalyzeInstagramProductResponseDto> {
-    const ownerId = Number(req.user?.userId);
-    if (!Number.isInteger(ownerId) || ownerId <= 0) {
-      throw new BadRequestException(
-        "Current authorized user does not contain numeric owner id",
-      );
-    }
-    return this.instagramProductAi.analyzeProductFromMedia(
-      ownerId,
-      body.mediaId.trim(),
     );
   }
 }
