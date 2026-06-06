@@ -7,13 +7,15 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ROLE_SUPER_ADMIN } from "../auth/constants";
-import { InstagramIntegration, Workspace } from "../database/entities";
+import { InstagramIntegration, Workspace, WorkspaceMember, WorkspaceMemberStatus } from "../database/entities";
 
 @Injectable()
 export class WorkspaceAccessContextService {
   constructor(
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
+    @InjectRepository(WorkspaceMember)
+    private readonly memberRepo: Repository<WorkspaceMember>,
     @InjectRepository(InstagramIntegration)
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
   ) {}
@@ -102,7 +104,7 @@ export class WorkspaceAccessContextService {
     });
   }
 
-  /** Workspace owner or platform super_admin. */
+  /** Workspace member or platform super_admin. */
   async requireWorkspaceOwner(
     ownerId: number,
     workspaceId: number,
@@ -120,9 +122,16 @@ export class WorkspaceAccessContextService {
     if (appRole === ROLE_SUPER_ADMIN) {
       return workspace;
     }
-    if (workspace.ownerId !== ownerId) {
+    const member = await this.memberRepo.findOne({
+      where: {
+        workspaceId,
+        userId: ownerId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+    });
+    if (!member) {
       throw new ForbiddenException(
-        "Only the workspace owner can perform this action",
+        "Only workspace members can perform this action",
       );
     }
     return workspace;

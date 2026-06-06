@@ -46,16 +46,13 @@ export class WorkspaceMembersService {
 
   async listForWorkspace(
     ownerId: number,
-    workspaceId: number,
     appRole?: string,
   ): Promise<WorkspaceMemberResponseDto[]> {
-    await this.workspaceContext.requireWorkspaceOwner(
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
-      workspaceId,
-      appRole,
     );
     const rows = await this.memberRepo.find({
-      where: { workspaceId, status: WorkspaceMemberStatus.ACTIVE },
+      where: { workspaceId: workspace.id, status: WorkspaceMemberStatus.ACTIVE },
       relations: ["user", "role"],
       order: { id: "ASC" },
     });
@@ -64,15 +61,13 @@ export class WorkspaceMembersService {
 
   async inviteForWorkspace(
     ownerId: number,
-    workspaceId: number,
     dto: InviteWorkspaceMemberRequestDto,
     appRole?: string,
   ): Promise<InviteWorkspaceMemberResponseDto> {
-    await this.workspaceContext.requireWorkspaceOwner(
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
-      workspaceId,
-      appRole,
     );
+    const workspaceId = workspace.id;
     const role = await this.rolesService.requireRoleInWorkspace(
       workspaceId,
       dto.role_id,

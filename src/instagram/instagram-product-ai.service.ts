@@ -26,6 +26,8 @@ import {
   PRODUCT_FROM_INSTAGRAM_SYSTEM_PROMPT,
   buildProductFromInstagramUserText,
 } from "./prompts/product-from-instagram-media.prompt";
+import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 
 function pickVisualAssetUrl(detail: InstagramGraphMediaDetail): string | null {
   const type = detail.media_type?.toUpperCase() ?? "";
@@ -122,6 +124,8 @@ export class InstagramProductAiService {
     private readonly config: ConfigService,
     private readonly instagram: InstagramService,
     private readonly categories: CategoriesService,
+    private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly variantFields: VariantCustomFieldsService,
   ) {}
 
   async analyzeProductPreviewFromMedia(
@@ -155,6 +159,9 @@ export class InstagramProductAiService {
       categoryId: parsed.category.matchedCategoryId,
       variants,
       brandOrLabel: parsed.product.brandOrLabel ?? "",
+      matchedCustomFields: parsed.matchedCustomFields ?? [],
+      suggestedCustomFieldOptions: parsed.suggestedCustomFieldOptions ?? [],
+      uncertainty: parsed.uncertainty ?? [],
     };
   }
 
@@ -162,7 +169,7 @@ export class InstagramProductAiService {
     ownerId: number,
     instagramMediaId: string,
   ): Promise<{
-    parsed: { product: AnalyzedProductDto; category: AnalyzedCategoryDto };
+    parsed: any;
     detail: InstagramGraphMediaDetail;
     assetUrl: string;
   }> {
@@ -204,6 +211,23 @@ export class InstagramProductAiService {
       categoryCatalogLines: catalogText,
     });
 
+    const workspaceId = await this.workspaceContext.resolveWorkspaceIdForOwner(
+      ownerId,
+    );
+    const fieldDefs = await this.variantFields.listDefinitionsForWorkspace(
+      workspaceId,
+    );
+    const fieldCatalog = fieldDefs.map((field) => ({
+      id: String(field.id),
+      name: field.label,
+      key: field.key,
+      type: field.type === undefined ? "text" : field.type,
+      allowedOptions: (field.fieldOptions ?? []).map((option) => ({
+        id: String(option.id),
+        value: option.label,
+      })),
+    }));
+
     const model =
       this.config.get<string>("OPENAI_PRODUCT_VISION_MODEL")?.trim() ||
       "gpt-4.1-nano";
@@ -222,6 +246,12 @@ export class InstagramProductAiService {
             content: [
               { type: "text", text: userText },
               { type: "image_url", image_url: { url: dataUrl } },
+              {
+                type: "text",
+                text:
+                  "Workspace custom fields (id/name/key/type/allowedOptions):\n" +
+                  JSON.stringify(fieldCatalog, null, 2),
+              },
             ],
           },
         ],
@@ -251,7 +281,13 @@ export class InstagramProductAiService {
   private normalizeAnalysis(
     raw: unknown,
     allowedIds: Set<number>,
-  ): { product: AnalyzedProductDto; category: AnalyzedCategoryDto } {
+  ): {
+    product: AnalyzedProductDto;
+    category: AnalyzedCategoryDto;
+    matchedCustomFields: Array<Record<string, unknown>>;
+    suggestedCustomFieldOptions: Array<Record<string, unknown>>;
+    uncertainty: string[];
+  } {
     const root =
       raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
     const p =
@@ -289,6 +325,27 @@ export class InstagramProductAiService {
           : null,
     };
 
+    const parseObjectsArray = (
+      value: unknown,
+    ): Array<Record<string, unknown>> => {
+      if (!Array.isArray(value)) return [];
+      return value
+        .filter((item): item is Record<string, unknown> =>
+          item && typeof item === "object" && !Array.isArray(item),
+        )
+        .map((item) => item as Record<string, unknown>);
+    };
+
+    const matchedCustomFields = parseObjectsArray(root.matchedCustomFields);
+    const suggestedCustomFieldOptions = parseObjectsArray(
+      root.suggestedCustomFieldOptions,
+    );
+    const uncertainty = Array.isArray(root.uncertainty)
+      ? (root.uncertainty as unknown[])
+          .filter((x): x is string => typeof x === "string")
+          .map((x) => x.trim())
+      : [];
+
     const category: AnalyzedCategoryDto = {
       matchedCategoryId: matchedId,
       matchedCategoryPath:
@@ -299,6 +356,12 @@ export class InstagramProductAiService {
       reason: asNonEmptyString(cr.reason, ""),
     };
 
-    return { product, category };
+    return {
+      product,
+      category,
+      matchedCustomFields,
+      suggestedCustomFieldOptions,
+      uncertainty,
+    };
   }
 }

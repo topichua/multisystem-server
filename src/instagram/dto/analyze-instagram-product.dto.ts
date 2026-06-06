@@ -21,6 +21,49 @@ export class InstagramAnalyzeProductVariantPreviewDto {
   size: string;
 }
 
+export class MatchedCustomFieldDto {
+  @ApiProperty()
+  fieldId: string;
+
+  @ApiProperty()
+
+  @ApiProperty({ type: () => [MatchedCustomFieldDto] })
+  matchedCustomFields: MatchedCustomFieldDto[];
+
+  @ApiProperty({ type: () => [SuggestedCustomFieldOptionDto] })
+  suggestedCustomFieldOptions: SuggestedCustomFieldOptionDto[];
+
+  @ApiProperty({ type: [String] })
+  uncertainty: string[];
+  fieldName: string;
+
+  @ApiProperty({ enum: ["text", "option"] })
+  type: "text" | "option";
+
+  @ApiProperty()
+  value: string;
+
+  @ApiPropertyOptional()
+  optionId?: string | null;
+
+  @ApiProperty({ enum: ["high", "medium", "low"] })
+  confidence: "high" | "medium" | "low";
+}
+
+export class SuggestedCustomFieldOptionDto {
+  @ApiProperty()
+  fieldId: string;
+
+  @ApiProperty()
+  fieldName: string;
+
+  @ApiProperty()
+  suggestedOptionValue: string;
+
+  @ApiProperty()
+  reason: string;
+}
+
 export class InstagramAnalyzeProductPreviewDto {
   @ApiProperty()
   name: string;
@@ -65,6 +108,15 @@ export class InstagramAnalyzeProductPreviewDto {
     description: "Brand or label inferred from image/caption (empty if none).",
   })
   brandOrLabel: string;
+
+  @ApiProperty({ type: () => [MatchedCustomFieldDto] })
+  matchedCustomFields: MatchedCustomFieldDto[];
+
+  @ApiProperty({ type: () => [SuggestedCustomFieldOptionDto] })
+  suggestedCustomFieldOptions: SuggestedCustomFieldOptionDto[];
+
+  @ApiProperty({ type: [String] })
+  uncertainty: string[];
 }
 
 /** Internal OpenAI JSON shape for legacy media preview analysis. */
