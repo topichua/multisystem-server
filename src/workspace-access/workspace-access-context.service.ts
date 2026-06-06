@@ -21,7 +21,7 @@ export class WorkspaceAccessContextService {
   ) {}
 
   /**
-   * Primary workspace for the owner (`workspace.owner_id`), optionally by explicit id.
+   * Primary workspace for the user as owner or active member, optionally by explicit id.
    */
   async requireWorkspaceForOwner(
     ownerId: number,
@@ -38,16 +38,28 @@ export class WorkspaceAccessContextService {
       return this.requireWorkspaceOwner(ownerId, workspaceIdParam, appRole);
     }
 
-    const workspace = await this.workspaceRepo.findOne({
+    // Check if user is owner of a workspace
+    let workspace = await this.workspaceRepo.findOne({
       where: { ownerId },
       order: { id: "DESC" },
     });
-    if (!workspace) {
-      throw new NotFoundException(
-        "Workspace not found for current user; create a workspace first",
-      );
+    if (workspace) {
+      return workspace;
     }
-    return workspace;
+
+    // Check if user is an active member of a workspace
+    const member = await this.memberRepo.findOne({
+      where: { userId: ownerId, status: WorkspaceMemberStatus.ACTIVE },
+      relations: ["workspace"],
+      order: { id: "DESC" },
+    });
+    if (member?.workspace) {
+      return member.workspace;
+    }
+
+    throw new NotFoundException(
+      "Workspace not found for current user; create a workspace or be invited as a member",
+    );
   }
 
   async resolveWorkspaceIdForOwner(
@@ -104,7 +116,7 @@ export class WorkspaceAccessContextService {
     });
   }
 
-  /** Workspace member or platform super_admin. */
+  /** Workspace member or owner or platform super_admin. */
   async requireWorkspaceOwner(
     ownerId: number,
     workspaceId: number,
@@ -122,6 +134,11 @@ export class WorkspaceAccessContextService {
     if (appRole === ROLE_SUPER_ADMIN) {
       return workspace;
     }
+    // Check if user is workspace owner
+    if (workspace.ownerId === ownerId) {
+      return workspace;
+    }
+    // Check if user is an active member
     const member = await this.memberRepo.findOne({
       where: {
         workspaceId,
@@ -131,7 +148,7 @@ export class WorkspaceAccessContextService {
     });
     if (!member) {
       throw new ForbiddenException(
-        "Only workspace members can perform this action",
+        "Only workspace owners and members can perform this action",
       );
     }
     return workspace;

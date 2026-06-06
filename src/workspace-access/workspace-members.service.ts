@@ -51,12 +51,29 @@ export class WorkspaceMembersService {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
+    const workspaceId = workspace.id;
+
+    // Fetch workspace owner details
+    const ownerUser = await this.userRepo.findOne({
+      where: { id: workspace.ownerId },
+    });
+    if (!ownerUser) {
+      throw new BadRequestException("Workspace owner not found");
+    }
+
+    // Fetch active members
     const rows = await this.memberRepo.find({
-      where: { workspaceId: workspace.id, status: WorkspaceMemberStatus.ACTIVE },
+      where: { workspaceId, status: WorkspaceMemberStatus.ACTIVE },
       relations: ["user", "role"],
       order: { id: "ASC" },
     });
-    return rows.map((r) => this.toDto(r));
+
+    // Build response including owner
+    const memberDtos = rows.map((r) => this.toDto(r));
+    const ownerDto = this.ownerToDto(workspace, ownerUser, workspaceId);
+
+    // Return owner first, then other members
+    return [ownerDto, ...memberDtos];
   }
 
   async inviteForWorkspace(
@@ -202,6 +219,29 @@ export class WorkspaceMembersService {
         email: row.user.email,
         firstName: row.user.firstName,
         lastName: row.user.lastName,
+      },
+    };
+  }
+
+  private ownerToDto(
+    workspace: any,
+    ownerUser: User,
+    workspaceId: number,
+  ): WorkspaceMemberResponseDto {
+    return {
+      id: 0, // No DB id for owner
+      workspaceId,
+      userId: ownerUser.id,
+      roleId: 0, // No explicit role for owner
+      roleSlug: "owner",
+      roleName: "Owner",
+      status: WorkspaceMemberStatus.ACTIVE,
+      joinedAt: workspace.createdAt?.toISOString() ?? new Date().toISOString(),
+      user: {
+        id: ownerUser.id,
+        email: ownerUser.email,
+        firstName: ownerUser.firstName,
+        lastName: ownerUser.lastName,
       },
     };
   }
