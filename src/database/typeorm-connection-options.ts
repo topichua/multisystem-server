@@ -54,6 +54,8 @@ import { VariantCustomFieldOptions1744200000054 } from "./migrations/17442000000
 import { VariantCustomFieldOptionDropNormalizedValue1744200000055 } from "./migrations/1744200000055-VariantCustomFieldOptionDropNormalizedValue";
 import { WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056 } from "./migrations/1744200000056-WorkspaceVariantCustomFieldDropOptionsJsonb";
 import { ProductVariantCustomFieldValueSortOrder1744200000057 } from "./migrations/1744200000057-ProductVariantCustomFieldValueSortOrder";
+import { OrderEventUserId1744200000058 } from "./migrations/1744200000058-OrderEventUserId";
+import { WorkspaceTemplates1744200000059 } from "./migrations/1744200000059-WorkspaceTemplates";
 import {
   Client,
   InstagramIntegration,
@@ -82,6 +84,7 @@ import {
   WorkspaceMember,
   WorkspaceRole,
 } from "./entities";
+import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
 export type DatabaseEnv = {
   DATABASE_URL?: string;
@@ -255,6 +258,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       VariantCustomFieldOptionDropNormalizedValue1744200000055,
       WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056,
       ProductVariantCustomFieldValueSortOrder1744200000057,
+      OrderEventUserId1744200000058,
+      WorkspaceTemplates1744200000059,
     ],
   };
 }

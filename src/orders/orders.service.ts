@@ -528,32 +528,65 @@ export class OrdersService {
     const pageSize = query.pageSize ?? 50;
     const page = query.page ?? 1;
     const skip = (page - 1) * pageSize;
-    const where: {
-      workspaceId: number;
-      statusId?: number;
-      customerId?: number;
-    } = {
-      workspaceId: workspace.id,
-    };
+    const workspaceId = workspace.id;
+
+    const qb = this.orderRepo.createQueryBuilder("o").where(
+      "o.workspaceId = :workspaceId",
+      { workspaceId },
+    );
+
     if (query.clientId != null) {
       const client = await this.clientRepo.findOne({
-        where: { id: query.clientId, workspaceId: workspace.id },
+        where: { id: query.clientId, workspaceId },
       });
       if (!client) {
         throw new NotFoundException("Client not found");
       }
-      where.customerId = query.clientId;
+      qb.andWhere("o.customerId = :clientId", { clientId: query.clientId });
     }
-    if (query.statusId != null) {
-      where.statusId = query.statusId;
+
+    // status filters: prefer `statuses` array, fall back to single statusId for compatibility
+    const statuses = (query as any).statuses ?? (query as any).statuses;
+    if (Array.isArray((query as any).statuses) && (query as any).statuses.length > 0) {
+      qb.andWhere("o.statusId IN (:...statuses)", { statuses: (query as any).statuses });
+    } else if ((query as any).statusId != null) {
+      qb.andWhere("o.statusId = :statusId", { statusId: (query as any).statusId });
     }
-    const [items, total] = await this.orderRepo.findAndCount({
-      where,
-      relations: { status: true, customer: true },
-      order: { createdAt: "DESC", id: "DESC" },
-      take: pageSize,
-      skip,
-    });
+
+    // created at range
+    if (query.createdFrom) {
+      qb.andWhere("o.createdAt >= :createdFrom", { createdFrom: query.createdFrom });
+    }
+    if (query.createdTo) {
+      qb.andWhere("o.createdAt <= :createdTo", { createdTo: query.createdTo });
+    }
+
+    // total amount range
+    if (query.totalPriceFrom != null) {
+      qb.andWhere("o.totalAmount >= :totalPriceFrom", { totalPriceFrom: query.totalPriceFrom });
+    }
+    if (query.totalPriceTo != null) {
+      qb.andWhere("o.totalAmount <= :totalPriceTo", { totalPriceTo: query.totalPriceTo });
+    }
+
+    // sources filter (instagram, telegram, manual)
+    if (Array.isArray(query.sources) && query.sources.length > 0) {
+      // Normalize values to match stored enum strings
+      const srcs = query.sources.map((s) => String(s).trim()).filter((s) => s.length > 0);
+      if (srcs.length > 0) {
+        qb.andWhere("o.source IN (:...sources)", { sources: srcs });
+      }
+    }
+
+    qb.orderBy("o.createdAt", "DESC").addOrderBy("o.id", "DESC");
+
+    const [items, total] = await qb
+      .take(pageSize)
+      .skip(skip)
+      .leftJoinAndSelect("o.status", "status")
+      .leftJoinAndSelect("o.customer", "customer")
+      .getManyAndCount();
+
     return { items, total, page, pageSize };
   }
 
@@ -744,6 +777,7 @@ export class OrdersService {
         orderId,
         type,
         actorId,
+        userId: actorId,
         payload,
       }),
     );

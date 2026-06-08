@@ -16,6 +16,7 @@ import { InstagramModule } from "./instagram/instagram.module";
 import { ProductsModule } from "./products/products.module";
 import { OrdersModule } from "./orders/orders.module";
 import { WorkspaceSettingsModule } from "./workspace-settings/workspace-settings.module";
+import { WorkspaceTemplatesModule } from "./workspace-templates/workspace-templates.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { TelegramIntegrationsModule } from "./telegram-integrations/telegram-integrations.module";
 import { VariantCustomFieldsModule } from "./variant-custom-fields/variant-custom-fields.module";
@@ -49,6 +50,7 @@ import { WorkspaceAccessModule } from "./workspace-access/workspace-access.modul
     ProductsModule,
     OrdersModule,
     WorkspaceSettingsModule,
+    WorkspaceTemplatesModule,
     IntegrationsModule,
     TelegramIntegrationsModule,
     WorkspaceAccessModule,

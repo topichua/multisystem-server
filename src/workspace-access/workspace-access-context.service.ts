@@ -74,7 +74,7 @@ export class WorkspaceAccessContextService {
     return workspace.id;
   }
 
-  /** Instagram row when Meta tokens / page id are required (conversations, OAuth, etc.). */
+  /** Instagram integration for workspace (accessible to owner or members). */
   async requireInstagramIntegrationForOwner(
     ownerId: number,
     workspaceIdParam?: number,
@@ -85,7 +85,7 @@ export class WorkspaceAccessContextService {
       workspaceIdParam,
     );
     const row = await this.instagramIntegrationRepo.findOne({
-      where: { ownerId, workspaceId: workspace.id },
+      where: { workspaceId: workspace.id },
       order: { id: "DESC" },
     });
     if (!row) {
@@ -111,7 +111,7 @@ export class WorkspaceAccessContextService {
       workspaceIdParam,
     );
     return this.instagramIntegrationRepo.findOne({
-      where: { ownerId, workspaceId: workspace.id },
+      where: { workspaceId: workspace.id },
       order: { id: "DESC" },
     });
   }

@@ -34,6 +34,13 @@ export class OrderEvent {
   @JoinColumn({ name: "actor_id" })
   actor: User | null;
 
+  @Column({ name: "user_id", type: "int", nullable: true })
+  userId: number | null;
+
+  @ManyToOne(() => User, { onDelete: "SET NULL", nullable: true })
+  @JoinColumn({ name: "user_id" })
+  user: User | null;
+
   @Column({ name: "payload", type: "jsonb", nullable: true })
   payload: Record<string, unknown> | null;
 
