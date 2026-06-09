@@ -59,7 +59,37 @@ export class InstagramMediaItemDto {
   children?: InstagramMediaChildDto[];
 }
 
+export class InstagramMediaPagingCursorsDto {
+  @ApiPropertyOptional({
+    description: "Pass as query `before` to load the previous page.",
+  })
+  before?: string;
+
+  @ApiPropertyOptional({
+    description: "Pass as query `after` to load the next page.",
+  })
+  after?: string;
+}
+
+export class InstagramMediaPagingDto {
+  @ApiPropertyOptional({ type: () => InstagramMediaPagingCursorsDto })
+  cursors?: InstagramMediaPagingCursorsDto;
+
+  @ApiPropertyOptional({
+    description: "Whether Graph returned a next page for this result set.",
+  })
+  has_next?: boolean;
+
+  @ApiPropertyOptional({
+    description: "Whether Graph returned a previous page for this result set.",
+  })
+  has_previous?: boolean;
+}
+
 export class InstagramMediaListResponseDto {
   @ApiProperty({ type: () => [InstagramMediaItemDto] })
   data: InstagramMediaItemDto[];
+
+  @ApiPropertyOptional({ type: () => InstagramMediaPagingDto })
+  paging?: InstagramMediaPagingDto;
 }

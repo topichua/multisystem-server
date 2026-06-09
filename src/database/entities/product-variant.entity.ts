@@ -11,6 +11,7 @@ import {
 } from "typeorm";
 
 import { ProductMedia } from "./product-media.entity";
+import { ProductInstagramReference } from "./product-instagram-reference.entity";
 import { ProductVariantCustomFieldValue } from "./product-variant-custom-field-value.entity";
 import { Product } from "./product.entity";
 import { ProductStatus } from "./product-status.enum";
@@ -35,6 +36,9 @@ export class ProductVariant {
 
   @OneToMany(() => ProductVariantCustomFieldValue, (v) => v.variant)
   customFieldValues: ProductVariantCustomFieldValue[];
+
+  @OneToMany(() => ProductInstagramReference, (r) => r.productVariant)
+  instagramReferences: ProductInstagramReference[];
 
   @Column({
     type: "decimal",

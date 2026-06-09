@@ -165,7 +165,7 @@ export class IntegrationsService {
           .driverError?.code === "23503"
       ) {
         throw new ConflictException(
-          "Cannot delete Instagram integration while products or source references still reference it",
+          "Cannot delete Instagram integration while other records still reference it",
         );
       }
       throw err;
@@ -191,10 +191,12 @@ export class IntegrationsService {
       row.name?.trim() ||
       `Instagram #${row.id}`;
     const connectedAt = row.tokenConnectedAt;
+    const businessAccountId = row.instagramAccountId?.trim();
     return {
       type: "instagram",
       name,
       id: row.id,
+      ...(businessAccountId ? { businessAccountId } : {}),
       ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
         ? { connectedAt: connectedAt.toISOString() }
         : {}),

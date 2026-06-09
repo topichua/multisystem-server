@@ -12,7 +12,6 @@ import {
 
 import { ProductCategory } from "./product-category.entity";
 import { ProductMedia } from "./product-media.entity";
-import { ProductSourceReference } from "./product-source-reference.entity";
 import { ProductSourceType } from "./product-source-type.enum";
 import { ProductStatus } from "./product-status.enum";
 import { ProductType } from "./product-type.enum";
@@ -124,6 +123,4 @@ export class Product {
   @OneToMany(() => ProductMedia, (m) => m.product)
   media: ProductMedia[];
 
-  @OneToMany(() => ProductSourceReference, (r) => r.product)
-  sourceReferences: ProductSourceReference[];
 }

@@ -33,6 +33,8 @@ const DEFAULT_OAUTH_SCOPES = [
   "business_management",
   "instagram_basic",
   "instagram_manage_messages",
+  "instagram_manage_comments",
+  "instagram_business_manage_comments",
   "pages_read_engagement",
 ];
 

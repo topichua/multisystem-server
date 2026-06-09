@@ -56,6 +56,9 @@ import { WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056 } from "./migr
 import { ProductVariantCustomFieldValueSortOrder1744200000057 } from "./migrations/1744200000057-ProductVariantCustomFieldValueSortOrder";
 import { OrderEventUserId1744200000058 } from "./migrations/1744200000058-OrderEventUserId";
 import { WorkspaceTemplates1744200000059 } from "./migrations/1744200000059-WorkspaceTemplates";
+import { ProductSourceReferenceExternalIdVariantId1744200000060 } from "./migrations/1744200000060-ProductSourceReferenceExternalIdVariantId";
+import { ProductInstagramReferences1744200000061 } from "./migrations/1744200000061-ProductInstagramReferences";
+import { ProductInstagramReferenceAccountId1744200000062 } from "./migrations/1744200000062-ProductInstagramReferenceAccountId";
 import {
   Client,
   InstagramIntegration,
@@ -71,7 +74,7 @@ import {
   Product,
   ProductCategory,
   ProductMedia,
-  ProductSourceReference,
+  ProductInstagramReference,
   ProductVariant,
   ProductVariantCustomFieldValue,
   UploadMedia,
@@ -152,7 +155,7 @@ const entities = [
   ProductVariant,
   ProductVariantCustomFieldValue,
   ProductMedia,
-  ProductSourceReference,
+  ProductInstagramReference,
   UploadMedia,
   WorkspaceVariantCustomField,
   WorkspaceVariantCustomFieldOption,
@@ -260,6 +263,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductVariantCustomFieldValueSortOrder1744200000057,
       OrderEventUserId1744200000058,
       WorkspaceTemplates1744200000059,
+      ProductSourceReferenceExternalIdVariantId1744200000060,
+      ProductInstagramReferences1744200000061,
+      ProductInstagramReferenceAccountId1744200000062,
     ],
   };
 }

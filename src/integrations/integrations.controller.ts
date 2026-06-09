@@ -103,7 +103,7 @@ export class IntegrationsController {
     summary: "Disconnect an integration",
     description:
       "**Instagram:** revokes Meta app permissions (best effort) and deletes the `instagram_integration` row. " +
-      "Returns 409 if `product_source_references` still reference it. Reconnect with `POST /integrations` (row is created on OAuth success). " +
+      "Reconnect with `POST /integrations` (row is created on OAuth success). " +
       "**Telegram:** detaches the live session and removes the `telegram_integrations` row.",
   })
   @ApiParam({ name: "type", enum: INTEGRATION_TYPES })

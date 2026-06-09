@@ -27,4 +27,10 @@ export class IntegrationListItemDto {
       "Telegram connect progress (`pending_code`, `active`, …); Instagram rows are only listed when connected",
   })
   status?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Instagram only: Business Account id (Graph `instagram_business_account.id`).",
+  })
+  businessAccountId?: string;
 }

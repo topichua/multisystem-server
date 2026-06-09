@@ -13,6 +13,7 @@ import { AuthModule } from "./auth/auth.module";
 import { ClientsModule } from "./clients/clients.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { InstagramModule } from "./instagram/instagram.module";
+import { ProductInstagramReferencesModule } from "./product-instagram-references/product-instagram-references.module";
 import { ProductsModule } from "./products/products.module";
 import { OrdersModule } from "./orders/orders.module";
 import { WorkspaceSettingsModule } from "./workspace-settings/workspace-settings.module";
@@ -48,6 +49,7 @@ import { WorkspaceAccessModule } from "./workspace-access/workspace-access.modul
     ClientsModule,
     CategoriesModule,
     ProductsModule,
+    ProductInstagramReferencesModule,
     OrdersModule,
     WorkspaceSettingsModule,
     WorkspaceTemplatesModule,

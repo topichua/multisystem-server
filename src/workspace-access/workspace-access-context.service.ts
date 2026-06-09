@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { IsNull, Not, Repository } from "typeorm";
 import { ROLE_SUPER_ADMIN } from "../auth/constants";
 import { InstagramIntegration, Workspace, WorkspaceMember, WorkspaceMemberStatus } from "../database/entities";
 
@@ -78,14 +78,19 @@ export class WorkspaceAccessContextService {
   async requireInstagramIntegrationForOwner(
     ownerId: number,
     workspaceIdParam?: number,
+    integrationId?: number,
   ): Promise<InstagramIntegration> {
+    if (integrationId != null) {
+      return this.requireInstagramIntegrationByIdForOwner(ownerId, integrationId);
+    }
+
     const workspace = await this.requireWorkspaceForOwner(
       ownerId,
       undefined,
       workspaceIdParam,
     );
     const row = await this.instagramIntegrationRepo.findOne({
-      where: { workspaceId: workspace.id },
+      where: { workspaceId: workspace.id, accessToken: Not(IsNull()) },
       order: { id: "DESC" },
     });
     if (!row) {
@@ -93,6 +98,25 @@ export class WorkspaceAccessContextService {
         "Instagram integration not found; connect Instagram via POST /integrations",
       );
     }
+    return row;
+  }
+
+  async requireInstagramIntegrationByIdForOwner(
+    ownerId: number,
+    integrationId: number,
+  ): Promise<InstagramIntegration> {
+    if (!Number.isInteger(integrationId) || integrationId <= 0) {
+      throw new BadRequestException(
+        "integrationId must be a positive integer",
+      );
+    }
+    const row = await this.instagramIntegrationRepo.findOne({
+      where: { id: integrationId },
+    });
+    if (!row) {
+      throw new NotFoundException("Instagram integration not found");
+    }
+    await this.requireWorkspaceOwner(ownerId, row.workspaceId);
     if (!row.accessToken?.trim()) {
       throw new NotFoundException(
         "Instagram is not connected; connect via POST /integrations",

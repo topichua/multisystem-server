@@ -7,10 +7,16 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { IsNull, Not, Repository } from "typeorm";
 import { InstagramIntegration } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
-import type { InstagramMediaItemDto } from "./dto/instagram-media-response.dto";
+import type { InstagramIntegrationsListResponseDto } from "./dto/instagram-integration-list-item.dto";
+import type { ListInstagramMediaQueryDto } from "./dto/list-instagram-media-query.dto";
+import type {
+  InstagramMediaItemDto,
+  InstagramMediaListResponseDto,
+  InstagramMediaPagingDto,
+} from "./dto/instagram-media-response.dto";
 
 const GRAPH_VERSION = "v25.0";
 
@@ -62,15 +68,45 @@ export class InstagramService {
     private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
+  /** Connected Instagram integrations for the workspace (`id` + display `name`). */
+  async listIntegrationsForOwner(
+    ownerId: number,
+    workspaceIdParam?: number,
+  ): Promise<InstagramIntegrationsListResponseDto> {
+    const workspaceId = await this.workspaceContext.resolveWorkspaceIdForOwner(
+      ownerId,
+      workspaceIdParam,
+    );
+    const rows = await this.instagramIntegrationRepo.find({
+      where: { workspaceId, accessToken: Not(IsNull()) },
+      order: { id: "ASC" },
+    });
+    return {
+      data: rows.map((row) => {
+        const businessAccountId = row.instagramAccountId?.trim();
+        return {
+          id: row.id,
+          name: this.integrationDisplayName(row),
+          ...(businessAccountId ? { businessAccountId } : {}),
+        };
+      }),
+    };
+  }
+
   /**
-   * Lists all Instagram feed media for the connected Business/Creator account
-   * (Graph `GET /{ig-user-id}/media`), using the Page access token on the owner’s integration.
+   * Lists one page of Instagram feed media for the connected Business/Creator account
+   * (Graph `GET /{ig-user-id}/media`), using cursor paging (`after` / `before`).
    */
   async listMediaForOwner(
     ownerId: number,
-  ): Promise<{ data: InstagramMediaItemDto[] }> {
+    query: ListInstagramMediaQueryDto = {},
+  ): Promise<InstagramMediaListResponseDto> {
     const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+      await this.workspaceContext.requireInstagramIntegrationForOwner(
+        ownerId,
+        undefined,
+        query.integrationId,
+      );
     const igUserId = integration.instagramAccountId?.trim();
     if (!igUserId) {
       throw new BadRequestException(
@@ -79,24 +115,56 @@ export class InstagramService {
     }
     const accessToken = await this.resolveGraphAccessToken(integration.id);
 
-    const out: InstagramMediaItemDto[] = [];
-    let nextUrl: string | null =
-      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(igUserId)}/media` +
-      `?fields=${encodeURIComponent(IG_MEDIA_FIELDS)}` +
-      `&limit=100` +
-      `&access_token=${encodeURIComponent(accessToken)}`;
-
-    while (nextUrl) {
-      const mediaPage: IgMediaListResponse =
-        await this.instagramGraphFetch<IgMediaListResponse>(new URL(nextUrl));
-      const batch = mediaPage.data ?? [];
-      for (const item of batch) {
-        out.push(this.normalizeMediaItem(item));
-      }
-      nextUrl = mediaPage.paging?.next ?? null;
+    const url = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(igUserId)}/media`,
+    );
+    url.searchParams.set("fields", IG_MEDIA_FIELDS);
+    url.searchParams.set("limit", String(query.limit ?? 25));
+    url.searchParams.set("access_token", accessToken);
+    if (query.after?.trim()) {
+      url.searchParams.set("after", query.after.trim());
+    }
+    if (query.before?.trim()) {
+      url.searchParams.set("before", query.before.trim());
     }
 
-    return { data: out };
+    const mediaPage =
+      await this.instagramGraphFetch<IgMediaListResponse>(url);
+
+    return {
+      data: (mediaPage.data ?? []).map((item) => this.normalizeMediaItem(item)),
+      paging: this.mapMediaPaging(mediaPage.paging),
+    };
+  }
+
+  private mapMediaPaging(
+    paging?: IgMediaPaging,
+  ): InstagramMediaPagingDto | undefined {
+    if (!paging) {
+      return undefined;
+    }
+
+    const before = paging.cursors?.before?.trim();
+    const after = paging.cursors?.after?.trim();
+    const hasNext = Boolean(paging.next ?? after);
+    const hasPrevious = Boolean(paging.previous ?? before);
+
+    if (!before && !after && !hasNext && !hasPrevious) {
+      return undefined;
+    }
+
+    return {
+      ...(before || after
+        ? {
+            cursors: {
+              ...(before ? { before } : {}),
+              ...(after ? { after } : {}),
+            },
+          }
+        : {}),
+      has_next: hasNext,
+      has_previous: hasPrevious,
+    };
   }
 
   /**
@@ -106,9 +174,14 @@ export class InstagramService {
   async fetchMediaByIdForOwner(
     ownerId: number,
     mediaId: string,
+    integrationId?: number,
   ): Promise<{ detail: InstagramGraphMediaDetail; accessToken: string }> {
     const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+      await this.workspaceContext.requireInstagramIntegrationForOwner(
+        ownerId,
+        undefined,
+        integrationId,
+      );
     const accessToken = await this.resolveGraphAccessToken(integration.id);
     const fields =
       "caption,media_type,media_url,thumbnail_url,permalink,shortcode," +
@@ -146,6 +219,14 @@ export class InstagramService {
       res.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
     const buffer = Buffer.from(await res.arrayBuffer());
     return { buffer, contentType };
+  }
+
+  private integrationDisplayName(row: InstagramIntegration): string {
+    return (
+      row.facebookPageName?.trim() ||
+      row.name?.trim() ||
+      `Instagram #${row.id}`
+    );
   }
 
   private normalizeMediaItem(

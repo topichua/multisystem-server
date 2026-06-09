@@ -33,7 +33,6 @@ import type { Request } from "express";
 import { CloudflareImagesService } from "./cloudflare-images.service";
 import { AddProductGalleryImageFormDto } from "./dto/add-product-gallery-image-form.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
-import { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
 import { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
 import { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
@@ -471,28 +470,6 @@ export class ProductsController {
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
     await this.products.removeMediaForOwner(ownerId, id, mediaId);
-  }
-
-  @Post(":id/source-references")
-  @HttpCode(HttpStatus.CREATED)
-  async addSourceReference(
-    @Req() req: { user?: AuthUser },
-    @Param("id", ParseIntPipe) id: number,
-    @Body() dto: CreateProductSourceReferenceDto,
-  ): Promise<ProductDetailDto> {
-    const ownerId = this.requireNumericOwnerId(req);
-    return this.products.createSourceReferenceForOwner(ownerId, id, dto);
-  }
-
-  @Delete(":id/source-references/:referenceId")
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async removeSourceReference(
-    @Req() req: { user?: AuthUser },
-    @Param("id", ParseIntPipe) id: number,
-    @Param("referenceId", ParseIntPipe) referenceId: number,
-  ): Promise<void> {
-    const ownerId = this.requireNumericOwnerId(req);
-    await this.products.removeSourceReferenceForOwner(ownerId, id, referenceId);
   }
 
   private requireNumericOwnerId(req: { user?: AuthUser }): number {

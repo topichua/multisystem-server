@@ -6,11 +6,9 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, IsNull, Repository, type EntityManager, type SelectQueryBuilder } from "typeorm";
 import {
-  InstagramIntegration,
   Product,
   ProductCategory,
   ProductMedia,
-  ProductSourceReference,
   ProductVariant,
   UploadMedia,
   WorkspaceVariantCustomField,
@@ -21,7 +19,6 @@ import { ProductStatus } from "../database/entities/product-status.enum";
 import { ProductType } from "../database/entities/product-type.enum";
 import type { CreateProductDto } from "./dto/create-product.dto";
 import type { CreateProductMediaDto } from "./dto/create-product-media.dto";
-import type { CreateProductSourceReferenceDto } from "./dto/create-product-source-reference.dto";
 import type { CreateProductVariantInputDto } from "./dto/create-product-variant-input.dto";
 import type { UpdateProductVariantSyncDto } from "./dto/update-product-variant-sync.dto";
 import type { CreateProductVariantDto } from "./dto/create-product-variant.dto";
@@ -90,15 +87,6 @@ export type ProductMediaDto = {
   updatedAt: Date;
 };
 
-export type ProductSourceReferenceDto = {
-  id: number;
-  sourceType: string;
-  sourceId: string;
-  permalink: string | null;
-  caption: string | null;
-  createdAt: Date;
-};
-
 export type ProductCategorySummaryDto = {
   id: number;
   name: string;
@@ -132,7 +120,6 @@ export type ProductDetailDto = ProductListItemBaseDto & {
   category: ProductCategorySummaryDto | null;
   variants: ProductVariantDto[];
   media: ProductMediaDto[];
-  sourceReferences: ProductSourceReferenceDto[];
 };
 
 export type ProductListResponseDto = {
@@ -229,8 +216,6 @@ export class ProductsService {
     private readonly variantRepo: Repository<ProductVariant>,
     @InjectRepository(ProductMedia)
     private readonly mediaRepo: Repository<ProductMedia>,
-    @InjectRepository(ProductSourceReference)
-    private readonly sourceRefRepo: Repository<ProductSourceReference>,
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
     @InjectRepository(OrderItem)
@@ -244,11 +229,6 @@ export class ProductsService {
 
   async getWorkspaceIdForOwner(ownerId: number): Promise<number> {
     return this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-  }
-
-  /** Used when Instagram source-reference rows or Graph context is required. */
-  async getIntegrationForOwner(ownerId: number): Promise<InstagramIntegration> {
-    return this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
   }
 
   async listForOwner(
@@ -468,7 +448,6 @@ export class ProductsService {
         category: true,
         variants: { customFieldValues: true },
         media: true,
-        sourceReferences: true,
       },
     });
     if (!product) {
@@ -884,46 +863,6 @@ export class ProductsService {
       throw new NotFoundException("Media not found");
     }
     await this.mediaRepo.remove(media);
-  }
-
-  async createSourceReferenceForOwner(
-    ownerId: number,
-    productId: number,
-    dto: CreateProductSourceReferenceDto,
-  ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
-    const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
-    await this.requireProduct(workspace.id, productId);
-    const row = this.sourceRefRepo.create({
-      companyId: integration.id,
-      productId,
-      sourceType: dto.sourceType,
-      sourceId: dto.sourceId.trim(),
-      permalink: dto.permalink?.trim() || null,
-      caption: dto.caption?.trim() || null,
-      createdByUserId: ownerId,
-    });
-    await this.sourceRefRepo.save(row);
-    return this.findOneForOwner(ownerId, productId);
-  }
-
-  async removeSourceReferenceForOwner(
-    ownerId: number,
-    productId: number,
-    referenceId: number,
-  ): Promise<void> {
-    const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
-    const ref = await this.sourceRefRepo.findOne({
-      where: { id: referenceId, productId, companyId: integration.id },
-    });
-    if (!ref) {
-      throw new NotFoundException("Source reference not found");
-    }
-    await this.sourceRefRepo.remove(ref);
   }
 
   private collectStagedMediaIds(dto: CreateProductDto): number[] {
@@ -1648,7 +1587,6 @@ export class ProductsService {
     const productLevelMedia = allMedia
       .filter((m) => m.variantId == null)
       .sort(mediaSort);
-    const refs = [...(p.sourceReferences ?? [])].sort((a, b) => a.id - b.id);
     const categoryNode = p.category;
     const categorySummary: ProductCategorySummaryDto | null = categoryNode
       ? {
@@ -1667,14 +1605,6 @@ export class ProductsService {
       category: categorySummary,
       variants: this.buildVariantDtos(p, fieldDefs),
       media: productLevelMedia.map((m) => this.toMediaDto(m)),
-      sourceReferences: refs.map((r) => ({
-        id: r.id,
-        sourceType: r.sourceType,
-        sourceId: r.sourceId,
-        permalink: r.permalink,
-        caption: r.caption,
-        createdAt: r.createdAt,
-      })),
     };
   }
 }
