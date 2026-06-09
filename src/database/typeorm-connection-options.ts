@@ -159,6 +159,7 @@ const entities = [
   UploadMedia,
   WorkspaceVariantCustomField,
   WorkspaceVariantCustomFieldOption,
+  WorkspaceTemplate,
   OrderStatus,
   Order,
   OrderItem,
