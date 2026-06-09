@@ -923,7 +923,7 @@ export class ProductsService {
     mediaIds: number[],
     stagedById: Map<number, { cdnUrl: string }>,
   ): Promise<void> {
-    await em 
+    await em
       .createQueryBuilder()
       .delete()
       .from(ProductMedia)
