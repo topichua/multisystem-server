@@ -12,6 +12,8 @@ import {
 } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { CreateProductInstagramReferenceDto } from "./dto/create-product-instagram-reference.dto";
+import type { InstagramPostProductVariantsResponseDto } from "../instagram/dto/instagram-post-product-variants-response.dto";
+import { ProductsService } from "../products/products.service";
 import type { ProductInstagramReferenceProductIdsResponseDto } from "./dto/product-instagram-reference-product-ids-response.dto";
 import type {
   ProductInstagramReferenceDto,
@@ -28,6 +30,7 @@ export class ProductInstagramReferencesService {
     @InjectRepository(ProductVariant)
     private readonly variantRepo: Repository<ProductVariant>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly products: ProductsService,
   ) {}
 
   async listProductIdsForInstagramAccount(
@@ -54,6 +57,76 @@ export class ProductInstagramReferencesService {
 
     return {
       businessAccountId: accountId,
+      pairs: rows.map((row) => ({
+        productId: Number(row.productId),
+        productVariantId:
+          row.productVariantId == null ? null : Number(row.productVariantId),
+      })),
+    };
+  }
+
+  async listProductsForPost(
+    ownerId: number,
+    postId: string,
+    integrationId: number,
+  ): Promise<InstagramPostProductVariantsResponseDto> {
+    const { postId: trimmedPostId, businessAccountId, pairs } =
+      await this.resolveReferencePairsForPost(ownerId, postId, integrationId);
+    const items = await this.products.listListItemsForInstagramReferencePairs(
+      ownerId,
+      pairs,
+    );
+    return {
+      postId: trimmedPostId,
+      businessAccountId,
+      items,
+    };
+  }
+
+  private async resolveReferencePairsForPost(
+    ownerId: number,
+    postId: string,
+    integrationId: number,
+  ): Promise<{
+    postId: string;
+    businessAccountId: string;
+    pairs: Array<{ productId: number; productVariantId: number | null }>;
+  }> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationByIdForOwner(
+        ownerId,
+        integrationId,
+      );
+    const businessAccountId = integration.instagramAccountId?.trim();
+    if (!businessAccountId) {
+      throw new NotFoundException(
+        "Instagram integration has no connected Business account id",
+      );
+    }
+    const trimmedPostId = postId.trim();
+    const rows = await this.referenceRepo
+      .createQueryBuilder("r")
+      .select("r.product_id", "productId")
+      .addSelect("r.product_variant_id", "productVariantId")
+      .distinct(true)
+      .where("r.workspace_id = :workspaceId", { workspaceId: workspace.id })
+      .andWhere("r.instagram_account_id = :accountId", {
+        accountId: businessAccountId,
+      })
+      .andWhere("r.post_id = :postId", { postId: trimmedPostId })
+      .orderBy("r.product_id", "ASC")
+      .addOrderBy("r.product_variant_id", "ASC", "NULLS FIRST")
+      .getRawMany<{
+        productId: string | number;
+        productVariantId: string | number | null;
+      }>();
+
+    return {
+      postId: trimmedPostId,
+      businessAccountId,
       pairs: rows.map((row) => ({
         productId: Number(row.productId),
         productVariantId:

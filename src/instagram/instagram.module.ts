@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { CategoriesModule } from "../categories/categories.module";
 import { InstagramIntegration } from "../database/entities";
+import { ProductInstagramReferencesModule } from "../product-instagram-references/product-instagram-references.module";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
 import { InstagramController } from "./instagram.controller";
 import { InstagramPostAiExtractionService } from "./instagram-post-ai-extraction.service";
@@ -12,6 +13,7 @@ import { InstagramService } from "./instagram.service";
   imports: [
     TypeOrmModule.forFeature([InstagramIntegration]),
     CategoriesModule,
+    ProductInstagramReferencesModule,
     VariantCustomFieldsModule,
   ],
   controllers: [InstagramController],

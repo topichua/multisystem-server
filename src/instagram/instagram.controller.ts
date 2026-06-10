@@ -19,8 +19,10 @@ import {
   AnalyzeInstagramProductQueryDto,
   InstagramAnalyzeProductPreviewDto,
 } from "./dto/analyze-instagram-product.dto";
+import { ProductInstagramReferencesService } from "../product-instagram-references/product-instagram-references.service";
 import { InstagramPostAiExtractionQueryDto } from "./dto/instagram-post-ai-extraction-query.dto";
 import { InstagramPostAiExtractionResponseDto } from "./dto/instagram-post-ai-extraction-response.dto";
+import { InstagramPostProductVariantsResponseDto } from "./dto/instagram-post-product-variants-response.dto";
 import { InstagramIntegrationsListResponseDto } from "./dto/instagram-integration-list-item.dto";
 import { InstagramMediaListResponseDto } from "./dto/instagram-media-response.dto";
 import { ListInstagramMediaQueryDto } from "./dto/list-instagram-media-query.dto";
@@ -36,6 +38,7 @@ export class InstagramController {
     private readonly instagram: InstagramService,
     private readonly instagramProductAi: InstagramProductAiService,
     private readonly instagramPostAiExtraction: InstagramPostAiExtractionService,
+    private readonly productInstagramReferences: ProductInstagramReferencesService,
   ) {}
 
   @Get("integrations")
@@ -95,6 +98,37 @@ export class InstagramController {
       );
     }
     return this.instagram.listMediaForOwner(ownerId, query);
+  }
+
+  @Get("posts/:instagramPostId/product-variants")
+  @ApiOperation({
+    summary: "List products and variants referenced for an Instagram post",
+    description:
+      "Returns products with nested variants (same shape as GET /products items) for rows in " +
+      "`product_instagram_references` matching the post and integration. " +
+      "Variant-specific references include only those variants; product-level references include all variants.",
+  })
+  @ApiOkResponse({ type: InstagramPostProductVariantsResponseDto })
+  async listProductVariantsForPost(
+    @Req() req: { user?: AuthUser },
+    @Param("instagramPostId") instagramPostId: string,
+    @Query() query: InstagramPostAiExtractionQueryDto,
+  ): Promise<InstagramPostProductVariantsResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const id = instagramPostId?.trim();
+    if (!id || id.length > 128) {
+      throw new BadRequestException("instagramPostId is invalid");
+    }
+    return this.productInstagramReferences.listProductsForPost(
+      ownerId,
+      id,
+      query.integrationId,
+    );
   }
 
   @Get("posts/:instagramPostId/ai-extraction")

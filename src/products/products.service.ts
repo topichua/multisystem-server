@@ -1502,11 +1502,79 @@ export class ProductsService {
     };
   }
 
+  /**
+   * Products (with nested variants) linked via `product_instagram_references` pairs.
+   * When a pair has `productVariantId: null`, all variants for that product are included.
+   */
+  async listListItemsForInstagramReferencePairs(
+    ownerId: number,
+    pairs: Array<{ productId: number; productVariantId: number | null }>,
+  ): Promise<ProductListItemDto[]> {
+    if (pairs.length === 0) {
+      return [];
+    }
+
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const filterByProduct = new Map<
+      number,
+      { includeAllVariants: boolean; variantIds: Set<number> }
+    >();
+    for (const pair of pairs) {
+      let filter = filterByProduct.get(pair.productId);
+      if (!filter) {
+        filter = { includeAllVariants: false, variantIds: new Set() };
+        filterByProduct.set(pair.productId, filter);
+      }
+      if (pair.productVariantId == null) {
+        filter.includeAllVariants = true;
+      } else {
+        filter.variantIds.add(pair.productVariantId);
+      }
+    }
+
+    const productIds = [...filterByProduct.keys()];
+    const loaded = await this.productRepo.find({
+      where: { id: In(productIds), workspaceId: workspace.id },
+      relations: {
+        variants: { customFieldValues: true },
+        media: true,
+      },
+      order: { id: "ASC" },
+    });
+    if (loaded.length === 0) {
+      return [];
+    }
+
+    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
+      workspace.id,
+    );
+    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
+      productIds,
+    );
+
+    return loaded.map((p) => {
+      const filter = filterByProduct.get(p.id)!;
+      return {
+        ...this.toListItem(p, mainImageByProductId),
+        variants: this.buildVariantDtos(p, fieldDefs, filter),
+      };
+    });
+  }
+
   private buildVariantDtos(
     p: Product,
     fieldDefs: WorkspaceVariantCustomField[],
+    variantFilter?: {
+      includeAllVariants: boolean;
+      variantIds: Set<number>;
+    },
   ): ProductVariantDto[] {
-    const variants = [...(p.variants ?? [])].sort((a, b) => a.id - b.id);
+    let variants = [...(p.variants ?? [])].sort((a, b) => a.id - b.id);
+    if (variantFilter && !variantFilter.includeAllVariants) {
+      variants = variants.filter((v) => variantFilter.variantIds.has(v.id));
+    }
     const allMedia = [...(p.media ?? [])];
     const mediaByVariant = new Map<number, ProductMedia[]>();
     for (const m of allMedia) {
