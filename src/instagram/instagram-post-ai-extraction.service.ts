@@ -43,6 +43,7 @@ export class InstagramPostAiExtractionService {
   async extractPostForProductForm(
     ownerId: number,
     instagramPostId: string,
+    integrationId: number,
   ): Promise<InstagramPostAiExtractionResponseDto> {
     const postId = instagramPostId.trim();
     if (!postId) {
@@ -52,6 +53,7 @@ export class InstagramPostAiExtractionService {
     const { detail, accessToken } = await this.instagram.fetchMediaByIdForOwner(
       ownerId,
       postId,
+      integrationId,
     );
 
     const media = extractInstagramPostMedia(detail, postId);

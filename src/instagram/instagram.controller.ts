@@ -19,6 +19,7 @@ import {
   AnalyzeInstagramProductQueryDto,
   InstagramAnalyzeProductPreviewDto,
 } from "./dto/analyze-instagram-product.dto";
+import { InstagramPostAiExtractionQueryDto } from "./dto/instagram-post-ai-extraction-query.dto";
 import { InstagramPostAiExtractionResponseDto } from "./dto/instagram-post-ai-extraction-response.dto";
 import { InstagramIntegrationsListResponseDto } from "./dto/instagram-integration-list-item.dto";
 import { InstagramMediaListResponseDto } from "./dto/instagram-media-response.dto";
@@ -42,7 +43,7 @@ export class InstagramController {
     summary: "List connected Instagram integrations",
     description:
       "Returns `id` and `name` for each connected Instagram integration in your workspace. " +
-      "Use `id` as `integrationId` on GET /api/instagram/media when you have multiple accounts.",
+      "Use `id` as `integrationId` on GET /api/instagram/media and GET /api/instagram/posts/:id/ai-extraction.",
   })
   @ApiQuery({
     name: "workspace_id",
@@ -102,12 +103,14 @@ export class InstagramController {
     description:
       "Analyzes post caption, media, images/video previews, and categories with OpenAI. " +
       "Returns product fields, generic attributes, and matchedFields mapped to workspace custom fields. " +
+      "Pass `integrationId` from GET /api/instagram/integrations to use the correct Page token. " +
       "Read-only — does not write to the database.",
   })
   @ApiOkResponse({ type: InstagramPostAiExtractionResponseDto })
   async extractPostForProductForm(
     @Req() req: { user?: AuthUser },
     @Param("instagramPostId") instagramPostId: string,
+    @Query() query: InstagramPostAiExtractionQueryDto,
   ): Promise<InstagramPostAiExtractionResponseDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
@@ -119,7 +122,11 @@ export class InstagramController {
     if (!id || id.length > 128) {
       throw new BadRequestException("instagramPostId is invalid");
     }
-    return this.instagramPostAiExtraction.extractPostForProductForm(ownerId, id);
+    return this.instagramPostAiExtraction.extractPostForProductForm(
+      ownerId,
+      id,
+      query.integrationId,
+    );
   }
 
   @Get("analyze-product")
