@@ -1503,50 +1503,37 @@ export class ProductsService {
   }
 
   /**
-   * Products (with nested variants) linked via `product_instagram_references` pairs.
-   * When a pair has `productVariantId: null`, all variants for that product are included.
+   * One product list item per Instagram reference row (includes `referenceId`).
+   * When `productVariantId` is null, all variants for that product are included.
    */
-  async listListItemsForInstagramReferencePairs(
+  async listListItemsForInstagramReferences(
     ownerId: number,
-    pairs: Array<{ productId: number; productVariantId: number | null }>,
-  ): Promise<ProductListItemDto[]> {
-    if (pairs.length === 0) {
+    references: Array<{
+      referenceId: number;
+      productId: number;
+      productVariantId: number | null;
+    }>,
+  ): Promise<Array<{ referenceId: number; product: ProductListItemDto }>> {
+    if (references.length === 0) {
       return [];
     }
 
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
-    const filterByProduct = new Map<
-      number,
-      { includeAllVariants: boolean; variantIds: Set<number> }
-    >();
-    for (const pair of pairs) {
-      let filter = filterByProduct.get(pair.productId);
-      if (!filter) {
-        filter = { includeAllVariants: false, variantIds: new Set() };
-        filterByProduct.set(pair.productId, filter);
-      }
-      if (pair.productVariantId == null) {
-        filter.includeAllVariants = true;
-      } else {
-        filter.variantIds.add(pair.productVariantId);
-      }
-    }
-
-    const productIds = [...filterByProduct.keys()];
+    const productIds = [...new Set(references.map((r) => r.productId))];
     const loaded = await this.productRepo.find({
       where: { id: In(productIds), workspaceId: workspace.id },
       relations: {
         variants: { customFieldValues: true },
         media: true,
       },
-      order: { id: "ASC" },
     });
     if (loaded.length === 0) {
       return [];
     }
 
+    const productById = new Map(loaded.map((p) => [p.id, p]));
     const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
       workspace.id,
     );
@@ -1554,13 +1541,29 @@ export class ProductsService {
       productIds,
     );
 
-    return loaded.map((p) => {
-      const filter = filterByProduct.get(p.id)!;
-      return {
-        ...this.toListItem(p, mainImageByProductId),
-        variants: this.buildVariantDtos(p, fieldDefs, filter),
-      };
-    });
+    const items: Array<{ referenceId: number; product: ProductListItemDto }> =
+      [];
+    for (const ref of references) {
+      const p = productById.get(ref.productId);
+      if (!p) {
+        continue;
+      }
+      const variantFilter =
+        ref.productVariantId == null
+          ? { includeAllVariants: true, variantIds: new Set<number>() }
+          : {
+              includeAllVariants: false,
+              variantIds: new Set([ref.productVariantId]),
+            };
+      items.push({
+        referenceId: ref.referenceId,
+        product: {
+          ...this.toListItem(p, mainImageByProductId),
+          variants: this.buildVariantDtos(p, fieldDefs, variantFilter),
+        },
+      });
+    }
+    return items;
   }
 
   private buildVariantDtos(

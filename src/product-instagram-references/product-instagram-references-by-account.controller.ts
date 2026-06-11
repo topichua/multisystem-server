@@ -30,9 +30,9 @@ export class ProductInstagramReferencesByAccountController {
 
   @Get("product-ids")
   @ApiOperation({
-    summary: "List distinct product + variant pairs referenced by a Business account",
+    summary: "List product + variant links referenced by a Business account",
     description:
-      "Returns unique `{ productId, productVariantId }` pairs from `product_instagram_references` " +
+      "Returns `{ productId, productVariantId, postId }` rows from `product_instagram_references` " +
       "for the given Business Account id. Does not load product entities.",
   })
   @ApiOkResponse({ type: ProductInstagramReferenceProductIdsResponseDto })

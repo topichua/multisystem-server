@@ -1,14 +1,19 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
+  ParseIntPipe,
   Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -104,9 +109,9 @@ export class InstagramController {
   @ApiOperation({
     summary: "List products and variants referenced for an Instagram post",
     description:
-      "Returns products with nested variants (same shape as GET /products items) for rows in " +
-      "`product_instagram_references` matching the post and integration. " +
-      "Variant-specific references include only those variants; product-level references include all variants.",
+      "Returns one item per `product_instagram_references` row with `referenceId` and nested product " +
+      "(same shape as GET /products items). Variant-specific references include only that variant; " +
+      "product-level references include all variants.",
   })
   @ApiOkResponse({ type: InstagramPostProductVariantsResponseDto })
   async listProductVariantsForPost(
@@ -127,6 +132,39 @@ export class InstagramController {
     return this.productInstagramReferences.listProductsForPost(
       ownerId,
       id,
+      query.integrationId,
+    );
+  }
+
+  @Delete("posts/:instagramPostId/product-references/:referenceId")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Remove a product Instagram reference from a post",
+    description:
+      "Deletes `product_instagram_references` by id. The reference must belong to the given post " +
+      "and integration (`integrationId` query param).",
+  })
+  @ApiNoContentResponse()
+  async removeProductReferenceForPost(
+    @Req() req: { user?: AuthUser },
+    @Param("instagramPostId") instagramPostId: string,
+    @Param("referenceId", ParseIntPipe) referenceId: number,
+    @Query() query: InstagramPostAiExtractionQueryDto,
+  ): Promise<void> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const id = instagramPostId?.trim();
+    if (!id || id.length > 128) {
+      throw new BadRequestException("instagramPostId is invalid");
+    }
+    await this.productInstagramReferences.removeReferenceForPost(
+      ownerId,
+      id,
+      referenceId,
       query.integrationId,
     );
   }

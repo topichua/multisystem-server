@@ -48,12 +48,17 @@ export class ProductInstagramReferencesService {
       .createQueryBuilder("r")
       .select("r.product_id", "productId")
       .addSelect("r.product_variant_id", "productVariantId")
-      .distinct(true)
+      .addSelect("r.post_id", "postId")
       .where("r.workspace_id = :workspaceId", { workspaceId: workspace.id })
       .andWhere("r.instagram_account_id = :accountId", { accountId })
-      .orderBy("r.product_id", "ASC")
+      .orderBy("r.post_id", "ASC")
+      .addOrderBy("r.product_id", "ASC")
       .addOrderBy("r.product_variant_id", "ASC", "NULLS FIRST")
-      .getRawMany<{ productId: string | number; productVariantId: string | number | null }>();
+      .getRawMany<{
+        productId: string | number;
+        productVariantId: string | number | null;
+        postId: string;
+      }>();
 
     return {
       businessAccountId: accountId,
@@ -61,6 +66,7 @@ export class ProductInstagramReferencesService {
         productId: Number(row.productId),
         productVariantId:
           row.productVariantId == null ? null : Number(row.productVariantId),
+        postId: row.postId,
       })),
     };
   }
@@ -70,11 +76,11 @@ export class ProductInstagramReferencesService {
     postId: string,
     integrationId: number,
   ): Promise<InstagramPostProductVariantsResponseDto> {
-    const { postId: trimmedPostId, businessAccountId, pairs } =
-      await this.resolveReferencePairsForPost(ownerId, postId, integrationId);
-    const items = await this.products.listListItemsForInstagramReferencePairs(
+    const { postId: trimmedPostId, businessAccountId, references } =
+      await this.resolveReferencesForPost(ownerId, postId, integrationId);
+    const items = await this.products.listListItemsForInstagramReferences(
       ownerId,
-      pairs,
+      references,
     );
     return {
       postId: trimmedPostId,
@@ -83,15 +89,36 @@ export class ProductInstagramReferencesService {
     };
   }
 
-  private async resolveReferencePairsForPost(
+  async removeReferenceForPost(
+    ownerId: number,
+    postId: string,
+    referenceId: number,
+    integrationId: number,
+  ): Promise<void> {
+    const { postId: trimmedPostId, businessAccountId } =
+      await this.resolvePostScope(ownerId, postId, integrationId);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const ref = await this.referenceRepo.findOne({
+      where: {
+        id: referenceId,
+        workspaceId: workspace.id,
+        postId: trimmedPostId,
+        instagramAccountId: businessAccountId,
+      },
+    });
+    if (!ref) {
+      throw new NotFoundException("Instagram reference not found for this post");
+    }
+    await this.referenceRepo.remove(ref);
+  }
+
+  private async resolvePostScope(
     ownerId: number,
     postId: string,
     integrationId: number,
-  ): Promise<{
-    postId: string;
-    businessAccountId: string;
-    pairs: Array<{ productId: number; productVariantId: number | null }>;
-  }> {
+  ): Promise<{ postId: string; businessAccountId: string; workspaceId: number }> {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
@@ -106,31 +133,44 @@ export class ProductInstagramReferencesService {
         "Instagram integration has no connected Business account id",
       );
     }
-    const trimmedPostId = postId.trim();
-    const rows = await this.referenceRepo
-      .createQueryBuilder("r")
-      .select("r.product_id", "productId")
-      .addSelect("r.product_variant_id", "productVariantId")
-      .distinct(true)
-      .where("r.workspace_id = :workspaceId", { workspaceId: workspace.id })
-      .andWhere("r.instagram_account_id = :accountId", {
-        accountId: businessAccountId,
-      })
-      .andWhere("r.post_id = :postId", { postId: trimmedPostId })
-      .orderBy("r.product_id", "ASC")
-      .addOrderBy("r.product_variant_id", "ASC", "NULLS FIRST")
-      .getRawMany<{
-        productId: string | number;
-        productVariantId: string | number | null;
-      }>();
+    return {
+      postId: postId.trim(),
+      businessAccountId,
+      workspaceId: workspace.id,
+    };
+  }
+
+  private async resolveReferencesForPost(
+    ownerId: number,
+    postId: string,
+    integrationId: number,
+  ): Promise<{
+    postId: string;
+    businessAccountId: string;
+    references: Array<{
+      referenceId: number;
+      productId: number;
+      productVariantId: number | null;
+    }>;
+  }> {
+    const { postId: trimmedPostId, businessAccountId, workspaceId } =
+      await this.resolvePostScope(ownerId, postId, integrationId);
+    const rows = await this.referenceRepo.find({
+      where: {
+        workspaceId,
+        instagramAccountId: businessAccountId,
+        postId: trimmedPostId,
+      },
+      order: { id: "ASC" },
+    });
 
     return {
       postId: trimmedPostId,
       businessAccountId,
-      pairs: rows.map((row) => ({
-        productId: Number(row.productId),
-        productVariantId:
-          row.productVariantId == null ? null : Number(row.productVariantId),
+      references: rows.map((row) => ({
+        referenceId: row.id,
+        productId: row.productId,
+        productVariantId: row.productVariantId,
       })),
     };
   }
