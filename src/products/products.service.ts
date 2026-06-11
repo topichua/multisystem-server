@@ -112,6 +112,14 @@ export type ProductListItemDto = ProductListItemBaseDto & {
   variants: ProductVariantDto[];
 };
 
+export type InstagramReferencedVariantDto = ProductVariantDto & {
+  referenceId: number;
+};
+
+export type InstagramReferencedProductListItemDto = ProductListItemBaseDto & {
+  variants: InstagramReferencedVariantDto[];
+};
+
 export type ProductDetailDto = ProductListItemBaseDto & {
   description: string | null;
   sourceType: string | null;
@@ -1503,8 +1511,9 @@ export class ProductsService {
   }
 
   /**
-   * One product list item per Instagram reference row (includes `referenceId`).
-   * When `productVariantId` is null, all variants for that product are included.
+   * Products referenced for an Instagram post, grouped by product with `referenceId` on each variant.
+   * Variant-specific references include only that variant; product-level references include all variants
+   * (same `referenceId` on each). Variant-specific rows take precedence when both exist.
    */
   async listListItemsForInstagramReferences(
     ownerId: number,
@@ -1513,7 +1522,7 @@ export class ProductsService {
       productId: number;
       productVariantId: number | null;
     }>,
-  ): Promise<Array<{ referenceId: number; product: ProductListItemDto }>> {
+  ): Promise<InstagramReferencedProductListItemDto[]> {
     if (references.length === 0) {
       return [];
     }
@@ -1534,6 +1543,20 @@ export class ProductsService {
     }
 
     const productById = new Map(loaded.map((p) => [p.id, p]));
+    const refsByProductId = new Map<
+      number,
+      Array<{
+        referenceId: number;
+        productId: number;
+        productVariantId: number | null;
+      }>
+    >();
+    for (const ref of references) {
+      const list = refsByProductId.get(ref.productId) ?? [];
+      list.push(ref);
+      refsByProductId.set(ref.productId, list);
+    }
+
     const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
       workspace.id,
     );
@@ -1541,26 +1564,52 @@ export class ProductsService {
       productIds,
     );
 
-    const items: Array<{ referenceId: number; product: ProductListItemDto }> =
-      [];
-    for (const ref of references) {
-      const p = productById.get(ref.productId);
+    const items: InstagramReferencedProductListItemDto[] = [];
+    for (const productId of [...refsByProductId.keys()].sort((a, b) => a - b)) {
+      const p = productById.get(productId);
       if (!p) {
         continue;
       }
-      const variantFilter =
-        ref.productVariantId == null
-          ? { includeAllVariants: true, variantIds: new Set<number>() }
-          : {
-              includeAllVariants: false,
-              variantIds: new Set([ref.productVariantId]),
-            };
+      const productRefs = refsByProductId.get(productId) ?? [];
+      const variantById = new Map<number, InstagramReferencedVariantDto>();
+
+      for (const ref of productRefs) {
+        if (ref.productVariantId == null) {
+          continue;
+        }
+        const [variant] = this.buildVariantDtos(p, fieldDefs, {
+          includeAllVariants: false,
+          variantIds: new Set([ref.productVariantId]),
+        });
+        if (variant) {
+          variantById.set(variant.id, {
+            ...variant,
+            referenceId: ref.referenceId,
+          });
+        }
+      }
+
+      for (const ref of productRefs) {
+        if (ref.productVariantId != null) {
+          continue;
+        }
+        for (const variant of this.buildVariantDtos(p, fieldDefs)) {
+          if (!variantById.has(variant.id)) {
+            variantById.set(variant.id, {
+              ...variant,
+              referenceId: ref.referenceId,
+            });
+          }
+        }
+      }
+
+      if (variantById.size === 0) {
+        continue;
+      }
+
       items.push({
-        referenceId: ref.referenceId,
-        product: {
-          ...this.toListItem(p, mainImageByProductId),
-          variants: this.buildVariantDtos(p, fieldDefs, variantFilter),
-        },
+        ...this.toListItem(p, mainImageByProductId),
+        variants: [...variantById.values()].sort((a, b) => a.id - b.id),
       });
     }
     return items;

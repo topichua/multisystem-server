@@ -10,30 +10,18 @@ import {
 } from "class-validator";
 
 export class CreateProductInstagramReferenceDto {
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
       "Instagram Business Account id (Graph `instagram_business_account.id`). " +
-      "Stored independently of the integration row so references survive disconnect. " +
-      "Required unless `instagram_account_id` is set.",
+      "Stored independently of the integration row so references survive disconnect.",
   })
-  @IsOptional()
   @IsString()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim() : value,
   )
+  @IsNotEmpty()
   @MaxLength(255)
-  businessAccountId?: string;
-
-  @ApiPropertyOptional({
-    description: "Alias for `businessAccountId`.",
-  })
-  @IsOptional()
-  @IsString()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === "string" ? value.trim() : value,
-  )
-  @MaxLength(255)
-  instagram_account_id?: string;
+  businessAccountId: string;
 
   @ApiProperty({
     description: "Instagram Graph media / post id.",

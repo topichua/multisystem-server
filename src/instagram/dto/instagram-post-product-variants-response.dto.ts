@@ -1,19 +1,22 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { ProductListItemDto } from "../../products/dto/product-list-response.dto";
+import { ApiProperty, OmitType } from "@nestjs/swagger";
+import {
+  ProductListItemDto,
+  ProductListVariantDto,
+} from "../../products/dto/product-list-response.dto";
 
-export class InstagramPostProductReferenceItemDto {
+export class InstagramPostProductVariantDto extends ProductListVariantDto {
   @ApiProperty({
-    description: "`product_instagram_references.id` — use for DELETE on this post.",
+    description:
+      "`product_instagram_references.id` for this variant — use for DELETE on this post.",
   })
   referenceId: number;
+}
 
-  @ApiProperty({
-    type: () => ProductListItemDto,
-    description:
-      "Product with nested variants (same shape as GET /products items). " +
-      "Variant-specific references include only that variant; product-level references include all variants.",
-  })
-  product: ProductListItemDto;
+export class InstagramPostProductItemDto extends OmitType(ProductListItemDto, [
+  "variants",
+] as const) {
+  @ApiProperty({ type: () => [InstagramPostProductVariantDto] })
+  variants: InstagramPostProductVariantDto[];
 }
 
 export class InstagramPostProductVariantsResponseDto {
@@ -25,6 +28,6 @@ export class InstagramPostProductVariantsResponseDto {
   })
   businessAccountId: string;
 
-  @ApiProperty({ type: () => [InstagramPostProductReferenceItemDto] })
-  items: InstagramPostProductReferenceItemDto[];
+  @ApiProperty({ type: () => [InstagramPostProductItemDto] })
+  items: InstagramPostProductItemDto[];
 }

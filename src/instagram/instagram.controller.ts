@@ -109,9 +109,9 @@ export class InstagramController {
   @ApiOperation({
     summary: "List products and variants referenced for an Instagram post",
     description:
-      "Returns one item per `product_instagram_references` row with `referenceId` and nested product " +
-      "(same shape as GET /products items). Variant-specific references include only that variant; " +
-      "product-level references include all variants.",
+      "Returns products grouped by id (same shape as GET /products items) with `referenceId` on each " +
+      "linked variant. Variant-specific references include only that variant; product-level references " +
+      "include all variants with the same `referenceId`.",
   })
   @ApiOkResponse({ type: InstagramPostProductVariantsResponseDto })
   async listProductVariantsForPost(

@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
@@ -219,7 +215,7 @@ export class ProductInstagramReferencesService {
       ownerId,
     );
     await this.requireProduct(workspace.id, productId);
-    const businessAccountId = this.resolveBusinessAccountId(dto);
+    const businessAccountId = dto.businessAccountId.trim();
     const productVariantId = await this.resolveVariantId(
       productId,
       dto.productVariantId,
@@ -257,22 +253,6 @@ export class ProductInstagramReferencesService {
       throw new NotFoundException("Instagram reference not found");
     }
     await this.referenceRepo.remove(ref);
-  }
-
-  private resolveBusinessAccountId(
-    dto: Pick<
-      CreateProductInstagramReferenceDto,
-      "businessAccountId" | "instagram_account_id"
-    >,
-  ): string {
-    const id =
-      dto.businessAccountId?.trim() || dto.instagram_account_id?.trim();
-    if (!id) {
-      throw new BadRequestException(
-        "businessAccountId (or instagram_account_id) is required",
-      );
-    }
-    return id;
   }
 
   private async requireProduct(
