@@ -59,6 +59,13 @@ import { WorkspaceTemplates1744200000059 } from "./migrations/1744200000059-Work
 import { ProductSourceReferenceExternalIdVariantId1744200000060 } from "./migrations/1744200000060-ProductSourceReferenceExternalIdVariantId";
 import { ProductInstagramReferences1744200000061 } from "./migrations/1744200000061-ProductInstagramReferences";
 import { ProductInstagramReferenceAccountId1744200000062 } from "./migrations/1744200000062-ProductInstagramReferenceAccountId";
+import { WorkspaceRolePermissionOptions1744200000063 } from "./migrations/1744200000063-WorkspaceRolePermissionOptions";
+import { WorkspaceRolePermissionOptionLists1744200000064 } from "./migrations/1744200000064-WorkspaceRolePermissionOptionLists";
+import { WorkspaceRoleIntegrationGrants1744200000065 } from "./migrations/1744200000065-WorkspaceRoleIntegrationGrants";
+import { WorkspaceRoleIntegrationGrantPermissions1744200000066 } from "./migrations/1744200000066-WorkspaceRoleIntegrationGrantPermissions";
+import { WorkspaceRoleIntegrationGrantAssignResponsibility1744200000067 } from "./migrations/1744200000067-WorkspaceRoleIntegrationGrantAssignResponsibility";
+import { WorkspaceMemberCanBeAssignedToChat1744200000068 } from "./migrations/1744200000068-WorkspaceMemberCanBeAssignedToChat";
+import { UserAvatarSrcWorkspaceMemberColor1744200000069 } from "./migrations/1744200000069-UserAvatarSrcWorkspaceMemberColor";
 import {
   Client,
   InstagramIntegration,
@@ -86,6 +93,7 @@ import {
   WorkspaceInvitation,
   WorkspaceMember,
   WorkspaceRole,
+  WorkspaceRoleIntegrationGrant,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -141,6 +149,7 @@ const entities = [
   User,
   Workspace,
   WorkspaceRole,
+  WorkspaceRoleIntegrationGrant,
   WorkspaceMember,
   WorkspaceInvitation,
   InstagramIntegration,
@@ -267,6 +276,13 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductSourceReferenceExternalIdVariantId1744200000060,
       ProductInstagramReferences1744200000061,
       ProductInstagramReferenceAccountId1744200000062,
+      WorkspaceRolePermissionOptions1744200000063,
+      WorkspaceRolePermissionOptionLists1744200000064,
+      WorkspaceRoleIntegrationGrants1744200000065,
+      WorkspaceRoleIntegrationGrantPermissions1744200000066,
+      WorkspaceRoleIntegrationGrantAssignResponsibility1744200000067,
+      WorkspaceMemberCanBeAssignedToChat1744200000068,
+      UserAvatarSrcWorkspaceMemberColor1744200000069,
     ],
   };
 }

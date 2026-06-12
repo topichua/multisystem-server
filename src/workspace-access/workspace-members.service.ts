@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -17,13 +18,18 @@ import {
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
 import { PasswordService } from "../users/crypto/password.service";
 import type { InviteWorkspaceMemberRequestDto } from "./dto/http/invite-workspace-member-request.dto";
+import type { ListWorkspaceMembersQueryDto } from "./dto/http/list-workspace-members-query.dto";
+import type { UpdateWorkspaceMemberRequestDto } from "./dto/http/update-workspace-member-request.dto";
 import type {
   InviteWorkspaceMemberResponseDto,
   WorkspaceMemberResponseDto,
 } from "./dto/http/workspace-member-response.dto";
+import {
+  assignWorkspaceMemberColor,
+  resolveWorkspaceMemberColor,
+} from "./workspace-member-color.util";
 import { WorkspaceAccessContextService } from "./workspace-access-context.service";
 import { WorkspaceRolesService } from "./workspace-roles.service";
-import { sample } from "rxjs";
 
 const DEFAULT_INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 const TEST_SKIP_PASSWORD = "password";
@@ -47,13 +53,15 @@ export class WorkspaceMembersService {
   async listForWorkspace(
     ownerId: number,
     appRole?: string,
+    query?: ListWorkspaceMembersQueryDto,
   ): Promise<WorkspaceMemberResponseDto[]> {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
+      appRole,
     );
     const workspaceId = workspace.id;
+    const assignableFilter = query?.can_be_assigned_to_chat;
 
-    // Fetch workspace owner details
     const ownerUser = await this.userRepo.findOne({
       where: { id: workspace.ownerId },
     });
@@ -61,19 +69,56 @@ export class WorkspaceMembersService {
       throw new BadRequestException("Workspace owner not found");
     }
 
-    // Fetch active members
     const rows = await this.memberRepo.find({
-      where: { workspaceId, status: WorkspaceMemberStatus.ACTIVE },
+      where: {
+        workspaceId,
+        status: WorkspaceMemberStatus.ACTIVE,
+        ...(assignableFilter === undefined
+          ? {}
+          : { canBeAssignedToChat: assignableFilter }),
+      },
       relations: ["user", "role"],
       order: { id: "ASC" },
     });
 
-    // Build response including owner
     const memberDtos = rows.map((r) => this.toDto(r));
     const ownerDto = this.ownerToDto(workspace, ownerUser, workspaceId);
 
-    // Return owner first, then other members
+    if (assignableFilter === false) {
+      return memberDtos;
+    }
     return [ownerDto, ...memberDtos];
+  }
+
+  async updateMemberForWorkspace(
+    actorUserId: number,
+    memberId: number,
+    dto: UpdateWorkspaceMemberRequestDto,
+    appRole?: string,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      actorUserId,
+      appRole,
+    );
+    if (!Number.isInteger(memberId) || memberId <= 0) {
+      throw new BadRequestException("memberId must be a positive integer");
+    }
+
+    const row = await this.memberRepo.findOne({
+      where: {
+        id: memberId,
+        workspaceId: workspace.id,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+      relations: ["user", "role"],
+    });
+    if (!row) {
+      throw new NotFoundException("Workspace member not found");
+    }
+
+    row.canBeAssignedToChat = dto.can_be_assigned_to_chat;
+    const saved = await this.memberRepo.save(row);
+    return this.toDto(saved);
   }
 
   async inviteForWorkspace(
@@ -181,11 +226,21 @@ export class WorkspaceMembersService {
     if (existing?.status === WorkspaceMemberStatus.ACTIVE) {
       throw new ConflictException("User is already a member of this workspace");
     }
+    const user =
+      existing?.user ??
+      (await this.userRepo.findOneOrFail({ where: { id: params.userId } }));
+    const color = assignWorkspaceMemberColor(
+      user.id,
+      params.workspaceId,
+      user.avatarSrc,
+    );
+
     if (existing) {
       existing.roleId = params.roleId;
       existing.status = WorkspaceMemberStatus.ACTIVE;
       existing.invitedByUserId = params.invitedByUserId;
       existing.joinedAt = new Date();
+      existing.color = color;
       return this.memberRepo.save(existing);
     }
 
@@ -196,6 +251,8 @@ export class WorkspaceMembersService {
       status: WorkspaceMemberStatus.ACTIVE,
       invitedByUserId: params.invitedByUserId,
       joinedAt: new Date(),
+      canBeAssignedToChat: true,
+      color,
     });
     const saved = await this.memberRepo.save(row);
     return this.memberRepo.findOneOrFail({
@@ -205,6 +262,12 @@ export class WorkspaceMembersService {
   }
 
   private toDto(row: WorkspaceMember): WorkspaceMemberResponseDto {
+    const color = resolveWorkspaceMemberColor(
+      row.userId,
+      row.workspaceId,
+      row.user.avatarSrc,
+      row.color,
+    );
     return {
       id: row.id,
       workspaceId: row.workspaceId,
@@ -214,35 +277,45 @@ export class WorkspaceMembersService {
       roleName: row.role?.name ?? "",
       status: row.status,
       joinedAt: row.joinedAt.toISOString(),
-      user: {
-        id: row.user.id,
-        email: row.user.email,
-        firstName: row.user.firstName,
-        lastName: row.user.lastName,
-      },
+      can_be_assigned_to_chat: row.canBeAssignedToChat,
+      ...(color ? { color } : {}),
+      user: this.userToDto(row.user),
+    };
+  }
+
+  private userToDto(user: User): WorkspaceMemberResponseDto["user"] {
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatar_src: user.avatarSrc,
     };
   }
 
   private ownerToDto(
-    workspace: any,
+    workspace: { createdAt?: Date },
     ownerUser: User,
     workspaceId: number,
   ): WorkspaceMemberResponseDto {
+    const color = resolveWorkspaceMemberColor(
+      ownerUser.id,
+      workspaceId,
+      ownerUser.avatarSrc,
+      null,
+    );
     return {
-      id: 0, // No DB id for owner
+      id: 0,
       workspaceId,
       userId: ownerUser.id,
-      roleId: 0, // No explicit role for owner
+      roleId: 0,
       roleSlug: "owner",
       roleName: "Owner",
       status: WorkspaceMemberStatus.ACTIVE,
       joinedAt: workspace.createdAt?.toISOString() ?? new Date().toISOString(),
-      user: {
-        id: ownerUser.id,
-        email: ownerUser.email,
-        firstName: ownerUser.firstName,
-        lastName: ownerUser.lastName,
-      },
+      can_be_assigned_to_chat: true,
+      ...(color ? { color } : {}),
+      user: this.userToDto(ownerUser),
     };
   }
 }

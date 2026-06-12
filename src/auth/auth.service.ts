@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -14,6 +18,7 @@ import type {
   MeResponseDto,
   UserMeDto,
 } from "./dto/me-response.dto";
+import type { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
 
 /** Default access token lifetime when `JWT_EXPIRES_SECONDS` is unset (30 days). */
 const DEFAULT_JWT_EXPIRES_SECONDS = 30 * 24 * 60 * 60;
@@ -40,6 +45,30 @@ export class AuthService {
       };
     }
 
+    const user = await this.requireUserFromAuth(authUser);
+    return this.buildMeResponse(authUser, user);
+  }
+
+  async updateProfile(
+    authUser: AuthUser,
+    dto: UpdateAuthProfileRequestDto,
+  ): Promise<MeResponseDto> {
+    if (authUser.userId === "super-admin") {
+      throw new BadRequestException(
+        "Env super-admin account has no profile to update",
+      );
+    }
+
+    const user = await this.requireUserFromAuth(authUser);
+    if (dto.avatar_src !== undefined) {
+      user.avatarSrc = dto.avatar_src?.trim() ? dto.avatar_src.trim() : null;
+    }
+
+    const saved = await this.userRepo.save(user);
+    return this.buildMeResponse(authUser, saved);
+  }
+
+  private async requireUserFromAuth(authUser: AuthUser): Promise<User> {
     const id = Number(authUser.userId);
     if (!Number.isInteger(id) || id <= 0) {
       throw new UnauthorizedException();
@@ -52,9 +81,15 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException();
     }
+    return user;
+  }
 
+  private async buildMeResponse(
+    authUser: AuthUser,
+    user: User,
+  ): Promise<MeResponseDto> {
     const company = await this.companyRepo.findOne({
-      where: { ownerId: id },
+      where: { ownerId: user.id },
       order: { id: "DESC" },
     });
 
@@ -83,6 +118,7 @@ export class AuthService {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      avatar_src: user.avatarSrc,
       status: user.status,
       invitedAt: user.invitedAt,
       invitedByUserId: user.invitedByUserId,

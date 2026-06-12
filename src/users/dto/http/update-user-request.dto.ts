@@ -25,6 +25,13 @@ export class UpdateUserRequestDto {
   @MaxLength(120)
   lastName?: string | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(2048)
+  avatar_src?: string | null;
+
   @ApiPropertyOptional({
     enum: UserStatus,
     description: "0 = invited, 1 = active, 2 = disabled",

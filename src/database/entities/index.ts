@@ -35,6 +35,10 @@ export { User } from "./user.entity";
 export { UserStatus, UserStatusLabels } from "./user-status.enum";
 export { Workspace } from "./workspace.entity";
 export { WorkspaceRole } from "./workspace-role.entity";
+export {
+  WorkspaceRoleIntegrationGrant,
+  type WorkspaceRoleIntegrationGrantType,
+} from "./workspace-role-integration-grant.entity";
 export { WorkspaceMember } from "./workspace-member.entity";
 export { WorkspaceMemberStatus } from "./workspace-member-status.enum";
 export { WorkspaceInvitation } from "./workspace-invitation.entity";

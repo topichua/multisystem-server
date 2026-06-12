@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Query,
   Req,
@@ -14,6 +15,7 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -23,6 +25,7 @@ import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import { FacebookOAuthService } from "./facebook-oauth.service";
 import { MeResponseDto } from "./dto/me-response.dto";
+import { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
 import { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 import { LoginRequestDto } from "./dto/login-request.dto";
 import { JwtAuthGuard } from "./jwt-auth.guard";
@@ -60,6 +63,26 @@ export class AuthController {
     @Req() req: Request & { user: AuthUser },
   ): Promise<MeResponseDto> {
     return this.authService.getMe(req.user);
+  }
+
+  @Patch("profile")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Update current user profile",
+    description:
+      "Updates the authenticated user (JWT `sub` / user id). Only database users; env super-admin cannot use this.",
+  })
+  @ApiBody({ type: UpdateAuthProfileRequestDto })
+  @ApiOkResponse({ type: MeResponseDto })
+  async updateProfile(
+    @Req() req: Request & { user: AuthUser },
+    @Body() dto: UpdateAuthProfileRequestDto,
+  ): Promise<MeResponseDto> {
+    if (dto.avatar_src === undefined) {
+      throw new BadRequestException("At least one profile field is required");
+    }
+    return this.authService.updateProfile(req.user, dto);
   }
 
   @Get("facebook")

@@ -37,6 +37,12 @@ export class UserMeDto {
   @ApiPropertyOptional({ nullable: true })
   lastName: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Avatar image URL.",
+  })
+  avatar_src: string | null;
+
   @ApiProperty({ enum: UserStatus, enumName: "UserStatus" })
   status: UserStatus;
 

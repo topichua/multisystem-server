@@ -109,7 +109,19 @@ export class UsersAdminController {
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateUserRequestDto,
   ): Promise<SafeUserResponseDto> {
-    const input: UpdateUserInput = { ...dto };
+    const input: UpdateUserInput = {
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      avatarSrc: dto.avatar_src,
+      status: dto.status,
+      metadata: dto.metadata,
+      country: dto.country,
+      region: dto.region,
+      city: dto.city,
+      streetLine1: dto.streetLine1,
+      streetLine2: dto.streetLine2,
+      postalCode: dto.postalCode,
+    };
     return this.usersService.updateUser(id, input);
   }
 

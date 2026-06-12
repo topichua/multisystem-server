@@ -31,6 +31,9 @@ export class User {
   @Column({ name: "last_name", type: "varchar", length: 120, nullable: true })
   lastName: string | null;
 
+  @Column({ name: "avatar_src", type: "varchar", length: 2048, nullable: true })
+  avatarSrc: string | null;
+
   @Column({
     name: "mobile_phone_hash",
     type: "varchar",

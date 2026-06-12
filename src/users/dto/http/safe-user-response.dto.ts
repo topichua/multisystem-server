@@ -16,6 +16,9 @@ export class SafeUserResponseDto {
   lastName: string | null;
 
   @ApiPropertyOptional({ nullable: true })
+  avatarSrc: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
   mobilePhoneHash: string | null;
 
   @ApiProperty({

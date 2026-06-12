@@ -1,7 +1,9 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   ArrayNotEmpty,
   IsArray,
+  IsObject,
+  IsOptional,
   IsString,
   Matches,
   MaxLength,
@@ -25,11 +27,21 @@ export class CreateWorkspaceRoleRequestDto {
   name: string;
 
   @ApiProperty({
-    example: ["conversations.read", "conversations.write"],
-    description: "Keys from GET /permissions/catalog",
+    example: ["orders.read", "orders.create"],
+    description: "Boolean keys from GET /permissions/catalog",
   })
   @IsArray()
   @ArrayNotEmpty()
   @IsString({ each: true })
   permissions: string[];
+
+  @ApiPropertyOptional({
+    example: { "orders.visibility": "mine" },
+    description:
+      "Option permissions from GET /permissions/catalog. " +
+      "Per-integration conversation permissions use PUT .../integration-grants.",
+  })
+  @IsOptional()
+  @IsObject()
+  permissionOptions?: Record<string, string>;
 }

@@ -14,6 +14,7 @@ import {
 import type { TelegramIntegration } from "../database/entities";
 import { TelegramIntegrationsService } from "../telegram-integrations/telegram-integrations.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { WorkspaceRoleIntegrationGrantsService } from "../workspace-access/workspace-role-integration-grants.service";
 import {
   INTEGRATION_TYPES,
   type IntegrationType,
@@ -31,6 +32,7 @@ export class IntegrationsService {
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly facebookOAuth: FacebookOAuthService,
     private readonly telegramIntegrations: TelegramIntegrationsService,
+    private readonly roleIntegrationGrants: WorkspaceRoleIntegrationGrantsService,
   ) {}
 
   async startForOwner(
@@ -125,6 +127,7 @@ export class IntegrationsService {
         await this.deleteInstagramForOwner(ownerId, id);
         return;
       case "telegram":
+        await this.roleIntegrationGrants.removeForIntegration("telegram", id);
         await this.telegramIntegrations.deleteForOwner(ownerId, id);
         return;
     }
@@ -155,6 +158,7 @@ export class IntegrationsService {
     );
 
     await this.facebookOAuth.revokeIntegrationPermissionsBestEffort(row);
+    await this.roleIntegrationGrants.removeForIntegration("instagram", id);
 
     try {
       await this.instagramIntegrationRepo.remove(row);

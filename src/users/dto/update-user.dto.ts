@@ -4,6 +4,7 @@ import { UserStatus } from "../../database/entities";
 export type UpdateUserInput = {
   firstName?: string;
   lastName?: string | null;
+  avatarSrc?: string | null;
   status?: UserStatus;
   metadata?: Record<string, unknown>;
   country?: string | null;

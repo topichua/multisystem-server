@@ -31,9 +31,25 @@ export class WorkspaceRole {
   @Column({ name: "name", type: "varchar", length: 255 })
   name: string;
 
-  /** Permission keys from the static catalog in `workspace-access/permissions`. */
+  /** Boolean permission keys from the static catalog in `workspace-access/permissions`. */
   @Column({ name: "permissions", type: "jsonb" })
   permissions: string[];
+
+  /** Option permission values, e.g. `{ "orders.visibility": "mine" }`. */
+  @Column({
+    name: "permission_options",
+    type: "jsonb",
+    default: () => "'{}'",
+  })
+  permissionOptions: Record<string, string>;
+
+  /** Selected values for option permissions, e.g. `{ "conversations.sources": ["instagram"] }`. */
+  @Column({
+    name: "permission_option_lists",
+    type: "jsonb",
+    default: () => "'{}'",
+  })
+  permissionOptionLists: Record<string, string[]>;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

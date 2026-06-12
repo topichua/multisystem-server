@@ -1,25 +1,27 @@
 /**
- * All valid permission keys. Stored on `workspace_roles.permissions` (jsonb).
- * Add new keys here when you introduce features; validate on role create/update.
+ * Boolean permission keys. Stored in `workspace_roles.permissions` (jsonb array).
+ * Per-integration conversation permissions live on `workspace_role_integration_grants`.
  */
 export const PERMISSION_KEYS = [
-  "workspace.settings.read",
-  "workspace.settings.write",
-  "workspace.members.read",
-  "workspace.members.invite",
-  "workspace.members.manage",
-  "workspace.roles.read",
-  "workspace.roles.manage",
-  "conversations.read",
-  "conversations.write",
   "products.read",
   "products.write",
-  "products.variant_custom_fields.create",
-  "products.variant_custom_field_options.create",
+  "products.custom_fields",
+  "products.category",
+  "products.ai_import",
   "orders.read",
-  "orders.write",
+  "orders.create",
+  "orders.edit_status",
+  "orders.edit",
+  "conversations.full_access",
   "clients.read",
-  "clients.write",
+  "workspace.chat_groups",
+  "workspace.templates",
+  "workspace.integrations",
+  "workspace.roles",
+  "workspace.members.read",
+  "workspace.members.invite",
+  "workspace.members.delete",
+  "analytics.read",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];

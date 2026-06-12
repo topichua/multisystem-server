@@ -127,6 +127,9 @@ export class UsersService {
     if (input.lastName !== undefined) {
       user.lastName = input.lastName;
     }
+    if (input.avatarSrc !== undefined) {
+      user.avatarSrc = input.avatarSrc?.trim() ? input.avatarSrc.trim() : null;
+    }
     if (input.status !== undefined) {
       user.status = input.status;
     }

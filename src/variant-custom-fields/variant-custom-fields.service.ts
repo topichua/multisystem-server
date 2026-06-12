@@ -112,7 +112,7 @@ export class VariantCustomFieldsService {
     await this.assertWorkspacePermission(
       ownerId,
       workspace.id,
-      "products.variant_custom_fields.create",
+      "products.custom_fields",
     );
     this.validateOptionsForType(dto.type, dto.options);
 
@@ -193,7 +193,7 @@ export class VariantCustomFieldsService {
     await this.assertWorkspacePermission(
       ownerId,
       field.workspaceId,
-      "products.variant_custom_field_options.create",
+      "products.custom_fields",
     );
 
     return this.optionRepo.save(
@@ -590,7 +590,7 @@ export class VariantCustomFieldsService {
     await this.assertWorkspacePermission(
       ownerId,
       workspaceId,
-      "products.variant_custom_fields.create",
+      "products.custom_fields",
     );
 
     const storageType = apiTypeToStorageType(apiType);
@@ -638,7 +638,7 @@ export class VariantCustomFieldsService {
     await this.assertWorkspacePermission(
       ownerId,
       workspaceId,
-      "products.variant_custom_field_options.create",
+      "products.custom_fields",
     );
 
     return optionRepo.save(
@@ -756,7 +756,7 @@ export class VariantCustomFieldsService {
       relations: { role: true },
     });
     const permissions = member?.role?.permissions ?? [];
-    if (!permissions.includes(permission) && !permissions.includes("products.write")) {
+    if (!permissions.includes(permission) && !permissions.includes("products.custom_fields")) {
       throw new ForbiddenException(
         `Missing permission: ${permission}`,
       );

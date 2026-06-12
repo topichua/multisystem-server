@@ -10,8 +10,16 @@ import { WorkspaceRole } from "../database/entities";
 import type { CreateWorkspaceRoleRequestDto } from "./dto/http/create-workspace-role-request.dto";
 import type { UpdateWorkspaceRoleRequestDto } from "./dto/http/update-workspace-role-request.dto";
 import type { WorkspaceRoleResponseDto } from "./dto/http/workspace-role-response.dto";
-import { validatePermissionKeys } from "./permissions/permissions.validator";
+import { normalizePermissionOptionLists } from "./permissions/permission-option-lists.util";
+import { normalizePermissionOptions } from "./permissions/permission-options.util";
+import { resolveRolePermissions } from "./permissions/permissions-resolver";
+import {
+  validatePermissionKeys,
+  validatePermissionOptionLists,
+  validatePermissionOptions,
+} from "./permissions/permissions.validator";
 import { WorkspaceAccessContextService } from "./workspace-access-context.service";
+import { WorkspaceRoleIntegrationGrantsService } from "./workspace-role-integration-grants.service";
 
 @Injectable()
 export class WorkspaceRolesService {
@@ -19,6 +27,7 @@ export class WorkspaceRolesService {
     @InjectRepository(WorkspaceRole)
     private readonly roleRepo: Repository<WorkspaceRole>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly integrationGrants: WorkspaceRoleIntegrationGrantsService,
   ) {}
 
   async listForOwner(
@@ -89,7 +98,7 @@ export class WorkspaceRolesService {
       where: { workspaceId },
       order: { id: "ASC" },
     });
-    return rows.map((r) => this.toDto(r));
+    return Promise.all(rows.map((r) => this.toDto(r)));
   }
 
   async createForWorkspace(
@@ -114,11 +123,18 @@ export class WorkspaceRolesService {
     }
 
     const permissions = validatePermissionKeys(dto.permissions);
+    const permissionOptions = validatePermissionOptions(dto.permissionOptions);
+    const permissionOptionLists = validatePermissionOptionLists(
+      permissionOptions,
+      undefined,
+    );
     const row = this.roleRepo.create({
       workspaceId,
       slug,
       name: dto.name.trim(),
       permissions,
+      permissionOptions,
+      permissionOptionLists,
     });
     const saved = await this.roleRepo.save(row);
     return this.toDto(saved);
@@ -142,6 +158,15 @@ export class WorkspaceRolesService {
     }
     if (dto.permissions != null) {
       row.permissions = validatePermissionKeys(dto.permissions);
+    }
+    if (dto.permissionOptions != null) {
+      row.permissionOptions = validatePermissionOptions(dto.permissionOptions);
+    }
+    if (dto.permissionOptionLists != null || dto.permissionOptions != null) {
+      row.permissionOptionLists = validatePermissionOptionLists(
+        row.permissionOptions,
+        dto.permissionOptionLists ?? row.permissionOptionLists,
+      );
     }
     const saved = await this.roleRepo.save(row);
     return this.toDto(saved);
@@ -181,13 +206,32 @@ export class WorkspaceRolesService {
     return row;
   }
 
-  private toDto(row: WorkspaceRole): WorkspaceRoleResponseDto {
+  private async toDto(row: WorkspaceRole): Promise<WorkspaceRoleResponseDto> {
+    const permissionOptions = normalizePermissionOptions(row.permissionOptions);
+    const permissionOptionLists = normalizePermissionOptionLists(
+      permissionOptions,
+      row.permissionOptionLists,
+    );
+    const integrationGrants =
+      await this.integrationGrants.resolveIntegrationGrantsForRole(
+        row.workspaceId,
+        row.id,
+        row.permissions,
+      );
     return {
       id: row.id,
       workspaceId: row.workspaceId,
       slug: row.slug,
       name: row.name,
       permissions: row.permissions ?? [],
+      permissionOptions,
+      permissionOptionLists,
+      resolved: resolveRolePermissions({
+        permissions: row.permissions,
+        permissionOptions,
+        permissionOptionLists,
+        integrationGrants,
+      }),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

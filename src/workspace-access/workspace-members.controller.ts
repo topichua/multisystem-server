@@ -3,7 +3,10 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -13,13 +16,17 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { InviteWorkspaceMemberRequestDto } from "./dto/http/invite-workspace-member-request.dto";
+import { ListWorkspaceMembersQueryDto } from "./dto/http/list-workspace-members-query.dto";
+import { UpdateWorkspaceMemberRequestDto } from "./dto/http/update-workspace-member-request.dto";
 import {
   InviteWorkspaceMemberResponseDto,
+  WorkspaceMemberResponseDto,
   WorkspaceMembersListResponseDto,
 } from "./dto/http/workspace-member-response.dto";
 import { WorkspaceMembersService } from "./workspace-members.service";
@@ -32,14 +39,38 @@ export class WorkspaceMembersController {
   constructor(private readonly members: WorkspaceMembersService) {}
 
   @Get()
-  @ApiOperation({ summary: "List active workspace members (workspace owner)" })
+  @ApiOperation({
+    summary: "List active workspace members",
+    description:
+      "Optional filter: `can_be_assigned_to_chat=true` returns assignable members (includes owner).",
+  })
   @ApiOkResponse({ type: WorkspaceMembersListResponseDto })
   async list(
     @Req() req: { user?: AuthUser },
+    @Query() query: ListWorkspaceMembersQueryDto,
   ): Promise<WorkspaceMembersListResponseDto> {
     const { ownerId, appRole } = this.auth(req);
-    const items = await this.members.listForWorkspace(ownerId, appRole);
+    const items = await this.members.listForWorkspace(ownerId, appRole, query);
     return { items };
+  }
+
+  @Patch(":memberId")
+  @ApiOperation({ summary: "Update workspace member settings" })
+  @ApiParam({ name: "memberId", type: Number })
+  @ApiBody({ type: UpdateWorkspaceMemberRequestDto })
+  @ApiOkResponse({ type: WorkspaceMemberResponseDto })
+  async update(
+    @Req() req: { user?: AuthUser },
+    @Param("memberId") memberIdRaw: string,
+    @Body() dto: UpdateWorkspaceMemberRequestDto,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const { ownerId, appRole } = this.auth(req);
+    return this.members.updateMemberForWorkspace(
+      ownerId,
+      this.parsePositiveInt(memberIdRaw, "memberId"),
+      dto,
+      appRole,
+    );
   }
 
   @Post("invite")
@@ -72,4 +103,15 @@ export class WorkspaceMembersController {
     return { ownerId, appRole: req.user?.role };
   }
 
+  private parsePositiveInt(raw: string, label: string): number {
+    const trimmed = raw?.trim() ?? "";
+    if (!/^\d+$/.test(trimmed)) {
+      throw new BadRequestException(`${label} must be a positive integer`);
+    }
+    const n = Number(trimmed);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new BadRequestException(`${label} must be a positive integer`);
+    }
+    return n;
+  }
 }

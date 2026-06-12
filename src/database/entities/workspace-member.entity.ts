@@ -60,6 +60,13 @@ export class WorkspaceMember {
   @Column({ name: "joined_at", type: "timestamptz" })
   joinedAt: Date;
 
+  @Column({ name: "can_be_assigned_to_chat", type: "boolean", default: true })
+  canBeAssignedToChat: boolean;
+
+  /** Fallback avatar color when the user has no `avatar_src`. */
+  @Column({ name: "color", type: "varchar", length: 64, nullable: true })
+  color: string | null;
+
   /**
    * Optional limit on which integration rows apply (workspace may have many per type).
    * Omit/null id lists = all instances of that type in the workspace.
