@@ -4,8 +4,8 @@ import {
   Controller,
   Get,
   Param,
-  Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -54,8 +54,8 @@ export class WorkspaceMembersController {
     return { items };
   }
 
-  @Patch(":memberId")
-  @ApiOperation({ summary: "Update workspace member settings" })
+  @Put(":memberId")
+  @ApiOperation({ summary: "Update workspace member role and assignment settings" })
   @ApiParam({ name: "memberId", type: Number })
   @ApiBody({ type: UpdateWorkspaceMemberRequestDto })
   @ApiOkResponse({ type: WorkspaceMemberResponseDto })

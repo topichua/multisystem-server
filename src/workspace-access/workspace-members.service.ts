@@ -116,8 +116,19 @@ export class WorkspaceMembersService {
       throw new NotFoundException("Workspace member not found");
     }
 
+    const role = await this.rolesService.requireRoleInWorkspace(
+      workspace.id,
+      dto.roleId,
+    );
+
     row.canBeAssignedToChat = dto.can_be_assigned_to_chat;
-    const saved = await this.memberRepo.save(row);
+    row.roleId = role.id;
+    await this.memberRepo.save(row);
+
+    const saved = await this.memberRepo.findOneOrFail({
+      where: { id: row.id },
+      relations: ["user", "role"],
+    });
     return this.toDto(saved);
   }
 
@@ -277,6 +288,7 @@ export class WorkspaceMembersService {
       roleName: row.role?.name ?? "",
       status: row.status,
       joinedAt: row.joinedAt.toISOString(),
+      updated_at: row.updatedAt.toISOString(),
       can_be_assigned_to_chat: row.canBeAssignedToChat,
       ...(color ? { color } : {}),
       user: this.userToDto(row.user),
@@ -313,6 +325,7 @@ export class WorkspaceMembersService {
       roleName: "Owner",
       status: WorkspaceMemberStatus.ACTIVE,
       joinedAt: workspace.createdAt?.toISOString() ?? new Date().toISOString(),
+      updated_at: workspace.createdAt?.toISOString() ?? new Date().toISOString(),
       can_be_assigned_to_chat: true,
       ...(color ? { color } : {}),
       user: this.userToDto(ownerUser),

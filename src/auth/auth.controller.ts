@@ -25,6 +25,9 @@ import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import { FacebookOAuthService } from "./facebook-oauth.service";
 import { MeResponseDto } from "./dto/me-response.dto";
+import { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
+import { ChangePasswordResponseDto } from "./dto/change-password-response.dto";
+import { SetEmailRequestDto } from "./dto/set-email-request.dto";
 import { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
 import { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 import { LoginRequestDto } from "./dto/login-request.dto";
@@ -83,6 +86,42 @@ export class AuthController {
       throw new BadRequestException("At least one profile field is required");
     }
     return this.authService.updateProfile(req.user, dto);
+  }
+
+  @Post("change-password")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Change current user password",
+    description:
+      "Requires the existing password and a new password. Uses the authenticated user id from JWT.",
+  })
+  @ApiBody({ type: ChangePasswordRequestDto })
+  @ApiOkResponse({ type: ChangePasswordResponseDto })
+  async changePassword(
+    @Req() req: Request & { user: AuthUser },
+    @Body() dto: ChangePasswordRequestDto,
+  ): Promise<ChangePasswordResponseDto> {
+    return this.authService.changePassword(req.user, dto);
+  }
+
+  @Post("set-email")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Set current user email",
+    description:
+      "Updates email immediately (no confirmation email). Requires current password.",
+  })
+  @ApiBody({ type: SetEmailRequestDto })
+  @ApiOkResponse({ type: MeResponseDto })
+  async setEmail(
+    @Req() req: Request & { user: AuthUser },
+    @Body() dto: SetEmailRequestDto,
+  ): Promise<MeResponseDto> {
+    return this.authService.setEmail(req.user, dto);
   }
 
   @Get("facebook")

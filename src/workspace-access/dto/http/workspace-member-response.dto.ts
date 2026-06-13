@@ -45,6 +45,9 @@ export class WorkspaceMemberResponseDto {
   @ApiProperty()
   joinedAt: string;
 
+  @ApiProperty()
+  updated_at: string;
+
   @ApiProperty({
     description: "Whether this member can be assigned to conversations.",
   })

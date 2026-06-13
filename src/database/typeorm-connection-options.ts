@@ -66,6 +66,7 @@ import { WorkspaceRoleIntegrationGrantPermissions1744200000066 } from "./migrati
 import { WorkspaceRoleIntegrationGrantAssignResponsibility1744200000067 } from "./migrations/1744200000067-WorkspaceRoleIntegrationGrantAssignResponsibility";
 import { WorkspaceMemberCanBeAssignedToChat1744200000068 } from "./migrations/1744200000068-WorkspaceMemberCanBeAssignedToChat";
 import { UserAvatarSrcWorkspaceMemberColor1744200000069 } from "./migrations/1744200000069-UserAvatarSrcWorkspaceMemberColor";
+import { WorkspaceMemberUpdatedAt1744200000070 } from "./migrations/1744200000070-WorkspaceMemberUpdatedAt";
 import {
   Client,
   InstagramIntegration,
@@ -283,6 +284,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceRoleIntegrationGrantAssignResponsibility1744200000067,
       WorkspaceMemberCanBeAssignedToChat1744200000068,
       UserAvatarSrcWorkspaceMemberColor1744200000069,
+      WorkspaceMemberUpdatedAt1744200000070,
     ],
   };
 }

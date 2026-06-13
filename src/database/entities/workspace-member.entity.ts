@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
+  UpdateDateColumn,
 } from "typeorm";
 import { User } from "./user.entity";
 import { WorkspaceMemberStatus } from "./workspace-member-status.enum";
@@ -79,4 +80,7 @@ export class WorkspaceMember {
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: "updated_at", type: "timestamptz" })
+  updatedAt: Date;
 }

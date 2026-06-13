@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -9,6 +10,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
 import { Repository } from "typeorm";
 import { InstagramIntegration, User, UserStatus } from "../database/entities";
+import { PasswordService } from "../users/crypto/password.service";
 import { ROLE_SUPER_ADMIN } from "./constants";
 import type { AuthUser } from "./types/auth-user.type";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
@@ -19,6 +21,8 @@ import type {
   UserMeDto,
 } from "./dto/me-response.dto";
 import type { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
+import type { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
+import type { SetEmailRequestDto } from "./dto/set-email-request.dto";
 
 /** Default access token lifetime when `JWT_EXPIRES_SECONDS` is unset (30 days). */
 const DEFAULT_JWT_EXPIRES_SECONDS = 30 * 24 * 60 * 60;
@@ -28,6 +32,7 @@ export class AuthService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwtService: JwtService,
+    private readonly passwordService: PasswordService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(InstagramIntegration)
@@ -68,6 +73,81 @@ export class AuthService {
     return this.buildMeResponse(authUser, saved);
   }
 
+  async changePassword(
+    authUser: AuthUser,
+    dto: ChangePasswordRequestDto,
+  ): Promise<{ changed: true }> {
+    if (authUser.userId === "super-admin") {
+      throw new BadRequestException(
+        "Env super-admin account password is managed via environment variables",
+      );
+    }
+
+    const user = await this.requireUserFromAuth(authUser);
+    if (!user.passwordHash) {
+      throw new BadRequestException("User has no password set");
+    }
+
+    const currentMatch = await this.passwordService.compare(
+      dto.existing_password,
+      user.passwordHash,
+    );
+    if (!currentMatch) {
+      throw new BadRequestException("Invalid existing password");
+    }
+
+    if (dto.existing_password === dto.new_password) {
+      throw new BadRequestException(
+        "New password must differ from existing password",
+      );
+    }
+
+    user.passwordHash = await this.passwordService.hash(dto.new_password);
+    await this.userRepo.save(user);
+    return { changed: true };
+  }
+
+  async setEmail(
+    authUser: AuthUser,
+    dto: SetEmailRequestDto,
+  ): Promise<MeResponseDto> {
+    if (authUser.userId === "super-admin") {
+      throw new BadRequestException(
+        "Env super-admin account email is managed via environment variables",
+      );
+    }
+
+    const user = await this.requireUserFromAuth(authUser);
+    if (!user.passwordHash) {
+      throw new BadRequestException("User has no password set");
+    }
+
+    const currentMatch = await this.passwordService.compare(
+      dto.existing_password,
+      user.passwordHash,
+    );
+    if (!currentMatch) {
+      throw new BadRequestException("Invalid existing password");
+    }
+
+    const nextEmail = dto.new_email.trim().toLowerCase();
+    if (nextEmail === user.email) {
+      return this.buildMeResponse(authUser, user);
+    }
+
+    const other = await this.userRepo.findOne({
+      where: { email: nextEmail },
+      withDeleted: false,
+    });
+    if (other && other.id !== user.id) {
+      throw new ConflictException("Email already in use");
+    }
+
+    user.email = nextEmail;
+    const saved = await this.userRepo.save(user);
+    return this.buildMeResponse(authUser, saved);
+  }
+
   private async requireUserFromAuth(authUser: AuthUser): Promise<User> {
     const id = Number(authUser.userId);
     if (!Number.isInteger(id) || id <= 0) {
@@ -104,7 +184,7 @@ export class AuthService {
       : null;
 
     return {
-      email: authUser.email,
+      email: user.email,
       role: authUser.role,
       user: this.toUserMeDto(user),
       company: companyDto,
