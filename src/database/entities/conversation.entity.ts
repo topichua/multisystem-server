@@ -11,11 +11,13 @@ import {
 import { ConversationSource } from "./conversation-source.enum";
 import { ConversationGroup } from "./conversation-group.entity";
 import { User } from "./user.entity";
+import { WorkspaceMember } from "./workspace-member.entity";
 
 @Entity("conversations")
 @Unique("UQ_conversations_manager_external_id", ["managerId", "externalId"])
 @Index("IDX_conversations_manager_id", ["managerId"])
 @Index("IDX_conversations_group_id", ["groupId"])
+@Index("IDX_conversations_responsible_member_id", ["responsibleMemberId"])
 @Check(`"source" IN (1, 2)`)
 export class Conversation {
   @PrimaryGeneratedColumn({ name: "id" })
@@ -56,4 +58,14 @@ export class Conversation {
   })
   @JoinColumn({ name: "group_id" })
   group: ConversationGroup | null;
+
+  @Column({ name: "responsible_member_id", type: "int", nullable: true })
+  responsibleMemberId: number | null;
+
+  @ManyToOne(() => WorkspaceMember, { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "responsible_member_id" })
+  responsibleMember: WorkspaceMember | null;
+
+  @Column({ name: "responsible_member_set_at", type: "timestamptz", nullable: true })
+  responsibleMemberSetAt: Date | null;
 }

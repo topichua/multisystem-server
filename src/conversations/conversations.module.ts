@@ -7,6 +7,8 @@ import {
   ConversationMessage,
   InstagramUser,
   TelegramIntegration,
+  WorkspaceMember,
+  ProductSuggestion,
 } from "../database/entities";
 import { AuthModule } from "../auth/auth.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
@@ -31,6 +33,8 @@ import { ConversationsService } from "./conversations.service";
       ConversationMessage,
       InstagramUser,
       TelegramIntegration,
+      WorkspaceMember,
+      ProductSuggestion,
     ]),
   ],
   controllers: [ConversationsController, ConversationGroupsController],

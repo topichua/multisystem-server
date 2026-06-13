@@ -22,6 +22,7 @@ export { Product } from "./product.entity";
 export { ProductMedia } from "./product-media.entity";
 export { ProductMediaType } from "./product-media-type.enum";
 export { ProductInstagramReference } from "./product-instagram-reference.entity";
+export { ProductSuggestion } from "./product-suggestion.entity";
 export { ProductSourceType } from "./product-source-type.enum";
 export { ProductStatus } from "./product-status.enum";
 export { ProductType } from "./product-type.enum";

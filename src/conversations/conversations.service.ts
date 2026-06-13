@@ -20,6 +20,9 @@ import {
   InstagramUser,
   TelegramIntegration,
   TelegramIntegrationStatus,
+  WorkspaceMember,
+  WorkspaceMemberStatus,
+  ProductSuggestion,
 } from "../database/entities";
 import type {
   InstagramConversationDto,
@@ -44,6 +47,8 @@ import type {
   ConversationRowDto,
   ConversationParticipantDto,
 } from "./dto/http/conversations-list-response.dto";
+import type { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
+import type { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
 type InstagramErrorResponse = {
   error?: {
     message?: string;
@@ -70,6 +75,10 @@ export class ConversationsService {
     private readonly instagramUserRepo: Repository<InstagramUser>,
     @InjectRepository(TelegramIntegration)
     private readonly telegramIntegrationRepo: Repository<TelegramIntegration>,
+    @InjectRepository(WorkspaceMember)
+    private readonly workspaceMemberRepo: Repository<WorkspaceMember>,
+    @InjectRepository(ProductSuggestion)
+    private readonly productSuggestionRepo: Repository<ProductSuggestion>,
     private readonly messagePresenter: ConversationMessagePresenterService,
     @Inject(forwardRef(() => ConversationMessageNotifyService))
     private readonly messageNotify: ConversationMessageNotifyService,
@@ -257,13 +266,22 @@ export class ConversationsService {
   }
 
   /**
-   * Sets `conversations.group_id` to a group in the same workspace as the owner’s integration.
+   * Updates conversation fields (group and/or responsible member).
    */
-  async assignConversationGroupForOwner(
+  async updateConversationForOwner(
     ownerId: number,
     conversationId: number,
-    groupId: number,
+    dto: UpdateConversationRequestDto,
   ): Promise<ConversationRowDto> {
+    if (
+      dto.groupId === undefined &&
+      dto.responsible_member_id === undefined
+    ) {
+      throw new BadRequestException(
+        "At least one of groupId or responsible_member_id is required",
+      );
+    }
+
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
@@ -276,19 +294,90 @@ export class ConversationsService {
       throw new NotFoundException("Conversation not found");
     }
 
-    const group = await this.conversationGroupRepo.findOne({
-      where: { id: groupId, workspaceId },
-    });
-    if (!group) {
-      throw new BadRequestException(
-        "Conversation group not found or does not belong to this workspace",
-      );
+    if (dto.groupId !== undefined) {
+      if (dto.groupId == null) {
+        conv.groupId = null;
+      } else {
+        const group = await this.conversationGroupRepo.findOne({
+          where: { id: dto.groupId, workspaceId },
+        });
+        if (!group) {
+          throw new BadRequestException(
+            "Conversation group not found or does not belong to this workspace",
+          );
+        }
+        conv.groupId = dto.groupId;
+      }
     }
 
-    conv.groupId = groupId;
-    await this.conversationRepo.save(conv);
+    if (dto.responsible_member_id !== undefined) {
+      if (dto.responsible_member_id == null) {
+        conv.responsibleMemberId = null;
+        conv.responsibleMemberSetAt = null;
+      } else {
+        const member = await this.workspaceMemberRepo.findOne({
+          where: {
+            id: dto.responsible_member_id,
+            workspaceId,
+            status: WorkspaceMemberStatus.ACTIVE,
+          },
+        });
+        if (!member) {
+          throw new BadRequestException(
+            "Workspace member not found or does not belong to this workspace",
+          );
+        }
+        if (!member.canBeAssignedToChat) {
+          throw new BadRequestException(
+            "Workspace member is not eligible for chat assignment",
+          );
+        }
+        conv.responsibleMemberId = member.id;
+        conv.responsibleMemberSetAt = new Date();
+      }
+    }
 
+    await this.conversationRepo.save(conv);
     return this.getConversationForOwnerById(ownerId, conversationId);
+  }
+
+  async listProductSuggestionsForConversation(
+    ownerId: number,
+    conversationId: number,
+  ): Promise<ConversationProductSuggestionsResponseDto> {
+    const conv = await this.conversationRepo.findOne({
+      where: { id: conversationId, managerId: ownerId },
+    });
+    if (!conv) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    const rows = await this.productSuggestionRepo.find({
+      where: { conversationId },
+      order: { createdAt: "DESC", id: "DESC" },
+    });
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        productId: row.productId,
+        productVariantId: row.productVariantId,
+        conversationId: row.conversationId,
+        postId: row.postId,
+        createdAt: row.createdAt,
+      })),
+    };
+  }
+
+  /** @deprecated Use updateConversationForOwner */
+  async assignConversationGroupForOwner(
+    ownerId: number,
+    conversationId: number,
+    groupId: number,
+  ): Promise<ConversationRowDto> {
+    return this.updateConversationForOwner(ownerId, conversationId, {
+      groupId,
+    });
   }
 
   private toConversationRowDto(
@@ -316,6 +405,8 @@ export class ConversationsService {
       ),
       source: row.source,
       groupId: row.groupId,
+      responsibleMemberId: row.responsibleMemberId,
+      responsibleMemberSetAt: row.responsibleMemberSetAt,
       lastMessage: lastMessage?.message ?? "",
       isLastMessageFromMe,
       participant,

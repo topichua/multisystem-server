@@ -34,6 +34,20 @@ export class ConversationRowDto {
   @ApiPropertyOptional({ nullable: true })
   groupId: number | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Assigned workspace member id",
+  })
+  responsibleMemberId: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    format: "date-time",
+    description: "When `responsibleMemberId` was last set",
+  })
+  responsibleMemberSetAt: Date | null;
+
   @ApiProperty()
   lastMessage: string;
 

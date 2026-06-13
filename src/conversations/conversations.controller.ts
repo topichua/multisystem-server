@@ -28,7 +28,8 @@ import {
 } from "./dto/http/conversations-list-response.dto";
 import { SyncConversationsResponseDto } from "./dto/http/sync-conversations-response.dto";
 import { InstagramMessagesResponseDto } from "./dto/http/instagram-messages-response.dto";
-import { AssignConversationGroupRequestDto } from "./dto/http/assign-conversation-group-request.dto";
+import { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
+import { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
 import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 
@@ -185,16 +186,16 @@ export class ConversationsController {
 
   @Put(":id")
   @ApiOperation({
-    summary: "Assign a conversation group",
+    summary: "Update conversation",
     description:
-      "Sets `group_id` on the conversation to `groupId`. The group must belong to the same workspace as the owner’s integration.",
+      "Set `groupId` and/or `responsible_member_id`. Member must be active in the workspace and `can_be_assigned_to_chat`. Pass null to clear assignment.",
   })
-  @ApiBody({ type: AssignConversationGroupRequestDto })
+  @ApiBody({ type: UpdateConversationRequestDto })
   @ApiOkResponse({ type: ConversationRowDto })
-  async assignGroup(
+  async updateConversation(
     @Req() req: { user?: AuthUser },
     @Param("id") id: string,
-    @Body() dto: AssignConversationGroupRequestDto,
+    @Body() dto: UpdateConversationRequestDto,
   ): Promise<ConversationRowDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
@@ -210,10 +211,39 @@ export class ConversationsController {
     ) {
       throw new BadRequestException("id must be a positive integer");
     }
-    return this.conversationsService.assignConversationGroupForOwner(
+    return this.conversationsService.updateConversationForOwner(
       ownerId,
       numericId,
-      dto.groupId,
+      dto,
+    );
+  }
+
+  @Get(":id/suggestions")
+  @ApiOperation({
+    summary: "List product suggestions linked to a conversation",
+  })
+  @ApiOkResponse({ type: ConversationProductSuggestionsResponseDto })
+  async listProductSuggestions(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ConversationProductSuggestionsResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    return this.conversationsService.listProductSuggestionsForConversation(
+      ownerId,
+      numericId,
     );
   }
 

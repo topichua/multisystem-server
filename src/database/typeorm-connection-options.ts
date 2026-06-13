@@ -67,6 +67,8 @@ import { WorkspaceRoleIntegrationGrantAssignResponsibility1744200000067 } from "
 import { WorkspaceMemberCanBeAssignedToChat1744200000068 } from "./migrations/1744200000068-WorkspaceMemberCanBeAssignedToChat";
 import { UserAvatarSrcWorkspaceMemberColor1744200000069 } from "./migrations/1744200000069-UserAvatarSrcWorkspaceMemberColor";
 import { WorkspaceMemberUpdatedAt1744200000070 } from "./migrations/1744200000070-WorkspaceMemberUpdatedAt";
+import { ConversationResponsibleMember1744200000071 } from "./migrations/1744200000071-ConversationResponsibleMember";
+import { ProductSuggestions1744200000072 } from "./migrations/1744200000072-ProductSuggestions";
 import {
   Client,
   InstagramIntegration,
@@ -83,6 +85,7 @@ import {
   ProductCategory,
   ProductMedia,
   ProductInstagramReference,
+  ProductSuggestion,
   ProductVariant,
   ProductVariantCustomFieldValue,
   UploadMedia,
@@ -166,6 +169,7 @@ const entities = [
   ProductVariantCustomFieldValue,
   ProductMedia,
   ProductInstagramReference,
+  ProductSuggestion,
   UploadMedia,
   WorkspaceVariantCustomField,
   WorkspaceVariantCustomFieldOption,
@@ -285,6 +289,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceMemberCanBeAssignedToChat1744200000068,
       UserAvatarSrcWorkspaceMemberColor1744200000069,
       WorkspaceMemberUpdatedAt1744200000070,
+      ConversationResponsibleMember1744200000071,
+      ProductSuggestions1744200000072,
     ],
   };
 }
