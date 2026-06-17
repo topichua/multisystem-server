@@ -54,3 +54,29 @@ export function isInstagramWebhookPayload(
   }
   return true;
 }
+
+export function isInstagramWebhookEntry(
+  value: unknown,
+): value is InstagramWebhookEntry {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const o = value as Record<string, unknown>;
+  return typeof o.id === "string" && Array.isArray(o.messaging);
+}
+
+export type ParsedInstagramWebhookRawPayload =
+  | { kind: "payload"; payload: InstagramWebhookPayload }
+  | { kind: "entry"; entry: InstagramWebhookEntry };
+
+export function parseInstagramWebhookFromRawPayload(
+  raw: Record<string, unknown>,
+): ParsedInstagramWebhookRawPayload | null {
+  if (isInstagramWebhookPayload(raw)) {
+    return { kind: "payload", payload: raw };
+  }
+  if (isInstagramWebhookEntry(raw)) {
+    return { kind: "entry", entry: raw };
+  }
+  return null;
+}
