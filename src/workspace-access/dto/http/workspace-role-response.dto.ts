@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ResolvedUserPermissionsResponseDto } from "./resolved-user-permissions-response.dto";
 
 export class WorkspaceRoleResponseDto {
@@ -13,6 +13,12 @@ export class WorkspaceRoleResponseDto {
 
   @ApiProperty()
   name: string;
+
+  @ApiProperty({ nullable: true })
+  description: string | null;
+
+  @ApiProperty({ nullable: true })
+  color: string | null;
 
   @ApiProperty({ type: [String] })
   permissions: string[];
@@ -39,6 +45,12 @@ export class WorkspaceRoleResponseDto {
 
   @ApiProperty()
   updatedAt: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Present when requested via include_members_count=true. Active workspace members on this role.",
+  })
+  membersCount?: number;
 }
 
 export class WorkspaceRolesListResponseDto {

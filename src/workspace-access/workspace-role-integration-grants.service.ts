@@ -20,12 +20,14 @@ import {
   type WorkspaceRoleIntegrationGrantType,
 } from "../database/entities";
 import type {
+  IntegrationGrantPermissionsDto,
   ReplaceWorkspaceRoleIntegrationGrantsRequestDto,
   WorkspaceRoleIntegrationGrantItemDto,
   WorkspaceRoleIntegrationGrantsResponseDto,
 } from "./dto/http/workspace-role-integration-grants.dto";
 import {
   normalizeIntegrationGrantPermissions,
+  DEFAULT_INTEGRATION_GRANT_PERMISSIONS,
   type IntegrationGrantConversationPermissions,
 } from "./permissions/integration-grant-permissions";
 import { normalizePermissionOptionLists } from "./permissions/permission-option-lists.util";
@@ -356,73 +358,103 @@ export class WorkspaceRoleIntegrationGrantsService {
     workspaceId: number,
     grants: WorkspaceRoleIntegrationGrant[],
   ): Promise<WorkspaceRoleIntegrationGrantItemDto[]> {
-    if (grants.length === 0) {
-      return [];
-    }
+    const grantByKey = new Map(
+      grants.map((grant) => [
+        `${grant.integrationType}:${grant.integrationId}`,
+        grant,
+      ]),
+    );
 
-    const instagramIds = grants
-      .filter((g) => g.integrationType === "instagram")
-      .map((g) => g.integrationId);
-    const telegramIds = grants
-      .filter((g) => g.integrationType === "telegram")
-      .map((g) => g.integrationId);
+    const instagram = await this.instagramRepo.find({
+      where: { workspaceId },
+      order: { id: "ASC" },
+    });
+    const telegram = await this.telegramRepo.find({
+      where: { workspaceId },
+      order: { id: "ASC" },
+    });
 
-    const instagramById = new Map<number, string>();
-    if (instagramIds.length > 0) {
-      const rows = await this.instagramRepo.find({
-        where: { workspaceId, id: In(instagramIds) },
-      });
-      for (const row of rows) {
-        instagramById.set(
+    const items: WorkspaceRoleIntegrationGrantItemDto[] = [];
+
+    for (const row of instagram) {
+      items.push(
+        this.toIntegrationGrantItem(
+          "instagram",
           row.id,
-          row.facebookPageName?.trim() || row.name?.trim() || `Instagram #${row.id}`,
-        );
-      }
+          row.facebookPageName?.trim() ||
+            row.name?.trim() ||
+            `Instagram #${row.id}`,
+          grantByKey.get(`instagram:${row.id}`),
+        ),
+      );
     }
 
-    const telegramById = new Map<number, string>();
-    if (telegramIds.length > 0) {
-      const rows = await this.telegramRepo.find({
-        where: { workspaceId, id: In(telegramIds) },
-      });
-      for (const row of rows) {
-        telegramById.set(
+    for (const row of telegram) {
+      items.push(
+        this.toIntegrationGrantItem(
+          "telegram",
           row.id,
           row.name?.trim() ||
             row.telegramUsername?.trim() ||
             `Telegram #${row.id}`,
-        );
-      }
+          grantByKey.get(`telegram:${row.id}`),
+        ),
+      );
     }
 
-    return grants.map((grant) => {
-      const permissions = normalizeIntegrationGrantPermissions(
-        {
-          read: grant.conversationsReadScope,
-          write: grant.conversationsWriteScope,
-          assignResponsibility: grant.conversationsAssignResponsibility,
-          instagramCommentsView: grant.instagramCommentsRead,
-          instagramCommentsWrite: grant.instagramCommentsWrite,
-        },
-        grant.integrationType,
-      );
+    return items;
+  }
+
+  private toIntegrationGrantItem(
+    integrationType: WorkspaceRoleIntegrationGrantType,
+    integrationId: number,
+    integrationName: string,
+    grant?: WorkspaceRoleIntegrationGrant,
+  ): WorkspaceRoleIntegrationGrantItemDto {
+    if (!grant) {
       return {
-        integrationType: grant.integrationType,
-        integrationId: grant.integrationId,
-        integrationName:
-          grant.integrationType === "instagram"
-            ? (instagramById.get(grant.integrationId) ??
-              `Instagram #${grant.integrationId}`)
-            : (telegramById.get(grant.integrationId) ??
-              `Telegram #${grant.integrationId}`),
+        integrationType,
+        integrationId,
+        integrationName,
         permissions: {
-          read: permissions.read,
-          write: permissions.write,
-          assignResponsibility: permissions.assignResponsibility,
-          instagramCommentsView: permissions.instagramCommentsView,
-          instagramCommentsWrite: permissions.instagramCommentsWrite,
+          read: DEFAULT_INTEGRATION_GRANT_PERMISSIONS.read,
+          write: DEFAULT_INTEGRATION_GRANT_PERMISSIONS.write,
         },
       };
-    });
+    }
+
+    const permissions = normalizeIntegrationGrantPermissions(
+      {
+        read: grant.conversationsReadScope,
+        write: grant.conversationsWriteScope,
+        assignResponsibility: grant.conversationsAssignResponsibility,
+        instagramCommentsView: grant.instagramCommentsRead,
+        instagramCommentsWrite: grant.instagramCommentsWrite,
+      },
+      integrationType,
+    );
+
+    return {
+      integrationType,
+      integrationId,
+      integrationName,
+      permissions: this.toGrantedPermissionsDto(integrationType, permissions),
+    };
+  }
+
+  private toGrantedPermissionsDto(
+    integrationType: WorkspaceRoleIntegrationGrantType,
+    permissions: IntegrationGrantConversationPermissions,
+  ): IntegrationGrantPermissionsDto {
+    const dto: IntegrationGrantPermissionsDto = {
+      read: permissions.read,
+      write: permissions.write,
+      assignResponsibility: permissions.assignResponsibility,
+    };
+    if (integrationType === "instagram") {
+      dto.instagramCommentsView = permissions.instagramCommentsView;
+      dto.instagramCommentsWrite = permissions.instagramCommentsWrite;
+    }
+    return dto;
   }
 }

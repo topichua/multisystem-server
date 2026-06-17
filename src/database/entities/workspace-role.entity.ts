@@ -31,6 +31,12 @@ export class WorkspaceRole {
   @Column({ name: "name", type: "varchar", length: 255 })
   name: string;
 
+  @Column({ name: "description", type: "text", nullable: true })
+  description: string | null;
+
+  @Column({ name: "color", type: "varchar", length: 64, nullable: true })
+  color: string | null;
+
   /** Boolean permission keys from the static catalog in `workspace-access/permissions`. */
   @Column({ name: "permissions", type: "jsonb" })
   permissions: string[];

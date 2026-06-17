@@ -8,18 +8,23 @@ export class IntegrationGrantPermissionsDto {
   @ApiProperty({ enum: ["all", "mine"], example: "mine" })
   write: "all" | "mine";
 
-  @ApiProperty({ description: "Assign chat responsibility on this integration." })
-  assignResponsibility: boolean;
-
-  @ApiProperty({
-    description: "Instagram integrations only; ignored for Telegram grants.",
+  @ApiPropertyOptional({
+    description:
+      "Present when the integration is granted. Assign chat responsibility on this integration.",
   })
-  instagramCommentsView: boolean;
+  assignResponsibility?: boolean;
 
-  @ApiProperty({
-    description: "Instagram integrations only; ignored for Telegram grants.",
+  @ApiPropertyOptional({
+    description:
+      "Present when the integration is granted. Instagram integrations only.",
   })
-  instagramCommentsWrite: boolean;
+  instagramCommentsView?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Present when the integration is granted. Instagram integrations only.",
+  })
+  instagramCommentsWrite?: boolean;
 }
 
 export class WorkspaceRoleIntegrationGrantItemDto {

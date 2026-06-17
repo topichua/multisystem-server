@@ -6,8 +6,13 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { WorkspaceRole } from "../database/entities";
+import {
+  WorkspaceMember,
+  WorkspaceMemberStatus,
+  WorkspaceRole,
+} from "../database/entities";
 import type { CreateWorkspaceRoleRequestDto } from "./dto/http/create-workspace-role-request.dto";
+import type { ListWorkspaceRolesQueryDto } from "./dto/http/list-workspace-roles-query.dto";
 import type { UpdateWorkspaceRoleRequestDto } from "./dto/http/update-workspace-role-request.dto";
 import type { WorkspaceRoleResponseDto } from "./dto/http/workspace-role-response.dto";
 import { normalizePermissionOptionLists } from "./permissions/permission-option-lists.util";
@@ -26,6 +31,8 @@ export class WorkspaceRolesService {
   constructor(
     @InjectRepository(WorkspaceRole)
     private readonly roleRepo: Repository<WorkspaceRole>,
+    @InjectRepository(WorkspaceMember)
+    private readonly memberRepo: Repository<WorkspaceMember>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly integrationGrants: WorkspaceRoleIntegrationGrantsService,
   ) {}
@@ -33,12 +40,13 @@ export class WorkspaceRolesService {
   async listForOwner(
     ownerId: number,
     appRole?: string,
+    query?: ListWorkspaceRolesQueryDto,
   ): Promise<WorkspaceRoleResponseDto[]> {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
       appRole,
     );
-    return this.listForWorkspace(ownerId, workspace.id, appRole);
+    return this.listForWorkspace(ownerId, workspace.id, appRole, query);
   }
 
   async createForOwner(
@@ -88,6 +96,7 @@ export class WorkspaceRolesService {
     ownerId: number,
     workspaceId: number,
     appRole?: string,
+    query?: ListWorkspaceRolesQueryDto,
   ): Promise<WorkspaceRoleResponseDto[]> {
     await this.workspaceContext.requireWorkspaceOwner(
       ownerId,
@@ -98,7 +107,12 @@ export class WorkspaceRolesService {
       where: { workspaceId },
       order: { id: "ASC" },
     });
-    return Promise.all(rows.map((r) => this.toDto(r)));
+    const membersCountByRoleId = query?.include_members_count
+      ? await this.countActiveMembersByRoleId(workspaceId)
+      : undefined;
+    return Promise.all(
+      rows.map((row) => this.toDto(row, membersCountByRoleId)),
+    );
   }
 
   async createForWorkspace(
@@ -132,6 +146,8 @@ export class WorkspaceRolesService {
       workspaceId,
       slug,
       name: dto.name.trim(),
+      description: dto.description?.trim() ? dto.description.trim() : null,
+      color: dto.color?.trim() ? dto.color.trim() : null,
       permissions,
       permissionOptions,
       permissionOptionLists,
@@ -155,6 +171,16 @@ export class WorkspaceRolesService {
     const row = await this.requireRoleInWorkspace(workspaceId, roleId);
     if (dto.name != null) {
       row.name = dto.name.trim();
+    }
+    if (dto.description !== undefined) {
+      row.description =
+        dto.description === null || dto.description.trim() === ""
+          ? null
+          : dto.description.trim();
+    }
+    if (dto.color !== undefined) {
+      row.color =
+        dto.color === null || dto.color.trim() === "" ? null : dto.color.trim();
     }
     if (dto.permissions != null) {
       row.permissions = validatePermissionKeys(dto.permissions);
@@ -206,7 +232,31 @@ export class WorkspaceRolesService {
     return row;
   }
 
-  private async toDto(row: WorkspaceRole): Promise<WorkspaceRoleResponseDto> {
+  private async countActiveMembersByRoleId(
+    workspaceId: number,
+  ): Promise<Map<number, number>> {
+    const rows = await this.memberRepo
+      .createQueryBuilder("member")
+      .select("member.roleId", "roleId")
+      .addSelect("COUNT(*)", "count")
+      .where("member.workspaceId = :workspaceId", { workspaceId })
+      .andWhere("member.status = :status", {
+        status: WorkspaceMemberStatus.ACTIVE,
+      })
+      .groupBy("member.roleId")
+      .getRawMany<{ roleId: string | number; count: string }>();
+
+    const counts = new Map<number, number>();
+    for (const row of rows) {
+      counts.set(Number(row.roleId), Number(row.count));
+    }
+    return counts;
+  }
+
+  private async toDto(
+    row: WorkspaceRole,
+    membersCountByRoleId?: Map<number, number>,
+  ): Promise<WorkspaceRoleResponseDto> {
     const permissionOptions = normalizePermissionOptions(row.permissionOptions);
     const permissionOptionLists = normalizePermissionOptionLists(
       permissionOptions,
@@ -223,6 +273,8 @@ export class WorkspaceRolesService {
       workspaceId: row.workspaceId,
       slug: row.slug,
       name: row.name,
+      description: row.description,
+      color: row.color,
       permissions: row.permissions ?? [],
       permissionOptions,
       permissionOptionLists,
@@ -234,6 +286,9 @@ export class WorkspaceRolesService {
       }),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      ...(membersCountByRoleId != null
+        ? { membersCount: membersCountByRoleId.get(row.id) ?? 0 }
+        : {}),
     };
   }
 }

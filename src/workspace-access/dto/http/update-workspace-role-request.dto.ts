@@ -17,6 +17,21 @@ export class UpdateWorkspaceRoleRequestDto {
   @MaxLength(255)
   name?: string;
 
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10_000)
+  description?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Hex or CSS color; pass null or empty string to clear.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  color?: string | null;
+
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()

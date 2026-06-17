@@ -35,9 +35,9 @@ export class WorkspaceRoleIntegrationGrantsController {
   @ApiOperation({
     summary: "List integration grants for a role",
     description:
-      "Returns which workspace integrations this role may access. " +
-      "Requires workspace owner or `workspace.roles` permission. " +
-      "New integrations are not granted by default.",
+      "Returns every workspace integration with this role's grant settings. " +
+      "Ungranted integrations include read/write defaults only; granted integrations also include boolean permissions. " +
+      "Requires workspace owner or `workspace.roles` permission.",
   })
   @ApiParam({ name: "roleId", type: Number })
   @ApiOkResponse({ type: WorkspaceRoleIntegrationGrantsResponseDto })

@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -16,11 +17,13 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { CreateWorkspaceRoleRequestDto } from "./dto/http/create-workspace-role-request.dto";
+import { ListWorkspaceRolesQueryDto } from "./dto/http/list-workspace-roles-query.dto";
 import { UpdateWorkspaceRoleRequestDto } from "./dto/http/update-workspace-role-request.dto";
 import {
   WorkspaceRoleResponseDto,
@@ -42,11 +45,19 @@ export class WorkspaceRolesController {
       "Resolves workspace from your latest instagram_integration row (same as GET /workspace/settings).",
   })
   @ApiOkResponse({ type: WorkspaceRolesListResponseDto })
+  @ApiQuery({
+    name: "include_members_count",
+    required: false,
+    type: Boolean,
+    description:
+      "When true, each role includes membersCount for active workspace members assigned to that role.",
+  })
   async list(
     @Req() req: { user?: AuthUser },
+    @Query() query: ListWorkspaceRolesQueryDto,
   ): Promise<WorkspaceRolesListResponseDto> {
     const { ownerId, appRole } = this.auth(req);
-    const items = await this.roles.listForOwner(ownerId, appRole);
+    const items = await this.roles.listForOwner(ownerId, appRole, query);
     return { items };
   }
 
@@ -67,7 +78,7 @@ export class WorkspaceRolesController {
   }
 
   @Patch(":roleId")
-  @ApiOperation({ summary: "Update role name and/or permissions" })
+  @ApiOperation({ summary: "Update role name, description, color, and/or permissions" })
   @ApiParam({ name: "roleId", type: Number })
   @ApiBody({ type: UpdateWorkspaceRoleRequestDto })
   @ApiOkResponse({ type: WorkspaceRoleResponseDto })

@@ -26,6 +26,18 @@ export class CreateWorkspaceRoleRequestDto {
   @MaxLength(255)
   name: string;
 
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10_000)
+  description?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Hex or CSS color." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  color?: string | null;
+
   @ApiProperty({
     example: ["orders.read", "orders.create"],
     description: "Boolean keys from GET /permissions/catalog",
