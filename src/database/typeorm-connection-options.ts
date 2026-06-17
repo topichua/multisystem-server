@@ -69,6 +69,7 @@ import { UserAvatarSrcWorkspaceMemberColor1744200000069 } from "./migrations/174
 import { WorkspaceMemberUpdatedAt1744200000070 } from "./migrations/1744200000070-WorkspaceMemberUpdatedAt";
 import { ConversationResponsibleMember1744200000071 } from "./migrations/1744200000071-ConversationResponsibleMember";
 import { ProductSuggestions1744200000072 } from "./migrations/1744200000072-ProductSuggestions";
+import { WebhookEvents1744200000073 } from "./migrations/1744200000073-WebhookEvents";
 import {
   Client,
   InstagramIntegration,
@@ -98,6 +99,7 @@ import {
   WorkspaceMember,
   WorkspaceRole,
   WorkspaceRoleIntegrationGrant,
+  WebhookEvent,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -179,6 +181,7 @@ const entities = [
   OrderItem,
   OrderDeliveryInfo,
   OrderEvent,
+  WebhookEvent,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -291,6 +294,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceMemberUpdatedAt1744200000070,
       ConversationResponsibleMember1744200000071,
       ProductSuggestions1744200000072,
+      WebhookEvents1744200000073,
     ],
   };
 }

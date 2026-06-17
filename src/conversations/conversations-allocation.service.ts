@@ -24,6 +24,7 @@ import type {
   InstagramMessageReactionsDto,
 } from "./dto/http/instagram-messages-response.dto";
 import type {
+  InstagramWebhookEntry,
   InstagramWebhookMessagingItem,
   InstagramWebhookPayload,
 } from "../webhook/instagram-webhook-payload.types";
@@ -91,66 +92,80 @@ export class ConversationsAllocationService {
     this.log.log(`${t} allocate start entries=${entries.length}`);
 
     for (let ei = 0; ei < entries.length; ei++) {
-      const entry = entries[ei];
-      const entryPageId = entry.id?.trim();
-      if (!entryPageId) {
-        this.log.warn(`${t} entry[${ei}] skipped (missing id)`);
-        continue;
-      }
-
-      const messaging = entry.messaging ?? [];
-      const companyCtx = await this.resolveWebhookCompanyContext(entryPageId);
-      if (!companyCtx) {
-        this.log.warn(
-          `${t} entry[${ei}] no company for instagram_account_id=${entryPageId}`,
-        );
-        continue;
-      }
-
-      this.log.log(
-        `${t} entry[${ei}] company id=${companyCtx.id} owner_id=${companyCtx.ownerId}`,
-      );
-
-      const ctx = {
+      await this.allocateInstagramMessagingWebhookEntry(
+        entries[ei],
         traceId,
-        entry,
-        companyCtx,
-        businessInstagramId: companyCtx.instagramAccountId,
-        accessToken: companyCtx.accessToken,
-        pageId: companyCtx.pageId,
-      };
-
-      for (let mi = 0; mi < messaging.length; mi++) {
-        const ev = messaging[mi];
-        const kind = this.classifyWebhookMessagingEvent(ev);
-        if (kind === "skip") {
-          this.log.log(`${t} entry[${ei}] messaging[${mi}] skip (unclassified)`);
-          continue;
-        }
-        this.log.log(`${t} entry[${ei}] messaging[${mi}] kind=${kind}`);
-        try {
-          switch (kind) {
-            case "new_message":
-              await this.handleWebhookNewMessage(ev, ctx);
-              break;
-            case "reaction":
-              await this.handleWebhookReaction(ev, ctx);
-              break;
-            case "read":
-              await this.handleWebhookRead(ev, ctx);
-              break;
-            case "edit":
-              await this.handleWebhookEdit(ev, ctx);
-              break;
-          }
-        } catch (e) {
-          const err = e instanceof Error ? e.message : String(e);
-          this.log.warn(`${t} ${kind} failed: ${err}`);
-        }
-      }
+        ei,
+      );
     }
 
     this.log.log(`${t} allocate done`);
+  }
+
+  async allocateInstagramMessagingWebhookEntry(
+    entry: InstagramWebhookEntry,
+    traceId: string,
+    entryIndex = 0,
+  ): Promise<void> {
+    const t = `[webhook trace=${traceId}]`;
+    const entryPageId = entry.id?.trim();
+    if (!entryPageId) {
+      this.log.warn(`${t} entry[${entryIndex}] skipped (missing id)`);
+      return;
+    }
+
+    const messaging = entry.messaging ?? [];
+    const companyCtx = await this.resolveWebhookCompanyContext(entryPageId);
+    if (!companyCtx) {
+      this.log.warn(
+        `${t} entry[${entryIndex}] no company for instagram_account_id=${entryPageId}`,
+      );
+      return;
+    }
+
+    this.log.log(
+      `${t} entry[${entryIndex}] company id=${companyCtx.id} owner_id=${companyCtx.ownerId}`,
+    );
+
+    const ctx = {
+      traceId,
+      entry,
+      companyCtx,
+      businessInstagramId: companyCtx.instagramAccountId,
+      accessToken: companyCtx.accessToken,
+      pageId: companyCtx.pageId,
+    };
+
+    for (let mi = 0; mi < messaging.length; mi++) {
+      const ev = messaging[mi];
+      const kind = this.classifyWebhookMessagingEvent(ev);
+      if (kind === "skip") {
+        this.log.log(
+          `${t} entry[${entryIndex}] messaging[${mi}] skip (unclassified)`,
+        );
+        continue;
+      }
+      this.log.log(`${t} entry[${entryIndex}] messaging[${mi}] kind=${kind}`);
+      try {
+        switch (kind) {
+          case "new_message":
+            await this.handleWebhookNewMessage(ev, ctx);
+            break;
+          case "reaction":
+            await this.handleWebhookReaction(ev, ctx);
+            break;
+          case "read":
+            await this.handleWebhookRead(ev, ctx);
+            break;
+          case "edit":
+            await this.handleWebhookEdit(ev, ctx);
+            break;
+        }
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        this.log.warn(`${t} ${kind} failed: ${err}`);
+      }
+    }
   }
 
   private classifyWebhookMessagingEvent(
