@@ -137,12 +137,16 @@ export class WorkspaceMembersService {
 
     const role = await this.rolesService.requireRoleInWorkspace(
       workspace.id,
-      dto.roleId,
+      dto.role_id,
     );
 
-    row.canBeAssignedToChat = dto.can_be_assigned_to_chat;
-    row.roleId = role.id;
-    await this.memberRepo.save(row);
+    await this.memberRepo.update(
+      { id: row.id, workspaceId: workspace.id },
+      {
+        roleId: role.id,
+        canBeAssignedToChat: dto.can_be_assigned_to_chat,
+      },
+    );
 
     const saved = await this.memberRepo.findOneOrFail({
       where: { id: row.id },
@@ -242,11 +246,19 @@ export class WorkspaceMembersService {
       user.avatarSrc,
     );
     if (member) {
-      member.roleId = role.id;
-      member.status = WorkspaceMemberStatus.INACTIVE;
-      member.invitedByUserId = ownerId;
-      member.color = color;
-      member = await this.memberRepo.save(member);
+      await this.memberRepo.update(
+        { id: member.id },
+        {
+          roleId: role.id,
+          status: WorkspaceMemberStatus.INACTIVE,
+          invitedByUserId: ownerId,
+          color,
+        },
+      );
+      member = await this.memberRepo.findOneOrFail({
+        where: { id: member.id },
+        relations: ["user", "role"],
+      });
     } else {
       member = await this.memberRepo.save(
         this.memberRepo.create({
@@ -465,12 +477,20 @@ export class WorkspaceMembersService {
     );
 
     if (existing) {
-      existing.roleId = params.roleId;
-      existing.status = WorkspaceMemberStatus.ACTIVE;
-      existing.invitedByUserId = params.invitedByUserId;
-      existing.joinedAt = new Date();
-      existing.color = color;
-      return this.memberRepo.save(existing);
+      await this.memberRepo.update(
+        { id: existing.id },
+        {
+          roleId: params.roleId,
+          status: WorkspaceMemberStatus.ACTIVE,
+          invitedByUserId: params.invitedByUserId,
+          joinedAt: new Date(),
+          color,
+        },
+      );
+      return this.memberRepo.findOneOrFail({
+        where: { id: existing.id },
+        relations: ["user", "role"],
+      });
     }
 
     const row = this.memberRepo.create({

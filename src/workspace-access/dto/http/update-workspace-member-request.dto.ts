@@ -15,5 +15,5 @@ export class UpdateWorkspaceMemberRequestDto {
   })
   @IsInt()
   @IsPositive()
-  roleId: number;
+  role_id: number;
 }
