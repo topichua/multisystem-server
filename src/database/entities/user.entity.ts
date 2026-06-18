@@ -35,6 +35,14 @@ export class User {
   avatarSrc: string | null;
 
   @Column({
+    name: "avatar_cloudflare_image_id",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  avatarCloudflareImageId: string | null;
+
+  @Column({
     name: "mobile_phone_hash",
     type: "varchar",
     length: 255,

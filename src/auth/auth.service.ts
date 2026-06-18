@@ -10,7 +10,9 @@ import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
 import { Repository } from "typeorm";
 import { InstagramIntegration, User, UserStatus } from "../database/entities";
+import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { PasswordService } from "../users/crypto/password.service";
+import { InvitationTokenService } from "../users/crypto/invitation-token.service";
 import { ROLE_SUPER_ADMIN } from "./constants";
 import type { AuthUser } from "./types/auth-user.type";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
@@ -27,12 +29,20 @@ import type { SetEmailRequestDto } from "./dto/set-email-request.dto";
 /** Default access token lifetime when `JWT_EXPIRES_SECONDS` is unset (30 days). */
 const DEFAULT_JWT_EXPIRES_SECONDS = 30 * 24 * 60 * 60;
 
+type UploadedAvatarFile = {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwtService: JwtService,
     private readonly passwordService: PasswordService,
+    private readonly invitationTokenService: InvitationTokenService,
+    private readonly cloudflareImages: CloudflareImagesService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(InstagramIntegration)
@@ -65,12 +75,53 @@ export class AuthService {
     }
 
     const user = await this.requireUserFromAuth(authUser);
-    if (dto.avatar_src !== undefined) {
-      user.avatarSrc = dto.avatar_src?.trim() ? dto.avatar_src.trim() : null;
+    if (dto.firstName !== undefined) {
+      user.firstName = dto.firstName.trim();
+    }
+    if (dto.lastName !== undefined) {
+      user.lastName = dto.lastName?.trim() ? dto.lastName.trim() : null;
+    }
+    if (dto.phone !== undefined) {
+      if (dto.phone === null || dto.phone.trim() === "") {
+        user.mobilePhoneHash = null;
+      } else {
+        const normalized = dto.phone.replace(/\D/g, "");
+        user.mobilePhoneHash =
+          normalized.length === 0
+            ? null
+            : this.invitationTokenService.hash(normalized);
+      }
     }
 
     const saved = await this.userRepo.save(user);
     return this.buildMeResponse(authUser, saved);
+  }
+
+  async updateAvatar(
+    authUser: AuthUser,
+    file: UploadedAvatarFile | undefined,
+  ): Promise<{ avatar_src: string }> {
+    if (authUser.userId === "super-admin") {
+      throw new BadRequestException(
+        "Env super-admin account has no profile to update",
+      );
+    }
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("Image file is required");
+    }
+
+    const user = await this.requireUserFromAuth(authUser);
+    const uploaded = await this.cloudflareImages.uploadImage(file);
+
+    if (user.avatarCloudflareImageId) {
+      await this.cloudflareImages.deleteImage(user.avatarCloudflareImageId);
+    }
+
+    user.avatarSrc = uploaded.cdnUrl;
+    user.avatarCloudflareImageId = uploaded.cloudflareImageId;
+    await this.userRepo.save(user);
+
+    return { avatar_src: uploaded.cdnUrl };
   }
 
   async changePassword(

@@ -8,14 +8,19 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -29,10 +34,17 @@ import { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
 import { ChangePasswordResponseDto } from "./dto/change-password-response.dto";
 import { SetEmailRequestDto } from "./dto/set-email-request.dto";
 import { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
+import { UpdateAuthAvatarResponseDto } from "./dto/update-auth-avatar-response.dto";
 import { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 import { LoginRequestDto } from "./dto/login-request.dto";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import type { AuthUser } from "./types/auth-user.type";
+
+type UploadedAvatarFile = {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+};
 
 @ApiTags("auth")
 @Controller("auth")
@@ -82,10 +94,57 @@ export class AuthController {
     @Req() req: Request & { user: AuthUser },
     @Body() dto: UpdateAuthProfileRequestDto,
   ): Promise<MeResponseDto> {
-    if (dto.avatar_src === undefined) {
+    if (
+      dto.firstName === undefined &&
+      dto.lastName === undefined &&
+      dto.phone === undefined
+    ) {
       throw new BadRequestException("At least one profile field is required");
     }
     return this.authService.updateProfile(req.user, dto);
+  }
+
+  @Put("avatar")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("bearer")
+  @UseInterceptors(
+    FileInterceptor("image", {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary: "Upload current user avatar",
+    description:
+      "Uploads an image to Cloudflare CDN, stores the URL on the user, and deletes the previous avatar from CDN when present.",
+  })
+  @ApiBody({
+    description: "Multipart body with binary part `image`.",
+    required: true,
+    ...({
+      content: {
+        "multipart/form-data": {
+          schema: {
+            type: "object",
+            required: ["image"],
+            properties: {
+              image: {
+                type: "string",
+                format: "binary",
+                description: "Avatar image file (JPEG, PNG, WebP, …)",
+              },
+            },
+          },
+        },
+      },
+    } as Record<string, unknown>),
+  })
+  @ApiOkResponse({ type: UpdateAuthAvatarResponseDto })
+  async updateAvatar(
+    @Req() req: Request & { user: AuthUser },
+    @UploadedFile() image?: UploadedAvatarFile,
+  ): Promise<UpdateAuthAvatarResponseDto> {
+    return this.authService.updateAvatar(req.user, image);
   }
 
   @Post("change-password")

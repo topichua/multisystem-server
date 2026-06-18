@@ -71,6 +71,7 @@ import { ConversationResponsibleMember1744200000071 } from "./migrations/1744200
 import { ProductSuggestions1744200000072 } from "./migrations/1744200000072-ProductSuggestions";
 import { WebhookEvents1744200000073 } from "./migrations/1744200000073-WebhookEvents";
 import { WorkspaceRoleDescriptionColor1744200000074 } from "./migrations/1744200000074-WorkspaceRoleDescriptionColor";
+import { UserAvatarCloudflareImageId1744200000075 } from "./migrations/1744200000075-UserAvatarCloudflareImageId";
 import {
   Client,
   InstagramIntegration,
@@ -297,6 +298,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductSuggestions1744200000072,
       WebhookEvents1744200000073,
       WorkspaceRoleDescriptionColor1744200000074,
+      UserAvatarCloudflareImageId1744200000075,
     ],
   };
 }

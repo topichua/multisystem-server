@@ -1,15 +1,36 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsOptional, IsString, MaxLength, ValidateIf } from "class-validator";
+import {
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from "class-validator";
 
 export class UpdateAuthProfileRequestDto {
+  @ApiPropertyOptional({ example: "Alex" })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  firstName?: string;
+
+  @ApiPropertyOptional({ nullable: true, example: "Smith" })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(120)
+  lastName?: string | null;
+
   @ApiPropertyOptional({
     nullable: true,
-    description: "Avatar image URL. Pass null to remove.",
-    example: "https://cdn.example.com/avatars/me.jpg",
+    example: "+380501234567",
+    description:
+      "Mobile phone. Stored as a hash only; pass null or empty string to clear.",
   })
   @IsOptional()
   @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()
-  @MaxLength(2048)
-  avatar_src?: string | null;
+  @MaxLength(32)
+  phone?: string | null;
 }
