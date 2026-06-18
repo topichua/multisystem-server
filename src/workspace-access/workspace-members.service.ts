@@ -90,6 +90,7 @@ export class WorkspaceMembersService {
             ? In([
                 WorkspaceMemberStatus.ACTIVE,
                 WorkspaceMemberStatus.INACTIVE,
+                WorkspaceMemberStatus.DEACTIVATED,
               ])
             : WorkspaceMemberStatus.ACTIVE,
         ...(assignableFilter === undefined
@@ -155,6 +156,112 @@ export class WorkspaceMembersService {
     return this.toDto(saved);
   }
 
+  async resendInvitationForWorkspace(
+    ownerId: number,
+    memberId: number,
+    appRole?: string,
+  ): Promise<InviteWorkspaceMemberResponseDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+      appRole,
+    );
+    const member = await this.requireInactiveMember(
+      workspace.id,
+      memberId,
+      ["user", "role"],
+    );
+    const user = member.user;
+    if (user.status === UserStatus.Disabled) {
+      throw new BadRequestException("User account is disabled");
+    }
+
+    const rawToken = await this.refreshInvitationAndSend(
+      ownerId,
+      workspace.id,
+      user,
+    );
+
+    const response: InviteWorkspaceMemberResponseDto = {
+      kind: "invitation",
+      invitationId: member.id,
+    };
+    if (this.config.get<string>("NODE_ENV") !== "production") {
+      response.invitationToken = rawToken;
+    }
+    return response;
+  }
+
+  async removeInviteForWorkspace(
+    ownerId: number,
+    memberId: number,
+    appRole?: string,
+  ): Promise<void> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+      appRole,
+    );
+    const member = await this.requireInactiveMember(workspace.id, memberId, [
+      "user",
+    ]);
+    const user = member.user;
+
+    await this.revokePendingWorkspaceInvitations(workspace.id, user.email);
+    await this.memberRepo.delete({ id: member.id, workspaceId: workspace.id });
+
+    const otherPending = await this.memberRepo.count({
+      where: { userId: user.id, status: WorkspaceMemberStatus.INACTIVE },
+    });
+    if (otherPending === 0) {
+      await this.userRepo.update(user.id, {
+        invitationTokenHash: null,
+        invitationExpiresAt: null,
+      });
+    }
+  }
+
+  async deactivateMemberForWorkspace(
+    ownerId: number,
+    memberId: number,
+    appRole?: string,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+      appRole,
+    );
+    if (memberId <= 0) {
+      throw new BadRequestException("memberId must be a positive integer");
+    }
+
+    const row = await this.memberRepo.findOne({
+      where: {
+        id: memberId,
+        workspaceId: workspace.id,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+      relations: ["user", "role"],
+    });
+    if (!row) {
+      throw new NotFoundException("Active workspace member not found");
+    }
+    if (row.userId === workspace.ownerId) {
+      throw new BadRequestException("Workspace owner cannot be deactivated");
+    }
+
+    await this.memberRepo.update(
+      { id: row.id, workspaceId: workspace.id },
+      {
+        status: WorkspaceMemberStatus.DEACTIVATED,
+        canBeAssignedToChat: false,
+      },
+    );
+
+    const saved = await this.memberRepo.findOneOrFail({
+      where: { id: row.id },
+      relations: ["user", "role"],
+    });
+    return this.toDto(saved);
+  }
+
   async inviteForWorkspace(
     ownerId: number,
     dto: InviteWorkspaceMemberRequestDto,
@@ -206,9 +313,6 @@ export class WorkspaceMembersService {
       }
     }
 
-    const rawToken = this.invitationTokenService.generateRawToken();
-    const invitationExpiresAt = new Date(Date.now() + DEFAULT_INVITE_TTL_MS);
-
     if (!user) {
       user = this.userRepo.create({
         email,
@@ -219,6 +323,7 @@ export class WorkspaceMembersService {
         invitedAt: new Date(),
         metadata: {},
       });
+      user = await this.userRepo.save(user);
     } else {
       if (dto.first_name?.trim()) {
         user.firstName = dto.first_name.trim();
@@ -230,11 +335,8 @@ export class WorkspaceMembersService {
         user.invitedByUserId = ownerId;
         user.invitedAt = new Date();
       }
+      user = await this.userRepo.save(user);
     }
-
-    user.invitationTokenHash = this.invitationTokenService.hash(rawToken);
-    user.invitationExpiresAt = invitationExpiresAt;
-    user = await this.userRepo.save(user);
 
     let member = await this.memberRepo.findOne({
       where: { workspaceId, userId: user.id },
@@ -274,20 +376,10 @@ export class WorkspaceMembersService {
       );
     }
 
-    await this.invitationRepo.update(
-      {
-        workspaceId,
-        email,
-        status: WorkspaceInvitationStatus.PENDING,
-      },
-      { status: WorkspaceInvitationStatus.REVOKED },
-    );
-
-    const invitationLink = this.buildInvitationLink(rawToken);
-    await this.sendgrid.sendWorkspaceInvitationEmail(
-      email,
-      user.firstName,
-      invitationLink,
+    const rawToken = await this.refreshInvitationAndSend(
+      ownerId,
+      workspaceId,
+      user,
     );
 
     const savedMember = await this.memberRepo.findOneOrFail({
@@ -423,6 +515,70 @@ export class WorkspaceMembersService {
       throw new InternalServerErrorException("APP_URL is not configured");
     }
     return `${base}/invitation/${rawToken}`;
+  }
+
+  private async requireInactiveMember(
+    workspaceId: number,
+    memberId: number,
+    relations: Array<"user" | "role"> = ["user"],
+  ): Promise<WorkspaceMember> {
+    if (!Number.isInteger(memberId) || memberId <= 0) {
+      throw new BadRequestException("memberId must be a positive integer");
+    }
+
+    const member = await this.memberRepo.findOne({
+      where: {
+        id: memberId,
+        workspaceId,
+        status: WorkspaceMemberStatus.INACTIVE,
+      },
+      relations,
+    });
+    if (!member) {
+      throw new NotFoundException("Pending workspace invitation not found");
+    }
+    return member;
+  }
+
+  private async revokePendingWorkspaceInvitations(
+    workspaceId: number,
+    email: string,
+  ): Promise<void> {
+    await this.invitationRepo.update(
+      {
+        workspaceId,
+        email,
+        status: WorkspaceInvitationStatus.PENDING,
+      },
+      { status: WorkspaceInvitationStatus.REVOKED },
+    );
+  }
+
+  private async refreshInvitationAndSend(
+    ownerId: number,
+    workspaceId: number,
+    user: User,
+  ): Promise<string> {
+    const rawToken = this.invitationTokenService.generateRawToken();
+    const invitationExpiresAt = new Date(Date.now() + DEFAULT_INVITE_TTL_MS);
+
+    await this.userRepo.update(user.id, {
+      invitationTokenHash: this.invitationTokenService.hash(rawToken),
+      invitationExpiresAt,
+      invitedByUserId: ownerId,
+      invitedAt: new Date(),
+    });
+
+    await this.revokePendingWorkspaceInvitations(workspaceId, user.email);
+
+    const invitationLink = this.buildInvitationLink(rawToken);
+    await this.sendgrid.sendWorkspaceInvitationEmail(
+      user.email,
+      user.firstName,
+      invitationLink,
+    );
+
+    return rawToken;
   }
 
   private async findOrCreateTestUser(

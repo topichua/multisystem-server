@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Put,
@@ -14,6 +17,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -70,6 +74,68 @@ export class WorkspaceMembersController {
       ownerId,
       this.parsePositiveInt(memberIdRaw, "memberId"),
       dto,
+      appRole,
+    );
+  }
+
+  @Post(":memberId/resend")
+  @ApiOperation({
+    summary: "Resend workspace member invitation",
+    description:
+      "Generates a new invitation token and sends the invitation email. " +
+      "Only for members with inactive (pending invitation) status.",
+  })
+  @ApiParam({ name: "memberId", type: Number })
+  @ApiCreatedResponse({ type: InviteWorkspaceMemberResponseDto })
+  async resendInvitation(
+    @Req() req: { user?: AuthUser },
+    @Param("memberId") memberIdRaw: string,
+  ): Promise<InviteWorkspaceMemberResponseDto> {
+    const { ownerId, appRole } = this.auth(req);
+    return this.members.resendInvitationForWorkspace(
+      ownerId,
+      this.parsePositiveInt(memberIdRaw, "memberId"),
+      appRole,
+    );
+  }
+
+  @Delete(":memberId/remove-invite")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Remove pending workspace invitation",
+    description:
+      "Deletes the inactive workspace member row and revokes the invitation. " +
+      "Only works when member status is inactive.",
+  })
+  @ApiParam({ name: "memberId", type: Number })
+  @ApiNoContentResponse()
+  async removeInvite(
+    @Req() req: { user?: AuthUser },
+    @Param("memberId") memberIdRaw: string,
+  ): Promise<void> {
+    const { ownerId, appRole } = this.auth(req);
+    await this.members.removeInviteForWorkspace(
+      ownerId,
+      this.parsePositiveInt(memberIdRaw, "memberId"),
+      appRole,
+    );
+  }
+
+  @Delete(":memberId/deactivate")
+  @ApiOperation({
+    summary: "Deactivate workspace member",
+    description: "Sets member status to deactivated. Only active members can be deactivated.",
+  })
+  @ApiParam({ name: "memberId", type: Number })
+  @ApiOkResponse({ type: WorkspaceMemberResponseDto })
+  async deactivate(
+    @Req() req: { user?: AuthUser },
+    @Param("memberId") memberIdRaw: string,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const { ownerId, appRole } = this.auth(req);
+    return this.members.deactivateMemberForWorkspace(
+      ownerId,
+      this.parsePositiveInt(memberIdRaw, "memberId"),
       appRole,
     );
   }
