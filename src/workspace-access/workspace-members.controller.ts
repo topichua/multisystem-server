@@ -40,9 +40,10 @@ export class WorkspaceMembersController {
 
   @Get()
   @ApiOperation({
-    summary: "List active workspace members",
+    summary: "List workspace members",
     description:
-      "Optional filter: `can_be_assigned_to_chat=true` returns assignable members (includes owner).",
+      "Returns active and inactive (pending invitation) members. " +
+      "Optional filter: `can_be_assigned_to_chat=true` returns assignable active members only (includes owner).",
   })
   @ApiOkResponse({ type: WorkspaceMembersListResponseDto })
   async list(
@@ -77,7 +78,8 @@ export class WorkspaceMembersController {
   @ApiOperation({
     summary: "Invite a member by email (workspace owner assigns role)",
     description:
-      "Normal flow creates a pending workspace_invitations row. " +
+      "Creates an invited user and inactive workspace member, sends a SendGrid invitation email, " +
+      "and returns invitationId (workspace member id). " +
       "skipConfirmation (non-production): creates user with password \"password\" and adds member immediately.",
   })
   @ApiBody({ type: InviteWorkspaceMemberRequestDto })

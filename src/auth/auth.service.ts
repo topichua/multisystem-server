@@ -257,6 +257,10 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     }
 
+    return this.issueAccessTokenForUser(user);
+  }
+
+  issueAccessTokenForUser(user: User): { access_token: string } {
     return this.signAccessToken({
       sub: String(user.id),
       email: user.email,

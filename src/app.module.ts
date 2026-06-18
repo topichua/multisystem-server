@@ -22,6 +22,7 @@ import { IntegrationsModule } from "./integrations/integrations.module";
 import { TelegramIntegrationsModule } from "./telegram-integrations/telegram-integrations.module";
 import { VariantCustomFieldsModule } from "./variant-custom-fields/variant-custom-fields.module";
 import { WorkspaceAccessModule } from "./workspace-access/workspace-access.module";
+import { SendgridModule } from "./sendgrid/sendgrid.module";
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { WorkspaceAccessModule } from "./workspace-access/workspace-access.modul
     InstagramModule,
     AccountModule,
     WebhookModule,
+    SendgridModule,
   ],
   controllers: [AppController],
   providers: [AppService],

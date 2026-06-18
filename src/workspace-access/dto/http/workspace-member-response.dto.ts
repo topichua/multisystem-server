@@ -73,12 +73,14 @@ export class InviteWorkspaceMemberResponseDto {
   member?: WorkspaceMemberResponseDto;
 
   @ApiPropertyOptional({
-    description: "Present when confirmation is required (non-testing flow)",
+    description:
+      "Present when confirmation is required. Id of the inactive workspace member row.",
   })
   invitationId?: number;
 
   @ApiPropertyOptional({
-    description: "Dev/testing: raw token when invitation created (not for production)",
+    description:
+      "Non-production only: raw invitation token for local testing.",
   })
   invitationToken?: string;
 }

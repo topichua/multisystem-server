@@ -11,11 +11,14 @@ import {
   WorkspaceRoleIntegrationGrant,
 } from "../database/entities";
 import { UsersModule } from "../users/users.module";
+import { SendgridModule } from "../sendgrid/sendgrid.module";
+import { AuthModule } from "../auth/auth.module";
 import { PermissionsCatalogController } from "./permissions-catalog.controller";
 import { WorkspaceAccessContextService } from "./workspace-access-context.service";
 import { WorkspacePermissionsController } from "./workspace-permissions.controller";
 import { WorkspacePermissionsService } from "./workspace-permissions.service";
 import { WorkspaceMembersController } from "./workspace-members.controller";
+import { WorkspaceMembersRegisterController } from "./workspace-members-register.controller";
 import { WorkspaceMembersService } from "./workspace-members.service";
 import { WorkspaceRoleIntegrationGrantsController } from "./workspace-role-integration-grants.controller";
 import { WorkspaceRoleIntegrationGrantsService } from "./workspace-role-integration-grants.service";
@@ -36,6 +39,8 @@ import { WorkspaceRolesService } from "./workspace-roles.service";
       User,
     ]),
     UsersModule,
+    SendgridModule,
+    AuthModule,
   ],
   controllers: [
     PermissionsCatalogController,
@@ -43,6 +48,7 @@ import { WorkspaceRolesService } from "./workspace-roles.service";
     WorkspaceRolesController,
     WorkspaceRoleIntegrationGrantsController,
     WorkspaceMembersController,
+    WorkspaceMembersRegisterController,
   ],
   providers: [
     WorkspaceAccessContextService,

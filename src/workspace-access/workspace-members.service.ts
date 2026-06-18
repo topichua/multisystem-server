@@ -2,24 +2,33 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import {
   User,
   UserStatus, 
+  Workspace,
   WorkspaceInvitation,
   WorkspaceInvitationStatus,
   WorkspaceMember,
   WorkspaceMemberStatus,
 } from "../database/entities";
+import { AuthService } from "../auth/auth.service";
+import { SendgridService } from "../sendgrid/sendgrid.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
 import { PasswordService } from "../users/crypto/password.service";
 import type { InviteWorkspaceMemberRequestDto } from "./dto/http/invite-workspace-member-request.dto";
 import type { ListWorkspaceMembersQueryDto } from "./dto/http/list-workspace-members-query.dto";
 import type { UpdateWorkspaceMemberRequestDto } from "./dto/http/update-workspace-member-request.dto";
+import type {
+  CompleteWorkspaceMemberRegistrationRequestDto,
+  CompleteWorkspaceMemberRegistrationResponseDto,
+  WorkspaceMemberRegistrationFormResponseDto,
+} from "./dto/http/workspace-member-registration.dto";
 import type {
   InviteWorkspaceMemberResponseDto,
   WorkspaceMemberResponseDto,
@@ -41,12 +50,16 @@ export class WorkspaceMembersService {
     private readonly memberRepo: Repository<WorkspaceMember>,
     @InjectRepository(WorkspaceInvitation)
     private readonly invitationRepo: Repository<WorkspaceInvitation>,
+    @InjectRepository(Workspace)
+    private readonly workspaceRepo: Repository<Workspace>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly rolesService: WorkspaceRolesService,
     private readonly passwordService: PasswordService,
     private readonly invitationTokenService: InvitationTokenService,
+    private readonly sendgrid: SendgridService,
+    private readonly authService: AuthService,
     private readonly config: ConfigService,
   ) {}
 
@@ -72,7 +85,13 @@ export class WorkspaceMembersService {
     const rows = await this.memberRepo.find({
       where: {
         workspaceId,
-        status: WorkspaceMemberStatus.ACTIVE,
+        status:
+          assignableFilter === undefined
+            ? In([
+                WorkspaceMemberStatus.ACTIVE,
+                WorkspaceMemberStatus.INACTIVE,
+              ])
+            : WorkspaceMemberStatus.ACTIVE,
         ...(assignableFilter === undefined
           ? {}
           : { canBeAssignedToChat: assignableFilter }),
@@ -139,6 +158,7 @@ export class WorkspaceMembersService {
   ): Promise<InviteWorkspaceMemberResponseDto> {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
+      appRole,
     );
     const workspaceId = workspace.id;
     const role = await this.rolesService.requireRoleInWorkspace(
@@ -146,6 +166,8 @@ export class WorkspaceMembersService {
       dto.role_id,
     );
     const email = dto.email.trim().toLowerCase();
+    const displayName =
+      dto.first_name?.trim() || email.split("@")[0] || "User";
 
     if (dto.skipConfirmation) {
       if (this.config.get<string>("NODE_ENV") === "production") {
@@ -163,36 +185,232 @@ export class WorkspaceMembersService {
       return { kind: "member", member: this.toDto(member) };
     }
 
-    const pendingInvite = await this.invitationRepo.findOne({
-      where: {
+    let user = await this.userRepo.findOne({ where: { email } });
+    if (user) {
+      const activeMember = await this.memberRepo.findOne({
+        where: {
+          workspaceId,
+          userId: user.id,
+          status: WorkspaceMemberStatus.ACTIVE,
+        },
+      });
+      if (activeMember) {
+        throw new ConflictException("User is already a member of this workspace");
+      }
+      if (user.status === UserStatus.Disabled) {
+        throw new BadRequestException("User account is disabled");
+      }
+    }
+
+    const rawToken = this.invitationTokenService.generateRawToken();
+    const invitationExpiresAt = new Date(Date.now() + DEFAULT_INVITE_TTL_MS);
+
+    if (!user) {
+      user = this.userRepo.create({
+        email,
+        firstName: displayName,
+        lastName: dto.last_name?.trim() || null,
+        status: UserStatus.Invited,
+        invitedByUserId: ownerId,
+        invitedAt: new Date(),
+        metadata: {},
+      });
+    } else {
+      if (dto.first_name?.trim()) {
+        user.firstName = dto.first_name.trim();
+      }
+      if (dto.last_name !== undefined) {
+        user.lastName = dto.last_name?.trim() || null;
+      }
+      if (user.status === UserStatus.Invited) {
+        user.invitedByUserId = ownerId;
+        user.invitedAt = new Date();
+      }
+    }
+
+    user.invitationTokenHash = this.invitationTokenService.hash(rawToken);
+    user.invitationExpiresAt = invitationExpiresAt;
+    user = await this.userRepo.save(user);
+
+    let member = await this.memberRepo.findOne({
+      where: { workspaceId, userId: user.id },
+      relations: ["user", "role"],
+    });
+    const color = assignWorkspaceMemberColor(
+      user.id,
+      workspaceId,
+      user.avatarSrc,
+    );
+    if (member) {
+      member.roleId = role.id;
+      member.status = WorkspaceMemberStatus.INACTIVE;
+      member.invitedByUserId = ownerId;
+      member.color = color;
+      member = await this.memberRepo.save(member);
+    } else {
+      member = await this.memberRepo.save(
+        this.memberRepo.create({
+          workspaceId,
+          userId: user.id,
+          roleId: role.id,
+          status: WorkspaceMemberStatus.INACTIVE,
+          invitedByUserId: ownerId,
+          joinedAt: new Date(),
+          canBeAssignedToChat: true,
+          color,
+        }),
+      );
+    }
+
+    await this.invitationRepo.update(
+      {
         workspaceId,
         email,
         status: WorkspaceInvitationStatus.PENDING,
       },
-    });
-    if (pendingInvite) {
-      throw new ConflictException(
-        "A pending invitation already exists for this email",
-      );
-    }
+      { status: WorkspaceInvitationStatus.REVOKED },
+    );
 
-    const rawToken = this.invitationTokenService.generateRawToken();
-    const invitation = this.invitationRepo.create({
-      workspaceId,
+    const invitationLink = this.buildInvitationLink(rawToken);
+    await this.sendgrid.sendWorkspaceInvitationEmail(
       email,
-      roleId: role.id,
-      invitedByUserId: ownerId,
-      status: WorkspaceInvitationStatus.PENDING,
-      tokenHash: this.invitationTokenService.hash(rawToken),
-      expiresAt: new Date(Date.now() + DEFAULT_INVITE_TTL_MS),
+      user.firstName,
+      invitationLink,
+    );
+
+    const savedMember = await this.memberRepo.findOneOrFail({
+      where: { id: member.id },
+      relations: ["user", "role"],
     });
-    const saved = await this.invitationRepo.save(invitation);
+
+    const response: InviteWorkspaceMemberResponseDto = {
+      kind: "invitation",
+      invitationId: savedMember.id,
+    };
+    if (this.config.get<string>("NODE_ENV") !== "production") {
+      response.invitationToken = rawToken;
+    }
+    return response;
+  }
+
+  async getRegistrationForm(
+    rawHash: string,
+  ): Promise<WorkspaceMemberRegistrationFormResponseDto> {
+    const { user, member, workspace, role } =
+      await this.requirePendingRegistration(rawHash);
 
     return {
-      kind: "invitation",
-      invitationId: saved.id,
-      invitationToken: rawToken,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      workspaceName: workspace.name,
+      roleName: role.name,
+      requiresPassword: !user.passwordHash,
     };
+  }
+
+  async completeRegistration(
+    rawHash: string,
+    dto: CompleteWorkspaceMemberRegistrationRequestDto,
+  ): Promise<CompleteWorkspaceMemberRegistrationResponseDto> {
+    const { user, member } = await this.requirePendingRegistration(rawHash);
+
+    if (!user.passwordHash) {
+      const password = dto.password?.trim();
+      if (!password) {
+        throw new BadRequestException("password is required");
+      }
+      user.passwordHash = await this.passwordService.hash(password);
+    }
+
+    if (dto.first_name?.trim()) {
+      user.firstName = dto.first_name.trim();
+    }
+    if (dto.last_name !== undefined) {
+      user.lastName = dto.last_name?.trim() || null;
+    }
+
+    user.status = UserStatus.Active;
+    user.invitationAcceptedAt = new Date();
+    user.emailVerifiedAt = user.emailVerifiedAt ?? new Date();
+    user.invitationTokenHash = null;
+    user.invitationExpiresAt = null;
+    await this.userRepo.save(user);
+
+    member.status = WorkspaceMemberStatus.ACTIVE;
+    member.joinedAt = new Date();
+    const savedMember = await this.memberRepo.save(member);
+    const hydratedMember = await this.memberRepo.findOneOrFail({
+      where: { id: savedMember.id },
+      relations: ["user", "role"],
+    });
+
+    const { access_token } = this.authService.issueAccessTokenForUser(user);
+    return {
+      registered: true,
+      access_token,
+      member: this.toDto(hydratedMember),
+    };
+  }
+
+  private async requirePendingRegistration(rawHash: string): Promise<{
+    user: User;
+    member: WorkspaceMember;
+    workspace: Workspace;
+    role: NonNullable<WorkspaceMember["role"]>;
+  }> {
+    const tokenHash = this.invitationTokenService.hash(rawHash);
+    const user = await this.userRepo.findOne({
+      where: { invitationTokenHash: tokenHash },
+    });
+    if (!user) {
+      throw new NotFoundException("Invalid or expired invitation");
+    }
+    if (
+      user.invitationExpiresAt &&
+      user.invitationExpiresAt.getTime() < Date.now()
+    ) {
+      throw new BadRequestException("Invitation has expired");
+    }
+
+    const member = await this.memberRepo.findOne({
+      where: {
+        userId: user.id,
+        status: WorkspaceMemberStatus.INACTIVE,
+      },
+      relations: ["role"],
+      order: { id: "DESC" },
+    });
+    if (!member?.role) {
+      throw new NotFoundException("Invalid or expired invitation");
+    }
+
+    const workspace = await this.workspaceRepo.findOne({
+      where: { id: member.workspaceId },
+    });
+    if (!workspace) {
+      throw new NotFoundException("Workspace not found");
+    }
+
+    if (user.status === UserStatus.Disabled) {
+      throw new BadRequestException("User account is disabled");
+    }
+    if (
+      user.status === UserStatus.Active &&
+      member.status !== WorkspaceMemberStatus.INACTIVE
+    ) {
+      throw new BadRequestException("Invitation is no longer valid");
+    }
+
+    return { user, member, workspace, role: member.role };
+  }
+
+  private buildInvitationLink(rawToken: string): string {
+    const base = this.config.get<string>("APP_URL")?.trim().replace(/\/$/, "");
+    if (!base) {
+      throw new InternalServerErrorException("APP_URL is not configured");
+    }
+    return `${base}/invitation/${rawToken}`;
   }
 
   private async findOrCreateTestUser(
