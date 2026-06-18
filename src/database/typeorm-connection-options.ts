@@ -72,6 +72,7 @@ import { ProductSuggestions1744200000072 } from "./migrations/1744200000072-Prod
 import { WebhookEvents1744200000073 } from "./migrations/1744200000073-WebhookEvents";
 import { WorkspaceRoleDescriptionColor1744200000074 } from "./migrations/1744200000074-WorkspaceRoleDescriptionColor";
 import { UserAvatarCloudflareImageId1744200000075 } from "./migrations/1744200000075-UserAvatarCloudflareImageId";
+import { NovaPoshtaIntegrations1744200000076 } from "./migrations/1744200000076-NovaPoshtaIntegrations";
 import {
   Client,
   InstagramIntegration,
@@ -102,6 +103,7 @@ import {
   WorkspaceRole,
   WorkspaceRoleIntegrationGrant,
   WebhookEvent,
+  NovaPoshtaIntegration,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -162,6 +164,7 @@ const entities = [
   WorkspaceInvitation,
   InstagramIntegration,
   TelegramIntegration,
+  NovaPoshtaIntegration,
   InstagramUser,
   Client,
   ConversationGroup,
@@ -299,6 +302,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WebhookEvents1744200000073,
       WorkspaceRoleDescriptionColor1744200000074,
       UserAvatarCloudflareImageId1744200000075,
+      NovaPoshtaIntegrations1744200000076,
     ],
   };
 }

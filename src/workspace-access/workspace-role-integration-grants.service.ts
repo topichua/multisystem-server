@@ -125,7 +125,7 @@ export class WorkspaceRoleIntegrationGrantsService {
   }
 
   async removeForIntegration(
-    integrationType: IntegrationType,
+    integrationType: WorkspaceRoleIntegrationGrantType,
     integrationId: number,
   ): Promise<void> {
     await this.grantRepo.delete({ integrationType, integrationId });

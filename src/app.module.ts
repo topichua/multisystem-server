@@ -22,6 +22,7 @@ import { IntegrationsModule } from "./integrations/integrations.module";
 import { TelegramIntegrationsModule } from "./telegram-integrations/telegram-integrations.module";
 import { VariantCustomFieldsModule } from "./variant-custom-fields/variant-custom-fields.module";
 import { WorkspaceAccessModule } from "./workspace-access/workspace-access.module";
+import { NovaPoshtaIntegrationsModule } from "./novaposhta-integrations/novaposhta-integrations.module";
 import { SendgridModule } from "./sendgrid/sendgrid.module";
 
 @Module({
@@ -62,6 +63,7 @@ import { SendgridModule } from "./sendgrid/sendgrid.module";
     AccountModule,
     WebhookModule,
     SendgridModule,
+    NovaPoshtaIntegrationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

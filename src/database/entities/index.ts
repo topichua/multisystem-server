@@ -44,5 +44,6 @@ export { WorkspaceMember } from "./workspace-member.entity";
 export { WorkspaceMemberStatus } from "./workspace-member-status.enum";
 export { WorkspaceInvitation } from "./workspace-invitation.entity";
 export { WorkspaceInvitationStatus } from "./workspace-invitation-status.enum";
+export { NovaPoshtaIntegration } from "./novaposhta-integration.entity";
 export { WebhookEvent } from "./webhook-event.entity";
 export { WebhookEventStatus } from "./webhook-event-status.enum";

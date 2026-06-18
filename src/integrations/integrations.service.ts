@@ -13,6 +13,7 @@ import {
 } from "../database/entities";
 import type { TelegramIntegration } from "../database/entities";
 import { TelegramIntegrationsService } from "../telegram-integrations/telegram-integrations.service";
+import { NovaPoshtaIntegrationsService } from "../novaposhta-integrations/novaposhta-integrations.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspaceRoleIntegrationGrantsService } from "../workspace-access/workspace-role-integration-grants.service";
 import {
@@ -32,6 +33,7 @@ export class IntegrationsService {
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly facebookOAuth: FacebookOAuthService,
     private readonly telegramIntegrations: TelegramIntegrationsService,
+    private readonly novaPoshtaIntegrations: NovaPoshtaIntegrationsService,
     private readonly roleIntegrationGrants: WorkspaceRoleIntegrationGrantsService,
   ) {}
 
@@ -109,6 +111,13 @@ export class IntegrationsService {
       items.push(this.mapTelegramRow(tg));
     }
 
+    const novaPoshta = await this.novaPoshtaIntegrations.findByWorkspace(
+      workspaceId,
+    );
+    if (novaPoshta) {
+      items.push(this.novaPoshtaIntegrations.mapToIntegrationListItem(novaPoshta));
+    }
+
     return { workspaceId, items };
   }
 
@@ -129,6 +138,9 @@ export class IntegrationsService {
       case "telegram":
         await this.roleIntegrationGrants.removeForIntegration("telegram", id);
         await this.telegramIntegrations.deleteForOwner(ownerId, id);
+        return;
+      case "novaposhta":
+        await this.novaPoshtaIntegrations.deleteForOwner(ownerId, id);
         return;
     }
   }
