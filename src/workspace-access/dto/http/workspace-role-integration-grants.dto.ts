@@ -1,29 +1,48 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  IsString,
+  ValidateNested,
+} from "class-validator";
 import { INTEGRATION_TYPES } from "../../../integrations/integration-type";
 
 export class IntegrationGrantPermissionsDto {
   @ApiProperty({ enum: ["all", "mine"], example: "mine" })
+  @IsIn(["all", "mine"])
   read: "all" | "mine";
 
   @ApiProperty({ enum: ["all", "mine"], example: "mine" })
+  @IsIn(["all", "mine"])
   write: "all" | "mine";
 
   @ApiPropertyOptional({
     description:
       "Present when the integration is granted. Assign chat responsibility on this integration.",
   })
+  @IsOptional()
+  @IsBoolean()
   assignResponsibility?: boolean;
 
   @ApiPropertyOptional({
     description:
       "Present when the integration is granted. Instagram integrations only.",
   })
+  @IsOptional()
+  @IsBoolean()
   instagramCommentsView?: boolean;
 
   @ApiPropertyOptional({
     description:
       "Present when the integration is granted. Instagram integrations only.",
   })
+  @IsOptional()
+  @IsBoolean()
   instagramCommentsWrite?: boolean;
 }
 
@@ -51,12 +70,19 @@ export class WorkspaceRoleIntegrationGrantsResponseDto {
 
 export class WorkspaceRoleIntegrationGrantInputDto {
   @ApiProperty({ enum: INTEGRATION_TYPES })
+  @IsString()
+  @IsIn([...INTEGRATION_TYPES])
   integrationType: string;
 
   @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
   integrationId: number;
 
   @ApiProperty({ type: IntegrationGrantPermissionsDto })
+  @ValidateNested()
+  @Type(() => IntegrationGrantPermissionsDto)
   permissions: IntegrationGrantPermissionsDto;
 }
 
@@ -67,6 +93,9 @@ export class ReplaceWorkspaceRoleIntegrationGrantsRequestDto {
       "Replaces all integration grants for the role. Each grant includes per-integration conversation permissions. " +
       "New integrations are denied until granted here.",
   })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WorkspaceRoleIntegrationGrantInputDto)
   grants: WorkspaceRoleIntegrationGrantInputDto[];
 }
 
