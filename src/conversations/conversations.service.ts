@@ -49,6 +49,8 @@ import type {
 } from "./dto/http/conversations-list-response.dto";
 import type { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import type { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
+import type { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
+import type { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
 type InstagramErrorResponse = {
   error?: {
     message?: string;
@@ -56,6 +58,18 @@ type InstagramErrorResponse = {
     code?: number;
   };
 };
+
+const INSTAGRAM_RESPONSE_WINDOW_HOURS = 24;
+const INSTAGRAM_HUMAN_AGENT_WINDOW_HOURS = 168;
+const INSTAGRAM_REPLY_WINDOW_EXPIRED_MESSAGE =
+  "Instagram дозволяє відповідати тільки до 7 днів після останнього повідомлення клієнта";
+
+type InstagramMessagingSendMode =
+  | { messagingType: "RESPONSE" }
+  | { messagingType: "MESSAGE_TAG"; tag: "HUMAN_AGENT" };
+
+const INSTAGRAM_GRAPH_CONVERSATION_MESSAGES_FIELDS =
+  "id,created_time,from,to,message,attachments,shares";
 
 @Injectable()
 export class ConversationsService {
@@ -864,6 +878,57 @@ export class ConversationsService {
     return result;
   }
 
+  /**
+   * Live fetch from Meta Graph `GET /{conversation-id}/messages` for an Instagram thread.
+   * Uses `conversations.external_id` as the Graph conversation id.
+   */
+  async getInstagramGraphMessagesForConversation(
+    ownerId: number,
+    conversationIdParam: string,
+    query: ListInstagramGraphMessagesQueryDto = {},
+  ): Promise<InstagramGraphMessagesResponseDto> {
+    const conv = await this.requireConversationForOwnerFromParam(
+      ownerId,
+      conversationIdParam,
+    );
+    if (conv.source !== ConversationSource.INSTAGRAM) {
+      throw new BadRequestException(
+        "Graph messages are only available for Instagram conversations",
+      );
+    }
+
+    const graphConversationId = conv.externalId?.trim();
+    if (!graphConversationId) {
+      throw new BadRequestException(
+        "Conversation has no Instagram Graph conversation id (external_id)",
+      );
+    }
+
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    const accessToken = integration.accessToken?.trim();
+    if (!accessToken) {
+      throw new ServiceUnavailableException(
+        "No Page Graph token: complete Facebook Login so integration.access_token is set.",
+      );
+    }
+
+    const url = new URL(
+      `https://graph.facebook.com/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
+    );
+    url.searchParams.set("fields", INSTAGRAM_GRAPH_CONVERSATION_MESSAGES_FIELDS);
+    url.searchParams.set("limit", String(query.limit ?? 25));
+    url.searchParams.set("access_token", accessToken);
+    if (query.after?.trim()) {
+      url.searchParams.set("after", query.after.trim());
+    }
+    if (query.before?.trim()) {
+      url.searchParams.set("before", query.before.trim());
+    }
+
+    return this.instagramGraphFetch<InstagramGraphMessagesResponseDto>(url);
+  }
+
   private normalizeRecipientIdInput(raw: string | undefined | null): string {
     if (raw == null) return "";
     return String(raw)
@@ -956,12 +1021,17 @@ export class ConversationsService {
       }
     }
 
+    const sendMode = await this.resolveInstagramMessagingSendMode(conv);
+
     /** Instagram Messaging: `reply_to` is a root-level sibling of `message`, not inside it. */
     const sendBody: Record<string, unknown> = {
       recipient: { id: recipient },
       message: { text },
-      messaging_type: "RESPONSE",
+      messaging_type: sendMode.messagingType,
     };
+    if (sendMode.messagingType === "MESSAGE_TAG") {
+      sendBody.tag = sendMode.tag;
+    }
     if (replyMid) {
       sendBody.reply_to = { mid: replyMid };
     }
@@ -982,6 +1052,38 @@ export class ConversationsService {
     }
 
     return result;
+  }
+
+  private async resolveInstagramMessagingSendMode(
+    conv: Conversation,
+  ): Promise<InstagramMessagingSendMode> {
+    const participantId = conv.participantId?.trim();
+    if (!participantId) {
+      throw new BadRequestException(
+        "Cannot send: conversation has no participant_id",
+      );
+    }
+
+    const lastCustomerMessage = await this.conversationMessageRepo.findOne({
+      where: { conversationId: conv.id, senderId: participantId },
+      order: { createdAt: "DESC" },
+    });
+    if (!lastCustomerMessage) {
+      throw new BadRequestException(
+        "Cannot send: no customer message found in this conversation yet",
+      );
+    }
+
+    const hoursSinceLastCustomerMessage =
+      (Date.now() - lastCustomerMessage.createdAt.getTime()) / (1000 * 60 * 60);
+
+    if (hoursSinceLastCustomerMessage <= INSTAGRAM_RESPONSE_WINDOW_HOURS) {
+      return { messagingType: "RESPONSE" };
+    }
+    if (hoursSinceLastCustomerMessage <= INSTAGRAM_HUMAN_AGENT_WINDOW_HOURS) {
+      return { messagingType: "MESSAGE_TAG", tag: "HUMAN_AGENT" };
+    }
+    throw new BadRequestException(INSTAGRAM_REPLY_WINDOW_EXPIRED_MESSAGE);
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {

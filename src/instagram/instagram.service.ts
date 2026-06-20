@@ -17,6 +17,14 @@ import type {
   InstagramMediaListResponseDto,
   InstagramMediaPagingDto,
 } from "./dto/instagram-media-response.dto";
+import type {
+  InstagramCommentDto,
+  InstagramPostCommentsListResponseDto,
+} from "./dto/instagram-post-comments-response.dto";
+import type { ListInstagramCommentRepliesQueryDto } from "./dto/list-instagram-comment-replies-query.dto";
+import type { ListInstagramPostCommentsQueryDto } from "./dto/list-instagram-post-comments-query.dto";
+import type { ReplyInstagramCommentQueryDto } from "./dto/reply-instagram-comment.dto";
+import type { ReplyInstagramCommentResponseDto } from "./dto/reply-instagram-comment-response.dto";
 
 const GRAPH_VERSION = "v25.0";
 
@@ -24,6 +32,18 @@ const IG_MEDIA_FIELDS =
   "id,caption,media_type,media_url,permalink,thumbnail_url,timestamp," +
   "like_count,comments_count," +
   "children{id,media_type,media_url,thumbnail_url}";
+
+const IG_COMMENT_LIST_FIELDS =
+  "id,text,timestamp,username,like_count,hidden," +
+  "from{id,username},replies.limit(0).summary(true)";
+
+const IG_COMMENT_LIST_FIELDS_WITH_REPLIES =
+  "id,text,timestamp,username,like_count,hidden," +
+  "from{id,username}," +
+  "replies{id,text,timestamp,username,like_count,hidden,from{id,username}}";
+
+const IG_COMMENT_REPLY_FIELDS =
+  "id,text,timestamp,username,like_count,hidden,from{id,username}";
 
 type InstagramErrorResponse = {
   error?: { message?: string; type?: string; code?: number };
@@ -37,6 +57,11 @@ type IgMediaPaging = {
 
 type IgMediaListResponse = {
   data?: InstagramMediaItemDto[];
+  paging?: IgMediaPaging;
+};
+
+type IgCommentListResponse = {
+  data?: InstagramCommentDto[];
   paging?: IgMediaPaging;
 };
 
@@ -135,6 +160,141 @@ export class InstagramService {
       data: (mediaPage.data ?? []).map((item) => this.normalizeMediaItem(item)),
       paging: this.mapMediaPaging(mediaPage.paging),
     };
+  }
+
+  /**
+   * Lists one page of top-level comments on an Instagram media post
+   * (Graph `GET /{ig-media-id}/comments`).
+   */
+  async listCommentsForPostForOwner(
+    ownerId: number,
+    mediaId: string,
+    query: ListInstagramPostCommentsQueryDto = {},
+  ): Promise<InstagramPostCommentsListResponseDto> {
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(
+        ownerId,
+        undefined,
+        query.integrationId,
+      );
+    const accessToken = await this.resolveGraphAccessToken(integration.id);
+    const includeReplies = query.include_replies === true;
+
+    const url = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(mediaId)}/comments`,
+    );
+    url.searchParams.set(
+      "fields",
+      includeReplies
+        ? IG_COMMENT_LIST_FIELDS_WITH_REPLIES
+        : IG_COMMENT_LIST_FIELDS,
+    );
+    url.searchParams.set("filter", "stream");
+    url.searchParams.set("limit", String(query.limit ?? 25));
+    url.searchParams.set("access_token", accessToken);
+    if (query.after?.trim()) {
+      url.searchParams.set("after", query.after.trim());
+    }
+    if (query.before?.trim()) {
+      url.searchParams.set("before", query.before.trim());
+    }
+
+    const commentsPage =
+      await this.instagramGraphFetch<IgCommentListResponse>(url);
+
+    return {
+      data: (commentsPage.data ?? []).map((item) =>
+        this.normalizeComment(item, { includeReplies }),
+      ),
+      paging: this.mapMediaPaging(commentsPage.paging),
+    };
+  }
+
+  /**
+   * Lists one page of replies on a top-level comment
+   * (Graph `GET /{ig-comment-id}/replies`).
+   */
+  async listRepliesForCommentForOwner(
+    ownerId: number,
+    commentId: string,
+    query: ListInstagramCommentRepliesQueryDto = {},
+  ): Promise<InstagramPostCommentsListResponseDto> {
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(
+        ownerId,
+        undefined,
+        query.integrationId,
+      );
+    const accessToken = await this.resolveGraphAccessToken(integration.id);
+
+    const url = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`,
+    );
+    url.searchParams.set("fields", IG_COMMENT_REPLY_FIELDS);
+    url.searchParams.set("limit", String(query.limit ?? 25));
+    url.searchParams.set("access_token", accessToken);
+    if (query.after?.trim()) {
+      url.searchParams.set("after", query.after.trim());
+    }
+    if (query.before?.trim()) {
+      url.searchParams.set("before", query.before.trim());
+    }
+
+    const repliesPage =
+      await this.instagramGraphFetch<IgCommentListResponse>(url);
+
+    return {
+      data: (repliesPage.data ?? []).map((item) =>
+        this.normalizeComment(item, { includeReplies: false }),
+      ),
+      paging: this.mapMediaPaging(repliesPage.paging),
+    };
+  }
+
+  /**
+   * Creates a reply on a top-level comment
+   * (Graph `POST /{ig-comment-id}/replies`).
+   */
+  async replyToCommentForOwner(
+    ownerId: number,
+    commentId: string,
+    message: string,
+    query: ReplyInstagramCommentQueryDto = {},
+  ): Promise<ReplyInstagramCommentResponseDto> {
+    const integration =
+      await this.workspaceContext.requireInstagramIntegrationForOwner(
+        ownerId,
+        undefined,
+        query.integrationId,
+      );
+    const accessToken = await this.resolveGraphAccessToken(integration.id);
+    const text = message.trim();
+    if (!text) {
+      throw new BadRequestException("message must not be empty");
+    }
+
+    const url = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`,
+    );
+    url.searchParams.set("access_token", accessToken);
+
+    const result = await this.instagramGraphFetch<ReplyInstagramCommentResponseDto>(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      },
+    );
+
+    const createdId = result.id?.trim();
+    if (!createdId) {
+      throw new BadGatewayException(
+        "Instagram Graph API did not return a reply comment id",
+      );
+    }
+
+    return { id: createdId };
   }
 
   private mapMediaPaging(
@@ -268,6 +428,44 @@ export class InstagramService {
     const matches = caption.match(/#[\p{L}\p{N}_]+/gu) ?? [];
     const unique = [...new Set(matches.map((m) => m.slice(1)))];
     return unique.length > 0 ? unique : undefined;
+  }
+
+  private normalizeComment(
+    raw: InstagramCommentDto,
+    options: { includeReplies?: boolean } = {},
+  ): InstagramCommentDto {
+    const repliesNode = (
+      raw as {
+        replies?: {
+          data?: InstagramCommentDto[];
+          summary?: { total_count?: number };
+        };
+      }
+    ).replies;
+
+    const replyCount = repliesNode?.summary?.total_count;
+    const repliesRaw = options.includeReplies ? repliesNode?.data : undefined;
+    const replies =
+      repliesRaw?.map((reply) =>
+        this.normalizeComment(reply, { includeReplies: false }),
+      ) ?? undefined;
+
+    return {
+      id: raw.id ?? "",
+      text: raw.text,
+      timestamp: raw.timestamp,
+      username: raw.username ?? raw.from?.username,
+      like_count: raw.like_count,
+      hidden: raw.hidden,
+      ...(raw.from ? { from: raw.from } : {}),
+      ...(replyCount != null
+        ? {
+            reply_count: replyCount,
+            has_replies: replyCount > 0,
+          }
+        : {}),
+      ...(replies && replies.length > 0 ? { replies } : {}),
+    };
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {

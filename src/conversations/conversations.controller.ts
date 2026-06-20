@@ -32,6 +32,8 @@ import { UpdateConversationRequestDto } from "./dto/http/update-conversation-req
 import { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
 import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
+import { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
+import { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
 
 @ApiTags("admin — conversations")
 @ApiBearerAuth("bearer")
@@ -156,10 +158,39 @@ export class ConversationsController {
     );
   }
 
+  @Get(":conversationId/graph-messages")
+  @ApiOperation({
+    summary: "Get Instagram messages live from Meta Graph API",
+    description:
+      "Calls Meta Graph `GET /{conversation-id}/messages` with " +
+      "`fields=id,created_time,from,to,message,attachments,shares`. " +
+      "Uses the stored Instagram Graph conversation id (`conversations.external_id`). " +
+      "Pass Graph cursors `after` / `before` from `paging.cursors` to paginate.",
+  })
+  @ApiOkResponse({ type: InstagramGraphMessagesResponseDto })
+  async getGraphMessagesByConversationId(
+    @Req() req: { user?: AuthUser },
+    @Param("conversationId") conversationId: string,
+    @Query() query: ListInstagramGraphMessagesQueryDto,
+  ): Promise<InstagramGraphMessagesResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.conversationsService.getInstagramGraphMessagesForConversation(
+      ownerId,
+      conversationId,
+      query,
+    );
+  }
+
   @Post(":conversationId/messages")
   @ApiOperation({
     summary:
-      "Send a message in this thread (Instagram or Telegram). `reply_to_id` is optional: omit for a normal message; set to a parent message id from GET .../messages (Instagram Graph `mid` or Telegram `tg:{chatId}:{messageId}`).",
+      "Send a message in this thread (Instagram or Telegram). `reply_to_id` is optional: omit for a normal message; set to a parent message id from GET .../messages (Instagram Graph `mid` or Telegram `tg:{chatId}:{messageId}`). " +
+      "Instagram: within 24h of the last customer message uses `RESPONSE`; within 7 days uses `MESSAGE_TAG` + `HUMAN_AGENT`; after 7 days returns 400.",
   })
   @ApiBody({
     type: SendInstagramMessageRequestDto,

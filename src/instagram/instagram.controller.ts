@@ -7,15 +7,19 @@ import {
   HttpStatus,
   Param,
   ParseIntPipe,
+  Post,
   Query,
   Req,
+  Body,
   UseGuards,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiNoContentResponse,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -30,7 +34,15 @@ import { InstagramPostAiExtractionResponseDto } from "./dto/instagram-post-ai-ex
 import { InstagramPostProductVariantsResponseDto } from "./dto/instagram-post-product-variants-response.dto";
 import { InstagramIntegrationsListResponseDto } from "./dto/instagram-integration-list-item.dto";
 import { InstagramMediaListResponseDto } from "./dto/instagram-media-response.dto";
+import { InstagramPostCommentsListResponseDto } from "./dto/instagram-post-comments-response.dto";
+import { ListInstagramCommentRepliesQueryDto } from "./dto/list-instagram-comment-replies-query.dto";
 import { ListInstagramMediaQueryDto } from "./dto/list-instagram-media-query.dto";
+import { ListInstagramPostCommentsQueryDto } from "./dto/list-instagram-post-comments-query.dto";
+import {
+  ReplyInstagramCommentQueryDto,
+  ReplyInstagramCommentRequestDto,
+} from "./dto/reply-instagram-comment.dto";
+import { ReplyInstagramCommentResponseDto } from "./dto/reply-instagram-comment-response.dto";
 import { InstagramPostAiExtractionService } from "./instagram-post-ai-extraction.service";
 import { InstagramProductAiService } from "./instagram-product-ai.service";
 import { InstagramService } from "./instagram.service";
@@ -103,6 +115,110 @@ export class InstagramController {
       );
     }
     return this.instagram.listMediaForOwner(ownerId, query);
+  }
+
+  @Get("posts/:instagramPostId/comments")
+  @ApiOperation({
+    summary: "List comments on an Instagram post",
+    description:
+      "Calls Meta Graph `GET /{instagram-media-id}/comments` with the integration Page token. " +
+      "By default returns top-level comments only with lightweight `reply_count` / `has_replies` " +
+      "(no reply bodies). Load replies on demand via GET .../comments/:commentId/replies. " +
+      "Set `include_replies=true` only if you need embedded replies in one response (heavier). " +
+      "Pass `integrationId` from GET /api/instagram/integrations when you have multiple accounts. " +
+      "Use `limit` (default 25, max 50) and Graph cursors `after` / `before` from `paging.cursors` to paginate.",
+  })
+  @ApiOkResponse({ type: InstagramPostCommentsListResponseDto })
+  async listPostComments(
+    @Req() req: { user?: AuthUser },
+    @Param("instagramPostId") instagramPostId: string,
+    @Query() query: ListInstagramPostCommentsQueryDto,
+  ): Promise<InstagramPostCommentsListResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const id = instagramPostId?.trim();
+    if (!id || id.length > 128) {
+      throw new BadRequestException("instagramPostId is invalid");
+    }
+    return this.instagram.listCommentsForPostForOwner(ownerId, id, query);
+  }
+
+  @Get("posts/:instagramPostId/comments/:commentId/replies")
+  @ApiOperation({
+    summary: "List replies on an Instagram comment",
+    description:
+      "Calls Meta Graph `GET /{ig-comment-id}/replies`. Use after checking `has_replies` on the parent " +
+      "comment from GET /api/instagram/posts/:instagramPostId/comments. " +
+      "Pass `integrationId` when you have multiple connected Instagram accounts.",
+  })
+  @ApiParam({ name: "instagramPostId", description: "Instagram Graph media/post id" })
+  @ApiParam({ name: "commentId", description: "Parent comment id from GET .../comments" })
+  @ApiOkResponse({ type: InstagramPostCommentsListResponseDto })
+  async listCommentReplies(
+    @Req() req: { user?: AuthUser },
+    @Param("instagramPostId") instagramPostId: string,
+    @Param("commentId") commentId: string,
+    @Query() query: ListInstagramCommentRepliesQueryDto,
+  ): Promise<InstagramPostCommentsListResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const postId = instagramPostId?.trim();
+    if (!postId || postId.length > 128) {
+      throw new BadRequestException("instagramPostId is invalid");
+    }
+    const id = commentId?.trim();
+    if (!id || id.length > 128) {
+      throw new BadRequestException("commentId is invalid");
+    }
+    return this.instagram.listRepliesForCommentForOwner(ownerId, id, query);
+  }
+
+  @Post("posts/:instagramPostId/comments/:commentId/reply")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Reply to an Instagram comment",
+    description:
+      "Calls Meta Graph `POST /{ig-comment-id}/replies` with the integration Page token. " +
+      "Only top-level comments can be replied to. Pass `integrationId` when you have multiple connected accounts.",
+  })
+  @ApiParam({ name: "instagramPostId", description: "Instagram Graph media/post id" })
+  @ApiParam({ name: "commentId", description: "Parent comment id from GET .../comments" })
+  @ApiCreatedResponse({ type: ReplyInstagramCommentResponseDto })
+  async replyToComment(
+    @Req() req: { user?: AuthUser },
+    @Param("instagramPostId") instagramPostId: string,
+    @Param("commentId") commentId: string,
+    @Query() query: ReplyInstagramCommentQueryDto,
+    @Body() dto: ReplyInstagramCommentRequestDto,
+  ): Promise<ReplyInstagramCommentResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const postId = instagramPostId?.trim();
+    if (!postId || postId.length > 128) {
+      throw new BadRequestException("instagramPostId is invalid");
+    }
+    const id = commentId?.trim();
+    if (!id || id.length > 128) {
+      throw new BadRequestException("commentId is invalid");
+    }
+    return this.instagram.replyToCommentForOwner(
+      ownerId,
+      id,
+      dto.message,
+      query,
+    );
   }
 
   @Get("posts/:instagramPostId/product-variants")

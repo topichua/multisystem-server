@@ -195,7 +195,8 @@ export class ConversationsAllocationService {
       "to",
       "reply_to",
       "message",
-     // `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
+      "shares{link,id,media_id}",
+     `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
       "reactions{data{reaction,emoji,users{id,username}}}",
     ].join(",");
   }
