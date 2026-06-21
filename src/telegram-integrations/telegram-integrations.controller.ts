@@ -24,6 +24,8 @@ import type { AuthUser } from "../auth/types/auth-user.type";
 import { ConfirmTelegramCodeRequestDto } from "./dto/http/confirm-telegram-code-request.dto";
 import { ConfirmTelegramPasswordRequestDto } from "./dto/http/confirm-telegram-password-request.dto";
 import { StartTelegramIntegrationRequestDto } from "./dto/http/start-telegram-integration-request.dto";
+import { StartTelegramQrLoginRequestDto } from "./dto/http/start-telegram-qr-login-request.dto";
+import { StartTelegramQrLoginResponseDto } from "./dto/http/start-telegram-qr-login-response.dto";
 import { TelegramDialogsListResponseDto } from "./dto/http/telegram-dialog-response.dto";
 import { TelegramIntegrationResponseDto } from "./dto/http/telegram-integration-response.dto";
 import { TelegramIntegrationsListResponseDto } from "./dto/http/telegram-integrations-list-response.dto";
@@ -72,7 +74,9 @@ export class TelegramIntegrationsController {
   @ApiOperation({
     summary: "Start linking a personal Telegram account",
     description:
-      "Sends a login code to the Telegram app/SMS. Then call POST :id/confirm-code with the code. " +
+      "Sends a login code via Telegram (usually to the Telegram app, not SMS). " +
+      "Then call POST :id/confirm-code with the code. " +
+      "If the code does not arrive, retry with `force_sms: true`. " +
       "If the account has 2FA, call POST :id/confirm-password.",
   })
   @ApiCreatedResponse({ type: TelegramIntegrationResponseDto })
@@ -81,6 +85,64 @@ export class TelegramIntegrationsController {
     @Body() dto: StartTelegramIntegrationRequestDto,
   ): Promise<TelegramIntegrationResponseDto> {
     return this.telegram.startForOwner(this.requireOwnerId(req), dto);
+  }
+
+  @Post("qr-login/start")
+  @ApiOperation({
+    summary: "Start Telegram QR login",
+    description:
+      "Creates a GramJS client session, exports a Telegram login QR token, and stores a " +
+      "`telegram_integrations` row in `pending_qr` status. Encode `qrLoginUrl` as a QR code " +
+      "for the user to scan in the Telegram mobile app (Settings → Devices → Link Desktop Device). " +
+      "After scanning, call POST /telegram-integrations/:id/qr-login/confirm.",
+  })
+  @ApiCreatedResponse({ type: StartTelegramQrLoginResponseDto })
+  startQrLogin(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: StartTelegramQrLoginRequestDto,
+  ): Promise<StartTelegramQrLoginResponseDto> {
+    return this.telegram.startQrLoginForOwner(
+      this.requireOwnerId(req),
+      dto.workspace_id,
+    );
+  }
+
+  @Post(":id/qr-login/confirm")
+  @ApiOperation({
+    summary: "Complete Telegram QR login after scan",
+    description:
+      "Uses the live GramJS session from `qr-login/start` when available, waits for the QR scan " +
+      "(up to `wait_seconds`), then activates the integration. Call this right after showing the QR — " +
+      "the request blocks until the user scans or times out. If the account has 2FA, status becomes " +
+      "`pending_password` — then call POST :id/confirm-password.",
+  })
+  @ApiParam({ name: "id", type: Number })
+  @ApiQuery({
+    name: "wait_seconds",
+    required: false,
+    schema: { type: "integer", minimum: 5, maximum: 120, default: 90 },
+    description: "How long to wait for the QR scan before returning an error.",
+  })
+  @ApiOkResponse({ type: TelegramIntegrationResponseDto })
+  confirmQrLogin(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+    @Query("wait_seconds") waitSecondsRaw?: string,
+  ): Promise<TelegramIntegrationResponseDto> {
+    const waitSeconds =
+      waitSecondsRaw != null && waitSecondsRaw.trim() !== ""
+        ? Number(waitSecondsRaw.trim())
+        : 90;
+    const waitTimeoutMs =
+      Number.isFinite(waitSeconds) && waitSeconds > 0
+        ? Math.min(Math.max(Math.floor(waitSeconds), 5), 120) * 1000
+        : 90_000;
+
+    return this.telegram.confirmQrLoginForOwner(
+      this.requireOwnerId(req),
+      this.parseId(id),
+      waitTimeoutMs,
+    );
   }
 
   @Post(":id/confirm-code")

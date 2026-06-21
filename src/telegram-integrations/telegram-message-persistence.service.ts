@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Api, utils } from "telegram";
+import type { TelegramClient } from "telegram";
 import type { NewMessageEvent } from "telegram/events";
 import { Repository } from "typeorm";
 import {
@@ -10,6 +11,7 @@ import {
   TelegramIntegration,
 } from "../database/entities";
 import { ConversationMessageNotifyService } from "../conversations/conversation-message-notify.service";
+import { CloudflareImagesService } from "../products/cloudflare-images.service";
 
 @Injectable()
 export class TelegramMessagePersistenceService {
@@ -21,6 +23,7 @@ export class TelegramMessagePersistenceService {
     @InjectRepository(ConversationMessage)
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     private readonly messageNotify: ConversationMessageNotifyService,
+    private readonly cloudflareImages: CloudflareImagesService,
   ) {}
 
   /**
@@ -30,6 +33,7 @@ export class TelegramMessagePersistenceService {
   async persistNewMessageEvent(
     integration: TelegramIntegration,
     event: NewMessageEvent,
+    connectedClient?: TelegramClient,
   ): Promise<void> {
     const msg = event.message;
     if (!msg?.id) {
@@ -62,7 +66,17 @@ export class TelegramMessagePersistenceService {
       typeof msg.date === "number"
         ? new Date(msg.date * 1000)
         : new Date();
-    const text = (msg.message ?? "").trim() || "[non-text message]";
+    let photoContent = this.extractPhotoContent(msg);
+    let cdnUrl: string | null = null;
+    if (photoContent && connectedClient) {
+      cdnUrl = await this.uploadTelegramPhotoToCdn(connectedClient, msg, chatId);
+      if (cdnUrl) {
+        photoContent = this.extractPhotoContent(msg, cdnUrl);
+      }
+    }
+    const text = photoContent
+      ? photoContent.displayText
+      : (msg.message ?? "").trim() || "[non-text message]";
     const externalMessageId = `tg:${chatId}:${msg.id}`;
     const externalConversationId = `telegram:private:${chatId}`;
 
@@ -97,9 +111,12 @@ export class TelegramMessagePersistenceService {
         chatId,
         messageId: String(msg.id),
         isOutgoing,
+        attachments: photoContent?.attachments,
         raw: {
           peerId: chatId,
           out: msg.out ?? isOutgoing,
+          ...(photoContent ? { mediaType: "photo" } : {}),
+          ...(cdnUrl ? { cdnUrl } : {}),
         },
       }),
     );
@@ -253,6 +270,7 @@ export class TelegramMessagePersistenceService {
     chatId: string;
     messageId: string;
     isOutgoing: boolean;
+    attachments?: { data: Array<Record<string, unknown>> };
     raw: Record<string, unknown>;
   }): Record<string, unknown> {
     const {
@@ -264,14 +282,16 @@ export class TelegramMessagePersistenceService {
       chatId,
       messageId,
       isOutgoing,
+      attachments,
       raw,
     } = params;
     return {
       id: externalMessageId,
       created_time: messageDate.toISOString(),
-      message: text,
+      ...(text.length > 0 ? { message: text } : {}),
       from: { id: senderId },
       to: { data: [{ id: receiverId }] },
+      ...(attachments ? { attachments } : {}),
       platform: "telegram",
       telegram: {
         chatId,
@@ -280,6 +300,124 @@ export class TelegramMessagePersistenceService {
         ...raw,
       },
     };
+  }
+
+  private async uploadTelegramPhotoToCdn(
+    client: TelegramClient,
+    msg: NonNullable<NewMessageEvent["message"]>,
+    chatId: string,
+  ): Promise<string | null> {
+    try {
+      const downloaded = await client.downloadMedia(msg, {});
+      if (downloaded == null) {
+        return null;
+      }
+      const buffer = Buffer.isBuffer(downloaded)
+        ? downloaded
+        : Buffer.from(downloaded);
+      if (buffer.length === 0) {
+        return null;
+      }
+
+      const uploaded = await this.cloudflareImages.uploadImage({
+        buffer,
+        mimetype: "image/jpeg",
+        originalname: `telegram-${chatId}-${msg.id}.jpg`,
+      });
+      return uploaded.cdnUrl;
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(`Telegram photo Cloudflare upload failed chat=${chatId}: ${err}`);
+      return null;
+    }
+  }
+
+  private extractPhotoContent(
+    msg: NonNullable<NewMessageEvent["message"]>,
+    cdnUrl?: string,
+  ): {
+    displayText: string;
+    attachments: { data: Array<Record<string, unknown>> };
+  } | null {
+    const media = msg.media;
+    if (!(media instanceof Api.MessageMediaPhoto)) {
+      return null;
+    }
+
+    const photo = media.photo;
+    if (!(photo instanceof Api.Photo)) {
+      return null;
+    }
+
+    const largest = this.pickLargestPhotoSize(photo.sizes ?? []);
+    const caption = (msg.message ?? "").trim();
+    const imageData: Record<string, unknown> = {
+      ...(largest
+        ? {
+            width: largest.w,
+            height: largest.h,
+          }
+        : {}),
+      ...(cdnUrl
+        ? {
+            url: cdnUrl,
+            preview_url: cdnUrl,
+          }
+        : {}),
+      telegram: {
+        photoId: this.bigIntToId(photo.id),
+        accessHash: this.bigIntToId(photo.accessHash),
+        dcId: photo.dcId,
+        ...(photo.fileReference
+          ? { fileReference: Buffer.from(photo.fileReference).toString("base64") }
+          : {}),
+        ...(largest && "type" in largest
+          ? {
+              sizeType: largest.type,
+              ...(largest instanceof Api.PhotoSize
+                ? { byteSize: largest.size }
+                : {}),
+            }
+          : {}),
+      },
+    };
+
+    return {
+      displayText: caption || cdnUrl || "[Photo]",
+      attachments: {
+        data: [
+          {
+            mime_type: "image/jpeg",
+            name: "photo.jpg",
+            ...(cdnUrl ? { file_url: cdnUrl } : {}),
+            image_data: imageData,
+          },
+        ],
+      },
+    };
+  }
+
+  private pickLargestPhotoSize(
+    sizes: Api.TypePhotoSize[],
+  ): Api.PhotoSize | Api.PhotoSizeProgressive | null {
+    let best: Api.PhotoSize | Api.PhotoSizeProgressive | null = null;
+    let bestArea = 0;
+
+    for (const size of sizes) {
+      if (
+        !(size instanceof Api.PhotoSize) &&
+        !(size instanceof Api.PhotoSizeProgressive)
+      ) {
+        continue;
+      }
+      const area = size.w * size.h;
+      if (area > bestArea) {
+        bestArea = area;
+        best = size;
+      }
+    }
+
+    return best;
   }
 
   private extractReplyToExternalId(

@@ -6,6 +6,7 @@ import {
   TelegramIntegration,
 } from "../database/entities";
 import { ConversationsModule } from "../conversations/conversations.module";
+import { ProductsModule } from "../products/products.module";
 import { TelegramIntegrationsController } from "./telegram-integrations.controller";
 import { TelegramIntegrationsService } from "./telegram-integrations.service";
 import { TelegramConversationMessagingService } from "./telegram-conversation-messaging.service";
@@ -22,6 +23,7 @@ import { TELEGRAM_CONVERSATION_MESSAGING } from "./telegram-integrations.tokens"
       ConversationMessage,
     ]),
     forwardRef(() => ConversationsModule),
+    ProductsModule,
   ],
   controllers: [TelegramIntegrationsController],
   providers: [

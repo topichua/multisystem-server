@@ -30,4 +30,11 @@ export class TelegramIntegrationResponseDto {
     description: "Next step hint for the client UI",
   })
   nextStep?: string;
+
+  @ApiPropertyOptional({
+    enum: ["telegram_app", "sms"],
+    description:
+      "Where Telegram delivered the login code (from GramJS `isCodeViaApp`).",
+  })
+  codeDelivery?: "telegram_app" | "sms";
 }

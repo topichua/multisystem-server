@@ -22,10 +22,19 @@ export type TelegramSendCodeResult = {
   authSessionString: string;
 };
 
+export type TelegramQrLoginStartResult = {
+  qrLoginUrl: string;
+  qrToken: string;
+  qrImageUrl: string;
+  expiresAt: string;
+  authSessionString: string;
+};
+
 export type TelegramUserProfile = {
   telegramUserId: string;
   username: string | null;
   displayName: string;
+  phoneNumber: string | null;
 };
 
 export type TelegramPrivateDialogDto = {
@@ -45,6 +54,14 @@ export type TelegramSendPrivateMessageResult = {
 @Injectable()
 export class TelegramUserApiService {
   private readonly log = new Logger(TelegramUserApiService.name);
+  private readonly pendingQrLogins = new Map<
+    string,
+    {
+      client: TelegramClient;
+      cleanupTimer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  private static readonly QR_INVOKE_TIMEOUT_MS = 20_000;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -61,7 +78,7 @@ export class TelegramUserApiService {
         "Telegram user API is not configured (TELEGRAM_API_ID / TELEGRAM_API_HASH from https://my.telegram.org)",
       );
     }
-    return { apiId, apiHash };
+    return { apiId, apiHash: apiHash };
   }
 
   normalizePhoneNumber(raw: string): string {
@@ -74,7 +91,10 @@ export class TelegramUserApiService {
     return trimmed;
   }
 
-  async sendLoginCode(phoneNumber: string): Promise<TelegramSendCodeResult> {
+  async sendLoginCode(
+    phoneNumber: string,
+    forceSms = false,
+  ): Promise<TelegramSendCodeResult> {
     const creds = this.getCredentials();
     const client = this.createClient("");
     try {
@@ -82,13 +102,121 @@ export class TelegramUserApiService {
       const { phoneCodeHash, isCodeViaApp } = await client.sendCode(
         creds,
         phoneNumber,
+        forceSms,
       );
       const authSessionString = this.saveSession(client);
+      this.log.log(
+        `Telegram login code requested phone=${this.maskPhone(phoneNumber)} ` +
+          `delivery=${isCodeViaApp ? "telegram_app" : "sms"} forceSms=${forceSms}`,
+      );
       return { phoneCodeHash, isCodeViaApp, authSessionString };
     } catch (e) {
       throw this.toHttpError(e, "Failed to send Telegram login code");
     } finally {
-      await this.safeDisconnect(client);
+      await this.safeDestroyClient(client);
+    }
+  }
+
+  /**
+   * Exports the first Telegram QR login token (GramJS `auth.ExportLoginToken`).
+   * Encode `qrLoginUrl` as a QR code for the user to scan in the Telegram app.
+   */
+  async startQrLogin(): Promise<TelegramQrLoginStartResult> {
+    const creds = this.getCredentials();
+    const client = this.createClient("");
+    try {
+      await client.connect();
+      const result = await this.invokeWithTimeout(
+        client.invoke(
+          new Api.auth.ExportLoginToken({
+            apiId: creds.apiId,
+            apiHash: creds.apiHash,
+            exceptIds: [],
+          }),
+        ),
+        TelegramUserApiService.QR_INVOKE_TIMEOUT_MS,
+        "ExportLoginToken",
+      );
+      if (!(result instanceof Api.auth.LoginToken)) {
+        throw new BadGatewayException(
+          "Unexpected Telegram QR login response from ExportLoginToken",
+        );
+      }
+
+      const qrToken = result.token.toString("base64url");
+      const qrLoginUrl = `tg://login?token=${qrToken}`;
+      const qrImageUrl = this.buildQrImageUrl(qrLoginUrl);
+      const expiresAt = new Date(result.expires * 1000).toISOString();
+      const authSessionString = this.saveSession(client);
+
+      this.registerPendingQrLogin(authSessionString, client, result.expires * 1000);
+
+      this.log.log(
+        `Telegram QR login token exported expiresAt=${expiresAt}`,
+      );
+
+      return { qrLoginUrl, qrToken, qrImageUrl, expiresAt, authSessionString };
+    } catch (e) {
+      await this.safeDestroyClient(client);
+      throw this.toHttpError(e, "Failed to start Telegram QR login");
+    }
+  }
+
+  /**
+   * Waits for Telegram to confirm the QR scan, then exchanges the login token for a session.
+   * Uses the live GramJS client from `startQrLogin` when still available.
+   */
+  async completeQrLogin(
+    authSessionString: string,
+    waitTimeoutMs = 90_000,
+  ): Promise<
+    | { kind: "active"; profile: TelegramUserProfile; sessionString: string }
+    | { kind: "password_required"; authSessionString: string }
+  > {
+    const session = authSessionString?.trim();
+    if (!session) {
+      throw new BadRequestException(
+        "Login session expired; start QR login again with POST /telegram-integrations/qr-login/start",
+      );
+    }
+
+    const pendingClient = this.takePendingQrLogin(session);
+    const client = pendingClient ?? this.createClient(session);
+
+    try {
+      if (pendingClient == null) {
+        await client.connect();
+      }
+
+      if (await client.isUserAuthorized()) {
+        const profile = await this.readProfile(client);
+        return {
+          kind: "active",
+          profile,
+          sessionString: this.saveSession(client),
+        };
+      }
+
+      const creds = this.getCredentials();
+      const immediate = await this.tryFinalizeQrAfterScan(client, creds);
+      if (immediate) {
+        return immediate;
+      }
+
+      await this.waitForQrLoginTokenUpdate(client, waitTimeoutMs);
+
+      const finalized = await this.tryFinalizeQrAfterScan(client, creds);
+      if (finalized) {
+        return finalized;
+      }
+
+      throw new BadRequestException(
+        "QR login not completed yet. Scan the code in Telegram, then call POST /telegram-integrations/:id/qr-login/confirm again.",
+      );
+    } catch (e) {
+      throw this.toHttpError(e, "Telegram QR login completion failed");
+    } finally {
+      await this.safeDestroyClient(client);
     }
   }
 
@@ -143,7 +271,7 @@ export class TelegramUserApiService {
     } catch (e) {
       throw this.toHttpError(e, "Telegram login code verification failed");
     } finally {
-      await this.safeDisconnect(client);
+      await this.safeDestroyClient(client);
     }
   }
 
@@ -171,7 +299,7 @@ export class TelegramUserApiService {
     } catch (e) {
       throw this.toHttpError(e, "Telegram 2FA verification failed");
     } finally {
-      await this.safeDisconnect(client);
+      await this.safeDestroyClient(client);
     }
   }
 
@@ -344,8 +472,22 @@ export class TelegramUserApiService {
   private createClient(sessionString: string): TelegramClient {
     const { apiId, apiHash } = this.getCredentials();
     return new TelegramClient(new StringSession(sessionString), apiId, apiHash, {
-      connectionRetries: 3,
+      connectionRetries: 5,
     });
+  }
+
+  private buildQrImageUrl(qrLoginUrl: string, size = 300): string {
+    const params = new URLSearchParams({
+      size: `${size}x${size}`,
+      data: qrLoginUrl,
+    });
+    return `https://api.qrserver.com/v1/create-qr-code/?${params.toString()}`;
+  }
+
+  private maskPhone(phoneNumber: string): string {
+    const digits = phoneNumber.replace(/\D/g, "");
+    if (digits.length <= 4) return "***";
+    return `***${digits.slice(-4)}`;
   }
 
   private saveSession(client: TelegramClient): string {
@@ -360,12 +502,222 @@ export class TelegramUserApiService {
     const me = await client.getMe();
     const telegramUserId = me.id?.toString() ?? "";
     const username = me.username?.trim() || null;
+    const phoneRaw = me.phone?.trim();
+    const phoneNumber =
+      phoneRaw && phoneRaw.startsWith("+")
+        ? phoneRaw
+        : phoneRaw
+          ? `+${phoneRaw.replace(/\D/g, "")}`
+          : null;
     const displayName =
       [me.firstName, me.lastName].filter(Boolean).join(" ").trim() ||
       username ||
-      me.phone ||
+      phoneNumber ||
       `Telegram ${telegramUserId}`;
-    return { telegramUserId, username, displayName };
+    return { telegramUserId, username, displayName, phoneNumber };
+  }
+
+  private registerPendingQrLogin(
+    authSessionString: string,
+    client: TelegramClient,
+    expiresAtMs: number,
+  ): void {
+    void this.releasePendingQrLogin(authSessionString);
+
+    const cleanupDelayMs = Math.max(expiresAtMs - Date.now() + 5_000, 5_000);
+    const cleanupTimer = setTimeout(() => {
+      void this.releasePendingQrLogin(authSessionString);
+    }, cleanupDelayMs);
+
+    this.pendingQrLogins.set(authSessionString, { client, cleanupTimer });
+  }
+
+  private takePendingQrLogin(authSessionString: string): TelegramClient | null {
+    const pending = this.pendingQrLogins.get(authSessionString);
+    if (!pending) {
+      return null;
+    }
+    clearTimeout(pending.cleanupTimer);
+    this.pendingQrLogins.delete(authSessionString);
+    return pending.client;
+  }
+
+  private async releasePendingQrLogin(authSessionString: string): Promise<void> {
+    const pending = this.pendingQrLogins.get(authSessionString);
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.cleanupTimer);
+    this.pendingQrLogins.delete(authSessionString);
+    await this.safeDestroyClient(pending.client);
+  }
+
+  private waitForQrLoginTokenUpdate(
+    client: TelegramClient,
+    timeoutMs: number,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(
+          new BadRequestException(
+            "QR login timed out. Scan the code in Telegram, then call confirm again.",
+          ),
+        );
+      }, timeoutMs);
+
+      const handler = (update: unknown) => {
+        if (settled) {
+          return;
+        }
+        if (update instanceof Api.UpdateLoginToken) {
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+
+      client.addEventHandler(handler);
+    });
+  }
+
+  private async tryFinalizeQrAfterScan(
+    client: TelegramClient,
+    creds: TelegramApiCredentials,
+  ): Promise<
+    | { kind: "active"; profile: TelegramUserProfile; sessionString: string }
+    | { kind: "password_required"; authSessionString: string }
+    | null
+  > {
+    let result: unknown;
+    try {
+      result = await this.invokeWithTimeout(
+        client.invoke(
+          new Api.auth.ExportLoginToken({
+            apiId: creds.apiId,
+            apiHash: creds.apiHash,
+            exceptIds: [],
+          }),
+        ),
+        TelegramUserApiService.QR_INVOKE_TIMEOUT_MS,
+        "ExportLoginToken",
+      );
+    } catch (e) {
+      if (this.isPasswordRequired(e)) {
+        return {
+          kind: "password_required",
+          authSessionString: this.saveSession(client),
+        };
+      }
+      throw e;
+    }
+
+    if (result instanceof Api.auth.LoginToken) {
+      return null;
+    }
+
+    if (
+      result instanceof Api.auth.LoginTokenSuccess &&
+      result.authorization instanceof Api.auth.Authorization
+    ) {
+      return this.buildActiveQrLoginResult(client);
+    }
+
+    if (result instanceof Api.auth.LoginTokenMigrateTo) {
+      await this.invokeWithTimeout(
+        client._switchDC(result.dcId),
+        TelegramUserApiService.QR_INVOKE_TIMEOUT_MS,
+        "switchDC",
+      );
+
+      let migratedResult: unknown;
+      try {
+        migratedResult = await this.invokeWithTimeout(
+          client.invoke(new Api.auth.ImportLoginToken({ token: result.token })),
+          TelegramUserApiService.QR_INVOKE_TIMEOUT_MS,
+          "ImportLoginToken",
+        );
+      } catch (e) {
+        if (this.isPasswordRequired(e)) {
+          return {
+            kind: "password_required",
+            authSessionString: this.saveSession(client),
+          };
+        }
+        throw e;
+      }
+
+      if (
+        migratedResult instanceof Api.auth.LoginTokenSuccess &&
+        migratedResult.authorization instanceof Api.auth.Authorization
+      ) {
+        return this.buildActiveQrLoginResult(client);
+      }
+
+      if (await client.isUserAuthorized()) {
+        return this.buildActiveQrLoginResult(client);
+      }
+
+      throw new BadGatewayException(
+        `Unexpected Telegram QR migrate response: ${
+          migratedResult &&
+          typeof migratedResult === "object" &&
+          "className" in migratedResult
+            ? String((migratedResult as { className?: unknown }).className)
+            : typeof migratedResult
+        }`,
+      );
+    }
+
+    throw new BadGatewayException(
+      `Unexpected Telegram QR login response: ${
+        result && typeof result === "object" && "className" in result
+          ? String((result as { className?: unknown }).className)
+          : typeof result
+      }`,
+    );
+  }
+
+  private async buildActiveQrLoginResult(
+    client: TelegramClient,
+  ): Promise<{ kind: "active"; profile: TelegramUserProfile; sessionString: string }> {
+    const profile = await this.readProfile(client);
+    return {
+      kind: "active",
+      profile,
+      sessionString: this.saveSession(client),
+    };
+  }
+
+  private async invokeWithTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    label: string,
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new BadGatewayException(
+                `${label} timed out after ${timeoutMs}ms`,
+              ),
+            );
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer != null) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   private isPasswordRequired(err: unknown): boolean {
@@ -396,6 +748,14 @@ export class TelegramUserApiService {
       await client.disconnect();
     } catch {
       /* ignore */
+    }
+  }
+
+  private async safeDestroyClient(client: TelegramClient): Promise<void> {
+    try {
+      await client.destroy();
+    } catch {
+      await this.safeDisconnect(client);
     }
   }
 }

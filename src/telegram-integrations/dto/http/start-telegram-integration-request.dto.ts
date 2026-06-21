@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsOptional, IsString, Matches, MinLength } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Min,
+  MinLength,
+} from "class-validator";
 
 export class StartTelegramIntegrationRequestDto {
   @ApiProperty({
@@ -15,7 +24,21 @@ export class StartTelegramIntegrationRequestDto {
 
   @ApiPropertyOptional({
     description: "Workspace id (defaults to your primary workspace)",
+    minimum: 1,
   })
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   workspace_id?: number;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      "When true, asks Telegram to deliver the login code via SMS instead of the Telegram app.",
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  force_sms?: boolean;
 }

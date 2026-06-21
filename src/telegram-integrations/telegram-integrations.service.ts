@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { randomBytes } from "crypto";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
@@ -18,6 +19,16 @@ import type { TelegramIntegrationResponseDto } from "./dto/http/telegram-integra
 import type { TelegramIntegrationsListResponseDto } from "./dto/http/telegram-integrations-list-response.dto";
 import { TelegramUpdatesListenerService } from "./telegram-updates-listener.service";
 import { TelegramUserApiService } from "./telegram-user-api.service";
+
+const QR_LOGIN_PHONE_PREFIX = "qr:";
+/** Fits `telegram_integrations.phone_number` varchar(32). */
+const QR_LOGIN_PHONE_SUFFIX_LENGTH = 32 - QR_LOGIN_PHONE_PREFIX.length;
+
+function buildQrLoginPlaceholderPhone(): string {
+  return `${QR_LOGIN_PHONE_PREFIX}${randomBytes(16)
+    .toString("hex")
+    .slice(0, QR_LOGIN_PHONE_SUFFIX_LENGTH)}`;
+}
 
 @Injectable()
 export class TelegramIntegrationsService {
@@ -74,7 +85,10 @@ export class TelegramIntegrationsService {
       );
     }
 
-    const send = await this.telegramApi.sendLoginCode(phoneNumber);
+    const send = await this.telegramApi.sendLoginCode(
+      phoneNumber,
+      dto.force_sms === true,
+    );
 
     let row: TelegramIntegration;
     if (existing) {
@@ -105,7 +119,140 @@ export class TelegramIntegrationsService {
       nextStep: send.isCodeViaApp
         ? "Enter the code from your Telegram app"
         : "Enter the code sent via SMS",
+      codeDelivery: send.isCodeViaApp ? "telegram_app" : "sms",
     });
+  }
+
+  async startQrLoginForOwner(
+    ownerId: number,
+    workspaceIdParam?: number,
+  ): Promise<{
+    integrationId: number;
+    workspaceId: number;
+    status: TelegramIntegrationStatus;
+    qrLoginUrl: string;
+    qrToken: string;
+    qrImageUrl: string;
+    expiresAt: string;
+    nextStep: string;
+  }> {
+    const workspaceId = await this.resolveWorkspaceIdForOwner(
+      ownerId,
+      workspaceIdParam,
+    );
+
+    const qr = await this.telegramApi.startQrLogin();
+    const placeholderPhone = buildQrLoginPlaceholderPhone();
+
+    const row = this.telegramRepo.create({
+      workspaceId,
+      ownerId,
+      name: "Telegram QR login",
+      phoneNumber: placeholderPhone,
+      status: TelegramIntegrationStatus.PENDING_QR,
+      authSessionString: qr.authSessionString,
+      phoneCodeHash: null,
+      sessionString: null,
+      telegramUserId: null,
+      telegramUsername: null,
+      connectedAt: null,
+      lastError: null,
+    });
+    await this.telegramRepo.save(row);
+
+    return {
+      integrationId: row.id,
+      workspaceId: row.workspaceId,
+      status: row.status,
+      qrLoginUrl: qr.qrLoginUrl,
+      qrToken: qr.qrToken,
+      qrImageUrl: qr.qrImageUrl,
+      expiresAt: qr.expiresAt,
+      nextStep:
+        "Scan the QR in Telegram, then call POST /telegram-integrations/:id/qr-login/confirm (call confirm right away — it waits up to 90s for the scan).",
+    };
+  }
+
+  async confirmQrLoginForOwner(
+    ownerId: number,
+    id: number,
+    waitTimeoutMs?: number,
+  ): Promise<TelegramIntegrationResponseDto> {
+    const row = await this.requireOwnedRow(ownerId, id);
+    if (row.status !== TelegramIntegrationStatus.PENDING_QR) {
+      if (row.status === TelegramIntegrationStatus.ACTIVE) {
+        return this.toDto(row);
+      }
+      throw new BadRequestException(
+        "Integration is not awaiting QR login confirmation",
+      );
+    }
+
+    const authSession = row.authSessionString?.trim();
+    if (!authSession) {
+      throw new BadRequestException(
+        "Login session expired; start again with POST /telegram-integrations/qr-login/start",
+      );
+    }
+
+    const result = await this.telegramApi.completeQrLogin(
+      authSession,
+      waitTimeoutMs,
+    );
+
+    if (result.kind === "password_required") {
+      row.status = TelegramIntegrationStatus.PENDING_PASSWORD;
+      row.authSessionString = result.authSessionString;
+      await this.telegramRepo.save(row);
+      return this.toDto(row, {
+        nextStep: "Account has 2FA enabled — submit your Telegram password",
+      });
+    }
+
+    await this.applyActiveTelegramProfile(row, result.profile, result.sessionString);
+    await this.telegramRepo.save(row);
+    await this.updatesListener.attachIntegration(row);
+    return this.toDto(row);
+  }
+
+  private async applyActiveTelegramProfile(
+    row: TelegramIntegration,
+    profile: {
+      telegramUserId: string;
+      username: string | null;
+      displayName: string;
+      phoneNumber: string | null;
+    },
+    sessionString: string,
+  ): Promise<void> {
+    if (profile.phoneNumber) {
+      const existing = await this.telegramRepo.findOne({
+        where: {
+          workspaceId: row.workspaceId,
+          phoneNumber: profile.phoneNumber,
+        },
+      });
+      if (
+        existing &&
+        existing.id !== row.id &&
+        existing.status === TelegramIntegrationStatus.ACTIVE
+      ) {
+        throw new BadRequestException(
+          "This phone is already connected for this workspace",
+        );
+      }
+      row.phoneNumber = profile.phoneNumber;
+    }
+
+    row.status = TelegramIntegrationStatus.ACTIVE;
+    row.sessionString = sessionString;
+    row.authSessionString = null;
+    row.phoneCodeHash = null;
+    row.telegramUserId = profile.telegramUserId;
+    row.telegramUsername = profile.username;
+    row.name = profile.displayName;
+    row.connectedAt = new Date();
+    row.lastError = null;
   }
 
   async confirmCodeForOwner(
@@ -135,15 +282,7 @@ export class TelegramIntegrationsService {
       });
     }
 
-    row.status = TelegramIntegrationStatus.ACTIVE;
-    row.sessionString = result.sessionString;
-    row.authSessionString = null;
-    row.phoneCodeHash = null;
-    row.telegramUserId = result.profile.telegramUserId;
-    row.telegramUsername = result.profile.username;
-    row.name = result.profile.displayName;
-    row.connectedAt = new Date();
-    row.lastError = null;
+    await this.applyActiveTelegramProfile(row, result.profile, result.sessionString);
     await this.telegramRepo.save(row);
     await this.updatesListener.attachIntegration(row);
     return this.toDto(row);
@@ -172,15 +311,7 @@ export class TelegramIntegrationsService {
       dto.password,
     );
 
-    row.status = TelegramIntegrationStatus.ACTIVE;
-    row.sessionString = sessionString;
-    row.authSessionString = null;
-    row.phoneCodeHash = null;
-    row.telegramUserId = profile.telegramUserId;
-    row.telegramUsername = profile.username;
-    row.name = profile.displayName;
-    row.connectedAt = new Date();
-    row.lastError = null;
+    await this.applyActiveTelegramProfile(row, profile, sessionString);
     await this.telegramRepo.save(row);
     await this.updatesListener.attachIntegration(row);
     return this.toDto(row);
@@ -272,7 +403,7 @@ export class TelegramIntegrationsService {
 
   private toDto(
     row: TelegramIntegration,
-    extra?: { nextStep?: string },
+    extra?: { nextStep?: string; codeDelivery?: "telegram_app" | "sms" },
   ): TelegramIntegrationResponseDto {
     return {
       id: row.id,
@@ -288,6 +419,7 @@ export class TelegramIntegrationsService {
         ? { connectedAt: row.connectedAt.toISOString() }
         : {}),
       ...(extra?.nextStep ? { nextStep: extra.nextStep } : {}),
+      ...(extra?.codeDelivery ? { codeDelivery: extra.codeDelivery } : {}),
     };
   }
 

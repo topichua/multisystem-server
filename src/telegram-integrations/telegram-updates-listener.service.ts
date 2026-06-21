@@ -100,6 +100,7 @@ export class TelegramUpdatesListenerService
           await this.persistence.persistNewMessageEvent(
             integration,
             event as import("telegram/events").NewMessageEvent,
+            client,
           );
         } catch (e) {
           const err = e instanceof Error ? e.message : String(e);
