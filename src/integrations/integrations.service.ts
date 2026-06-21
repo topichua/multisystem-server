@@ -106,7 +106,7 @@ export class IntegrationsService {
     );
 
     const telegramRows =
-      await this.telegramIntegrations.findAllByWorkspace(workspaceId);
+      await this.telegramIntegrations.findActiveByWorkspace(workspaceId);
     for (const tg of telegramRows) {
       items.push(this.mapTelegramRow(tg));
     }

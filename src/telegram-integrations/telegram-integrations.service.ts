@@ -374,7 +374,7 @@ export class TelegramIntegrationsService {
     return {
       type: "telegram",
       id: row.id,
-      name: row.name,
+      name: this.resolveIntegrationListName(row),
       status: row.status,
       ...(row.connectedAt != null && !Number.isNaN(row.connectedAt.getTime())
         ? { connectedAt: row.connectedAt.toISOString() }
@@ -399,6 +399,14 @@ export class TelegramIntegrationsService {
       },
       order: { id: "ASC" },
     });
+  }
+
+  private resolveIntegrationListName(row: TelegramIntegration): string {
+    const phone = row.phoneNumber?.trim();
+    if (phone && !phone.startsWith(QR_LOGIN_PHONE_PREFIX)) {
+      return phone;
+    }
+    return row.name?.trim() || `Telegram #${row.id}`;
   }
 
   private toDto(
