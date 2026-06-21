@@ -18,6 +18,7 @@ import {
   ConversationMessage,
   ConversationSource,
   InstagramUser,
+  TelegramUser,
   TelegramIntegration,
   TelegramIntegrationStatus,
   WorkspaceMember,
@@ -42,6 +43,7 @@ import {
   TELEGRAM_CONVERSATION_MESSAGING,
   type TelegramConversationMessagingPort,
 } from "../telegram-integrations/telegram-integrations.tokens";
+import { TelegramUsersService } from "../telegram-integrations/telegram-users.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type {
   ConversationRowDto,
@@ -87,6 +89,8 @@ export class ConversationsService {
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
+    @InjectRepository(TelegramUser)
+    private readonly telegramUserRepo: Repository<TelegramUser>,
     @InjectRepository(TelegramIntegration)
     private readonly telegramIntegrationRepo: Repository<TelegramIntegration>,
     @InjectRepository(WorkspaceMember)
@@ -98,6 +102,7 @@ export class ConversationsService {
     private readonly messageNotify: ConversationMessageNotifyService,
     @Inject(TELEGRAM_CONVERSATION_MESSAGING)
     private readonly telegramMessaging: TelegramConversationMessagingPort,
+    private readonly telegramUsers: TelegramUsersService,
   ) {}
 
   async listConversationsForOwner(
@@ -135,16 +140,16 @@ export class ConversationsService {
     });
     const lastMessageByConversationId =
       await this.getLastMessageByConversationIds(rows.map((r) => r.id));
-    const participantById = await this.getInstagramUsersByIds(
-      rows.map((r) => r.participantId),
-    );
+    const { instagramById, telegramById } =
+      await this.getParticipantMapsForRows(rows, { maxTelegramSync: 10 });
 
     return {
       items: rows.map((r) =>
         this.toConversationRowDto(
           r,
           lastMessageByConversationId.get(r.id),
-          participantById,
+          instagramById,
+          telegramById,
           myAccountIds,
         ),
       ),
@@ -268,13 +273,13 @@ export class ConversationsService {
     const myAccountIds = await this.buildMyAccountIds(ownerId, integration, row);
     const lastMessageByConversationId =
       await this.getLastMessageByConversationIds([row.id]);
-    const participantById = await this.getInstagramUsersByIds([
-      row.participantId,
-    ]);
+    const { instagramById, telegramById } =
+      await this.getParticipantMapsForRows([row], { maxTelegramSync: 1 });
     return this.toConversationRowDto(
       row,
       lastMessageByConversationId.get(row.id),
-      participantById,
+      instagramById,
+      telegramById,
       myAccountIds,
     );
   }
@@ -397,13 +402,14 @@ export class ConversationsService {
   private toConversationRowDto(
     row: Conversation,
     lastMessage: ConversationMessage | undefined,
-    participantById: Map<string, InstagramUser>,
+    instagramById: Map<string, InstagramUser>,
+    telegramById: Map<string, TelegramUser>,
     myAccountIds: Set<string>,
   ): ConversationRowDto {
     const participant = this.toConversationParticipantDto(
-      row.participantId,
-      participantById,
-      row.source,
+      row,
+      instagramById,
+      telegramById,
     );
     const isLastMessageFromMe = this.resolveIsLastMessageFromMe(
       lastMessage,
@@ -498,16 +504,25 @@ export class ConversationsService {
   }
 
   private toConversationParticipantDto(
-    participantId: string | undefined,
-    participantById: Map<string, InstagramUser>,
-    source: ConversationSource,
+    row: Conversation,
+    instagramById: Map<string, InstagramUser>,
+    telegramById: Map<string, TelegramUser>,
   ): ConversationParticipantDto | null {
-    if (source === ConversationSource.TELEGRAM) {
-      return this.emptyTelegramParticipant();
-    }
-    const participantKey = participantId?.trim();
+    const participantKey = row.participantId?.trim();
     if (!participantKey || participantKey === "unknown") return null;
-    const participant = participantById.get(participantKey);
+
+    if (this.isTelegramConversation(row)) {
+      const participant = telegramById.get(participantKey);
+      if (!participant) return null;
+      return {
+        id: participant.id,
+        name: TelegramUsersService.buildDisplayName(participant),
+        username: participant.username?.trim() || "",
+        profilePic: participant.profilePic,
+      };
+    }
+
+    const participant = instagramById.get(participantKey);
     if (!participant) return null;
     return {
       id: participant.id,
@@ -517,13 +532,70 @@ export class ConversationsService {
     };
   }
 
-  private emptyTelegramParticipant(): ConversationParticipantDto {
-    return {
-      id: "",
-      name: "",
-      username: "",
-      profilePic: "",
-    };
+  private isTelegramConversation(row: Conversation): boolean {
+    return (
+      row.source === ConversationSource.TELEGRAM ||
+      row.externalId.trim().startsWith("telegram:")
+    );
+  }
+
+  private async getParticipantMapsForRows(
+    rows: Conversation[],
+    options?: { maxTelegramSync?: number },
+  ): Promise<{
+    instagramById: Map<string, InstagramUser>;
+    telegramById: Map<string, TelegramUser>;
+  }> {
+    const instagramIds: string[] = [];
+    const telegramIds: string[] = [];
+    for (const row of rows) {
+      const id = row.participantId?.trim();
+      if (!id || id === "unknown") continue;
+      if (this.isTelegramConversation(row)) {
+        telegramIds.push(id);
+      } else {
+        instagramIds.push(id);
+      }
+    }
+    const [instagramById, telegramById] = await Promise.all([
+      this.getInstagramUsersByIds(instagramIds),
+      this.getTelegramUsersByIds(telegramIds),
+    ]);
+
+    const missingTelegramRows = rows.filter((row) => {
+      const participantId = row.participantId?.trim();
+      return (
+        this.isTelegramConversation(row) &&
+        !!participantId &&
+        participantId !== "unknown" &&
+        !telegramById.has(participantId)
+      );
+    });
+    if (missingTelegramRows.length === 0) {
+      return { instagramById, telegramById };
+    }
+
+    const maxSync = options?.maxTelegramSync ?? 0;
+    if (maxSync <= 0) {
+      return { instagramById, telegramById };
+    }
+
+    const toSync = missingTelegramRows.slice(0, maxSync);
+    try {
+      await this.telegramUsers.syncMissingParticipantsForConversations(toSync);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(`telegram_users sync on GET failed: ${err}`);
+    }
+
+    const refreshed = await this.getTelegramUsersByIds(
+      toSync.map((row) => row.participantId),
+    );
+    for (const [id, user] of refreshed) {
+      telegramById.set(id, user);
+    }
+
+    return { instagramById, telegramById };
   }
 
   private async getInstagramUsersByIds(
@@ -532,6 +604,17 @@ export class ConversationsService {
     const uniqIds = [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
     if (uniqIds.length === 0) return new Map();
     const users = await this.instagramUserRepo.find({
+      where: { id: In(uniqIds) },
+    });
+    return new Map(users.map((u) => [u.id, u]));
+  }
+
+  private async getTelegramUsersByIds(
+    ids: string[],
+  ): Promise<Map<string, TelegramUser>> {
+    const uniqIds = [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
+    if (uniqIds.length === 0) return new Map();
+    const users = await this.telegramUserRepo.find({
       where: { id: In(uniqIds) },
     });
     return new Map(users.map((u) => [u.id, u]));

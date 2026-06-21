@@ -7,6 +7,7 @@ export { ConversationGroup } from "./conversation-group.entity";
 export { ConversationMessage } from "./conversation-message.entity";
 export { ConversationSource } from "./conversation-source.enum";
 export { InstagramUser } from "./instagram-user.entity";
+export { TelegramUser } from "./telegram-user.entity";
 export { Order } from "./order.entity";
 export { OrderDeliveryInfo } from "./order-delivery-info.entity";
 export { OrderDeliveryProvider } from "./order-delivery-provider.enum";

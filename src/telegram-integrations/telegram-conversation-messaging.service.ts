@@ -99,6 +99,7 @@ export class TelegramConversationMessagingService {
       chatId: sent.chatId,
       repliedToExternalId,
       messageDate: sent.date,
+      connectedClient,
     });
 
     return {

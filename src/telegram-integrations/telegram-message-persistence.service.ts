@@ -12,6 +12,7 @@ import {
 } from "../database/entities";
 import { ConversationMessageNotifyService } from "../conversations/conversation-message-notify.service";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
+import { TelegramUsersService } from "./telegram-users.service";
 
 @Injectable()
 export class TelegramMessagePersistenceService {
@@ -24,6 +25,7 @@ export class TelegramMessagePersistenceService {
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     private readonly messageNotify: ConversationMessageNotifyService,
     private readonly cloudflareImages: CloudflareImagesService,
+    private readonly telegramUsers: TelegramUsersService,
   ) {}
 
   /**
@@ -94,6 +96,12 @@ export class TelegramMessagePersistenceService {
       await this.conversationRepo.save(conv);
     }
 
+    await this.syncParticipantOnPersist(
+      integration,
+      participantId,
+      connectedClient,
+    );
+
     const existing = await this.conversationMessageRepo.findOne({
       where: { externalId: externalMessageId },
     });
@@ -150,6 +158,7 @@ export class TelegramMessagePersistenceService {
     chatId: string;
     repliedToExternalId: string | null;
     messageDate: Date;
+    connectedClient?: TelegramClient;
   }): Promise<ConversationMessage> {
     const {
       integration,
@@ -159,6 +168,7 @@ export class TelegramMessagePersistenceService {
       chatId,
       repliedToExternalId,
       messageDate,
+      connectedClient,
     } = params;
     const ownerId = integration.ownerId;
     const myUserId = integration.telegramUserId?.trim();
@@ -169,6 +179,14 @@ export class TelegramMessagePersistenceService {
     }
 
     const externalMessageId = `tg:${chatId}:${telegramMessageId}`;
+    const participantId = conversation.participantId?.trim() || chatId;
+
+    await this.syncParticipantOnPersist(
+      integration,
+      participantId,
+      connectedClient,
+    );
+
     const existing = await this.conversationMessageRepo.findOne({
       where: { externalId: externalMessageId },
     });
@@ -176,7 +194,6 @@ export class TelegramMessagePersistenceService {
       return existing;
     }
 
-    const participantId = conversation.participantId?.trim() || chatId;
     const receiverId = participantId;
     const effectiveSenderId = myUserId;
 
@@ -504,5 +521,24 @@ export class TelegramMessagePersistenceService {
       return String((value as { value: bigint }).value);
     }
     return String(value);
+  }
+
+  private async syncParticipantOnPersist(
+    integration: TelegramIntegration,
+    participantId: string,
+    connectedClient?: TelegramClient,
+  ): Promise<void> {
+    try {
+      await this.telegramUsers.syncParticipantForIntegration(
+        integration,
+        participantId,
+        connectedClient,
+      );
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `telegram_users sync failed participantId=${participantId}: ${err}`,
+      );
+    }
   }
 }

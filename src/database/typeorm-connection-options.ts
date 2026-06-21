@@ -73,6 +73,7 @@ import { WebhookEvents1744200000073 } from "./migrations/1744200000073-WebhookEv
 import { WorkspaceRoleDescriptionColor1744200000074 } from "./migrations/1744200000074-WorkspaceRoleDescriptionColor";
 import { UserAvatarCloudflareImageId1744200000075 } from "./migrations/1744200000075-UserAvatarCloudflareImageId";
 import { NovaPoshtaIntegrations1744200000076 } from "./migrations/1744200000076-NovaPoshtaIntegrations";
+import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
   InstagramIntegration,
@@ -80,6 +81,7 @@ import {
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
+  TelegramUser,
   Order,
   OrderDeliveryInfo,
   OrderEvent,
@@ -166,6 +168,7 @@ const entities = [
   TelegramIntegration,
   NovaPoshtaIntegration,
   InstagramUser,
+  TelegramUser,
   Client,
   ConversationGroup,
   Conversation,
@@ -303,6 +306,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceRoleDescriptionColor1744200000074,
       UserAvatarCloudflareImageId1744200000075,
       NovaPoshtaIntegrations1744200000076,
+      TelegramUsers1744200000077,
     ],
   };
 }
