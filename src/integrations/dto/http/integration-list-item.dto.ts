@@ -6,7 +6,8 @@ export class IntegrationListItemDto {
   type: IntegrationType;
 
   @ApiProperty({
-    description: "Display name (Facebook Page name or workspace integration name)",
+    description:
+      "Display name. Instagram: Graph account name (fallback: Facebook Page name). Telegram: phone number.",
   })
   name: string;
 
@@ -33,4 +34,16 @@ export class IntegrationListItemDto {
       "Instagram only: Business Account id (Graph `instagram_business_account.id`).",
   })
   businessAccountId?: string;
+
+  @ApiPropertyOptional({
+    description: "Instagram only: `@username` handle from Graph.",
+  })
+  userName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Instagram only: profile picture URL from Graph (`profile_picture_url`). `null` when the account has no picture or Graph did not return one.",
+    nullable: true,
+  })
+  avatar?: string | null;
 }
