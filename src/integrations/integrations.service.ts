@@ -1,9 +1,7 @@
 import {
-  BadGatewayException,
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -26,26 +24,10 @@ import type { CreateIntegrationRequestDto } from "./dto/http/create-integration-
 import type { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import type { IntegrationListItemDto } from "./dto/http/integration-list-item.dto";
 import type { IntegrationsListResponseDto } from "./dto/http/integrations-list-response.dto";
-
-type InstagramBusinessProfileNode = {
-  id?: string;
-  name?: string;
-  username?: string;
-  profile_picture_url?: string;
-  has_profile_pic?: boolean;
-};
-
-type InstagramErrorResponse = {
-  error?: {
-    message?: string;
-    code?: number;
-  };
-};
+import { InstagramIntegrationProfileService } from "../instagram/instagram-integration-profile.service";
 
 @Injectable()
 export class IntegrationsService {
-  private readonly log = new Logger(IntegrationsService.name);
-
   constructor(
     @InjectRepository(InstagramIntegration)
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
@@ -54,6 +36,7 @@ export class IntegrationsService {
     private readonly telegramIntegrations: TelegramIntegrationsService,
     private readonly novaPoshtaIntegrations: NovaPoshtaIntegrationsService,
     private readonly roleIntegrationGrants: WorkspaceRoleIntegrationGrantsService,
+    private readonly instagramProfile: InstagramIntegrationProfileService,
   ) {}
 
   async startForOwner(
@@ -223,105 +206,7 @@ export class IntegrationsService {
   private async mapInstagramRow(
     row: InstagramIntegration,
   ): Promise<IntegrationListItemDto> {
-    const fallbackName =
-      row.facebookPageName?.trim() ||
-      row.name?.trim() ||
-      `Instagram #${row.id}`;
-    const connectedAt = row.tokenConnectedAt;
-    const businessAccountId = row.instagramAccountId?.trim();
-
-    let name = fallbackName;
-    let userName: string | undefined;
-    let avatar: string | null = null;
-
-    if (businessAccountId) {
-      const profile = await this.fetchInstagramBusinessProfile(
-        row,
-        businessAccountId,
-      );
-      if (profile) {
-        name = profile.name?.trim() || fallbackName;
-        const username = profile.username?.trim();
-        if (username) {
-          userName = username;
-        }
-        avatar = profile.profile_picture_url?.trim() || null;
-      }
-    }
-
-    return {
-      type: "instagram",
-      name,
-      id: row.id,
-      ...(businessAccountId ? { businessAccountId } : {}),
-      ...(userName ? { userName } : {}),
-      avatar,
-      ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
-        ? { connectedAt: connectedAt.toISOString() }
-        : {}),
-    };
-  }
-
-  private resolveInstagramProfileAccessToken(
-    row: InstagramIntegration,
-  ): string | null {
-    // IG User `profile_picture_url` requires a User access token, not Page token.
-    return row.userAccessToken?.trim() || row.accessToken?.trim() || null;
-  }
-
-  private async fetchInstagramBusinessProfile(
-    row: InstagramIntegration,
-    businessAccountId: string,
-  ): Promise<InstagramBusinessProfileNode | null> {
-    const accessToken = this.resolveInstagramProfileAccessToken(row);
-    if (!accessToken) {
-      return null;
-    }
-
-    try {
-      const url = new URL(
-        `https://graph.facebook.com/v25.0/${encodeURIComponent(businessAccountId)}`,
-      );
-      url.searchParams.set(
-        "fields",
-        "id,name,username,profile_picture_url,has_profile_pic",
-      );
-      url.searchParams.set("access_token", accessToken);
-      const profile =
-        await this.instagramGraphFetch<InstagramBusinessProfileNode>(url);
-      return profile;
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      this.log.warn(
-        `Instagram profile fetch failed integrationId=${row.id} businessAccountId=${businessAccountId}: ${err}`,
-      );
-      return null;
-    }
-  }
-
-  private async instagramGraphFetch<T>(url: URL): Promise<T> {
-    const response = await fetch(url.toString());
-    const bodyText = await response.text();
-    let body: T | InstagramErrorResponse = {} as T;
-    if (bodyText) {
-      try {
-        body = JSON.parse(bodyText) as T | InstagramErrorResponse;
-      } catch {
-        throw new BadGatewayException(
-          "Instagram Graph API returned invalid JSON",
-        );
-      }
-    }
-
-    if (!response.ok) {
-      const err = body as InstagramErrorResponse;
-      const msg =
-        err?.error?.message ??
-        `Instagram Graph API request failed with status ${response.status}`;
-      throw new BadGatewayException(msg);
-    }
-
-    return body as T;
+    return this.instagramProfile.mapRow(row);
   }
 
   private async resolveWorkspaceIdForOwner(

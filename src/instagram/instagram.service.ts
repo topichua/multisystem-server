@@ -11,6 +11,8 @@ import { IsNull, Not, Repository } from "typeorm";
 import { InstagramIntegration } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { InstagramIntegrationsListResponseDto } from "./dto/instagram-integration-list-item.dto";
+import { InstagramIntegrationProfileService } from "./instagram-integration-profile.service";
+import { InstagramUsersService } from "./instagram-users.service";
 import type { ListInstagramMediaQueryDto } from "./dto/list-instagram-media-query.dto";
 import type {
   InstagramMediaItemDto,
@@ -91,9 +93,11 @@ export class InstagramService {
     @InjectRepository(InstagramIntegration)
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly integrationProfile: InstagramIntegrationProfileService,
+    private readonly instagramUsers: InstagramUsersService,
   ) {}
 
-  /** Connected Instagram integrations for the workspace (`id` + display `name`). */
+  /** Connected Instagram integrations for the workspace. */
   async listIntegrationsForOwner(
     ownerId: number,
     workspaceIdParam?: number,
@@ -107,14 +111,7 @@ export class InstagramService {
       order: { id: "ASC" },
     });
     return {
-      data: rows.map((row) => {
-        const businessAccountId = row.instagramAccountId?.trim();
-        return {
-          id: row.id,
-          name: this.integrationDisplayName(row),
-          ...(businessAccountId ? { businessAccountId } : {}),
-        };
-      }),
+      data: await this.integrationProfile.mapRows(rows),
     };
   }
 
@@ -202,10 +199,13 @@ export class InstagramService {
     const commentsPage =
       await this.instagramGraphFetch<IgCommentListResponse>(url);
 
+    const normalized = (commentsPage.data ?? []).map((item) =>
+      this.normalizeComment(item, { includeReplies }),
+    );
+    const data = await this.enrichCommentsWithUsers(normalized, accessToken);
+
     return {
-      data: (commentsPage.data ?? []).map((item) =>
-        this.normalizeComment(item, { includeReplies }),
-      ),
+      data,
       paging: this.mapMediaPaging(commentsPage.paging),
     };
   }
@@ -243,10 +243,13 @@ export class InstagramService {
     const repliesPage =
       await this.instagramGraphFetch<IgCommentListResponse>(url);
 
+    const normalized = (repliesPage.data ?? []).map((item) =>
+      this.normalizeComment(item, { includeReplies: false }),
+    );
+    const data = await this.enrichCommentsWithUsers(normalized, accessToken);
+
     return {
-      data: (repliesPage.data ?? []).map((item) =>
-        this.normalizeComment(item, { includeReplies: false }),
-      ),
+      data,
       paging: this.mapMediaPaging(repliesPage.paging),
     };
   }
@@ -381,14 +384,6 @@ export class InstagramService {
     return { buffer, contentType };
   }
 
-  private integrationDisplayName(row: InstagramIntegration): string {
-    return (
-      row.facebookPageName?.trim() ||
-      row.name?.trim() ||
-      `Instagram #${row.id}`
-    );
-  }
-
   private normalizeMediaItem(
     raw: InstagramMediaItemDto,
   ): InstagramMediaItemDto {
@@ -428,6 +423,70 @@ export class InstagramService {
     const matches = caption.match(/#[\p{L}\p{N}_]+/gu) ?? [];
     const unique = [...new Set(matches.map((m) => m.slice(1)))];
     return unique.length > 0 ? unique : undefined;
+  }
+
+  private async enrichCommentsWithUsers(
+    comments: InstagramCommentDto[],
+    accessToken: string,
+  ): Promise<InstagramCommentDto[]> {
+    const authorIds = this.collectCommentAuthorIds(comments);
+    if (authorIds.length === 0) {
+      return comments;
+    }
+
+    await this.instagramUsers.syncMissingFromGraph(authorIds, accessToken);
+    const userById = await this.instagramUsers.getMapByIds(authorIds);
+
+    return comments.map((comment) =>
+      this.enrichCommentWithUser(comment, userById),
+    );
+  }
+
+  private collectCommentAuthorIds(comments: InstagramCommentDto[]): string[] {
+    const ids: string[] = [];
+    const visit = (comment: InstagramCommentDto) => {
+      const authorId = comment.from?.id?.trim();
+      if (authorId) {
+        ids.push(authorId);
+      }
+      for (const reply of comment.replies ?? []) {
+        visit(reply);
+      }
+    };
+    for (const comment of comments) {
+      visit(comment);
+    }
+    return ids;
+  }
+
+  private enrichCommentWithUser(
+    comment: InstagramCommentDto,
+    userById: Map<string, { id: string; name: string; username: string; profilePic: string }>,
+  ): InstagramCommentDto {
+    const authorId = comment.from?.id?.trim();
+    const user = authorId ? userById.get(authorId) : undefined;
+    const from = comment.from
+      ? {
+          ...comment.from,
+          ...(user?.username ? { username: user.username } : {}),
+          ...(user?.name ? { name: user.name } : {}),
+          ...(user?.profilePic?.trim()
+            ? { profilePic: user.profilePic.trim() }
+            : {}),
+        }
+      : undefined;
+
+    const replies =
+      comment.replies?.map((reply) =>
+        this.enrichCommentWithUser(reply, userById),
+      ) ?? undefined;
+
+    return {
+      ...comment,
+      ...(from ? { from } : {}),
+      username: comment.username ?? from?.username ?? user?.username,
+      ...(replies ? { replies } : {}),
+    };
   }
 
   private normalizeComment(

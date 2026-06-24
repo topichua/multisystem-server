@@ -7,6 +7,16 @@ export class InstagramCommentAuthorDto {
 
   @ApiPropertyOptional()
   username?: string;
+
+  @ApiPropertyOptional({
+    description: "Full display name from `instagram_users` / Graph.",
+  })
+  name?: string;
+
+  @ApiPropertyOptional({
+    description: "Profile picture URL from `instagram_users` / Graph.",
+  })
+  profilePic?: string;
 }
 
 export class InstagramCommentDto {

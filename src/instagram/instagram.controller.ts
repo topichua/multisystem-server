@@ -62,7 +62,7 @@ export class InstagramController {
   @ApiOperation({
     summary: "List connected Instagram integrations",
     description:
-      "Returns `id` and `name` for each connected Instagram integration in your workspace. " +
+      "Returns connected Instagram integrations with profile fields (`name`, `userName`, `avatar`, `businessAccountId`). " +
       "Use `id` as `integrationId` on GET /api/instagram/media and GET /api/instagram/posts/:id/ai-extraction.",
   })
   @ApiQuery({
@@ -124,6 +124,7 @@ export class InstagramController {
       "Calls Meta Graph `GET /{instagram-media-id}/comments` with the integration Page token. " +
       "By default returns top-level comments only with lightweight `reply_count` / `has_replies` " +
       "(no reply bodies). Load replies on demand via GET .../comments/:commentId/replies. " +
+      "Comment authors are enriched from `instagram_users` (`from.name`, `from.profilePic`). " +
       "Set `include_replies=true` only if you need embedded replies in one response (heavier). " +
       "Pass `integrationId` from GET /api/instagram/integrations when you have multiple accounts. " +
       "Use `limit` (default 25, max 50) and Graph cursors `after` / `before` from `paging.cursors` to paginate.",
