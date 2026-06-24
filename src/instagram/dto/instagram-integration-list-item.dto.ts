@@ -38,6 +38,18 @@ export class InstagramIntegrationListItemDto {
       "ISO 8601 when OAuth / tokens were connected (`token_connected_at`).",
   })
   connectedAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Follower count from Graph (`followers_count`). Omitted when Graph does not return it.",
+  })
+  followersCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Published post count from Graph (`media_count`). Omitted when Graph does not return it.",
+  })
+  postsCount?: number;
 }
 
 export class InstagramIntegrationsListResponseDto {

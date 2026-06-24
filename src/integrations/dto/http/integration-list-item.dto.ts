@@ -46,4 +46,16 @@ export class IntegrationListItemDto {
     nullable: true,
   })
   avatar?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Instagram only: follower count from Graph (`followers_count`).",
+  })
+  followersCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Instagram only: published post count from Graph (`media_count`).",
+  })
+  postsCount?: number;
 }

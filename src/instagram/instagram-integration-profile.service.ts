@@ -8,6 +8,8 @@ type InstagramBusinessProfileNode = {
   username?: string;
   profile_picture_url?: string;
   has_profile_pic?: boolean;
+  followers_count?: number;
+  media_count?: number;
 };
 
 type InstagramErrorResponse = {
@@ -32,6 +34,8 @@ export class InstagramIntegrationProfileService {
     let name = fallbackName;
     let userName: string | undefined;
     let avatar: string | null = null;
+    let followersCount: number | undefined;
+    let postsCount: number | undefined;
 
     if (businessAccountId) {
       const profile = await this.fetchBusinessProfile(row, businessAccountId);
@@ -42,6 +46,12 @@ export class InstagramIntegrationProfileService {
           userName = username;
         }
         avatar = profile.profile_picture_url?.trim() || null;
+        if (typeof profile.followers_count === "number") {
+          followersCount = profile.followers_count;
+        }
+        if (typeof profile.media_count === "number") {
+          postsCount = profile.media_count;
+        }
       }
     }
 
@@ -52,6 +62,8 @@ export class InstagramIntegrationProfileService {
       ...(businessAccountId ? { businessAccountId } : {}),
       ...(userName ? { userName } : {}),
       avatar,
+      ...(followersCount != null ? { followersCount } : {}),
+      ...(postsCount != null ? { postsCount } : {}),
       ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
         ? { connectedAt: connectedAt.toISOString() }
         : {}),
@@ -84,7 +96,7 @@ export class InstagramIntegrationProfileService {
       );
       url.searchParams.set(
         "fields",
-        "id,name,username,profile_picture_url,has_profile_pic",
+        "id,name,username,profile_picture_url,has_profile_pic,followers_count,media_count",
       );
       url.searchParams.set("access_token", accessToken);
       return await this.instagramGraphFetch<InstagramBusinessProfileNode>(url);
