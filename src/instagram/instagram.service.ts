@@ -202,7 +202,11 @@ export class InstagramService {
     const normalized = (commentsPage.data ?? []).map((item) =>
       this.normalizeComment(item, { includeReplies }),
     );
-    const data = await this.enrichCommentsWithUsers(normalized, accessToken);
+    const data = await this.enrichCommentsWithUsers(
+      normalized,
+      integration,
+      accessToken,
+    );
 
     return {
       data,
@@ -246,7 +250,11 @@ export class InstagramService {
     const normalized = (repliesPage.data ?? []).map((item) =>
       this.normalizeComment(item, { includeReplies: false }),
     );
-    const data = await this.enrichCommentsWithUsers(normalized, accessToken);
+    const data = await this.enrichCommentsWithUsers(
+      normalized,
+      integration,
+      accessToken,
+    );
 
     return {
       data,
@@ -427,14 +435,20 @@ export class InstagramService {
 
   private async enrichCommentsWithUsers(
     comments: InstagramCommentDto[],
-    accessToken: string,
+    integration: InstagramIntegration,
+    pageAccessToken: string,
   ): Promise<InstagramCommentDto[]> {
     const authorIds = this.collectCommentAuthorIds(comments);
     if (authorIds.length === 0) {
       return comments;
     }
 
-    await this.instagramUsers.syncMissingFromGraph(authorIds, accessToken);
+    await this.instagramUsers.syncMissingFromGraph(authorIds, {
+      pageAccessToken,
+      userAccessToken: integration.userAccessToken,
+      businessAccountId: integration.instagramAccountId,
+      pageId: integration.pageId,
+    });
     const userById = await this.instagramUsers.getMapByIds(authorIds);
 
     return comments.map((comment) =>
