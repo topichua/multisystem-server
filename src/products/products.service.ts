@@ -505,13 +505,14 @@ export class ProductsService {
       workspace.id,
       stagedMediaIds,
     );
+    const productStatus = dto.status ?? ProductStatus.active;
     await this.productRepo.manager.transaction(async (em) => {
       const product = em.create(Product, {
         workspaceId: workspace.id,
         categoryId: dto.categoryId ?? null,
         name,
         description: dto.description?.trim() || null,
-        status: dto.status ?? ProductStatus.draft,
+        status: productStatus,
         productType,
         sourceType: dto.sourceType ?? null,
         price: dto.price ?? null,
@@ -542,7 +543,7 @@ export class ProductsService {
             inStock: spec.inStock ?? null,
             quantity: spec.quantity ?? null,
             sku: spec.sku?.trim() || null,
-            status: spec.status ?? ProductStatus.draft,
+            status: spec.status ?? productStatus,
             createdByUserId: ownerId,
             updatedByUserId: null,
           }),
@@ -694,7 +695,7 @@ export class ProductsService {
       inStock: dto.inStock ?? null,
       quantity: dto.quantity ?? null,
       sku: dto.sku?.trim() || null,
-      status: dto.status ?? ProductStatus.draft,
+      status: dto.status ?? product.status ?? ProductStatus.active,
       createdByUserId: ownerId,
       updatedByUserId: null,
     });
@@ -1158,7 +1159,7 @@ export class ProductsService {
             inStock: spec.inStock ?? null,
             quantity: spec.quantity ?? null,
             sku: spec.sku?.trim() || null,
-            status: spec.status ?? ProductStatus.draft,
+            status: spec.status ?? product.status,
             createdByUserId: ownerId,
             updatedByUserId: null,
           }),

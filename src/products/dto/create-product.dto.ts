@@ -38,7 +38,7 @@ class CreateProductBodyDto {
   @MaxLength(100_000)
   description?: string;
 
-  @ApiPropertyOptional({ enum: ProductStatus })
+  @ApiPropertyOptional({ enum: ProductStatus, default: ProductStatus.active })
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;

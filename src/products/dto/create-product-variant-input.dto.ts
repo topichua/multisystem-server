@@ -16,7 +16,12 @@ import { ProductStatus } from "../../database/entities/product-status.enum";
 import { VariantCustomFieldAttributeDto } from "./variant-custom-field-attribute.dto";
 
 export class CreateProductVariantInputDto {
-  @ApiPropertyOptional({ enum: ProductStatus, default: ProductStatus.draft })
+  @ApiPropertyOptional({
+    enum: ProductStatus,
+    default: ProductStatus.active,
+    description:
+      "Defaults to the product `status` when omitted (otherwise `active`).",
+  })
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
