@@ -273,6 +273,7 @@ export class TelegramMessagePersistenceService {
       participantId,
       source: ConversationSource.TELEGRAM,
       managerId: ownerId,
+      workspaceId: integration.workspaceId,
       groupId: null,
     });
     return { conv: row, convSaved: true };

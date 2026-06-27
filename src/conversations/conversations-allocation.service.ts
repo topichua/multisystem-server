@@ -51,6 +51,7 @@ type InstagramErrorResponse = {
 type WebhookCompanyContext = {
   id: number;
   ownerId: number;
+  workspaceId: number;
   instagramAccountId: string;
   accessToken: string;
   pageId: string;
@@ -240,6 +241,7 @@ export class ConversationsAllocationService {
         customerUserId,
         businessInstagramId: ctx.businessInstagramId,
         ownerId: ctx.companyCtx.ownerId,
+        workspaceId: ctx.companyCtx.workspaceId,
         accessToken: ctx.accessToken,
         pageId: ctx.pageId,
       });
@@ -360,6 +362,7 @@ export class ConversationsAllocationService {
         customerUserId,
         businessInstagramId: ctx.businessInstagramId,
         ownerId: ctx.companyCtx.ownerId,
+        workspaceId: ctx.companyCtx.workspaceId,
         accessToken: ctx.accessToken,
         pageId: ctx.pageId,
       });
@@ -596,6 +599,7 @@ export class ConversationsAllocationService {
     const ctx: WebhookCompanyContext = {
       id: company.id,
       ownerId: company.ownerId,
+      workspaceId: company.workspaceId,
       instagramAccountId: businessInstagramId,
       accessToken,
       pageId: company.pageId,
@@ -731,6 +735,7 @@ export class ConversationsAllocationService {
     customerUserId: string;
     businessInstagramId: string;
     ownerId: number;
+    workspaceId: number;
     accessToken: string;
     pageId: string;
   }): Promise<{
@@ -834,6 +839,7 @@ export class ConversationsAllocationService {
         participantId,
         source: ConversationSource.INSTAGRAM,
         managerId: ownerId,
+        workspaceId: params.workspaceId,
         groupId: null,
       });
       this.log.log(

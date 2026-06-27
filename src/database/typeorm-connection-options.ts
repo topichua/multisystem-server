@@ -74,6 +74,10 @@ import { WorkspaceRoleDescriptionColor1744200000074 } from "./migrations/1744200
 import { UserAvatarCloudflareImageId1744200000075 } from "./migrations/1744200000075-UserAvatarCloudflareImageId";
 import { NovaPoshtaIntegrations1744200000076 } from "./migrations/1744200000076-NovaPoshtaIntegrations";
 import { NovaPoshtaIntegrationSenderSettings1744200000078 } from "./migrations/1744200000078-NovaPoshtaIntegrationSenderSettings";
+import { OrderDeliveryInfoAddressToStreetFields1744200000079 } from "./migrations/1744200000079-OrderDeliveryInfoAddressToStreetFields";
+import { ProductShippingFields1744200000080 } from "./migrations/1744200000080-ProductShippingFields";
+import { OrderDeliveryInfoProviderId1744200000081 } from "./migrations/1744200000081-OrderDeliveryInfoProviderId";
+import { ConversationWorkspaceId1744200000082 } from "./migrations/1744200000082-ConversationWorkspaceId";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -309,6 +313,10 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       NovaPoshtaIntegrations1744200000076,
       TelegramUsers1744200000077,
       NovaPoshtaIntegrationSenderSettings1744200000078,
+      OrderDeliveryInfoAddressToStreetFields1744200000079,
+      ProductShippingFields1744200000080,
+      OrderDeliveryInfoProviderId1744200000081,
+      ConversationWorkspaceId1744200000082,
     ],
   };
 }

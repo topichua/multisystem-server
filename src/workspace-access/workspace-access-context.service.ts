@@ -140,6 +140,19 @@ export class WorkspaceAccessContextService {
     });
   }
 
+  async requireExistingWorkspace(workspaceId: number): Promise<Workspace> {
+    if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+      throw new BadRequestException("workspace_id must be a positive integer");
+    }
+    const workspace = await this.workspaceRepo.findOne({
+      where: { id: workspaceId },
+    });
+    if (!workspace) {
+      throw new NotFoundException("Workspace not found");
+    }
+    return workspace;
+  }
+
   /** Workspace member or owner or platform super_admin. */
   async requireWorkspaceOwner(
     ownerId: number,

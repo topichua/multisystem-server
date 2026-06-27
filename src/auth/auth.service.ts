@@ -9,7 +9,7 @@ import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
 import { Repository } from "typeorm";
-import { InstagramIntegration, User, UserStatus } from "../database/entities";
+import { InstagramIntegration, User, UserStatus, WorkspaceMember, WorkspaceMemberStatus } from "../database/entities";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { PasswordService } from "../users/crypto/password.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
@@ -47,6 +47,8 @@ export class AuthService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(InstagramIntegration)
     private readonly companyRepo: Repository<InstagramIntegration>,
+    @InjectRepository(WorkspaceMember)
+    private readonly workspaceMemberRepo: Repository<WorkspaceMember>,
   ) {}
 
   async getMe(authUser: AuthUser): Promise<MeResponseDto> {
@@ -311,12 +313,36 @@ export class AuthService {
     return this.issueAccessTokenForUser(user);
   }
 
-  issueAccessTokenForUser(user: User): { access_token: string } {
+  async issueAccessTokenForUser(
+    user: User,
+    workspaceIdOverride?: number,
+  ): Promise<{ access_token: string }> {
+    const workspaceId =
+      workspaceIdOverride ?? (await this.resolveSessionWorkspaceId(user.id));
     return this.signAccessToken({
       sub: String(user.id),
       email: user.email,
       role: ROLE_SUPER_ADMIN,
+      ...(workspaceId != null ? { workspaceId } : {}),
     });
+  }
+
+  private async resolveSessionWorkspaceId(
+    userId: number,
+  ): Promise<number | undefined> {
+    const company = await this.companyRepo.findOne({
+      where: { ownerId: userId },
+      order: { id: "DESC" },
+    });
+    if (company) {
+      return company.workspaceId;
+    }
+
+    const member = await this.workspaceMemberRepo.findOne({
+      where: { userId, status: WorkspaceMemberStatus.ACTIVE },
+      order: { id: "DESC" },
+    });
+    return member?.workspaceId;
   }
 
   private signAccessToken(payload: JwtPayload): { access_token: string } {

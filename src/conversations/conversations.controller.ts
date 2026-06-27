@@ -3,6 +3,8 @@ import {
   BadRequestException,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Put,
@@ -13,6 +15,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -30,6 +33,8 @@ import { SyncConversationsResponseDto } from "./dto/http/sync-conversations-resp
 import { InstagramMessagesResponseDto } from "./dto/http/instagram-messages-response.dto";
 import { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
+import { ProductSuggestionItemDto } from "./dto/http/conversation-product-suggestions-response.dto";
+import { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
 import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
 import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 import { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
@@ -44,9 +49,17 @@ export class ConversationsController {
 
   @Get()
   @ApiOperation({
-    summary: "List conversations for the current owner",
+    summary: "List conversations for a workspace",
     description:
-      "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the owner’s workspace.",
+      "Returns conversations scoped by `workspace_id` (query param, else JWT session `workspaceId`, else your latest integration workspace). " +
+      "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace.",
+  })
+  @ApiQuery({
+    name: "workspace_id",
+    required: false,
+    description:
+      "Workspace to list conversations for. When omitted, uses `workspaceId` from the JWT session.",
+    schema: { type: "integer", minimum: 1 },
   })
   @ApiQuery({
     name: "groupIds",
@@ -58,11 +71,14 @@ export class ConversationsController {
   @ApiOkResponse({ type: ConversationsListResponseDto })
   async getAll(
     @Req() req: { user?: AuthUser },
+    @Query("workspace_id") workspaceIdRaw?: string,
     @Query("groupIds") groupIdsRaw?: string | string[],
   ): Promise<ConversationsListResponseDto> {
     const ownerId = Number(req.user?.userId);
     const groupIds = this.parseOptionalGroupIdsQuery(groupIdsRaw);
     return this.conversationsService.listConversationsForOwner(ownerId, {
+      workspaceId: this.parseOptionalWorkspaceId(workspaceIdRaw),
+      sessionWorkspaceId: req.user?.workspaceId,
       groupIds,
     });
   }
@@ -98,6 +114,21 @@ export class ConversationsController {
     return ids.length > 0 ? [...new Set(ids)] : undefined;
   }
 
+  private parseOptionalWorkspaceId(raw?: string): number | undefined {
+    if (raw == null || raw.trim() === "") {
+      return undefined;
+    }
+    const trimmed = raw.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      throw new BadRequestException("workspace_id must be a positive integer");
+    }
+    const workspaceId = Number(trimmed);
+    if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+      throw new BadRequestException("workspace_id must be a positive integer");
+    }
+    return workspaceId;
+  }
+
   @Post("sync")
   @ApiOperation({
     summary: "Sync Instagram conversations from Graph API into the database",
@@ -114,6 +145,31 @@ export class ConversationsController {
     }
     return this.conversationsService.syncInstagramConversationsForOwner(
       ownerId,
+    );
+  }
+
+  @Post("suggestions")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Create a product suggestion for a conversation",
+    description:
+      "Stores a row in product_suggestions linking conversation, product, optional variant, and optional Instagram post id.",
+  })
+  @ApiBody({ type: CreateProductSuggestionRequestDto })
+  @ApiCreatedResponse({ type: ProductSuggestionItemDto })
+  async createProductSuggestion(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: CreateProductSuggestionRequestDto,
+  ): Promise<ProductSuggestionItemDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.conversationsService.createProductSuggestionForOwner(
+      ownerId,
+      dto,
     );
   }
 
@@ -252,6 +308,9 @@ export class ConversationsController {
   @Get(":id/suggestions")
   @ApiOperation({
     summary: "List product suggestions linked to a conversation",
+    description:
+      "Returns products grouped by id (same shape as GET /api/instagram/posts/:instagramPostId/product-variants). " +
+      "Each variant includes `referenceId` = product_suggestions.id.",
   })
   @ApiOkResponse({ type: ConversationProductSuggestionsResponseDto })
   async listProductSuggestions(

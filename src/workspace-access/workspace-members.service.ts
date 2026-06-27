@@ -449,7 +449,10 @@ export class WorkspaceMembersService {
       relations: ["user", "role"],
     });
 
-    const { access_token } = this.authService.issueAccessTokenForUser(user);
+    const { access_token } = await this.authService.issueAccessTokenForUser(
+      user,
+      hydratedMember.workspaceId,
+    );
     return {
       registered: true,
       access_token,

@@ -5,4 +5,6 @@ export type AuthUser = {
   userId: string;
   email: string;
   role: AppRole;
+  /** Active workspace from JWT session, when present. */
+  workspaceId?: number;
 };

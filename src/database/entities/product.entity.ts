@@ -19,6 +19,19 @@ import { ProductVariant } from "./product-variant.entity";
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 
+const decimalShippingTransformer = {
+  to: (v: number | null) => v,
+  from: (v: string | null) => (v == null ? null : Number(v)),
+};
+
+const shippingDecimalColumn = {
+  type: "decimal" as const,
+  precision: 12,
+  scale: 3,
+  nullable: true,
+  transformer: decimalShippingTransformer,
+};
+
 @Entity({ name: "products" })
 @Index("IDX_products_workspace_id", ["workspaceId"])
 @Index("IDX_products_workspace_id_status", ["workspaceId", "status"])
@@ -96,6 +109,18 @@ export class Product {
 
   @Column({ type: "int", nullable: true })
   quantity: number | null;
+
+  @Column({ name: "weight_grams", ...shippingDecimalColumn })
+  weightGrams: number | null;
+
+  @Column({ name: "length_cm", ...shippingDecimalColumn })
+  lengthCm: number | null;
+
+  @Column({ name: "width_cm", ...shippingDecimalColumn })
+  widthCm: number | null;
+
+  @Column({ name: "height_cm", ...shippingDecimalColumn })
+  heightCm: number | null;
 
   @Column({ name: "created_by_user_id", type: "int" })
   createdByUserId: number;

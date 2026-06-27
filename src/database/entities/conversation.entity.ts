@@ -11,6 +11,7 @@ import {
 import { ConversationSource } from "./conversation-source.enum";
 import { ConversationGroup } from "./conversation-group.entity";
 import { User } from "./user.entity";
+import { Workspace } from "./workspace.entity";
 import { WorkspaceMember } from "./workspace-member.entity";
 
 @Entity("conversations")
@@ -18,6 +19,7 @@ import { WorkspaceMember } from "./workspace-member.entity";
 @Index("IDX_conversations_manager_id", ["managerId"])
 @Index("IDX_conversations_group_id", ["groupId"])
 @Index("IDX_conversations_responsible_member_id", ["responsibleMemberId"])
+@Index("IDX_conversations_workspace_id", ["workspaceId"])
 @Check(`"source" IN (1, 2)`)
 export class Conversation {
   @PrimaryGeneratedColumn({ name: "id" })
@@ -48,6 +50,13 @@ export class Conversation {
   @ManyToOne(() => User, { onDelete: "RESTRICT" })
   @JoinColumn({ name: "manager_id" })
   manager: User;
+
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
+
+  @ManyToOne(() => Workspace, { onDelete: "RESTRICT" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace: Workspace;
 
   @Column({ name: "group_id", type: "int", nullable: true })
   groupId: number | null;

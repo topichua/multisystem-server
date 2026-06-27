@@ -253,7 +253,8 @@ export class ProductsController {
     summary: "Create product (single or variants)",
     description:
       "JSON body. Upload images first via POST /products/upload-media, then pass mediaIds on the product " +
-      "and/or on each variant in `variants`. Returns 201 with an empty body; use GET /products/:id to load the created product.",
+      "and/or on each variant in `variants`. Optional shipping fields: weightGrams, lengthCm, widthCm, heightCm. " +
+      "Returns 201 with an empty body; use GET /products/:id to load the created product.",
   })
   @ApiBody({ type: CreateProductDto })
   @ApiCreatedResponse({ description: "Product created (empty body)." })
@@ -286,6 +287,7 @@ export class ProductsController {
     summary: "Replace product",
     description:
       "Updates product fields and, when `variants` is provided, syncs the full variant list. " +
+      "Shipping fields weightGrams, lengthCm, widthCm, heightCm are saved on the product row. " +
       "Each variant's `mediaIds` is the full gallery (unlisted staged ids are removed; omit for no images). " +
       "Variants omitted from `variants` are hard-deleted, or archived when referenced by order line items.",
   })

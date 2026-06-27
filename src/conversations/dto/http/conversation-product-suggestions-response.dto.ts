@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { InstagramPostProductItemDto } from "../../../instagram/dto/instagram-post-product-variants-response.dto";
 
 export class ProductSuggestionItemDto {
   @ApiProperty()
@@ -20,7 +21,24 @@ export class ProductSuggestionItemDto {
   createdAt: Date;
 }
 
+/** Same grouped product/variant shape as GET /api/instagram/posts/:id/product-variants. */
 export class ConversationProductSuggestionsResponseDto {
-  @ApiProperty({ type: [ProductSuggestionItemDto] })
-  items: ProductSuggestionItemDto[];
+  @ApiProperty()
+  conversationId: number;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Instagram post id when all suggestions share one post; otherwise null.",
+  })
+  postId: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Conversation external source id (e.g. Instagram business account).",
+  })
+  businessAccountId: string | null;
+
+  @ApiProperty({ type: () => [InstagramPostProductItemDto] })
+  items: InstagramPostProductItemDto[];
 }

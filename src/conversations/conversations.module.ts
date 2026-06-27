@@ -10,8 +10,11 @@ import {
   TelegramIntegration,
   WorkspaceMember,
   ProductSuggestion,
+  Product,
+  ProductVariant,
 } from "../database/entities";
 import { AuthModule } from "../auth/auth.module";
+import { ProductsModule } from "../products/products.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
 import { ConversationGroupsService } from "./conversation-groups.service";
@@ -26,6 +29,7 @@ import { ConversationsService } from "./conversations.service";
 @Module({
   imports: [
     AuthModule,
+    ProductsModule,
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
       InstagramIntegration,
@@ -37,6 +41,8 @@ import { ConversationsService } from "./conversations.service";
       TelegramIntegration,
       WorkspaceMember,
       ProductSuggestion,
+      Product,
+      ProductVariant,
     ]),
   ],
   controllers: [ConversationsController, ConversationGroupsController],

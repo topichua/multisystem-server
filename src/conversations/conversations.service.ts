@@ -24,6 +24,8 @@ import {
   WorkspaceMember,
   WorkspaceMemberStatus,
   ProductSuggestion,
+  Product,
+  ProductVariant,
 } from "../database/entities";
 import type {
   InstagramConversationDto,
@@ -44,6 +46,7 @@ import {
   type TelegramConversationMessagingPort,
 } from "../telegram-integrations/telegram-integrations.tokens";
 import { TelegramUsersService } from "../telegram-integrations/telegram-users.service";
+import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type {
   ConversationRowDto,
@@ -51,6 +54,8 @@ import type {
 } from "./dto/http/conversations-list-response.dto";
 import type { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import type { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
+import type { ProductSuggestionItemDto } from "./dto/http/conversation-product-suggestions-response.dto";
+import type { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
 import type { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
 import type { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
 type InstagramErrorResponse = {
@@ -97,32 +102,47 @@ export class ConversationsService {
     private readonly workspaceMemberRepo: Repository<WorkspaceMember>,
     @InjectRepository(ProductSuggestion)
     private readonly productSuggestionRepo: Repository<ProductSuggestion>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
+    @InjectRepository(ProductVariant)
+    private readonly productVariantRepo: Repository<ProductVariant>,
     private readonly messagePresenter: ConversationMessagePresenterService,
     @Inject(forwardRef(() => ConversationMessageNotifyService))
     private readonly messageNotify: ConversationMessageNotifyService,
     @Inject(TELEGRAM_CONVERSATION_MESSAGING)
     private readonly telegramMessaging: TelegramConversationMessagingPort,
     private readonly telegramUsers: TelegramUsersService,
+    private readonly products: ProductsService,
   ) {}
 
   async listConversationsForOwner(
     ownerId: number,
-    filters?: { groupIds?: number[] },
+    filters?: { workspaceId?: number; sessionWorkspaceId?: number; groupIds?: number[] },
   ): Promise<{
     items: ConversationRowDto[];
   }> {
-    const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
-    const myAccountIds = await this.buildMyAccountIds(ownerId, integration);
+    const workspaceId = await this.resolveWorkspaceIdForConversationList(
+      ownerId,
+      filters?.workspaceId,
+      filters?.sessionWorkspaceId,
+    );
+    const integration = await this.instagramIntegrationRepo.findOne({
+      where: { workspaceId },
+      order: { id: "DESC" },
+    });
+    const myAccountIds = await this.buildMyAccountIdsForWorkspace(
+      workspaceId,
+      integration,
+    );
 
     const groupIds = filters?.groupIds?.filter(
       (id) => Number.isInteger(id) && id > 0,
     );
-    let where: FindOptionsWhere<Conversation> = { managerId: ownerId };
+    let where: FindOptionsWhere<Conversation> = { workspaceId };
     if (groupIds != null && groupIds.length > 0) {
       const unique = [...new Set(groupIds)];
       const groups = await this.conversationGroupRepo.find({
-        where: { workspaceId: integration.workspaceId, id: In(unique) },
+        where: { workspaceId, id: In(unique) },
       });
       const found = new Set(groups.map((g) => g.id));
       const missing = unique.filter((id) => !found.has(id));
@@ -131,7 +151,7 @@ export class ConversationsService {
           `Unknown or inaccessible group id(s) for this workspace: ${missing.join(", ")}`,
         );
       }
-      where = { managerId: ownerId, groupId: In(unique) };
+      where = { workspaceId, groupId: In(unique) };
     }
 
     const rows = await this.conversationRepo.find({
@@ -204,12 +224,14 @@ export class ConversationsService {
           participantId,
           source: ConversationSource.INSTAGRAM,
           managerId: ownerId,
+          workspaceId: integration.workspaceId,
           groupId: null,
         });
       } else {
         row.instUpdatedAt = instUpdatedAt;
         row.participantId = participantId;
         row.externalSourceId = pageId;
+        row.workspaceId = integration.workspaceId;
       }
       await this.conversationRepo.save(row);
       upserted++;
@@ -376,15 +398,81 @@ export class ConversationsService {
       order: { createdAt: "DESC", id: "DESC" },
     });
 
-    return {
-      items: rows.map((row) => ({
-        id: row.id,
+    const items = await this.products.listListItemsForInstagramReferences(
+      ownerId,
+      rows.map((row) => ({
+        referenceId: row.id,
         productId: row.productId,
         productVariantId: row.productVariantId,
-        conversationId: row.conversationId,
-        postId: row.postId,
-        createdAt: row.createdAt,
       })),
+    );
+
+    const postIds = [
+      ...new Set(
+        rows.map((row) => row.postId?.trim()).filter((id): id is string => !!id),
+      ),
+    ];
+
+    return {
+      conversationId,
+      postId: postIds.length === 1 ? postIds[0]! : null,
+      businessAccountId: conv.externalSourceId?.trim() || null,
+      items,
+    };
+  }
+
+  async createProductSuggestionForOwner(
+    ownerId: number,
+    dto: CreateProductSuggestionRequestDto,
+  ): Promise<ProductSuggestionItemDto> {
+    const conv = await this.conversationRepo.findOne({
+      where: { id: dto.conversationId, managerId: ownerId },
+    });
+    if (!conv) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const product = await this.productRepo.findOne({
+      where: { id: dto.productId, workspaceId: workspace.id },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const variantId = dto.productVariantId ?? null;
+    if (variantId != null) {
+      const variant = await this.productVariantRepo.findOne({
+        where: { id: variantId, productId: product.id },
+      });
+      if (!variant) {
+        throw new BadRequestException(
+          "productVariantId does not belong to productId",
+        );
+      }
+    }
+
+    const row = await this.productSuggestionRepo.save(
+      this.productSuggestionRepo.create({
+        conversationId: dto.conversationId,
+        productId: dto.productId,
+        productVariantId: variantId,
+        postId: dto.postId ?? null,
+      }),
+    );
+
+    return this.toProductSuggestionItem(row);
+  }
+
+  private toProductSuggestionItem(row: ProductSuggestion): ProductSuggestionItemDto {
+    return {
+      id: row.id,
+      productId: row.productId,
+      productVariantId: row.productVariantId,
+      conversationId: row.conversationId,
+      postId: row.postId,
+      createdAt: row.createdAt,
     };
   }
 
@@ -469,14 +557,51 @@ export class ConversationsService {
     );
   }
 
-  private async buildMyAccountIds(
+  private async resolveWorkspaceIdForConversationList(
     ownerId: number,
-    company: InstagramIntegration,
+    workspaceIdParam?: number,
+    sessionWorkspaceId?: number,
+  ): Promise<number> {
+    if (workspaceIdParam != null) {
+      const workspace =
+        await this.workspaceContext.requireExistingWorkspace(workspaceIdParam);
+      return workspace.id;
+    }
+    if (sessionWorkspaceId != null) {
+      const workspace =
+        await this.workspaceContext.requireExistingWorkspace(sessionWorkspaceId);
+      return workspace.id;
+    }
+
+    const integration = await this.instagramIntegrationRepo.findOne({
+      where: { ownerId },
+      order: { id: "DESC" },
+    });
+    if (integration) {
+      return integration.workspaceId;
+    }
+
+    const member = await this.workspaceMemberRepo.findOne({
+      where: { userId: ownerId, status: WorkspaceMemberStatus.ACTIVE },
+      order: { id: "DESC" },
+    });
+    if (member) {
+      return member.workspaceId;
+    }
+
+    throw new NotFoundException(
+      "Workspace not found; pass workspace_id or connect an integration",
+    );
+  }
+
+  private async buildMyAccountIdsForWorkspace(
+    workspaceId: number,
+    company: InstagramIntegration | null,
     conversation?: Conversation,
   ): Promise<Set<string>> {
-    const ids = this.buildMyInstagramIds(company);
+    const ids = company ? this.buildMyInstagramIds(company) : new Set<string>();
     const integrations = await this.telegramIntegrationRepo.find({
-      where: { ownerId, status: TelegramIntegrationStatus.ACTIVE },
+      where: { workspaceId, status: TelegramIntegrationStatus.ACTIVE },
     });
     for (const row of integrations) {
       const telegramUserId = row.telegramUserId?.trim();
@@ -501,6 +626,18 @@ export class ConversationsService {
       }
     }
     return ids;
+  }
+
+  private async buildMyAccountIds(
+    ownerId: number,
+    company: InstagramIntegration,
+    conversation?: Conversation,
+  ): Promise<Set<string>> {
+    return this.buildMyAccountIdsForWorkspace(
+      company.workspaceId,
+      company,
+      conversation,
+    );
   }
 
   private toConversationParticipantDto(

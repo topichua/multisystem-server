@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { InstagramIntegration, User, Workspace } from "../database/entities";
+import { InstagramIntegration, User, Workspace, WorkspaceMember } from "../database/entities";
 import { ProductsModule } from "../products/products.module";
 import { PasswordService } from "../users/crypto/password.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
@@ -15,7 +15,7 @@ import { JwtStrategy } from "./jwt.strategy";
 @Module({
   imports: [
     ProductsModule,
-    TypeOrmModule.forFeature([User, Workspace, InstagramIntegration]),
+    TypeOrmModule.forFeature([User, Workspace, InstagramIntegration, WorkspaceMember]),
     PassportModule.register({ defaultStrategy: "jwt" }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

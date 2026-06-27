@@ -109,6 +109,18 @@ export class ProductListItemDto {
   @ApiPropertyOptional({ nullable: true })
   categoryId: number | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "Product weight in grams." })
+  weightGrams: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Package length in centimeters." })
+  lengthCm: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Package width in centimeters." })
+  widthCm: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Package height in centimeters." })
+  heightCm: number | null;
+
   @ApiProperty()
   createdAt: Date;
 

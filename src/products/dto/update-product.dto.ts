@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional, IntersectionType } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   IsArray,
@@ -16,9 +16,10 @@ import {
 import { ProductSourceType } from "../../database/entities/product-source-type.enum";
 import { ProductStatus } from "../../database/entities/product-status.enum";
 import { ProductType } from "../../database/entities/product-type.enum";
+import { ProductShippingFieldsDto } from "./product-shipping-fields.dto";
 import { UpdateProductVariantSyncDto } from "./update-product-variant-sync.dto";
 
-export class UpdateProductDto {
+class UpdateProductBodyDto {
   @ApiPropertyOptional({ maxLength: 512 })
   @IsOptional()
   @IsString()
@@ -126,3 +127,8 @@ export class UpdateProductDto {
   @Type(() => UpdateProductVariantSyncDto)
   variants?: UpdateProductVariantSyncDto[];
 }
+
+export class UpdateProductDto extends IntersectionType(
+  ProductShippingFieldsDto,
+  UpdateProductBodyDto,
+) {}

@@ -435,18 +435,23 @@ export class OrdersService {
       row = this.orderDeliveryRepo.create({
         orderId: order.id,
         provider: dto.provider,
+        providerId: dto.providerId ?? null,
         recipientName: dto.recipientName ?? null,
         phone: dto.phone ?? null,
         city: dto.city ?? null,
         cityRef: dto.cityRef ?? null,
         warehouse: dto.warehouse ?? null,
         warehouseRef: dto.warehouseRef ?? null,
-        address: dto.address ?? null,
+        deliveryType: dto.deliveryType ?? null,
+        street: dto.street ?? null,
+        building: dto.building ?? null,
+        flat: dto.flat ?? null,
         trackingNumber: dto.trackingNumber ?? null,
         rawProviderPayload: dto.rawProviderPayload ?? null,
       });
     } else {
       row.provider = dto.provider;
+      if (dto.providerId !== undefined) row.providerId = dto.providerId;
       if (dto.recipientName !== undefined)
         row.recipientName = dto.recipientName;
       if (dto.phone !== undefined) row.phone = dto.phone;
@@ -454,7 +459,10 @@ export class OrdersService {
       if (dto.cityRef !== undefined) row.cityRef = dto.cityRef;
       if (dto.warehouse !== undefined) row.warehouse = dto.warehouse;
       if (dto.warehouseRef !== undefined) row.warehouseRef = dto.warehouseRef;
-      if (dto.address !== undefined) row.address = dto.address;
+      if (dto.deliveryType !== undefined) row.deliveryType = dto.deliveryType;
+      if (dto.street !== undefined) row.street = dto.street;
+      if (dto.building !== undefined) row.building = dto.building;
+      if (dto.flat !== undefined) row.flat = dto.flat;
       if (dto.trackingNumber !== undefined) {
         row.trackingNumber = dto.trackingNumber;
       }
@@ -723,13 +731,17 @@ export class OrdersService {
     const row = this.orderDeliveryRepo.create({
       orderId,
       provider: dto.provider,
+      providerId: dto.providerId ?? null,
       recipientName: dto.recipientName ?? null,
       phone: dto.phone ?? null,
       city: dto.city ?? null,
       cityRef: dto.cityRef ?? null,
       warehouse: dto.warehouse ?? null,
       warehouseRef: dto.warehouseRef ?? null,
-      address: dto.address ?? null,
+      deliveryType: dto.deliveryType ?? null,
+      street: dto.street ?? null,
+      building: dto.building ?? null,
+      flat: dto.flat ?? null,
       trackingNumber: dto.trackingNumber ?? null,
       rawProviderPayload: dto.rawProviderPayload ?? null,
     });

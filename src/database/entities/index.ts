@@ -10,6 +10,7 @@ export { InstagramUser } from "./instagram-user.entity";
 export { TelegramUser } from "./telegram-user.entity";
 export { Order } from "./order.entity";
 export { OrderDeliveryInfo } from "./order-delivery-info.entity";
+export { OrderDeliveryDestinationType } from "./order-delivery-destination-type.enum";
 export { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 export { OrderDeliveryStatus } from "./order-delivery-status.enum";
 export { OrderEvent } from "./order-event.entity";

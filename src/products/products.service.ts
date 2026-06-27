@@ -104,6 +104,10 @@ export type ProductListItemBaseDto = {
   quantity: number | null;
   mainImageUrl: string | null;
   categoryId: number | null;
+  weightGrams: number | null;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -514,6 +518,10 @@ export class ProductsService {
         currency: (dto.currency?.trim() || defaultCurrency).slice(0, 8),
         inStock: dto.inStock ?? null,
         quantity: dto.quantity ?? null,
+        weightGrams: dto.weightGrams ?? null,
+        lengthCm: dto.lengthCm ?? null,
+        widthCm: dto.widthCm ?? null,
+        heightCm: dto.heightCm ?? null,
         createdByUserId: ownerId,
         updatedByUserId: null,
       });
@@ -1015,6 +1023,18 @@ export class ProductsService {
     if (dto.quantity !== undefined) {
       product.quantity = dto.quantity;
     }
+    if (dto.weightGrams !== undefined) {
+      product.weightGrams = dto.weightGrams;
+    }
+    if (dto.lengthCm !== undefined) {
+      product.lengthCm = dto.lengthCm;
+    }
+    if (dto.widthCm !== undefined) {
+      product.widthCm = dto.widthCm;
+    }
+    if (dto.heightCm !== undefined) {
+      product.heightCm = dto.heightCm;
+    }
     if (dto.mediaIds !== undefined) {
       const stagedById =
         dto.mediaIds.length > 0
@@ -1490,6 +1510,10 @@ export class ProductsService {
       quantity: p.quantity,
       mainImageUrl: this.resolveMainImageUrl(p, mainImageByProductId),
       categoryId: p.categoryId,
+      weightGrams: p.weightGrams,
+      lengthCm: p.lengthCm,
+      widthCm: p.widthCm,
+      heightCm: p.heightCm,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     };

@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional, IntersectionType } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   IsArray,
@@ -17,8 +17,9 @@ import { ProductSourceType } from "../../database/entities/product-source-type.e
 import { ProductStatus } from "../../database/entities/product-status.enum";
 import { ProductType } from "../../database/entities/product-type.enum";
 import { CreateProductVariantInputDto } from "./create-product-variant-input.dto";
+import { ProductShippingFieldsDto } from "./product-shipping-fields.dto";
 
-export class CreateProductDto {
+class CreateProductBodyDto {
   @ApiProperty({ maxLength: 512 })
   @IsString()
   @Transform(({ value }: { value: unknown }) =>
@@ -131,3 +132,8 @@ export class CreateProductDto {
   @Type(() => CreateProductVariantInputDto)
   variants?: CreateProductVariantInputDto[];
 }
+
+export class CreateProductDto extends IntersectionType(
+  ProductShippingFieldsDto,
+  CreateProductBodyDto,
+) {}

@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { Order } from "./order.entity";
+import { OrderDeliveryDestinationType } from "./order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 
 @Entity("order_delivery_infos")
@@ -30,6 +31,9 @@ export class OrderDeliveryInfo {
     enumName: "order_delivery_provider_enum",
   })
   provider: OrderDeliveryProvider;
+
+  @Column({ name: "provider_id", type: "int", nullable: true })
+  providerId: number | null;
 
   @Column({
     name: "recipient_name",
@@ -59,8 +63,23 @@ export class OrderDeliveryInfo {
   })
   warehouseRef: string | null;
 
-  @Column({ name: "address", type: "text", nullable: true })
-  address: string | null;
+  @Column({
+    name: "delivery_type",
+    type: "enum",
+    enum: OrderDeliveryDestinationType,
+    enumName: "order_delivery_destination_type_enum",
+    nullable: true,
+  })
+  deliveryType: OrderDeliveryDestinationType | null;
+
+  @Column({ name: "street", type: "varchar", length: 255, nullable: true })
+  street: string | null;
+
+  @Column({ name: "building", type: "varchar", length: 64, nullable: true })
+  building: string | null;
+
+  @Column({ name: "flat", type: "varchar", length: 64, nullable: true })
+  flat: string | null;
 
   @Column({
     name: "tracking_number",

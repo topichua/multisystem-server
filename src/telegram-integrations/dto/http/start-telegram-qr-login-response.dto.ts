@@ -37,9 +37,10 @@ export class StartTelegramQrLoginResponseDto {
   expiresAt: string;
 
   @ApiProperty({
-    description: "Next API call after the user scans the QR code in Telegram.",
+    description:
+      "Next API call: invoke confirm immediately when the QR is shown (long-poll up to 90s). User must scan before expiresAt (~30s).",
     example:
-      "Scan the QR in Telegram, then call POST /telegram-integrations/:id/qr-login/confirm",
+      "Call POST /telegram-integrations/:id/qr-login/confirm right away while the user scans the QR",
   })
   nextStep: string;
 }

@@ -181,6 +181,11 @@ export class TelegramUserApiService {
     }
 
     const pendingClient = this.takePendingQrLogin(session);
+    if (pendingClient == null) {
+      this.log.warn(
+        "QR confirm without live session (server restart or delay after start); token may be expired",
+      );
+    }
     const client = pendingClient ?? this.createClient(session);
 
     try {
@@ -214,6 +219,9 @@ export class TelegramUserApiService {
         "QR login not completed yet. Scan the code in Telegram, then call POST /telegram-integrations/:id/qr-login/confirm again.",
       );
     } catch (e) {
+      if (this.isQrTokenExpired(e)) {
+        throw this.qrTokenExpiredException("Telegram QR login completion failed:");
+      }
       throw this.toHttpError(e, "Telegram QR login completion failed");
     } finally {
       await this.safeDestroyClient(client);
@@ -608,6 +616,9 @@ export class TelegramUserApiService {
         "ExportLoginToken",
       );
     } catch (e) {
+      if (this.isQrTokenExpired(e)) {
+        throw this.qrTokenExpiredException("Telegram QR login completion failed:");
+      }
       if (this.isPasswordRequired(e)) {
         return {
           kind: "password_required",
@@ -725,6 +736,23 @@ export class TelegramUserApiService {
     return msg === "SESSION_PASSWORD_NEEDED" || msg.includes("PASSWORD");
   }
 
+  private isQrTokenExpired(err: unknown): boolean {
+    const msg = this.errorMessage(err);
+    return (
+      msg === "AUTH_TOKEN_EXPIRED" ||
+      msg.includes("AUTH_TOKEN_EXPIRED") ||
+      msg.includes("LOGIN_TOKEN_INVALID")
+    );
+  }
+
+  private qrTokenExpiredException(context: string): BadRequestException {
+    return new BadRequestException(
+      `${context} Telegram QR code expired (valid for about 30 seconds). ` +
+        "Call POST /telegram-integrations/qr-login/start again, show the new QR, " +
+        "and call POST /telegram-integrations/:id/qr-login/confirm immediately while the user scans.",
+    );
+  }
+
   private errorMessage(err: unknown): string {
     if (err && typeof err === "object" && "errorMessage" in err) {
       const m = (err as { errorMessage?: unknown }).errorMessage;
@@ -739,6 +767,9 @@ export class TelegramUserApiService {
     this.log.warn(`${prefix}: ${detail}`);
     if (err instanceof BadRequestException) {
       return err;
+    }
+    if (this.isQrTokenExpired(err)) {
+      return this.qrTokenExpiredException(`${prefix}:`);
     }
     return new BadGatewayException(`${prefix}: ${detail}`);
   }

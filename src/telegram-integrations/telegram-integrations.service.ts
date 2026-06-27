@@ -169,7 +169,8 @@ export class TelegramIntegrationsService {
       qrImageUrl: qr.qrImageUrl,
       expiresAt: qr.expiresAt,
       nextStep:
-        "Scan the QR in Telegram, then call POST /telegram-integrations/:id/qr-login/confirm (call confirm right away — it waits up to 90s for the scan).",
+        "Call POST /telegram-integrations/:id/qr-login/confirm right away (it waits up to 90s). " +
+        "The user must scan the QR within ~30 seconds of expiresAt.",
     };
   }
 
@@ -195,10 +196,23 @@ export class TelegramIntegrationsService {
       );
     }
 
-    const result = await this.telegramApi.completeQrLogin(
-      authSession,
-      waitTimeoutMs,
-    );
+    let result: Awaited<ReturnType<typeof this.telegramApi.completeQrLogin>>;
+    try {
+      result = await this.telegramApi.completeQrLogin(
+        authSession,
+        waitTimeoutMs,
+      );
+    } catch (e) {
+      if (
+        e instanceof BadRequestException &&
+        this.isQrTokenExpiredMessage(String(e.message))
+      ) {
+        row.authSessionString = null;
+        row.lastError = "QR token expired";
+        await this.telegramRepo.save(row);
+      }
+      throw e;
+    }
 
     if (result.kind === "password_required") {
       row.status = TelegramIntegrationStatus.PENDING_PASSWORD;
@@ -407,6 +421,13 @@ export class TelegramIntegrationsService {
       return phone;
     }
     return row.name?.trim() || `Telegram #${row.id}`;
+  }
+
+  private isQrTokenExpiredMessage(message: string): boolean {
+    return (
+      message.includes("AUTH_TOKEN_EXPIRED") ||
+      message.includes("QR code expired")
+    );
   }
 
   private toDto(

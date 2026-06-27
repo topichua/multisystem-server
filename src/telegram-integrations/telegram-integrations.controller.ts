@@ -111,10 +111,9 @@ export class TelegramIntegrationsController {
   @ApiOperation({
     summary: "Complete Telegram QR login after scan",
     description:
-      "Uses the live GramJS session from `qr-login/start` when available, waits for the QR scan " +
-      "(up to `wait_seconds`), then activates the integration. Call this right after showing the QR — " +
-      "the request blocks until the user scans or times out. If the account has 2FA, status becomes " +
-      "`pending_password` — then call POST :id/confirm-password.",
+      "Call this immediately when showing the QR (do not wait for the user to scan first). " +
+      "The request blocks up to `wait_seconds` while Telegram confirms the scan. " +
+      "QR tokens expire in ~30 seconds — if you get 400 AUTH_TOKEN_EXPIRED, call qr-login/start again.",
   })
   @ApiParam({ name: "id", type: Number })
   @ApiQuery({
