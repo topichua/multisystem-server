@@ -101,10 +101,14 @@ export class WorkspaceMembersService {
       order: { id: "ASC" },
     });
 
-    const memberDtos = rows.map((r) => this.toDto(r));
+    const includeOwner = assignableFilter !== false;
+    const memberRows = includeOwner
+      ? rows.filter((r) => r.userId !== workspace.ownerId)
+      : rows;
+    const memberDtos = memberRows.map((r) => this.toDto(r));
     const ownerDto = this.ownerToDto(workspace, ownerUser, workspaceId);
 
-    if (assignableFilter === false) {
+    if (!includeOwner) {
       return memberDtos;
     }
     return [ownerDto, ...memberDtos];
