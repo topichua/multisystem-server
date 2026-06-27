@@ -648,21 +648,13 @@ export class ProductsService {
     }
 
     const variants = await this.variantRepo.find({ where: { productId } });
-    const orderLinkedVariantIds =
-      await this.findVariantIdsReferencedByOrders(productId);
-
-    if (orderLinkedVariantIds.size === 0) {
-      await this.productRepo.remove(product);
-      return;
-    }
 
     await this.productRepo.manager.transaction(async (em) => {
-      await this.archiveOrRemoveVariants(
-        em,
-        variants,
-        orderLinkedVariantIds,
-        ownerId,
-      );
+      for (const variant of variants) {
+        variant.status = ProductStatus.archived;
+        variant.updatedByUserId = ownerId;
+        await em.save(variant);
+      }
       product.status = ProductStatus.archived;
       product.updatedByUserId = ownerId;
       await em.save(product);

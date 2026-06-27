@@ -304,10 +304,9 @@ export class ProductsController {
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: "Delete product",
+    summary: "Archive product",
     description:
-      "Hard-deletes the product when no variants are referenced by order items. " +
-      "When any variant appears on an order, order-linked variants and the product are archived; other variants are hard-deleted.",
+      "Sets the product and all of its variants to status `archived`. Rows are not hard-deleted.",
   })
   async remove(
     @Req() req: { user?: AuthUser },
