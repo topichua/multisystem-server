@@ -1,4 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { NovaPoshtaSenderSettingsResponseDto } from "./novaposhta-sender-settings.dto";
 
 export class NovaPoshtaContactPersonDto {
   @ApiProperty({ example: "00000000-0000-0000-0000-000000000000" })
@@ -82,7 +83,7 @@ export class NovaPoshtaAccountInfoDto {
   recipients: NovaPoshtaCounterpartyDetailsDto[];
 }
 
-export class NovaPoshtaIntegrationDetailsResponseDto {
+export class NovaPoshtaIntegrationDetailsResponseDto extends NovaPoshtaSenderSettingsResponseDto {
   @ApiProperty()
   id: number;
 

@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -28,6 +29,11 @@ import {
   NovaPoshtaIntegrationResponseDto,
 } from "./dto/connect-novaposhta-integration.dto";
 import { NovaPoshtaIntegrationDetailsResponseDto } from "./dto/novaposhta-integration-details.dto";
+import { UpdateNovaPoshtaIntegrationRequestDto } from "./dto/update-novaposhta-integration.dto";
+import {
+  DiscoverNovaPoshtaSendersRequestDto,
+  DiscoverNovaPoshtaSendersResponseDto,
+} from "./dto/discover-novaposhta-senders.dto";
 import { NovaPoshtaIntegrationsService } from "./novaposhta-integrations.service";
 
 @ApiTags("novaposhta-integrations")
@@ -41,7 +47,7 @@ export class NovaPoshtaIntegrationsController {
   @ApiOperation({
     summary: "Connect Nova Poshta API key",
     description:
-      "Creates or updates the Nova Poshta integration for the current workspace (one per workspace).",
+      "Creates or updates the Nova Poshta integration for the current workspace (one per workspace). Validates API key and sender_city_ref / sender_warehouse_ref against Nova Poshta API when provided.",
   })
   @ApiCreatedResponse({ type: NovaPoshtaIntegrationResponseDto })
   async connect(
@@ -49,6 +55,21 @@ export class NovaPoshtaIntegrationsController {
     @Body() dto: ConnectNovaPoshtaIntegrationRequestDto,
   ): Promise<NovaPoshtaIntegrationResponseDto> {
     return this.novaPoshta.connectForOwner(this.requireOwnerId(req), dto);
+  }
+
+  @Post("discover-senders")
+  @ApiOperation({
+    summary: "Discover Nova Poshta senders and contact persons by API key",
+    description:
+      "Fetches sender counterparties, contact persons, and departure points from Nova Poshta API before connecting or updating integration. Use returned refs when saving default sender settings.",
+  })
+  @ApiOkResponse({ type: DiscoverNovaPoshtaSendersResponseDto })
+  async discoverSenders(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: DiscoverNovaPoshtaSendersRequestDto,
+  ): Promise<DiscoverNovaPoshtaSendersResponseDto> {
+    this.requireOwnerId(req);
+    return this.novaPoshta.discoverSendersByApiKey(dto.api_key);
   }
 
   @Get()
@@ -64,7 +85,7 @@ export class NovaPoshtaIntegrationsController {
   @ApiOperation({
     summary: "Get Nova Poshta integration details by id",
     description:
-      "Returns stored integration fields and live sender/recipient data from Nova Poshta API: counterparty, phone, contact person, departure city, and warehouse branch.",
+      "Returns stored integration fields (including default sender settings) and live sender/recipient data from Nova Poshta API.",
   })
   @ApiParam({ name: "id", type: Number })
   @ApiOkResponse({ type: NovaPoshtaIntegrationDetailsResponseDto })
@@ -73,6 +94,22 @@ export class NovaPoshtaIntegrationsController {
     @Param("id", ParseIntPipe) id: number,
   ): Promise<NovaPoshtaIntegrationDetailsResponseDto> {
     return this.novaPoshta.getByIdForOwner(this.requireOwnerId(req), id);
+  }
+
+  @Patch(":id")
+  @ApiOperation({
+    summary: "Update Nova Poshta integration settings",
+    description:
+      "Updates API key, display name, and/or default sender / payment settings stored on the integration row.",
+  })
+  @ApiParam({ name: "id", type: Number })
+  @ApiOkResponse({ type: NovaPoshtaIntegrationResponseDto })
+  async update(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateNovaPoshtaIntegrationRequestDto,
+  ): Promise<NovaPoshtaIntegrationResponseDto> {
+    return this.novaPoshta.updateForOwner(this.requireOwnerId(req), id, dto);
   }
 
   @Delete(":id")

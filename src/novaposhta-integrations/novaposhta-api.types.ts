@@ -69,3 +69,73 @@ export type NovaPoshtaAccountInfo = {
   senders: NovaPoshtaCounterpartyDetails[];
   recipients: NovaPoshtaCounterpartyDetails[];
 };
+
+export type NovaPoshtaSearchSettlementsAddressRecord = {
+  Ref?: string;
+  MainDescription?: string;
+  Area?: string;
+  Region?: string;
+  SettlementTypeCode?: string;
+  DeliveryCity?: string;
+};
+
+export type NovaPoshtaSearchSettlementsDataItem = {
+  Addresses?: NovaPoshtaSearchSettlementsAddressRecord[];
+};
+
+export type NovaPoshtaSearchStreetsAddressRecord = {
+  SettlementStreetRef?: string;
+  SettlementStreetDescription?: string;
+  Present?: string;
+  StreetsTypeDescription?: string;
+};
+
+export type NovaPoshtaSearchStreetsDataItem = {
+  Addresses?: NovaPoshtaSearchStreetsAddressRecord[];
+};
+
+export type NovaPoshtaWarehouseSearchRecord = {
+  Ref?: string;
+  Description?: string;
+  Number?: string;
+  CategoryOfWarehouse?: string;
+  ShortAddress?: string;
+  TotalMaxWeightAllowed?: string;
+  TypeOfWarehouse?: string;
+  SettlementRef?: string;
+  CityRef?: string;
+};
+
+export type NovaPoshtaConnectSenderRefs = {
+  sender_city_ref?: string | null;
+  sender_warehouse_ref?: string | null;
+  sender_type?: string | null;
+};
+
+export type NovaPoshtaSettlementSearchResult = {
+  ref: string;
+  description: string;
+  settlementType: string;
+  area: string;
+  region: string;
+  cityRef: string | null;
+};
+
+export type NovaPoshtaWarehouseSearchResult = {
+  ref: string;
+  description: string;
+  number: string | null;
+  category: string;
+  type: "warehouse" | "postomat";
+  address: string;
+  maxWeightAllowed: number | null;
+};
+
+export type NovaPoshtaStreetSearchResult = {
+  ref: string;
+  description: string;
+  streetType: string;
+};
+
+export type NovaPoshtaWarehouseSearchType = "all" | "warehouse" | "postomat";
+

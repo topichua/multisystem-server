@@ -73,6 +73,7 @@ import { WebhookEvents1744200000073 } from "./migrations/1744200000073-WebhookEv
 import { WorkspaceRoleDescriptionColor1744200000074 } from "./migrations/1744200000074-WorkspaceRoleDescriptionColor";
 import { UserAvatarCloudflareImageId1744200000075 } from "./migrations/1744200000075-UserAvatarCloudflareImageId";
 import { NovaPoshtaIntegrations1744200000076 } from "./migrations/1744200000076-NovaPoshtaIntegrations";
+import { NovaPoshtaIntegrationSenderSettings1744200000078 } from "./migrations/1744200000078-NovaPoshtaIntegrationSenderSettings";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -307,6 +308,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       UserAvatarCloudflareImageId1744200000075,
       NovaPoshtaIntegrations1744200000076,
       TelegramUsers1744200000077,
+      NovaPoshtaIntegrationSenderSettings1744200000078,
     ],
   };
 }
