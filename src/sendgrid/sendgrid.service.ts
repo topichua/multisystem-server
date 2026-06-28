@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import sgMail from "@sendgrid/mail";
-import { SENDGRID_PRICE_TEMPLATE_ID } from "./sendgrid.constants";
+import { SENDGRID_PRICE_TEMPLATE_ID, SENDGRID_REGISTRATION_TEMPLATE_ID } from "./sendgrid.constants";
 
 type SendDynamicTemplateParams = {
   to: string;
@@ -47,6 +47,28 @@ export class SendgridService {
       dynamicTemplateData: {
         name: name.trim(),
         invitationLink: invitationLink.trim(),
+      },
+    });
+  }
+
+  async sendRegistrationConfirmationEmail(params: {
+    to: string;
+    firstName: string;
+    companyName: string;
+    confirmUrl: string;
+  }): Promise<void> {
+    const templateId =
+      this.config
+        .get<string>("SENDGRID_REGISTRATION_TEMPLATE_ID")
+        ?.trim() ||
+      SENDGRID_REGISTRATION_TEMPLATE_ID;
+    await this.sendDynamicTemplate({
+      to: params.to,
+      templateId,
+      dynamicTemplateData: {
+        first_name: params.firstName.trim(),
+        company_name: params.companyName.trim(),
+        confirm_url: params.confirmUrl.trim(),
       },
     });
   }

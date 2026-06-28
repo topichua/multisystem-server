@@ -9,7 +9,7 @@ import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
 import { Repository } from "typeorm";
-import { InstagramIntegration, User, UserStatus, WorkspaceMember, WorkspaceMemberStatus } from "../database/entities";
+import { InstagramIntegration, User, UserStatus, Workspace, WorkspaceMember, WorkspaceMemberStatus } from "../database/entities";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { PasswordService } from "../users/crypto/password.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
@@ -56,6 +56,8 @@ export class AuthService {
     private readonly companyRepo: Repository<InstagramIntegration>,
     @InjectRepository(WorkspaceMember)
     private readonly workspaceMemberRepo: Repository<WorkspaceMember>,
+    @InjectRepository(Workspace)
+    private readonly workspaceRepo: Repository<Workspace>,
   ) {}
 
   async getMe(authUser: AuthUser): Promise<MeResponseDto> {
@@ -370,6 +372,14 @@ export class AuthService {
   private async resolveSessionWorkspaceId(
     userId: number,
   ): Promise<number | undefined> {
+    const ownedWorkspace = await this.workspaceRepo.findOne({
+      where: { ownerId: userId },
+      order: { id: "DESC" },
+    });
+    if (ownedWorkspace) {
+      return ownedWorkspace.id;
+    }
+
     const company = await this.companyRepo.findOne({
       where: { ownerId: userId },
       order: { id: "DESC" },

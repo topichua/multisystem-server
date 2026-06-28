@@ -79,6 +79,7 @@ import { ProductShippingFields1744200000080 } from "./migrations/1744200000080-P
 import { OrderDeliveryInfoProviderId1744200000081 } from "./migrations/1744200000081-OrderDeliveryInfoProviderId";
 import { ConversationWorkspaceId1744200000082 } from "./migrations/1744200000082-ConversationWorkspaceId";
 import { UserPhone1744200000083 } from "./migrations/1744200000083-UserPhone";
+import { RegistrationTokens1744200000084 } from "./migrations/1744200000084-RegistrationTokens";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -112,6 +113,7 @@ import {
   WorkspaceRoleIntegrationGrant,
   WebhookEvent,
   NovaPoshtaIntegration,
+  RegistrationToken,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -196,6 +198,7 @@ const entities = [
   OrderDeliveryInfo,
   OrderEvent,
   WebhookEvent,
+  RegistrationToken,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -319,6 +322,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderDeliveryInfoProviderId1744200000081,
       ConversationWorkspaceId1744200000082,
       UserPhone1744200000083,
+      RegistrationTokens1744200000084,
     ],
   };
 }

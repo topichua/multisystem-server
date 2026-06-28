@@ -37,6 +37,11 @@ import { UpdateAuthProfileRequestDto, hasAuthProfileUpdateField } from "./dto/up
 import { UpdateAuthAvatarResponseDto } from "./dto/update-auth-avatar-response.dto";
 import { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 import { LoginRequestDto } from "./dto/login-request.dto";
+import { StartRegistrationRequestDto } from "./dto/start-registration-request.dto";
+import { StartRegistrationResponseDto } from "./dto/start-registration-response.dto";
+import { ConfirmRegistrationRequestDto } from "./dto/confirm-registration-request.dto";
+import { ConfirmRegistrationResponseDto } from "./dto/confirm-registration-response.dto";
+import { RegistrationService } from "./registration.service";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import type { AuthUser } from "./types/auth-user.type";
 
@@ -52,7 +57,39 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly facebookOAuth: FacebookOAuthService,
+    private readonly registration: RegistrationService,
   ) {}
+
+  @Post("register/start")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Start workspace owner registration",
+    description:
+      "Creates a pending registration token and sends a confirmation email. " +
+      "Workspace and user are created only after POST /auth/register/confirm.",
+  })
+  @ApiBody({ type: StartRegistrationRequestDto })
+  @ApiOkResponse({ type: StartRegistrationResponseDto })
+  async startRegistration(
+    @Body() dto: StartRegistrationRequestDto,
+  ): Promise<StartRegistrationResponseDto> {
+    return this.registration.startRegistration(dto);
+  }
+
+  @Post("register/confirm")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Confirm workspace owner registration",
+    description:
+      "Consumes the raw token from the email link and creates user, workspace (owner), and owner workspace member.",
+  })
+  @ApiBody({ type: ConfirmRegistrationRequestDto })
+  @ApiOkResponse({ type: ConfirmRegistrationResponseDto })
+  async confirmRegistration(
+    @Body() dto: ConfirmRegistrationRequestDto,
+  ): Promise<ConfirmRegistrationResponseDto> {
+    return this.registration.confirmRegistration(dto.token);
+  }
 
   @Post("login")
   @HttpCode(HttpStatus.OK)
