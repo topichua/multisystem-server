@@ -260,14 +260,16 @@ export class UsersService {
       user.metadata = input.metadata;
     }
     if (input.mobilePhonePlain !== undefined) {
-      if (input.mobilePhonePlain === null || input.mobilePhonePlain === "") {
+      const phone = this.normalizeUserPhone(input.mobilePhonePlain);
+      user.phone = phone;
+      if (phone == null) {
         user.mobilePhoneHash = null;
       } else {
-        const normalized = input.mobilePhonePlain.replace(/\D/g, "");
+        const digits = phone.replace(/\D/g, "");
         user.mobilePhoneHash =
-          normalized.length === 0
+          digits.length === 0
             ? null
-            : this.invitationTokenService.hash(normalized);
+            : this.invitationTokenService.hash(digits);
       }
     }
     return toSafeUser(await this.userRepo.save(user));
@@ -354,5 +356,13 @@ export class UsersService {
       throw new NotFoundException("User not found");
     }
     return user;
+  }
+
+  private normalizeUserPhone(raw: string | null | undefined): string | null {
+    if (raw == null) {
+      return null;
+    }
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 }

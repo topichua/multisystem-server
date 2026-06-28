@@ -33,7 +33,7 @@ import { MeResponseDto } from "./dto/me-response.dto";
 import { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
 import { ChangePasswordResponseDto } from "./dto/change-password-response.dto";
 import { SetEmailRequestDto } from "./dto/set-email-request.dto";
-import { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
+import { UpdateAuthProfileRequestDto, hasAuthProfileUpdateField } from "./dto/update-auth-profile-request.dto";
 import { UpdateAuthAvatarResponseDto } from "./dto/update-auth-avatar-response.dto";
 import { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 import { LoginRequestDto } from "./dto/login-request.dto";
@@ -86,7 +86,7 @@ export class AuthController {
   @ApiOperation({
     summary: "Update current user profile",
     description:
-      "Updates the authenticated user (JWT `sub` / user id). Only database users; env super-admin cannot use this.",
+      "Updates the authenticated user (JWT `sub` / user id). Accepts camelCase or snake_case field names. Only database users; env super-admin cannot use this.",
   })
   @ApiBody({ type: UpdateAuthProfileRequestDto })
   @ApiOkResponse({ type: MeResponseDto })
@@ -94,11 +94,7 @@ export class AuthController {
     @Req() req: Request & { user: AuthUser },
     @Body() dto: UpdateAuthProfileRequestDto,
   ): Promise<MeResponseDto> {
-    if (
-      dto.firstName === undefined &&
-      dto.lastName === undefined &&
-      dto.phone === undefined
-    ) {
+    if (!hasAuthProfileUpdateField(dto)) {
       throw new BadRequestException("At least one profile field is required");
     }
     return this.authService.updateProfile(req.user, dto);

@@ -43,6 +43,13 @@ export class UserMeDto {
   })
   avatar_src: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "+380501234567",
+    description: "Mobile phone in E.164 or local format.",
+  })
+  phone: string | null;
+
   @ApiProperty({ enum: UserStatus, enumName: "UserStatus" })
   status: UserStatus;
 

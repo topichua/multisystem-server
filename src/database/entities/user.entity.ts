@@ -50,6 +50,9 @@ export class User {
   })
   mobilePhoneHash: string | null;
 
+  @Column({ name: "phone", type: "varchar", length: 64, nullable: true })
+  phone: string | null;
+
   @Column({
     name: "status",
     type: "smallint",

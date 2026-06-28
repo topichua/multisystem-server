@@ -23,6 +23,13 @@ import type {
   UserMeDto,
 } from "./dto/me-response.dto";
 import type { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
+import {
+  resolveAuthProfileFirstName,
+  resolveAuthProfileLastName,
+  resolveAuthProfilePostalCode,
+  resolveAuthProfileStreetLine1,
+  resolveAuthProfileStreetLine2,
+} from "./dto/update-auth-profile-request.dto";
 import type { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
 import type { SetEmailRequestDto } from "./dto/set-email-request.dto";
 
@@ -77,22 +84,46 @@ export class AuthService {
     }
 
     const user = await this.requireUserFromAuth(authUser);
-    if (dto.firstName !== undefined) {
-      user.firstName = dto.firstName.trim();
+    const firstName = resolveAuthProfileFirstName(dto);
+    if (firstName !== undefined) {
+      user.firstName = firstName;
     }
-    if (dto.lastName !== undefined) {
-      user.lastName = dto.lastName?.trim() ? dto.lastName.trim() : null;
+    const lastName = resolveAuthProfileLastName(dto);
+    if (lastName !== undefined) {
+      user.lastName = lastName;
     }
     if (dto.phone !== undefined) {
-      if (dto.phone === null || dto.phone.trim() === "") {
+      user.phone = this.normalizeUserPhone(dto.phone);
+      if (user.phone == null) {
         user.mobilePhoneHash = null;
       } else {
-        const normalized = dto.phone.replace(/\D/g, "");
+        const digits = user.phone.replace(/\D/g, "");
         user.mobilePhoneHash =
-          normalized.length === 0
+          digits.length === 0
             ? null
-            : this.invitationTokenService.hash(normalized);
+            : this.invitationTokenService.hash(digits);
       }
+    }
+    if (dto.country !== undefined) {
+      user.country = dto.country?.trim() ? dto.country.trim() : null;
+    }
+    if (dto.region !== undefined) {
+      user.region = dto.region?.trim() ? dto.region.trim() : null;
+    }
+    if (dto.city !== undefined) {
+      user.city = dto.city?.trim() ? dto.city.trim() : null;
+    }
+    const streetLine1 = resolveAuthProfileStreetLine1(dto);
+    if (streetLine1 !== undefined) {
+      user.streetLine1 = streetLine1;
+    }
+    const streetLine2 = resolveAuthProfileStreetLine2(dto);
+    if (streetLine2 !== undefined) {
+      user.streetLine2 = streetLine2;
+    }
+    const postalCode = resolveAuthProfilePostalCode(dto);
+    if (postalCode !== undefined) {
+      user.postalCode = postalCode;
     }
 
     const saved = await this.userRepo.save(user);
@@ -201,6 +232,14 @@ export class AuthService {
     return this.buildMeResponse(authUser, saved);
   }
 
+  private normalizeUserPhone(raw: string | null | undefined): string | null {
+    if (raw == null) {
+      return null;
+    }
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
   private async requireUserFromAuth(authUser: AuthUser): Promise<User> {
     const id = Number(authUser.userId);
     if (!Number.isInteger(id) || id <= 0) {
@@ -252,6 +291,7 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       avatar_src: user.avatarSrc,
+      phone: user.phone,
       status: user.status,
       invitedAt: user.invitedAt,
       invitedByUserId: user.invitedByUserId,

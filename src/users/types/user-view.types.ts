@@ -7,6 +7,7 @@ export type SafeUser = {
   firstName: string;
   lastName: string | null;
   avatarSrc: string | null;
+  phone: string | null;
   mobilePhoneHash: string | null;
   status: UserStatus;
   invitedAt: Date | null;
