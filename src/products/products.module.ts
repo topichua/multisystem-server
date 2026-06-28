@@ -10,6 +10,7 @@ import {
 } from "../database/entities";
 import { CloudflareImagesService } from "./cloudflare-images.service";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
+import { InventoryModule } from "../inventory/inventory.module";
 import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
 import { ProductMediaService } from "./product-media.service";
 import { UploadMediaService } from "./upload-media.service";
@@ -20,6 +21,7 @@ import { ProductsService } from "./products.service";
   imports: [
     WorkspaceSettingsModule,
     VariantCustomFieldsModule,
+    InventoryModule,
     TypeOrmModule.forFeature([
       Product,
       ProductVariant,

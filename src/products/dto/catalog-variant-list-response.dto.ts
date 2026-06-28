@@ -73,6 +73,12 @@ export class CatalogVariantItemDto {
   @ApiPropertyOptional({ nullable: true })
   quantity: number | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  reservedQuantity: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  availableQuantity: number | null;
+
   @ApiProperty({ enum: ProductStatus })
   status: ProductStatus;
 

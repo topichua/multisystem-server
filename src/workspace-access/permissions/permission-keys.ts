@@ -8,6 +8,8 @@ export const PERMISSION_KEYS = [
   "products.custom_fields",
   "products.category",
   "products.ai_import",
+  "products.inventory.view",
+  "products.inventory.manage",
   "orders.read",
   "orders.create",
   "orders.edit_status",

@@ -14,6 +14,8 @@ import {
   Workspace,
 } from "../database/entities";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
+import { InventoryModule } from "../inventory/inventory.module";
+import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
 import { OrderStatusesController } from "./order-statuses.controller";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
@@ -21,6 +23,8 @@ import { OrdersService } from "./orders.service";
 @Module({
   imports: [
     VariantCustomFieldsModule,
+    InventoryModule,
+    WorkspaceSettingsModule,
     TypeOrmModule.forFeature([
       Client,
       Conversation,

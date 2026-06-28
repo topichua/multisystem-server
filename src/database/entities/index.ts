@@ -28,6 +28,11 @@ export { ProductSuggestion } from "./product-suggestion.entity";
 export { ProductSourceType } from "./product-source-type.enum";
 export { ProductStatus } from "./product-status.enum";
 export { ProductType } from "./product-type.enum";
+export { InventoryReservation } from "./inventory-reservation.entity";
+export { InventoryReservationStatus } from "./inventory-reservation-status.enum";
+export { InventoryMovement } from "./inventory-movement.entity";
+export { InventoryMovementReason } from "./inventory-movement-reason.enum";
+export { InventoryMovementType } from "./inventory-movement-type.enum";
 export { ProductVariant } from "./product-variant.entity";
 export { ProductVariantCustomFieldValue } from "./product-variant-custom-field-value.entity";
 export { UploadMedia } from "./upload-media.entity";
@@ -37,6 +42,7 @@ export { WorkspaceVariantCustomFieldOption } from "./workspace-variant-custom-fi
 export { RegistrationToken } from "./registration-token.entity";
 export { User } from "./user.entity";
 export { UserStatus, UserStatusLabels } from "./user-status.enum";
+export { InventoryMode } from "./inventory-mode.enum";
 export { Workspace } from "./workspace.entity";
 export { WorkspaceRole } from "./workspace-role.entity";
 export {

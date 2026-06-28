@@ -30,6 +30,8 @@ import {
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import type { Request } from "express";
+import { ProductInventoryResponseDto } from "../inventory/dto/product-inventory-response.dto";
+import { InventoryService } from "../inventory/inventory.service";
 import { CloudflareImagesService } from "./cloudflare-images.service";
 import { AddProductGalleryImageFormDto } from "./dto/add-product-gallery-image-form.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
@@ -70,6 +72,7 @@ export class ProductsController {
     private readonly products: ProductsService,
     private readonly productMedia: ProductMediaService,
     private readonly uploadMedia: UploadMediaService,
+    private readonly inventory: InventoryService,
   ) {}
 
   @Get()
@@ -236,6 +239,22 @@ export class ProductsController {
       dto.items,
     );
     return this.products.findOneForOwner(ownerId, id);
+  }
+
+  @Get(":id/inventory")
+  @ApiOperation({ summary: "Get inventory counters for all product variants" })
+  @ApiOkResponse({ type: ProductInventoryResponseDto })
+  async getInventory(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<ProductInventoryResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.inventory.getProductInventory(
+      ownerId,
+      id,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
   }
 
   @Get(":id")

@@ -80,6 +80,9 @@ import { OrderDeliveryInfoProviderId1744200000081 } from "./migrations/174420000
 import { ConversationWorkspaceId1744200000082 } from "./migrations/1744200000082-ConversationWorkspaceId";
 import { UserPhone1744200000083 } from "./migrations/1744200000083-UserPhone";
 import { RegistrationTokens1744200000084 } from "./migrations/1744200000084-RegistrationTokens";
+import { InventoryManagement1744200000085 } from "./migrations/1744200000085-InventoryManagement";
+import { WorkspaceInventoryMode1744200000086 } from "./migrations/1744200000086-WorkspaceInventoryMode";
+import { InventoryReservations1744200000087 } from "./migrations/1744200000087-InventoryReservations";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -323,6 +326,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationWorkspaceId1744200000082,
       UserPhone1744200000083,
       RegistrationTokens1744200000084,
+      InventoryManagement1744200000085,
+      WorkspaceInventoryMode1744200000086,
+      InventoryReservations1744200000087,
     ],
   };
 }

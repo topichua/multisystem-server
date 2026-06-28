@@ -20,6 +20,8 @@ export type ResolvedUserPermissions = {
     customFieldsManagement: boolean;
     categoryManagement: boolean;
     aiImport: boolean;
+    inventoryView: boolean;
+    inventoryManage: boolean;
   };
   orders: {
     view: boolean;

@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { User } from "./user.entity";
+import { InventoryMode } from "./inventory-mode.enum";
 
 @Entity("workspace")
 @Index("IDX_workspace_owner_id", ["ownerId"])
@@ -29,6 +30,15 @@ export class Workspace {
     default: "UAH",
   })
   defaultCurrency: string;
+
+  @Column({
+    name: "inventory_mode",
+    type: "enum",
+    enum: InventoryMode,
+    enumName: "workspace_inventory_mode_enum",
+    default: InventoryMode.off,
+  })
+  inventoryMode: InventoryMode;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

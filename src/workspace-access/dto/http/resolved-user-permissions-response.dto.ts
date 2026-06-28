@@ -16,6 +16,12 @@ export class ResolvedProductsPermissionsDto {
 
   @ApiProperty()
   aiImport: boolean;
+
+  @ApiProperty()
+  inventoryView: boolean;
+
+  @ApiProperty()
+  inventoryManage: boolean;
 }
 
 export class ResolvedOrdersPermissionsDto {

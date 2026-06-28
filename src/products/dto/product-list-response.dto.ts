@@ -66,6 +66,12 @@ export class ProductListVariantDto {
   quantity: number | null;
 
   @ApiPropertyOptional({ nullable: true })
+  reservedQuantity: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  availableQuantity: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
   imageUrl: string | null;
 
   @ApiPropertyOptional({ nullable: true })

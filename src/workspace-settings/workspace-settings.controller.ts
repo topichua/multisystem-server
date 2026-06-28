@@ -29,7 +29,7 @@ export class WorkspaceSettingsController {
 
   @Get()
   @ApiOperation({
-    summary: "Get workspace settings (default currency)",
+    summary: "Get workspace settings",
     description:
       "Resolves the workspace from your latest integration (`integration.workspace_id`).",
   })
@@ -41,7 +41,7 @@ export class WorkspaceSettingsController {
   }
 
   @Patch()
-  @ApiOperation({ summary: "Update workspace settings (default currency)" })
+  @ApiOperation({ summary: "Update workspace settings" })
   @ApiBody({ type: UpdateWorkspaceSettingsDto })
   @ApiOkResponse({ type: WorkspaceSettingsResponseDto })
   async patch(

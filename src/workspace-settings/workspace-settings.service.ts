@@ -4,7 +4,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { Workspace } from "../database/entities";
+import { InventoryMode, Workspace } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { UpdateWorkspaceSettingsDto } from "./dto/update-workspace-settings.dto";
 import type { WorkspaceSettingsResponseDto } from "./dto/workspace-settings-response.dto";
@@ -26,12 +26,22 @@ export class WorkspaceSettingsService {
     ownerId: number,
     dto: UpdateWorkspaceSettingsDto,
   ): Promise<WorkspaceSettingsResponseDto> {
-    const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    const code = dto.currency.slice(0, 8);
-    if (!code) {
-      throw new BadRequestException("currency must not be empty");
+    if (dto.currency === undefined && dto.inventoryMode === undefined) {
+      throw new BadRequestException(
+        "At least one of currency or inventoryMode (inventory_mode) must be provided",
+      );
     }
-    ws.defaultCurrency = code;
+    const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    if (dto.currency !== undefined) {
+      const code = dto.currency.slice(0, 8);
+      if (!code) {
+        throw new BadRequestException("currency must not be empty");
+      }
+      ws.defaultCurrency = code;
+    }
+    if (dto.inventoryMode !== undefined) {
+      ws.inventoryMode = dto.inventoryMode;
+    }
     await this.workspaceRepo.save(ws);
     return this.toDto(ws);
   }
@@ -42,10 +52,21 @@ export class WorkspaceSettingsService {
     return (ws.defaultCurrency?.trim() || "UAH").slice(0, 8);
   }
 
+  async getInventoryModeForWorkspace(workspaceId: number): Promise<InventoryMode> {
+    const ws = await this.workspaceRepo.findOne({ where: { id: workspaceId } });
+    return ws?.inventoryMode ?? InventoryMode.off;
+  }
+
+  async getInventoryModeForOwner(ownerId: number): Promise<InventoryMode> {
+    const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    return ws.inventoryMode ?? InventoryMode.off;
+  }
+
   private toDto(ws: Workspace): WorkspaceSettingsResponseDto {
     return {
       workspaceId: ws.id,
       currency: (ws.defaultCurrency?.trim() || "UAH").slice(0, 8),
+      inventoryMode: ws.inventoryMode ?? InventoryMode.off,
     };
   }
 }

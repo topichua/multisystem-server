@@ -46,6 +46,8 @@ export function resolveOwnerPermissions(
       customFieldsManagement: true,
       categoryManagement: true,
       aiImport: true,
+      inventoryView: true,
+      inventoryManage: true,
     },
     orders: {
       view: true,
@@ -83,6 +85,8 @@ export function resolveRolePermissions(
       customFieldsManagement: hasKey(keys, "products.custom_fields"),
       categoryManagement: hasKey(keys, "products.category"),
       aiImport: hasKey(keys, "products.ai_import"),
+      inventoryView: hasKey(keys, "products.inventory.view"),
+      inventoryManage: hasKey(keys, "products.inventory.manage"),
     },
     orders: {
       view: hasKey(keys, "orders.read"),
@@ -169,6 +173,10 @@ export function hasBooleanPermission(
       return resolved.products.categoryManagement;
     case "products.ai_import":
       return resolved.products.aiImport;
+    case "products.inventory.view":
+      return resolved.products.inventoryView;
+    case "products.inventory.manage":
+      return resolved.products.inventoryManage;
     case "orders.read":
       return resolved.orders.view;
     case "orders.create":

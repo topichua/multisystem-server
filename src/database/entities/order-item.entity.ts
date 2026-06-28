@@ -66,6 +66,80 @@ export class OrderItem {
   })
   totalPriceAmount: number;
 
+  @Column({
+    name: "unit_price_snapshot",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  unitPriceSnapshot: number | null;
+
+  @Column({
+    name: "unit_cost_snapshot",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  unitCostSnapshot: number | null;
+
+  @Column({
+    name: "total_sale_amount",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  totalSaleAmount: number | null;
+
+  @Column({
+    name: "total_cost_amount",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  totalCostAmount: number | null;
+
+  @Column({
+    name: "profit_amount",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  profitAmount: number | null;
+
+  @Column({ name: "stock_deducted_at", type: "timestamptz", nullable: true })
+  stockDeductedAt: Date | null;
+
+  @Column({ name: "stock_reserved_at", type: "timestamptz", nullable: true })
+  stockReservedAt: Date | null;
+
+  @Column({ name: "stock_released_at", type: "timestamptz", nullable: true })
+  stockReleasedAt: Date | null;
+
   @Column({ name: "product_title_snapshot", type: "varchar", length: 512 })
   productTitleSnapshot: string;
 

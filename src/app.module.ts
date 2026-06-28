@@ -23,6 +23,7 @@ import { TelegramIntegrationsModule } from "./telegram-integrations/telegram-int
 import { VariantCustomFieldsModule } from "./variant-custom-fields/variant-custom-fields.module";
 import { WorkspaceAccessModule } from "./workspace-access/workspace-access.module";
 import { NovaPoshtaIntegrationsModule } from "./novaposhta-integrations/novaposhta-integrations.module";
+import { InventoryModule } from "./inventory/inventory.module";
 import { SendgridModule } from "./sendgrid/sendgrid.module";
 
 @Module({
@@ -51,6 +52,7 @@ import { SendgridModule } from "./sendgrid/sendgrid.module";
     ClientsModule,
     CategoriesModule,
     ProductsModule,
+    InventoryModule,
     ProductInstagramReferencesModule,
     OrdersModule,
     WorkspaceSettingsModule,

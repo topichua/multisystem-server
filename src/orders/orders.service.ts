@@ -32,6 +32,9 @@ import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
+import { InventoryService } from "../inventory/inventory.service";
+import { InventoryMode } from "../database/entities/inventory-mode.enum";
+import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
 import {
   buildVariantAttributesSnapshot,
   buildVariantTitleFromFields,
@@ -73,6 +76,8 @@ export class OrdersService {
     private readonly productRepo: Repository<Product>,
     @InjectRepository(ProductVariant)
     private readonly variantRepo: Repository<ProductVariant>,
+    private readonly inventory: InventoryService,
+    private readonly workspaceSettings: WorkspaceSettingsService,
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
@@ -181,6 +186,17 @@ export class OrdersService {
 
     await this.insertOrderLineItem(workspace.id, order, dto, ownerId);
     await this.recalculateOrderTotals(order.id, ownerId);
+    const orderWithStatus = await this.orderRepo.findOne({
+      where: { id: order.id },
+      relations: { status: true },
+    });
+    if (orderWithStatus?.status) {
+      await this.inventory.handleOrderInventoryForStatus(
+        order.id,
+        orderWithStatus.status.category,
+        ownerId,
+      );
+    }
     return this.getOrderById(ownerId, order.id);
   }
 
@@ -412,6 +428,11 @@ export class OrdersService {
       statusId: newStatus.id,
       statusName: newStatus.name,
     });
+    await this.inventory.handleOrderInventoryForStatus(
+      order.id,
+      newStatus.category,
+      ownerId,
+    );
     return this.getOrderById(ownerId, order.id);
   }
 
@@ -694,6 +715,19 @@ export class OrdersService {
     const variantMainImage = pickMainMediaUrl(variant.media ?? []);
     const imageUrl = variantMainImage || productMainImage || null;
 
+    const inventoryMode =
+      await this.workspaceSettings.getInventoryModeForWorkspace(workspaceId);
+    const unitCost =
+      inventoryMode === InventoryMode.advanced
+        ? variant.averagePurchasePrice
+        : null;
+
+    const costSnapshots = this.inventory.buildOrderItemCostSnapshots(
+      unitPrice,
+      dto.quantity,
+      unitCost,
+    );
+
     const item = this.orderItemRepo.create({
       orderId: order.id,
       productId: product.id,
@@ -701,6 +735,11 @@ export class OrdersService {
       quantity: dto.quantity,
       unitPriceAmount: unitPrice,
       totalPriceAmount: totalLine,
+      unitPriceSnapshot: costSnapshots.unitPriceSnapshot,
+      unitCostSnapshot: costSnapshots.unitCostSnapshot,
+      totalSaleAmount: costSnapshots.totalSaleAmount,
+      totalCostAmount: costSnapshots.totalCostAmount,
+      profitAmount: costSnapshots.profitAmount,
       productTitleSnapshot: product.name.slice(0, 512),
       variantTitleSnapshot: variantTitle,
       skuSnapshot: variant.sku?.trim() || null,
