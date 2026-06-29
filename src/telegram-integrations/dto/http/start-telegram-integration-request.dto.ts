@@ -35,7 +35,8 @@ export class StartTelegramIntegrationRequestDto {
   @ApiPropertyOptional({
     default: false,
     description:
-      "When true, asks Telegram to deliver the login code via SMS instead of the Telegram app.",
+      "Legacy: asks Telegram for SMS delivery. Usually unavailable for third-party apps; " +
+      "the server falls back to Telegram app delivery when SMS is rejected.",
   })
   @IsOptional()
   @Type(() => Boolean)

@@ -95,6 +95,31 @@ export class TelegramUserApiService {
     phoneNumber: string,
     forceSms = false,
   ): Promise<TelegramSendCodeResult> {
+    try {
+      return await this.requestLoginCode(phoneNumber, forceSms);
+    } catch (e) {
+      if (forceSms && this.isSendCodeUnavailable(e)) {
+        this.log.warn(
+          `Telegram SMS login unavailable for phone=${this.maskPhone(phoneNumber)}; ` +
+            "retrying with Telegram app delivery",
+        );
+        try {
+          return await this.requestLoginCode(phoneNumber, false);
+        } catch (retryErr) {
+          throw this.toSendCodeUnavailableError(retryErr);
+        }
+      }
+      if (this.isSendCodeUnavailable(e)) {
+        throw this.toSendCodeUnavailableError(e);
+      }
+      throw this.toHttpError(e, "Failed to send Telegram login code");
+    }
+  }
+
+  private async requestLoginCode(
+    phoneNumber: string,
+    forceSms: boolean,
+  ): Promise<TelegramSendCodeResult> {
     const creds = this.getCredentials();
     const client = this.createClient("");
     try {
@@ -110,8 +135,6 @@ export class TelegramUserApiService {
           `delivery=${isCodeViaApp ? "telegram_app" : "sms"} forceSms=${forceSms}`,
       );
       return { phoneCodeHash, isCodeViaApp, authSessionString };
-    } catch (e) {
-      throw this.toHttpError(e, "Failed to send Telegram login code");
     } finally {
       await this.safeDestroyClient(client);
     }
@@ -734,6 +757,20 @@ export class TelegramUserApiService {
   private isPasswordRequired(err: unknown): boolean {
     const msg = this.errorMessage(err);
     return msg === "SESSION_PASSWORD_NEEDED" || msg.includes("PASSWORD");
+  }
+
+  private isSendCodeUnavailable(err: unknown): boolean {
+    return this.errorMessage(err).includes("SEND_CODE_UNAVAILABLE");
+  }
+
+  private toSendCodeUnavailableError(err: unknown): BadRequestException {
+    const detail = this.errorMessage(err);
+    this.log.warn(`Telegram login code unavailable: ${detail}`);
+    return new BadRequestException(
+      "Telegram does not deliver SMS login codes to third-party apps. " +
+        "Omit force_sms and read the code in the Telegram app (message from \"Telegram\" on a logged-in device). " +
+        "For accounts without an active Telegram session, use QR login: POST /telegram-integrations/qr-login/start.",
+    );
   }
 
   private isQrTokenExpired(err: unknown): boolean {

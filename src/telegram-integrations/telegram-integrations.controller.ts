@@ -74,10 +74,11 @@ export class TelegramIntegrationsController {
   @ApiOperation({
     summary: "Start linking a personal Telegram account",
     description:
-      "Sends a login code via Telegram (usually to the Telegram app, not SMS). " +
+      "Sends a login code to the Telegram app on a logged-in device (not SMS). " +
       "Then call POST :id/confirm-code with the code. " +
-      "If the code does not arrive, retry with `force_sms: true`. " +
-      "If the account has 2FA, call POST :id/confirm-password.",
+      "Third-party apps cannot request SMS codes (force_sms is ignored when unavailable). " +
+      "If the account has 2FA, call POST :id/confirm-password. " +
+      "For login without phone/SMS, use POST /telegram-integrations/qr-login/start.",
   })
   @ApiCreatedResponse({ type: TelegramIntegrationResponseDto })
   start(
