@@ -19,7 +19,10 @@ export class NovaPoshtaSenderSettingsDto {
   @MaxLength(64)
   sender_phone?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      "Settlement `ref` from settlement search, or legacy delivery `cityRef` / `DeliveryCity` from discover/warehouse data.",
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)
