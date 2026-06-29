@@ -99,35 +99,24 @@ export class NovaPoshtaApiService {
       );
     }
 
-    let warehouse: NovaPoshtaWarehouseSearchRecord | null = null;
-    if (warehouseRef) {
-      warehouse = await this.getWarehouseByRef(apiKey, warehouseRef);
-      if (!warehouse) {
-        throw new BadRequestException(
-          "sender_warehouse_ref is not a valid Nova Poshta warehouse reference",
-        );
-      }
+    if (!warehouseRef) {
+      return;
     }
 
-    if (cityRef) {
-      const cityValid =
-        (await this.isValidLocationRef(apiKey, cityRef)) ||
-        (warehouse != null &&
-          this.warehouseMatchesLocationRef(warehouse, cityRef));
-      if (!cityValid) {
-        throw new BadRequestException(
-          "sender_city_ref is not a valid Nova Poshta settlement or city reference",
-        );
-      }
+    const warehouse = await this.getWarehouseByRef(apiKey, warehouseRef);
+    if (!warehouse) {
+      throw new BadRequestException(
+        "sender_warehouse_ref is not a valid Nova Poshta warehouse reference",
+      );
+    }
 
-      if (
-        warehouse != null &&
-        !this.warehouseMatchesLocationRef(warehouse, cityRef)
-      ) {
-        throw new BadRequestException(
-          "sender_warehouse_ref does not belong to sender_city_ref",
-        );
-      }
+    if (
+      cityRef &&
+      !this.warehouseMatchesLocationRef(warehouse, cityRef)
+    ) {
+      throw new BadRequestException(
+        "sender_warehouse_ref does not belong to sender_city_ref",
+      );
     }
   }
 
@@ -136,76 +125,24 @@ export class NovaPoshtaApiService {
     return trimmed || null;
   }
 
-  private async isValidLocationRef(
-    apiKey: string,
-    ref: string,
-  ): Promise<boolean> {
-    if (await this.isSettlementRef(apiKey, ref)) {
-      return true;
-    }
-
-    const settlementRef = this.resolveSettlementRefForDeliveryCity(ref);
-    if (settlementRef && (await this.isSettlementRef(apiKey, settlementRef))) {
-      return true;
-    }
-
-    return false;
-  }
-
-  private async isSettlementRef(
-    apiKey: string,
-    ref: string,
-  ): Promise<boolean> {
-    const settlement = await this.requestAllowEmptyFailure<
-      NovaPoshtaSettlementRecord[]
-    >(apiKey, {
-      modelName: "Address",
-      calledMethod: "getSettlements",
-      methodProperties: { Ref: ref, Limit: "1" },
-    });
-    if (settlement && settlement.length > 0) {
-      return true;
-    }
-
-    const warehousesBySettlement = await this.requestAllowEmptyFailure<
-      NovaPoshtaWarehouseSearchRecord[]
-    >(apiKey, {
-      modelName: "Address",
-      calledMethod: "getWarehouses",
-      methodProperties: { SettlementRef: ref, Limit: "1" },
-    });
-    return (warehousesBySettlement?.length ?? 0) > 0;
-  }
-
   private resolveSettlementRefForDeliveryCity(
     deliveryCityRef: string,
   ): string | null {
-    const cached = this.deliveryCityToSettlementRef.get(deliveryCityRef);
-    if (cached) {
-      return cached;
-    }
-
-    for (const results of this.settlementsCache.values()) {
-      for (const row of results) {
-        if (row.cityRef === deliveryCityRef) {
-          this.deliveryCityToSettlementRef.set(deliveryCityRef, row.ref);
-          return row.ref;
-        }
-      }
-    }
-
-    return null;
+    return this.deliveryCityToSettlementRef.get(deliveryCityRef) ?? null;
   }
 
   private rememberDeliveryCityMapping(
-    settlementRef: string,
-    deliveryCityRef: string | null,
+    settlementRef: string | null | undefined,
+    deliveryCityRef: string | null | undefined,
   ): void {
+    const settlement = settlementRef?.trim();
+    const deliveryCity = deliveryCityRef?.trim();
     if (
-      deliveryCityRef &&
-      deliveryCityRef !== "00000000-0000-0000-0000-000000000000"
+      settlement &&
+      deliveryCity &&
+      deliveryCity !== "00000000-0000-0000-0000-000000000000"
     ) {
-      this.deliveryCityToSettlementRef.set(deliveryCityRef, settlementRef);
+      this.deliveryCityToSettlementRef.set(deliveryCity, settlement);
     }
   }
 
@@ -220,7 +157,14 @@ export class NovaPoshtaApiService {
       calledMethod: "getWarehouses",
       methodProperties: { Ref: ref, Limit: "1" },
     });
-    return payload?.[0] ?? null;
+    const warehouse = payload?.[0] ?? null;
+    if (warehouse) {
+      this.rememberDeliveryCityMapping(
+        warehouse.SettlementRef,
+        warehouse.CityRef,
+      );
+    }
+    return warehouse;
   }
 
   private warehouseMatchesLocationRef(
@@ -310,12 +254,17 @@ export class NovaPoshtaApiService {
     locationRef: string,
     methodProperties: Record<string, string>,
   ): Promise<NovaPoshtaWarehouseSearchRecord[]> {
-    const settlementRef =
-      (await this.isSettlementRef(apiKey, locationRef))
-        ? locationRef
-        : this.resolveSettlementRefForDeliveryCity(locationRef);
+    const mappedSettlementRef =
+      this.resolveSettlementRefForDeliveryCity(locationRef);
+    const settlementRefs = [
+      locationRef,
+      mappedSettlementRef,
+    ].filter(
+      (ref, index, refs): ref is string =>
+        !!ref && refs.indexOf(ref) === index,
+    );
 
-    if (settlementRef) {
+    for (const settlementRef of settlementRefs) {
       const bySettlement = await this.requestAllowEmptyFailure<
         NovaPoshtaWarehouseSearchRecord[]
       >(apiKey, {

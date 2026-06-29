@@ -47,7 +47,7 @@ export class NovaPoshtaIntegrationsController {
   @ApiOperation({
     summary: "Connect Nova Poshta API key",
     description:
-      "Creates or updates the Nova Poshta integration for the current workspace (one per workspace). Validates API key and sender_city_ref / sender_warehouse_ref against Nova Poshta API when provided.",
+      "Creates or updates the Nova Poshta integration for the current workspace (one per workspace). Validates API key and sender_warehouse_ref; when both city and warehouse refs are sent, checks they match.",
   })
   @ApiCreatedResponse({ type: NovaPoshtaIntegrationResponseDto })
   async connect(
