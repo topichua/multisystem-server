@@ -300,14 +300,11 @@ export class InventoryService {
       return;
     }
 
-    const variant = await em.findOne(ProductVariant, {
-      where: { id: lockedItem.variantId },
-      relations: { product: true },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!variant?.product) {
-      throw new NotFoundException("Variant not found");
-    }
+    const variant = await this.lockVariantInWorkspace(
+      em,
+      lockedItem.variantId,
+      order.workspaceId,
+    );
 
     const available = computeAvailableQuantity(variant);
     if (available < lockedItem.quantity) {
@@ -367,14 +364,11 @@ export class InventoryService {
       );
     }
 
-    const variant = await em.findOne(ProductVariant, {
-      where: { id: lockedItem.variantId },
-      relations: { product: true },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!variant?.product) {
-      throw new NotFoundException("Variant not found");
-    }
+    const variant = await this.lockVariantInWorkspace(
+      em,
+      lockedItem.variantId,
+      order.workspaceId,
+    );
 
     const quantityBefore = variantPhysicalQuantity(variant);
     const reservedBefore = variantReservedQuantity(variant);
@@ -527,6 +521,27 @@ export class InventoryService {
     };
   }
 
+  private async lockVariantInWorkspace(
+    em: EntityManager,
+    variantId: number,
+    workspaceId: number,
+  ): Promise<ProductVariant> {
+    const variant = await em.findOne(ProductVariant, {
+      where: { id: variantId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!variant) {
+      throw new NotFoundException("Variant not found");
+    }
+    const product = await em.findOne(Product, {
+      where: { id: variant.productId, workspaceId },
+    });
+    if (!product) {
+      throw new NotFoundException("Variant not found");
+    }
+    return variant;
+  }
+
   private async applyMovement(
     input: {
       variantId: number;
@@ -551,17 +566,11 @@ export class InventoryService {
     const run = async (
       em: EntityManager,
     ): Promise<{ movement: InventoryMovement; variant: ProductVariant }> => {
-      const variant = await em.findOne(ProductVariant, {
-        where: { id: input.variantId },
-        relations: { product: true },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!variant?.product) {
-        throw new NotFoundException("Variant not found");
-      }
-      if (variant.product.workspaceId !== input.workspaceId) {
-        throw new NotFoundException("Variant not found");
-      }
+      const variant = await this.lockVariantInWorkspace(
+        em,
+        input.variantId,
+        input.workspaceId,
+      );
 
       const before: StockState = {
         quantity: variant.quantity ?? 0,

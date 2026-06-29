@@ -117,6 +117,8 @@ import {
   WebhookEvent,
   NovaPoshtaIntegration,
   RegistrationToken,
+  InventoryMovement,
+  InventoryReservation,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -202,6 +204,8 @@ const entities = [
   OrderEvent,
   WebhookEvent,
   RegistrationToken,
+  InventoryMovement,
+  InventoryReservation,
 ];
 
 function baseOptions(env: DatabaseEnv) {
