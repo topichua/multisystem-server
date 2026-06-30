@@ -22,6 +22,14 @@ export class NovaPoshtaIntegrationsService {
     private readonly novaPoshtaApi: NovaPoshtaApiService,
   ) {}
 
+  async discoverSendersForOwner(
+    ownerId: number,
+    credentials: NovaPoshtaCredentialsQueryDto,
+  ): Promise<DiscoverNovaPoshtaSendersResponseDto> {
+    const apiKey = await this.resolveSearchApiKeyForOwner(ownerId, credentials);
+    return this.discoverSendersByApiKey(apiKey);
+  }
+
   async discoverSendersByApiKey(
     apiKey: string,
   ): Promise<DiscoverNovaPoshtaSendersResponseDto> {

@@ -59,17 +59,17 @@ export class NovaPoshtaIntegrationsController {
 
   @Post("discover-senders")
   @ApiOperation({
-    summary: "Discover Nova Poshta senders and contact persons by API key",
+    summary: "Discover Nova Poshta senders and contact persons",
     description:
-      "Fetches sender counterparties, contact persons, and departure points from Nova Poshta API before connecting or updating integration. Use returned refs when saving default sender settings.",
+      "Provide exactly one of `api_key` (setup flow) or `nova_poshta_integration_id` (loads API key from DB). " +
+      "Fetches sender counterparties, contact persons, and departure points from Nova Poshta API.",
   })
   @ApiOkResponse({ type: DiscoverNovaPoshtaSendersResponseDto })
   async discoverSenders(
     @Req() req: { user?: AuthUser },
     @Body() dto: DiscoverNovaPoshtaSendersRequestDto,
   ): Promise<DiscoverNovaPoshtaSendersResponseDto> {
-    this.requireOwnerId(req);
-    return this.novaPoshta.discoverSendersByApiKey(dto.api_key);
+    return this.novaPoshta.discoverSendersForOwner(this.requireOwnerId(req), dto);
   }
 
   @Get()
