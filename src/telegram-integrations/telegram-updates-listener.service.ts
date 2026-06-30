@@ -127,15 +127,39 @@ export class TelegramUpdatesListenerService
       );
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
-      this.log.error(
-        `Failed to attach Telegram listener id=${integration.id}: ${err}`,
-      );
+      if (this.isSkippableAttachError(e)) {
+        this.log.warn(
+          `Telegram listener skipped integration_id=${integration.id}: ${err}`,
+        );
+      } else {
+        this.log.error(
+          `Failed to attach Telegram listener id=${integration.id}: ${err}`,
+        );
+      }
       try {
         await client.disconnect();
       } catch {
         /* ignore */
       }
     }
+  }
+
+  private isSkippableAttachError(err: unknown): boolean {
+    const msg = this.telegramErrorMessage(err);
+    return msg.includes("AUTH_KEY_DUPLICATED");
+  }
+
+  private telegramErrorMessage(err: unknown): string {
+    if (err && typeof err === "object" && "errorMessage" in err) {
+      const m = (err as { errorMessage?: unknown }).errorMessage;
+      if (typeof m === "string") {
+        return m;
+      }
+    }
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return String(err);
   }
 
   async detachIntegration(integrationId: number): Promise<void> {
