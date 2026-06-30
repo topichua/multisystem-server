@@ -87,6 +87,8 @@ import { OrderDeliveryInfoStatusFields1744200000088 } from "./migrations/1744200
 import { OrderDeliveryRefOnOrder1744200000089 } from "./migrations/1744200000089-OrderDeliveryRefOnOrder";
 import { OrderDeliveryInfoCashOnDelivery1744200000090 } from "./migrations/1744200000090-OrderDeliveryInfoCashOnDelivery";
 import { NovaPoshtaIntegrationsMultiplePerWorkspace1744200000091 } from "./migrations/1744200000091-NovaPoshtaIntegrationsMultiplePerWorkspace";
+import { ClientsTelegramUserId1744200000092 } from "./migrations/1744200000092-ClientsTelegramUserId";
+import { ClientsDropDeliveryInfo1744200000093 } from "./migrations/1744200000093-ClientsDropDeliveryInfo";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -341,6 +343,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderDeliveryRefOnOrder1744200000089,
       OrderDeliveryInfoCashOnDelivery1744200000090,
       NovaPoshtaIntegrationsMultiplePerWorkspace1744200000091,
+      ClientsTelegramUserId1744200000092,
+      ClientsDropDeliveryInfo1744200000093,
     ],
   };
 }

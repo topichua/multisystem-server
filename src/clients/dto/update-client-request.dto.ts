@@ -22,17 +22,30 @@ export class UpdateClientRequestDto {
   @MaxLength(64)
   phone?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Set to a new Instagram id, or null / empty string to clear the link. Mutually exclusive with `telegramUserId`.",
+  })
   @IsOptional()
   @IsString()
-  @MinLength(1)
-  @MaxLength(50_000)
-  delivery_info?: string;
+  @MaxLength(255)
+  instagramUserId?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
     description:
-      "Set to a new Instagram id, or null / empty string to clear the link.",
+      "Set to a Telegram user id, or null / empty string to clear the link. Mutually exclusive with `instagramUserId`.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  telegramUserId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    deprecated: true,
+    description: "Alias for `instagramUserId`.",
   })
   @IsOptional()
   @IsString()

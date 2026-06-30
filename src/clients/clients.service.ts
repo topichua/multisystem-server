@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { FindOptionsWhere, Not, Repository } from "typeorm";
-import { Client, InstagramUser } from "../database/entities";
+import { Client, InstagramUser, TelegramUser } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import type { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
@@ -21,6 +21,8 @@ export class ClientsService {
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
+    @InjectRepository(TelegramUser)
+    private readonly telegramUserRepo: Repository<TelegramUser>,
     private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
@@ -30,20 +32,26 @@ export class ClientsService {
   ): Promise<ClientResponseDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-    const instagramUserId = await this.resolveInstagramUserIdForWorkspace(
-      workspaceId,
-      dto.instagramId,
-      undefined,
-    );
+    const { instagramUserId, telegramUserId } =
+      this.parseSocialLinkInput(dto);
 
     const row = this.clientRepo.create({
-      firstName: dto.first_name.trim(),
+      firstName: (dto.first_name?.trim() ?? "") || "",
       lastName: (dto.last_name?.trim() ?? "") || "",
-      phone: dto.phone.trim(),
-      deliveryInfo: dto.delivery_info.trim(),
-      instagramUserId,
+      phone: (dto.phone?.trim() ?? "") || "",
+      instagramUserId: await this.resolveInstagramUserIdForWorkspace(
+        workspaceId,
+        instagramUserId,
+        undefined,
+      ),
+      telegramUserId: await this.resolveTelegramUserIdForWorkspace(
+        workspaceId,
+        telegramUserId,
+        undefined,
+      ),
       workspaceId,
     });
+    this.assertSingleSocialLink(row.instagramUserId, row.telegramUserId);
     await this.clientRepo.save(row);
     return this.toClientDto(row);
   }
@@ -74,16 +82,29 @@ export class ClientsService {
     if (dto.phone !== undefined) {
       row.phone = dto.phone.trim();
     }
-    if (dto.delivery_info !== undefined) {
-      row.deliveryInfo = dto.delivery_info.trim();
+    const instagramRaw =
+      dto.instagramUserId !== undefined ? dto.instagramUserId : dto.instagramId;
+    if (instagramRaw !== undefined || dto.telegramUserId !== undefined) {
+      this.assertSocialLinkInputNotBoth(instagramRaw, dto.telegramUserId);
     }
-    if (dto.instagramId !== undefined) {
+    if (
+      dto.instagramUserId !== undefined ||
+      dto.instagramId !== undefined
+    ) {
       row.instagramUserId = await this.resolveInstagramUserIdForWorkspace(
         workspaceId,
-        dto.instagramId,
+        instagramRaw,
         row.id,
       );
     }
+    if (dto.telegramUserId !== undefined) {
+      row.telegramUserId = await this.resolveTelegramUserIdForWorkspace(
+        workspaceId,
+        dto.telegramUserId,
+        row.id,
+      );
+    }
+    this.assertSingleSocialLink(row.instagramUserId, row.telegramUserId);
 
     await this.clientRepo.save(row);
     return this.toClientDto(row);
@@ -166,6 +187,47 @@ export class ClientsService {
     return this.toClientDto(row);
   }
 
+  private parseSocialLinkInput(dto: CreateClientRequestDto): {
+    instagramUserId: string | null | undefined;
+    telegramUserId: string | null | undefined;
+  } {
+    const instagramUserId =
+      dto.instagramUserId !== undefined ? dto.instagramUserId : dto.instagramId;
+    const telegramUserId = dto.telegramUserId;
+    this.assertSocialLinkInputNotBoth(instagramUserId, telegramUserId);
+    return { instagramUserId, telegramUserId };
+  }
+
+  private assertSocialLinkInputNotBoth(
+    instagramRaw: string | null | undefined,
+    telegramRaw: string | null | undefined,
+  ): void {
+    const hasInstagram =
+      instagramRaw !== undefined &&
+      instagramRaw !== null &&
+      String(instagramRaw).trim() !== "";
+    const hasTelegram =
+      telegramRaw !== undefined &&
+      telegramRaw !== null &&
+      String(telegramRaw).trim() !== "";
+    if (hasInstagram && hasTelegram) {
+      throw new BadRequestException(
+        "Provide at most one of instagramUserId or telegramUserId",
+      );
+    }
+  }
+
+  private assertSingleSocialLink(
+    instagramUserId: string | null,
+    telegramUserId: string | null,
+  ): void {
+    if (instagramUserId && telegramUserId) {
+      throw new BadRequestException(
+        "Client cannot be linked to both Instagram and Telegram",
+      );
+    }
+  }
+
   /**
    * `raw` undefined → treat as absent (caller should not pass for create).
    * `raw` null or blank string → NULL column (no Instagram link).
@@ -208,6 +270,43 @@ export class ClientsService {
     return id;
   }
 
+  private async resolveTelegramUserIdForWorkspace(
+    workspaceId: number,
+    raw: string | null | undefined,
+    excludeClientId: number | undefined,
+  ): Promise<string | null> {
+    if (raw === undefined || raw === null) {
+      return null;
+    }
+    const id = String(raw).trim();
+    if (!id) {
+      return null;
+    }
+
+    const tg = await this.telegramUserRepo.findOne({ where: { id } });
+    if (!tg) {
+      throw new BadRequestException(
+        `No telegram_users row for telegramUserId=${id}; sync or create the Telegram user first.`,
+      );
+    }
+
+    const dupWhere: FindOptionsWhere<Client> = {
+      workspaceId,
+      telegramUserId: id,
+    };
+    if (excludeClientId != null) {
+      dupWhere.id = Not(excludeClientId);
+    }
+    const dup = await this.clientRepo.exist({ where: dupWhere });
+    if (dup) {
+      throw new ConflictException(
+        "Another client in this workspace already uses this telegramUserId",
+      );
+    }
+
+    return id;
+  }
+
   private toClientDto(row: Client): ClientResponseDto {
     return {
       id: row.id,
@@ -215,8 +314,8 @@ export class ClientsService {
       lastName: row.lastName,
       createdAt: row.createdAt,
       phone: row.phone,
-      deliveryInfo: row.deliveryInfo,
       instagramUserId: row.instagramUserId,
+      telegramUserId: row.telegramUserId,
       workspaceId: row.workspaceId,
     };
   }

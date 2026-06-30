@@ -16,14 +16,17 @@ export class ClientResponseDto {
   @ApiProperty()
   phone: string;
 
-  @ApiProperty()
-  deliveryInfo: string;
-
   @ApiPropertyOptional({
     nullable: true,
     description: "Instagram scoped user id when linked; null if none.",
   })
   instagramUserId: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Telegram user id when linked; null if none.",
+  })
+  telegramUserId: string | null;
 
   @ApiProperty()
   workspaceId: number;

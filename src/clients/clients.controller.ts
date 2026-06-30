@@ -75,7 +75,9 @@ export class ClientsController {
   @ApiOperation({
     summary: "Create client",
     description:
-      "Creates a client in your workspace. `instagramId` is optional; omit or leave empty for a client without a linked `instagram_users` row.",
+      "Creates a client in your workspace. `first_name`, `last_name`, and `phone` are optional (stored as empty strings when omitted). " +
+      "Optionally link one social account: `instagramUserId` **or** `telegramUserId` (not both). " +
+      "Omit both (or pass null) for a client with no platform link.",
   })
   @ApiBody({ type: CreateClientRequestDto })
   @ApiCreatedResponse({ type: ClientResponseDto })
@@ -139,7 +141,7 @@ export class ClientsController {
   @ApiOperation({
     summary: "Update client",
     description:
-      'Partial update. Set `instagramId` to null or `""` to clear the Instagram link.',
+      "Partial update. Set `instagramUserId` or `telegramUserId` to null / `\"\"` to clear a link. Only one platform link is allowed per client.",
   })
   @ApiBody({ type: UpdateClientRequestDto })
   @ApiOkResponse({ type: ClientResponseDto })
