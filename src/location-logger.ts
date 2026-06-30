@@ -6,6 +6,12 @@ import {
 import { basename } from "node:path";
 
 export class LocationLogger extends ConsoleLogger {
+  /** Nest bootstrap route wiring — too noisy in production logs. */
+  private static readonly SUPPRESSED_CONTEXTS = new Set([
+    "RouterExplorer",
+    "RoutesResolver",
+  ]);
+
   constructor(
     context?: string,
     options?: ConsoleLoggerOptions & { logLevels?: LogLevel[] },
@@ -14,6 +20,9 @@ export class LocationLogger extends ConsoleLogger {
   }
 
   override log(message: unknown, context?: string): void {
+    if (this.shouldSuppressLog(message, context)) {
+      return;
+    }
     super.log(this.decorateMessage(message), context);
   }
 
@@ -31,6 +40,16 @@ export class LocationLogger extends ConsoleLogger {
 
   override verbose(message: unknown, context?: string): void {
     super.verbose(this.decorateMessage(message), context);
+  }
+
+  private shouldSuppressLog(message: unknown, context?: string): boolean {
+    if (context && LocationLogger.SUPPRESSED_CONTEXTS.has(context)) {
+      return true;
+    }
+    if (typeof message === "string" && /Mapped \{.*\} route/.test(message)) {
+      return true;
+    }
+    return false;
   }
 
   private decorateMessage(message: unknown): string {
