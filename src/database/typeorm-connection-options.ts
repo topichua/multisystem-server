@@ -84,6 +84,9 @@ import { InventoryManagement1744200000085 } from "./migrations/1744200000085-Inv
 import { WorkspaceInventoryMode1744200000086 } from "./migrations/1744200000086-WorkspaceInventoryMode";
 import { InventoryReservations1744200000087 } from "./migrations/1744200000087-InventoryReservations";
 import { OrderDeliveryInfoStatusFields1744200000088 } from "./migrations/1744200000088-OrderDeliveryInfoStatusFields";
+import { OrderDeliveryRefOnOrder1744200000089 } from "./migrations/1744200000089-OrderDeliveryRefOnOrder";
+import { OrderDeliveryInfoCashOnDelivery1744200000090 } from "./migrations/1744200000090-OrderDeliveryInfoCashOnDelivery";
+import { NovaPoshtaIntegrationsMultiplePerWorkspace1744200000091 } from "./migrations/1744200000091-NovaPoshtaIntegrationsMultiplePerWorkspace";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -335,6 +338,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceInventoryMode1744200000086,
       InventoryReservations1744200000087,
       OrderDeliveryInfoStatusFields1744200000088,
+      OrderDeliveryRefOnOrder1744200000089,
+      OrderDeliveryInfoCashOnDelivery1744200000090,
+      NovaPoshtaIntegrationsMultiplePerWorkspace1744200000091,
     ],
   };
 }

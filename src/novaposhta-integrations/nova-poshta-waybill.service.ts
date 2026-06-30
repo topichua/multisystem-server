@@ -59,9 +59,7 @@ export class NovaPoshtaWaybillService {
       throw new NotFoundException("Order not found");
     }
 
-    const delivery = await this.deliveryRepo.findOne({
-      where: { orderId: order.id },
-    });
+    const delivery = await this.loadDeliveryForOrder(order);
     if (!delivery) {
       throw new BadRequestException(
         "Order has no delivery info — set delivery before creating a waybill",
@@ -134,10 +132,18 @@ export class NovaPoshtaWaybillService {
 
     const row = await this.integrationRepo.findOne({
       where: { workspaceId },
+      order: { id: "ASC" },
     });
     if (!row) {
       throw new BadRequestException(
         "Nova Poshta integration is not configured for this workspace",
+      );
+    }
+
+    const count = await this.integrationRepo.count({ where: { workspaceId } });
+    if (count > 1) {
+      throw new BadRequestException(
+        "Multiple Nova Poshta integrations exist — set delivery.providerId to choose which one to use",
       );
     }
     return row;
@@ -325,5 +331,17 @@ export class NovaPoshtaWaybillService {
       return `380${digits}`;
     }
     return digits;
+  }
+
+  private async loadDeliveryForOrder(
+    order: Order,
+  ): Promise<OrderDeliveryInfo | null> {
+    if (
+      order.deliveryId == null ||
+      order.deliveryType !== OrderDeliveryProvider.nova_poshta
+    ) {
+      return null;
+    }
+    return this.deliveryRepo.findOne({ where: { id: order.deliveryId } });
   }
 }

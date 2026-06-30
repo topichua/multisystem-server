@@ -6,7 +6,6 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from "typeorm";
 import { NovaPoshtaPayerType } from "./novaposhta-payer-type.enum";
@@ -15,9 +14,8 @@ import { NovaPoshtaSenderType } from "./novaposhta-sender-type.enum";
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 
-/** Nova Poshta API key and default sender settings per workspace. */
+/** Nova Poshta API key and default sender settings per workspace integration row. */
 @Entity("novaposhta_integrations")
-@Unique("UQ_novaposhta_integrations_workspace_id", ["workspaceId"])
 @Index("IDX_novaposhta_integrations_workspace_id", ["workspaceId"])
 @Index("IDX_novaposhta_integrations_owner_id", ["ownerId"])
 export class NovaPoshtaIntegration {

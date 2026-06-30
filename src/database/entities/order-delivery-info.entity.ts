@@ -2,29 +2,17 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from "typeorm";
-import { Order } from "./order.entity";
 import { OrderDeliveryDestinationType } from "./order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 import { OrderDeliveryStatus } from "./order-delivery-status.enum";
 
 @Entity("order_delivery_infos")
-@Unique("UQ_order_delivery_infos_order_id", ["orderId"])
 export class OrderDeliveryInfo {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
-
-  @Column({ name: "order_id", type: "int" })
-  orderId: number;
-
-  @ManyToOne(() => Order, (o) => o.deliveryInfos, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "order_id" })
-  order: Order;
 
   @Column({
     type: "enum",
@@ -125,6 +113,22 @@ export class OrderDeliveryInfo {
     nullable: true,
   })
   providerDocumentRef: string | null;
+
+  @Column({ name: "is_cash_on_delivery", type: "boolean", default: false })
+  isCashOnDelivery: boolean;
+
+  @Column({
+    name: "cash_on_delivery_amount",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  cashOnDeliveryAmount: number | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

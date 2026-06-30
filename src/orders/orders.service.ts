@@ -15,6 +15,7 @@ import {
   OrderDeliveryInfo,
   OrderEvent,
   OrderItem,
+  OrderDeliveryProvider,
   OrderDeliveryStatus,
   OrderSource,
   OrderStatus,
@@ -455,20 +456,27 @@ export class OrdersService {
       workspace.id,
     );
 
-    let row = await this.orderDeliveryRepo.findOne({
-      where: { orderId: order.id },
-    });
+    let row = await this.findDeliveryForOrder(order);
     if (!row) {
       row = this.orderDeliveryRepo.create({
-        orderId: order.id,
         provider: dto.provider,
         ...this.mapDeliveryDtoToFields(dto, true),
       });
+      row = await this.orderDeliveryRepo.save(row);
+      order.deliveryId = row.id;
+      order.deliveryType = dto.provider;
+      order.updatedById = ownerId;
+      await this.orderRepo.save(order);
     } else {
       Object.assign(row, this.mapDeliveryDtoToFields(dto, false));
       row.provider = dto.provider;
+      await this.orderDeliveryRepo.save(row);
+      if (order.deliveryType !== dto.provider) {
+        order.deliveryType = dto.provider;
+        order.updatedById = ownerId;
+        await this.orderRepo.save(order);
+      }
     }
-    await this.orderDeliveryRepo.save(row);
 
     await this.appendEvent(order.id, OrderEventType.DELIVERY_UPDATED, ownerId, {
       deliveryInfoId: row.id,
@@ -509,7 +517,6 @@ export class OrdersService {
         status: true,
         customer: true,
         conversation: true,
-        deliveryInfos: true,
         events: true,
       },
       order: { items: { id: "ASC" } },
@@ -522,6 +529,7 @@ export class OrdersService {
         (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
       );
     }
+    order.deliveryInfo = await this.findDeliveryForOrder(order);
     this.stripCircularOrderRefs(order);
     return order;
   }
@@ -534,9 +542,37 @@ export class OrdersService {
     for (const e of order.events ?? []) {
       delete (e as unknown as { order?: unknown }).order;
     }
-    for (const d of order.deliveryInfos ?? []) {
-      delete (d as unknown as { order?: unknown }).order;
+  }
+
+  private async findDeliveryForOrder(
+    order: Order,
+  ): Promise<OrderDeliveryInfo | null> {
+    if (order.deliveryId == null || order.deliveryType == null) {
+      return null;
     }
+    switch (order.deliveryType) {
+      case OrderDeliveryProvider.nova_poshta:
+      case OrderDeliveryProvider.ukrposhta:
+      case OrderDeliveryProvider.manual:
+      case OrderDeliveryProvider.other:
+        return this.orderDeliveryRepo.findOne({
+          where: { id: order.deliveryId },
+        });
+      default:
+        return null;
+    }
+  }
+
+  private async linkDeliveryToOrder(
+    order: Order,
+    delivery: OrderDeliveryInfo,
+    deliveryType: OrderDeliveryProvider,
+    ownerId: number,
+  ): Promise<void> {
+    order.deliveryId = delivery.id;
+    order.deliveryType = deliveryType;
+    order.updatedById = ownerId;
+    await this.orderRepo.save(order);
   }
 
   async listOrdersByWorkspace(
@@ -764,14 +800,20 @@ export class OrdersService {
     dto: UpdateOrderDeliveryDto,
     ownerId: number,
   ): Promise<void> {
-    const row = this.orderDeliveryRepo.create({
-      orderId,
-      provider: dto.provider,
-      ...this.mapDeliveryDtoToFields(dto, true),
-    });
-    await this.orderDeliveryRepo.save(row);
+    const order = await this.orderRepo.findOne({ where: { id: orderId } });
+    if (!order) {
+      return;
+    }
+    const row = await this.orderDeliveryRepo.save(
+      this.orderDeliveryRepo.create({
+        provider: dto.provider,
+        ...this.mapDeliveryDtoToFields(dto, true),
+      }),
+    );
+    await this.linkDeliveryToOrder(order, row, dto.provider, ownerId);
     await this.appendEvent(orderId, OrderEventType.DELIVERY_UPDATED, ownerId, {
       deliveryInfoId: row.id,
+      deliveryType: dto.provider,
       provider: row.provider,
       deliveryStatus: row.deliveryStatus,
       trackingNumber: row.trackingNumber,
@@ -800,6 +842,11 @@ export class OrdersService {
       providerStatusCode: dto.providerStatusCode ?? null,
       providerStatusText: dto.providerStatusText ?? null,
       providerDocumentRef: dto.providerDocumentRef ?? null,
+      isCashOnDelivery: dto.isCashOnDelivery ?? false,
+      cashOnDeliveryAmount:
+        dto.isCashOnDelivery === false
+          ? null
+          : (dto.cashOnDeliveryAmount ?? null),
     };
 
     if (!isCreate) {
@@ -821,11 +868,16 @@ export class OrdersService {
         "providerStatusCode",
         "providerStatusText",
         "providerDocumentRef",
+        "isCashOnDelivery",
+        "cashOnDeliveryAmount",
       ] as const;
       for (const key of optionalKeys) {
         if (dto[key] === undefined) {
           delete patch[key];
         }
+      }
+      if (dto.isCashOnDelivery === false) {
+        patch.cashOnDeliveryAmount = null;
       }
     }
 

@@ -113,10 +113,9 @@ export class IntegrationsService {
       items.push(this.mapTelegramRow(tg));
     }
 
-    const novaPoshta = await this.novaPoshtaIntegrations.findByWorkspace(
-      workspaceId,
-    );
-    if (novaPoshta) {
+    const novaPoshtaRows =
+      await this.novaPoshtaIntegrations.findAllByWorkspace(workspaceId);
+    for (const novaPoshta of novaPoshtaRows) {
       items.push(this.novaPoshtaIntegrations.mapToIntegrationListItem(novaPoshta));
     }
 

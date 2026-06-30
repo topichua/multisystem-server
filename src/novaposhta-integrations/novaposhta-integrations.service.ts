@@ -114,23 +114,13 @@ export class NovaPoshtaIntegrationsService {
       sender_type: dto.sender_type,
     });
 
-    let row = await this.repo.findOne({
-      where: { workspaceId: workspace.id },
+    const row = this.repo.create({
+      workspaceId: workspace.id,
+      ownerId,
+      name,
+      apiKey,
+      connectedAt: now,
     });
-    if (row) {
-      row.apiKey = apiKey;
-      row.name = name;
-      row.connectedAt = now;
-      row.ownerId = ownerId;
-    } else {
-      row = this.repo.create({
-        workspaceId: workspace.id,
-        ownerId,
-        name,
-        apiKey,
-        connectedAt: now,
-      });
-    }
 
     this.applySenderSettings(row, dto);
     const saved = await this.repo.save(row);
@@ -169,16 +159,16 @@ export class NovaPoshtaIntegrationsService {
     return this.toDto(saved);
   }
 
-  async getForOwner(ownerId: number): Promise<NovaPoshtaIntegrationResponseDto> {
+  async listForOwner(
+    ownerId: number,
+  ): Promise<NovaPoshtaIntegrationResponseDto[]> {
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    const row = await this.repo.findOne({
+    const rows = await this.repo.find({
       where: { workspaceId: workspace.id },
+      order: { id: "ASC" },
     });
-    if (!row) {
-      throw new NotFoundException("Nova Poshta integration not found");
-    }
-    return this.toDto(row);
+    return rows.map((row) => this.toDto(row));
   }
 
   async getByIdForOwner(
@@ -195,10 +185,13 @@ export class NovaPoshtaIntegrationsService {
     await this.repo.remove(row);
   }
 
-  async findByWorkspace(
+  async findAllByWorkspace(
     workspaceId: number,
-  ): Promise<NovaPoshtaIntegration | null> {
-    return this.repo.findOne({ where: { workspaceId } });
+  ): Promise<NovaPoshtaIntegration[]> {
+    return this.repo.find({
+      where: { workspaceId },
+      order: { id: "ASC" },
+    });
   }
 
   mapToIntegrationListItem(row: NovaPoshtaIntegration): IntegrationListItemDto {

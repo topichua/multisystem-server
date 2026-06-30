@@ -1,12 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
   Min,
+  ValidateIf,
 } from "class-validator";
 import { OrderDeliveryDestinationType } from "../../database/entities/order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "../../database/entities/order-delivery-provider.enum";
@@ -138,4 +141,26 @@ export class UpdateOrderDeliveryDto {
   @IsString()
   @MaxLength(255)
   providerDocumentRef?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Whether the recipient pays on delivery (наложений платіж). When false, order is prepaid.",
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isCashOnDelivery?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Cash-on-delivery amount in order currency (грн). Required when isCashOnDelivery is true.",
+    example: 1650,
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.isCashOnDelivery === true)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  cashOnDeliveryAmount?: number | null;
 }

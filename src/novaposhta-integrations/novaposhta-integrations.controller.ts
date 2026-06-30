@@ -47,7 +47,9 @@ export class NovaPoshtaIntegrationsController {
   @ApiOperation({
     summary: "Connect Nova Poshta API key",
     description:
-      "Creates or updates the Nova Poshta integration for the current workspace (one per workspace). Validates API key and sender_warehouse_ref; when both city and warehouse refs are sent, checks they match.",
+      "Creates a new Nova Poshta integration for the current workspace (multiple allowed). " +
+      "Use PATCH /novaposhta-integrations/:id to update an existing row. " +
+      "Validates API key and sender_warehouse_ref; when both city and warehouse refs are sent, checks they match.",
   })
   @ApiCreatedResponse({ type: NovaPoshtaIntegrationResponseDto })
   async connect(
@@ -73,12 +75,14 @@ export class NovaPoshtaIntegrationsController {
   }
 
   @Get()
-  @ApiOperation({ summary: "Get Nova Poshta integration for current workspace" })
-  @ApiOkResponse({ type: NovaPoshtaIntegrationResponseDto })
-  async get(
+  @ApiOperation({
+    summary: "List Nova Poshta integrations for current workspace",
+  })
+  @ApiOkResponse({ type: NovaPoshtaIntegrationResponseDto, isArray: true })
+  async list(
     @Req() req: { user?: AuthUser },
-  ): Promise<NovaPoshtaIntegrationResponseDto> {
-    return this.novaPoshta.getForOwner(this.requireOwnerId(req));
+  ): Promise<NovaPoshtaIntegrationResponseDto[]> {
+    return this.novaPoshta.listForOwner(this.requireOwnerId(req));
   }
 
   @Get(":id")

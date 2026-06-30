@@ -18,6 +18,7 @@ import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 import { OrderItem } from "./order-item.entity";
 import { OrderDeliveryInfo } from "./order-delivery-info.entity";
+import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 import { OrderEvent } from "./order-event.entity";
 
 @Entity("orders")
@@ -165,11 +166,23 @@ export class Order {
   @UpdateDateColumn({ name: "updated_at", type: "timestamptz" })
   updatedAt: Date;
 
+  @Column({ name: "delivery_id", type: "int", nullable: true })
+  deliveryId: number | null;
+
+  @Column({
+    name: "delivery_type",
+    type: "enum",
+    enum: OrderDeliveryProvider,
+    enumName: "order_delivery_provider_enum",
+    nullable: true,
+  })
+  deliveryType: OrderDeliveryProvider | null;
+
   @OneToMany(() => OrderItem, (i) => i.order)
   items: OrderItem[];
 
-  @OneToMany(() => OrderDeliveryInfo, (d) => d.order)
-  deliveryInfos: OrderDeliveryInfo[];
+  /** Hydrated in OrdersService when loading a single order (not a DB column). */
+  deliveryInfo?: OrderDeliveryInfo | null;
 
   @OneToMany(() => OrderEvent, (e) => e.order)
   events: OrderEvent[];
