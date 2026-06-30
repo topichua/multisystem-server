@@ -32,6 +32,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: new LocationLogger(),
   });
+  app.enableShutdownHooks();
   app.enableCors({ origin: true, credentials: true });
 
   app.use((req: Request, res: Response, next: NextFunction) => {

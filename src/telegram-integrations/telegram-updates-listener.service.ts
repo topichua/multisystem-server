@@ -1,4 +1,5 @@
 import {
+  BeforeApplicationShutdown,
   forwardRef,
   Inject,
   Injectable,
@@ -19,8 +20,8 @@ import { TelegramMessagePersistenceService } from "./telegram-message-persistenc
 import { TelegramUserApiService } from "./telegram-user-api.service";
 
 const SYNC_INTERVAL_MS = 60_000;
-/** Wait before retrying attach after AUTH_KEY_DUPLICATED. */
-const SESSION_BUSY_RETRY_MS = 5 * 60_000;
+/** Backoff before retrying attach after AUTH_KEY_DUPLICATED (session stays valid). */
+const SESSION_BUSY_RETRY_MS = 90_000;
 
 type ActiveClient = {
   client: TelegramClient;
@@ -30,7 +31,10 @@ type ActiveClient = {
 
 @Injectable()
 export class TelegramUpdatesListenerService
-  implements OnApplicationBootstrap, OnModuleDestroy
+  implements
+    OnApplicationBootstrap,
+    BeforeApplicationShutdown,
+    OnModuleDestroy
 {
   private readonly log = new Logger(TelegramUpdatesListenerService.name);
   private readonly clients = new Map<number, ActiveClient>();
@@ -38,6 +42,7 @@ export class TelegramUpdatesListenerService
   private readonly sessionBusySince = new Map<number, number>();
   private syncTimer: ReturnType<typeof setInterval> | null = null;
   private startupPromise: Promise<void> | null = null;
+  private isShuttingDown = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -58,10 +63,30 @@ export class TelegramUpdatesListenerService
     await this.startupPromise;
   }
 
+  async beforeApplicationShutdown(): Promise<void> {
+    await this.shutdownListeners("shutdown signal");
+  }
+
   async onModuleDestroy(): Promise<void> {
+    await this.shutdownListeners("module destroy");
+  }
+
+  private async shutdownListeners(reason: string): Promise<void> {
+    if (this.isShuttingDown) {
+      return;
+    }
+    this.isShuttingDown = true;
+
     if (this.syncTimer != null) {
       clearInterval(this.syncTimer);
       this.syncTimer = null;
+    }
+
+    const count = this.clients.size;
+    if (count > 0) {
+      this.log.log(
+        `Telegram listener shutting down (${reason}); releasing ${count} session(s)`,
+      );
     }
 
     const ids = [...this.clients.keys()];
@@ -97,7 +122,7 @@ export class TelegramUpdatesListenerService
       });
       if (disconnectedWithSession > 0) {
         this.log.warn(
-          `No active Telegram integrations to listen on; ${disconnectedWithSession} disconnected row(s) still have a session — reconnect via POST /telegram-integrations or set status=active after fixing AUTH_KEY_DUPLICATED`,
+          `No active Telegram integrations to listen on; ${disconnectedWithSession} disconnected row(s) still have a session in DB`,
         );
       } else {
         this.log.log(
@@ -210,6 +235,9 @@ export class TelegramUpdatesListenerService
 
         if (this.isSessionBusyBlocked(row.id)) {
           skipped += 1;
+          this.log.warn(
+            `Telegram listener skipped integration_id=${row.id}: AUTH_KEY_DUPLICATED retry cooldown`,
+          );
           continue;
         }
 
@@ -235,8 +263,9 @@ export class TelegramUpdatesListenerService
           `Telegram listener startup complete: running=${this.clients.size} attached=${attached} reloaded=${reloaded} skipped=${skipped} failed=${failed}`,
         );
       } else if (attached > 0 || reloaded > 0 || this.clients.size !== rows.length) {
+        const runningIds = [...this.clients.keys()].join(",") || "none";
         this.log.log(
-          `Telegram listener sync: running=${this.clients.size} db_active=${rows.length} attached=${attached} reloaded=${reloaded} skipped=${skipped} failed=${failed}`,
+          `Telegram listener sync: running=${this.clients.size} [ids=${runningIds}] db_active=${rows.length} attached=${attached} reloaded=${reloaded} skipped=${skipped} failed=${failed}`,
         );
       }
     } catch (e) {
@@ -402,6 +431,7 @@ export class TelegramUpdatesListenerService
       }
 
       this.clients.set(integration.id, { client, integration, sessionKey: session });
+      await this.clearTransientAttachError(integration.id);
       this.log.log(
         `Telegram listener attached integration_id=${integration.id} phone=${integration.phoneNumber}`,
       );
@@ -431,8 +461,8 @@ export class TelegramUpdatesListenerService
   }
 
   /**
-   * AUTH_KEY_DUPLICATED recovery:
-   * log → destroy client (stop updates) → drop from memory → record last_error (stay active for retry).
+   * AUTH_KEY_DUPLICATED recovery: tear down client and retry later.
+   * Session in DB stays valid — no client re-login required.
    */
   private async handleAuthKeyDuplicated(
     integration: TelegramIntegration,
@@ -469,21 +499,22 @@ export class TelegramUpdatesListenerService
       await this.telegramApi.destroyClient(toDestroy);
     }
 
+    this.log.log(
+      `Telegram integration_id=${integration.id} will retry attach automatically (session unchanged, no re-login needed)`,
+    );
+  }
+
+  private async clearTransientAttachError(integrationId: number): Promise<void> {
     try {
-      await this.telegramRepo.update(
-        { id: integration.id },
-        {
-          lastError: `AUTH_KEY_DUPLICATED: ${hint}`,
-        },
-      );
-      this.log.log(
-        `Telegram integration_id=${integration.id} listener stopped after AUTH_KEY_DUPLICATED; will retry in ${SESSION_BUSY_RETRY_MS / 60_000} min`,
-      );
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      this.log.error(
-        `Failed to update integration_id=${integration.id} after AUTH_KEY_DUPLICATED: ${err}`,
-      );
+      const row = await this.telegramRepo.findOne({
+        where: { id: integrationId },
+        select: { id: true, lastError: true },
+      });
+      if (row?.lastError?.includes("AUTH_KEY_DUPLICATED")) {
+        await this.telegramRepo.update({ id: integrationId }, { lastError: null });
+      }
+    } catch {
+      /* ignore */
     }
   }
 
