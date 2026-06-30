@@ -43,7 +43,6 @@ export class TelegramMessagePersistenceService {
       return;
     }
 
-    const ownerId = integration.ownerId;
     const myUserId = integration.telegramUserId?.trim();
     if (!myUserId) {
       return;
@@ -56,6 +55,91 @@ export class TelegramMessagePersistenceService {
     const chatId = this.bigIntToId(event.chatId);
     if (!chatId) {
       return;
+    }
+
+    await this.persistPrivateMessage(integration, msg, chatId, connectedClient);
+  }
+
+  /**
+   * Backfill recent private messages after reconnect/deploy (deduped by external_id).
+   */
+  async catchUpRecentPrivateMessages(
+    integration: TelegramIntegration,
+    client: TelegramClient,
+  ): Promise<number> {
+    const catchUpSinceUnix = Math.floor(
+      (Date.now() - TelegramMessagePersistenceService.CATCHUP_WINDOW_MS) / 1000,
+    );
+    let saved = 0;
+
+    try {
+      const dialogs = await client.getDialogs({
+        limit: TelegramMessagePersistenceService.CATCHUP_MAX_DIALOGS,
+      });
+
+      for (const dialog of dialogs) {
+        const entity = dialog.entity;
+        if (!(entity instanceof Api.User) || entity instanceof Api.UserEmpty) {
+          continue;
+        }
+
+        const chatId = utils.getPeerId(entity);
+        let messages: Api.Message[];
+        try {
+          messages = await client.getMessages(entity, {
+            limit: TelegramMessagePersistenceService.CATCHUP_MESSAGES_PER_DIALOG,
+          });
+        } catch (e) {
+          const err = e instanceof Error ? e.message : String(e);
+          this.log.debug(
+            `Telegram catch-up getMessages failed integration_id=${integration.id} chat_id=${chatId}: ${err}`,
+          );
+          continue;
+        }
+
+        for (const msg of messages) {
+          if (!msg?.id) {
+            continue;
+          }
+          if (typeof msg.date === "number" && msg.date < catchUpSinceUnix) {
+            continue;
+          }
+          const isNew = await this.persistPrivateMessage(
+            integration,
+            msg,
+            chatId,
+            client,
+          );
+          if (isNew) {
+            saved += 1;
+          }
+        }
+      }
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `Telegram catch-up failed integration_id=${integration.id}: ${err}`,
+      );
+    }
+
+    return saved;
+  }
+
+  /** @returns true when a new row was inserted */
+  private async persistPrivateMessage(
+    integration: TelegramIntegration,
+    msg: Api.Message,
+    chatId: string,
+    connectedClient?: TelegramClient,
+  ): Promise<boolean> {
+    if (!msg.id) {
+      return false;
+    }
+
+    const ownerId = integration.ownerId;
+    const myUserId = integration.telegramUserId?.trim();
+    if (!myUserId) {
+      return false;
     }
 
     const {
@@ -107,7 +191,7 @@ export class TelegramMessagePersistenceService {
       where: { externalId: externalMessageId },
     });
     if (existing) {
-      return;
+      return false;
     }
 
     const instagramJson = JSON.stringify(
@@ -148,7 +232,12 @@ export class TelegramMessagePersistenceService {
     this.log.debug(
       `Saved telegram message id=${externalMessageId} conversation_id=${conv.id} integration_id=${integration.id}`,
     );
+    return true;
   }
+
+  private static readonly CATCHUP_WINDOW_MS = 48 * 60 * 60 * 1000;
+  private static readonly CATCHUP_MAX_DIALOGS = 100;
+  private static readonly CATCHUP_MESSAGES_PER_DIALOG = 30;
 
   /** Persists an outbound message after POST .../messages (avoids waiting for NewMessage). */
   async persistOutboundMessage(params: {

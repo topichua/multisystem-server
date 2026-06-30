@@ -19,9 +19,9 @@ import {
 import { TelegramMessagePersistenceService } from "./telegram-message-persistence.service";
 import { TelegramUserApiService } from "./telegram-user-api.service";
 
-const SYNC_INTERVAL_MS = 60_000;
+const SYNC_INTERVAL_MS = 30_000;
 /** Backoff before retrying attach after AUTH_KEY_DUPLICATED (session stays valid). */
-const SESSION_BUSY_RETRY_MS = 90_000;
+const SESSION_BUSY_RETRY_MS = 60_000;
 
 type ActiveClient = {
   client: TelegramClient;
@@ -384,6 +384,16 @@ export class TelegramUpdatesListenerService
       return "skipped";
     }
 
+    const existing = this.clients.get(integration.id);
+    if (
+      existing &&
+      existing.sessionKey === session &&
+      this.isClientConnected(existing.client)
+    ) {
+      return "attached";
+    }
+
+    const isReconnect = existing != null;
     await this.detachIntegration(integration.id);
 
     const client = this.telegramApi.createListenerClient(session);
@@ -433,8 +443,11 @@ export class TelegramUpdatesListenerService
       this.clients.set(integration.id, { client, integration, sessionKey: session });
       await this.clearTransientAttachError(integration.id);
       this.log.log(
-        `Telegram listener attached integration_id=${integration.id} phone=${integration.phoneNumber}`,
+        isReconnect
+          ? `Telegram listener reconnected integration_id=${integration.id} phone=${integration.phoneNumber}`
+          : `Telegram listener attached integration_id=${integration.id} phone=${integration.phoneNumber}`,
       );
+      void this.runCatchUp(integration, client);
       return "attached";
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
@@ -457,6 +470,28 @@ export class TelegramUpdatesListenerService
       );
       await this.telegramApi.destroyClient(client);
       return "failed";
+    }
+  }
+
+  private async runCatchUp(
+    integration: TelegramIntegration,
+    client: TelegramClient,
+  ): Promise<void> {
+    try {
+      const saved = await this.persistence.catchUpRecentPrivateMessages(
+        integration,
+        client,
+      );
+      if (saved > 0) {
+        this.log.log(
+          `Telegram catch-up saved ${saved} message(s) integration_id=${integration.id}`,
+        );
+      }
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `Telegram catch-up failed integration_id=${integration.id}: ${err}`,
+      );
     }
   }
 
