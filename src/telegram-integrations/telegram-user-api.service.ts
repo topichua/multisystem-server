@@ -509,16 +509,24 @@ export class TelegramUserApiService {
     return this.createClient(sessionString);
   }
 
+  /** Long-lived listener client — reconnect is handled by TelegramUpdatesListenerService sync. */
+  createListenerClient(sessionString: string): TelegramClient {
+    return this.createClient(sessionString, { autoReconnect: false });
+  }
+
   async destroyClient(client: TelegramClient): Promise<void> {
     await this.safeDestroyClient(client);
   }
 
-  private createClient(sessionString: string): TelegramClient {
+  private createClient(
+    sessionString: string,
+    options?: { autoReconnect?: boolean },
+  ): TelegramClient {
     const { apiId, apiHash } = this.getCredentials();
     return new TelegramClient(new StringSession(sessionString), apiId, apiHash, {
       connectionRetries: 10,
       retryDelay: 2000,
-      autoReconnect: true,
+      autoReconnect: options?.autoReconnect ?? true,
     });
   }
 
@@ -835,10 +843,21 @@ export class TelegramUserApiService {
   }
 
   private async safeDestroyClient(client: TelegramClient): Promise<void> {
+    this.disableAutoReconnect(client);
     try {
       await client.destroy();
     } catch {
       await this.safeDisconnect(client);
+    }
+  }
+
+  private disableAutoReconnect(client: TelegramClient): void {
+    const mutable = client as TelegramClient & Record<string, unknown>;
+    mutable._autoReconnect = false;
+    const sender = mutable._sender as Record<string, unknown> | undefined;
+    if (sender) {
+      sender._autoReconnect = false;
+      sender.userDisconnected = true;
     }
   }
 }

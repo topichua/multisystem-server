@@ -10,7 +10,7 @@ import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { NewMessage } from "telegram/events";
 import type { TelegramClient } from "telegram";
-import { DataSource, IsNull, Not, QueryRunner, Repository } from "typeorm";
+import { IsNull, Not, Repository } from "typeorm";
 import {
   TelegramIntegration,
   TelegramIntegrationStatus,
@@ -18,9 +18,9 @@ import {
 import { TelegramMessagePersistenceService } from "./telegram-message-persistence.service";
 import { TelegramUserApiService } from "./telegram-user-api.service";
 
-/** PostgreSQL advisory lock id — only one deploy replica should run GramJS listeners. */
-const TELEGRAM_LISTENER_ADVISORY_LOCK_KEY = 1_744_200_093;
 const SYNC_INTERVAL_MS = 60_000;
+/** Wait before retrying attach after AUTH_KEY_DUPLICATED. */
+const SESSION_BUSY_RETRY_MS = 5 * 60_000;
 
 type ActiveClient = {
   client: TelegramClient;
@@ -34,14 +34,13 @@ export class TelegramUpdatesListenerService
 {
   private readonly log = new Logger(TelegramUpdatesListenerService.name);
   private readonly clients = new Map<number, ActiveClient>();
-  private leaderLockHeld = false;
-  private leaderLockRunner: QueryRunner | null = null;
-  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  /** integration_id → timestamp of last AUTH_KEY_DUPLICATED. */
+  private readonly sessionBusySince = new Map<number, number>();
+  private syncTimer: ReturnType<typeof setInterval> | null = null;
   private startupPromise: Promise<void> | null = null;
 
   constructor(
     private readonly config: ConfigService,
-    private readonly dataSource: DataSource,
     @InjectRepository(TelegramIntegration)
     private readonly telegramRepo: Repository<TelegramIntegration>,
     private readonly telegramApi: TelegramUserApiService,
@@ -54,57 +53,21 @@ export class TelegramUpdatesListenerService
     return flag !== "false" && flag !== "0";
   }
 
-  private useLeaderLock(): boolean {
-    const raw = this.config.get<string>("TELEGRAM_LISTENER_LEADER_LOCK")?.trim();
-    if (raw === "false" || raw === "0") {
-      return false;
-    }
-    if (raw === "true" || raw === "1") {
-      return true;
-    }
-    return this.config.get<string>("NODE_ENV") === "production";
-  }
-
   async onApplicationBootstrap(): Promise<void> {
     this.startupPromise = this.bootstrapListeners();
     await this.startupPromise;
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.watchdogTimer != null) {
-      clearInterval(this.watchdogTimer);
-      this.watchdogTimer = null;
+    if (this.syncTimer != null) {
+      clearInterval(this.syncTimer);
+      this.syncTimer = null;
     }
 
     const ids = [...this.clients.keys()];
     for (const id of ids) {
       await this.detachIntegration(id);
     }
-
-    if (this.leaderLockHeld) {
-      await this.releaseLeaderLock();
-    }
-  }
-
-  private async releaseLeaderLock(): Promise<void> {
-    if (!this.leaderLockRunner) {
-      this.leaderLockHeld = false;
-      return;
-    }
-    try {
-      await this.leaderLockRunner.query("SELECT pg_advisory_unlock($1)", [
-        TELEGRAM_LISTENER_ADVISORY_LOCK_KEY,
-      ]);
-    } catch {
-      /* ignore */
-    }
-    try {
-      await this.leaderLockRunner.release();
-    } catch {
-      /* ignore */
-    }
-    this.leaderLockRunner = null;
-    this.leaderLockHeld = false;
   }
 
   private async bootstrapListeners(): Promise<void> {
@@ -123,30 +86,32 @@ export class TelegramUpdatesListenerService
       return;
     }
 
-    if (this.useLeaderLock()) {
-      const acquired = await this.tryAcquireLeaderLock();
-      if (!acquired) {
-        await this.logLeaderLockHolderHint();
-        this.log.log(
-          "Telegram listener skipped on this instance: another replica holds the leader lock " +
-            "(set TELEGRAM_LISTENER_LEADER_LOCK=false only for a single-instance deploy)",
-        );
-        return;
-      }
-      this.leaderLockHeld = true;
-      this.log.log("Telegram listener leader lock acquired for this instance");
-    }
-
     const rows = await this.fetchActiveIntegrations();
+
+    if (rows.length === 0) {
+      const disconnectedWithSession = await this.telegramRepo.count({
+        where: {
+          status: TelegramIntegrationStatus.DISCONNECTED,
+          sessionString: Not(IsNull()),
+        },
+      });
+      if (disconnectedWithSession > 0) {
+        this.log.warn(
+          `No active Telegram integrations to listen on; ${disconnectedWithSession} disconnected row(s) still have a session — reconnect via POST /telegram-integrations or set status=active after fixing AUTH_KEY_DUPLICATED`,
+        );
+      } else {
+        this.log.log(
+          "No active Telegram integrations with session_string; listener idle",
+        );
+      }
+    }
 
     await this.logActiveIntegrationsDiagnostics(rows);
     await this.reconcileIntegrations({ logSummary: true });
 
-    if (this.leaderLockHeld || !this.useLeaderLock()) {
-      this.watchdogTimer = setInterval(() => {
-        void this.reconcileIntegrations();
-      }, SYNC_INTERVAL_MS);
-    }
+    this.syncTimer = setInterval(() => {
+      void this.reconcileIntegrations();
+    }, SYNC_INTERVAL_MS);
   }
 
   private async fetchActiveIntegrations(): Promise<TelegramIntegration[]> {
@@ -167,9 +132,6 @@ export class TelegramUpdatesListenerService
     logSummary?: boolean;
   }): Promise<void> {
     if (!this.isEnabled()) {
-      return;
-    }
-    if (this.useLeaderLock() && !this.leaderLockHeld) {
       return;
     }
 
@@ -246,6 +208,11 @@ export class TelegramUpdatesListenerService
           continue;
         }
 
+        if (this.isSessionBusyBlocked(row.id)) {
+          skipped += 1;
+          continue;
+        }
+
         if (!options?.logSummary) {
           this.log.log(
             `Telegram listener attaching integration_id=${row.id}: new active integration`,
@@ -265,7 +232,7 @@ export class TelegramUpdatesListenerService
 
       if (options?.logSummary) {
         this.log.log(
-          `Telegram listener startup complete: attached=${attached} reloaded=${reloaded} skipped=${skipped} failed=${failed}`,
+          `Telegram listener startup complete: running=${this.clients.size} attached=${attached} reloaded=${reloaded} skipped=${skipped} failed=${failed}`,
         );
       } else if (attached > 0 || reloaded > 0 || this.clients.size !== rows.length) {
         this.log.log(
@@ -290,82 +257,16 @@ export class TelegramUpdatesListenerService
     return client.connected === true;
   }
 
-  private async tryAcquireLeaderLock(): Promise<boolean> {
-    if (this.leaderLockRunner) {
-      return this.leaderLockHeld;
-    }
-
-    const runner = this.dataSource.createQueryRunner();
-    try {
-      await runner.connect();
-      const rows = (await runner.query(
-        "SELECT pg_try_advisory_lock($1) AS acquired",
-        [TELEGRAM_LISTENER_ADVISORY_LOCK_KEY],
-      )) as Array<{ acquired?: boolean }>;
-      const acquired = rows[0]?.acquired === true;
-      if (!acquired) {
-        await runner.release();
-        return false;
-      }
-      this.leaderLockRunner = runner;
-      return true;
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      this.log.warn(`Telegram listener leader lock unavailable: ${err}`);
-      try {
-        await runner.release();
-      } catch {
-        /* ignore */
-      }
+  private isSessionBusyBlocked(integrationId: number): boolean {
+    const since = this.sessionBusySince.get(integrationId);
+    if (since == null) {
       return false;
     }
-  }
-
-  private async logLeaderLockHolderHint(): Promise<void> {
-    try {
-      const rows = (await this.dataSource.query(
-        `
-        SELECT
-          l.pid,
-          l.granted,
-          a.application_name,
-          a.client_addr::text AS client_addr,
-          a.state,
-          a.backend_start
-        FROM pg_locks AS l
-        JOIN pg_stat_activity AS a ON a.pid = l.pid
-        WHERE
-          l.locktype = 'advisory'
-          AND l.objid = $1
-          AND l.classid = 0
-        `,
-        [TELEGRAM_LISTENER_ADVISORY_LOCK_KEY],
-      )) as Array<{
-        pid?: number;
-        granted?: boolean;
-        application_name?: string;
-        client_addr?: string;
-        state?: string;
-        backend_start?: Date;
-      }>;
-
-      if (rows.length === 0) {
-        this.log.warn(
-          "Telegram leader lock is held but no pg_locks row found (stale connection or pooler)",
-        );
-        return;
-      }
-
-      for (const row of rows) {
-        this.log.warn(
-          `Telegram leader lock holder: pid=${row.pid ?? "?"} granted=${row.granted ?? "?"} ` +
-            `app=${row.application_name ?? "?"} addr=${row.client_addr ?? "?"} state=${row.state ?? "?"}`,
-        );
-      }
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      this.log.debug(`Could not inspect Telegram leader lock holder: ${err}`);
+    if (Date.now() - since >= SESSION_BUSY_RETRY_MS) {
+      this.sessionBusySince.delete(integrationId);
+      return false;
     }
+    return true;
   }
 
   private async logActiveIntegrationsDiagnostics(
@@ -448,9 +349,6 @@ export class TelegramUpdatesListenerService
     if (!this.isEnabled()) {
       return "skipped";
     }
-    if (this.useLeaderLock() && !this.leaderLockHeld) {
-      return "skipped";
-    }
 
     const session = integration.sessionString?.trim();
     if (!session || integration.status !== TelegramIntegrationStatus.ACTIVE) {
@@ -459,7 +357,7 @@ export class TelegramUpdatesListenerService
 
     await this.detachIntegration(integration.id);
 
-    const client = this.telegramApi.createConnectedClient(session);
+    const client = this.telegramApi.createListenerClient(session);
     try {
       await client.connect();
       if (!(await client.isUserAuthorized())) {
@@ -534,7 +432,7 @@ export class TelegramUpdatesListenerService
 
   /**
    * AUTH_KEY_DUPLICATED recovery:
-   * log → stop updates (destroy) → drop from memory → mark integration disconnected in DB.
+   * log → destroy client (stop updates) → drop from memory → record last_error (stay active for retry).
    */
   private async handleAuthKeyDuplicated(
     integration: TelegramIntegration,
@@ -560,6 +458,8 @@ export class TelegramUpdatesListenerService
       `Telegram AUTH_KEY_DUPLICATED integration_id=${integration.id}: ${hint}`,
     );
 
+    this.sessionBusySince.set(integration.id, Date.now());
+
     const active = this.clients.get(integration.id);
     const toDestroy = client ?? active?.client ?? null;
 
@@ -573,12 +473,11 @@ export class TelegramUpdatesListenerService
       await this.telegramRepo.update(
         { id: integration.id },
         {
-          status: TelegramIntegrationStatus.DISCONNECTED,
           lastError: `AUTH_KEY_DUPLICATED: ${hint}`,
         },
       );
       this.log.log(
-        `Telegram integration_id=${integration.id} marked disconnected after AUTH_KEY_DUPLICATED`,
+        `Telegram integration_id=${integration.id} listener stopped after AUTH_KEY_DUPLICATED; will retry in ${SESSION_BUSY_RETRY_MS / 60_000} min`,
       );
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
@@ -619,6 +518,7 @@ export class TelegramUpdatesListenerService
 
   async detachIntegration(integrationId: number): Promise<void> {
     const active = this.clients.get(integrationId);
+    this.sessionBusySince.delete(integrationId);
     if (!active) {
       return;
     }
