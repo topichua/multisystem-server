@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   OnApplicationBootstrap,
@@ -43,6 +45,7 @@ export class TelegramUpdatesListenerService
     @InjectRepository(TelegramIntegration)
     private readonly telegramRepo: Repository<TelegramIntegration>,
     private readonly telegramApi: TelegramUserApiService,
+    @Inject(forwardRef(() => TelegramMessagePersistenceService))
     private readonly persistence: TelegramMessagePersistenceService,
   ) {}
 

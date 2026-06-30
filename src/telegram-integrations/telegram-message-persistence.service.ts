@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Api, utils } from "telegram";
 import type { TelegramClient } from "telegram";
@@ -25,6 +25,7 @@ export class TelegramMessagePersistenceService {
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     private readonly messageNotify: ConversationMessageNotifyService,
     private readonly cloudflareImages: CloudflareImagesService,
+    @Inject(forwardRef(() => TelegramUsersService))
     private readonly telegramUsers: TelegramUsersService,
   ) {}
 
