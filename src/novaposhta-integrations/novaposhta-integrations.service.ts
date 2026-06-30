@@ -11,6 +11,7 @@ import type { NovaPoshtaSenderSettingsDto } from "./dto/novaposhta-sender-settin
 import type { UpdateNovaPoshtaIntegrationRequestDto } from "./dto/update-novaposhta-integration.dto";
 import type { DiscoverNovaPoshtaSendersResponseDto } from "./dto/discover-novaposhta-senders.dto";
 import type { IntegrationListItemDto } from "../integrations/dto/http/integration-list-item.dto";
+import type { NovaPoshtaCredentialsQueryDto } from "./dto/novaposhta-credentials-query.dto";
 
 @Injectable()
 export class NovaPoshtaIntegrationsService {
@@ -60,6 +61,33 @@ export class NovaPoshtaIntegrationsService {
       settlementRef,
       query,
     );
+  }
+
+  async resolveSearchApiKeyForOwner(
+    ownerId: number,
+    credentials: NovaPoshtaCredentialsQueryDto,
+  ): Promise<string> {
+    const hasApiKey = !!credentials.api_key?.trim();
+    const hasIntegrationId =
+      credentials.nova_poshta_integration_id != null &&
+      Number.isInteger(credentials.nova_poshta_integration_id) &&
+      credentials.nova_poshta_integration_id > 0;
+
+    if (hasApiKey === hasIntegrationId) {
+      throw new BadRequestException(
+        "Provide exactly one of api_key or nova_poshta_integration_id",
+      );
+    }
+
+    if (hasIntegrationId) {
+      const row = await this.requireOwnedIntegration(
+        ownerId,
+        credentials.nova_poshta_integration_id!,
+      );
+      return this.normalizeApiKey(row.apiKey);
+    }
+
+    return this.normalizeApiKey(credentials.api_key ?? "");
   }
 
   async connectForOwner(

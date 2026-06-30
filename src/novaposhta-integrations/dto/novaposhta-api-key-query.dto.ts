@@ -2,6 +2,7 @@ import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import { IsString, MaxLength, MinLength } from "class-validator";
 
+/** Setup-only queries that always require a raw API key (e.g. discover senders). */
 export class NovaPoshtaApiKeyQueryDto {
   @ApiProperty({
     description:

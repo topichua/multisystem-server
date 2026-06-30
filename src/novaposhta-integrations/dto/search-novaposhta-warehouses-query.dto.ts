@@ -1,9 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
-import { NovaPoshtaApiKeyQueryDto } from "./novaposhta-api-key-query.dto";
+import { NovaPoshtaCredentialsQueryDto } from "./novaposhta-credentials-query.dto";
 
-export class SearchNovaPoshtaWarehousesQueryDto extends NovaPoshtaApiKeyQueryDto {
+export class SearchNovaPoshtaWarehousesQueryDto extends NovaPoshtaCredentialsQueryDto {
   @ApiProperty({
     description:
       "Settlement `ref` or delivery `cityRef` from settlement search. Both are accepted.",

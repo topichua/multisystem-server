@@ -24,6 +24,9 @@ import { SearchNovaPoshtaStreetsQueryDto } from "./dto/search-novaposhta-streets
 import { SearchNovaPoshtaWarehousesQueryDto } from "./dto/search-novaposhta-warehouses-query.dto";
 import { NovaPoshtaIntegrationsService } from "./novaposhta-integrations.service";
 
+const SEARCH_CREDENTIALS_HINT =
+  "Authenticate with exactly one of `api_key` (setup flow) or `nova_poshta_integration_id` (loads API key from DB).";
+
 @ApiTags("nova-poshta")
 @ApiBearerAuth("bearer")
 @UseGuards(JwtAuthGuard)
@@ -35,31 +38,39 @@ export class NovaPoshtaSearchController {
   @ApiOperation({
     summary: "Search Nova Poshta settlements by name",
     description:
-      "Pass Nova Poshta API key in query. Works before integration is created. Returns an empty array when query is empty.",
+      `${SEARCH_CREDENTIALS_HINT} Returns an empty array when query is empty.`,
   })
   @ApiOkResponse({ type: [NovaPoshtaSettlementSearchItemDto] })
   async searchSettlements(
     @Req() req: { user?: AuthUser },
     @Query() query: SearchNovaPoshtaSettlementsQueryDto,
   ): Promise<NovaPoshtaSettlementSearchItemDto[]> {
-    this.requireOwnerId(req);
-    return this.novaPoshta.searchSettlementsByApiKey(query.api_key, query.query);
+    const ownerId = this.requireOwnerId(req);
+    const apiKey = await this.novaPoshta.resolveSearchApiKeyForOwner(
+      ownerId,
+      query,
+    );
+    return this.novaPoshta.searchSettlementsByApiKey(apiKey, query.query);
   }
 
   @Get("warehouses/search")
   @ApiOperation({
     summary: "Search Nova Poshta warehouses, branches and parcel lockers",
     description:
-      "Pass Nova Poshta API key in query. Works before integration is created. `cityRef` accepts settlement `ref` or delivery `cityRef` from settlement search.",
+      `${SEARCH_CREDENTIALS_HINT} \`cityRef\` accepts settlement \`ref\` or delivery \`cityRef\` from settlement search.`,
   })
   @ApiOkResponse({ type: [NovaPoshtaWarehouseSearchItemDto] })
   async searchWarehouses(
     @Req() req: { user?: AuthUser },
     @Query() query: SearchNovaPoshtaWarehousesQueryDto,
   ): Promise<NovaPoshtaWarehouseSearchItemDto[]> {
-    this.requireOwnerId(req);
+    const ownerId = this.requireOwnerId(req);
+    const apiKey = await this.novaPoshta.resolveSearchApiKeyForOwner(
+      ownerId,
+      query,
+    );
     return this.novaPoshta.searchWarehousesByApiKey(
-      query.api_key,
+      apiKey,
       query.cityRef,
       query.query,
       query.type ?? "all",
@@ -69,17 +80,20 @@ export class NovaPoshtaSearchController {
   @Get("streets/search")
   @ApiOperation({
     summary: "Search streets in a Nova Poshta settlement",
-    description:
-      "Pass Nova Poshta API key in query. Works before integration is created. Returns an empty array when query is empty.",
+    description: `${SEARCH_CREDENTIALS_HINT} Returns an empty array when query is empty.`,
   })
   @ApiOkResponse({ type: [NovaPoshtaStreetSearchItemDto] })
   async searchStreets(
     @Req() req: { user?: AuthUser },
     @Query() query: SearchNovaPoshtaStreetsQueryDto,
   ): Promise<NovaPoshtaStreetSearchItemDto[]> {
-    this.requireOwnerId(req);
+    const ownerId = this.requireOwnerId(req);
+    const apiKey = await this.novaPoshta.resolveSearchApiKeyForOwner(
+      ownerId,
+      query,
+    );
     return this.novaPoshta.searchStreetsByApiKey(
-      query.api_key,
+      apiKey,
       query.settlementRef,
       query.query,
     );

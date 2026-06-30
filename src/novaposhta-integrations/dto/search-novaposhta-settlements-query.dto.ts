@@ -1,9 +1,9 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import { IsString, MaxLength } from "class-validator";
-import { NovaPoshtaApiKeyQueryDto } from "./novaposhta-api-key-query.dto";
+import { NovaPoshtaCredentialsQueryDto } from "./novaposhta-credentials-query.dto";
 
-export class SearchNovaPoshtaSettlementsQueryDto extends NovaPoshtaApiKeyQueryDto {
+export class SearchNovaPoshtaSettlementsQueryDto extends NovaPoshtaCredentialsQueryDto {
   @ApiProperty({
     description: "City or settlement name",
     example: "Хмель",
