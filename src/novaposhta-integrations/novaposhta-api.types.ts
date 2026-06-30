@@ -139,3 +139,34 @@ export type NovaPoshtaStreetSearchResult = {
 
 export type NovaPoshtaWarehouseSearchType = "all" | "warehouse" | "postomat";
 
+export type NovaPoshtaWaybillServiceType =
+  | "WarehouseWarehouse"
+  | "WarehouseDoors"
+  | "DoorsWarehouse"
+  | "DoorsDoors";
+
+export type NovaPoshtaCreateWaybillInput = {
+  payerType: "Sender" | "Recipient" | "ThirdPerson";
+  paymentMethod: "Cash" | "NonCash";
+  serviceType: NovaPoshtaWaybillServiceType;
+  weight: string;
+  seatsAmount: string;
+  description: string;
+  cost: string;
+  citySender: string;
+  sender: string;
+  senderAddress: string;
+  contactSender: string;
+  sendersPhone: string;
+  cityRecipient: string;
+  recipientAddress: string;
+  recipientName: string;
+  recipientsPhone: string;
+};
+
+export type NovaPoshtaCreateWaybillResult = {
+  trackingNumber: string;
+  documentRef: string;
+  raw: Record<string, unknown>;
+};
+

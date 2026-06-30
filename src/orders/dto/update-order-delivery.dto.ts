@@ -1,8 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from "class-validator";
 import { OrderDeliveryDestinationType } from "../../database/entities/order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "../../database/entities/order-delivery-provider.enum";
+import { OrderDeliveryStatus } from "../../database/entities/order-delivery-status.enum";
 
 export class UpdateOrderDeliveryDto {
   @ApiProperty({ enum: OrderDeliveryProvider })
@@ -19,6 +27,16 @@ export class UpdateOrderDeliveryDto {
   @IsInt()
   @Min(1)
   providerId?: number | null;
+
+  @ApiPropertyOptional({
+    enum: OrderDeliveryStatus,
+    default: OrderDeliveryStatus.pending,
+    description:
+      "Delivery lifecycle status. Use providerStatusCode/providerStatusText for Nova Poshta tracking details.",
+  })
+  @IsOptional()
+  @IsEnum(OrderDeliveryStatus)
+  deliveryStatus?: OrderDeliveryStatus;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -67,6 +85,14 @@ export class UpdateOrderDeliveryDto {
   @MaxLength(255)
   street?: string | null;
 
+  @ApiPropertyOptional({
+    description: "Settlement street Ref from Nova Poshta street search.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  streetRef?: string | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -79,15 +105,37 @@ export class UpdateOrderDeliveryDto {
   @MaxLength(64)
   flat?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: "Nova Poshta TTN / tracking number." })
   @IsOptional()
   @IsString()
   @MaxLength(128)
   trackingNumber?: string | null;
 
   @ApiPropertyOptional({
-    description: "Opaque provider response / webhook body",
+    description:
+      "Carrier-specific status code, e.g. Nova Poshta TrackingDocument StatusCode (7 = at branch).",
+    example: "7",
   })
   @IsOptional()
-  rawProviderPayload?: Record<string, unknown> | null;
+  @IsString()
+  @MaxLength(32)
+  providerStatusCode?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Human-readable carrier status, e.g. «Прибув на відділення».",
+    example: "Прибув на відділення",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  providerStatusText?: string | null;
+
+  @ApiPropertyOptional({
+    description: "Nova Poshta InternetDocument Ref after waybill creation.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  providerDocumentRef?: string | null;
 }

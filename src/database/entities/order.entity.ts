@@ -13,7 +13,6 @@ import { Client } from "./client.entity";
 import { Conversation } from "./conversation.entity";
 import { OrderSource } from "./order-source.enum";
 import { OrderPaymentStatus } from "./order-payment-status.enum";
-import { OrderDeliveryStatus } from "./order-delivery-status.enum";
 import { OrderStatus } from "./order-status.entity";
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
@@ -73,15 +72,6 @@ export class Order {
     default: OrderPaymentStatus.unpaid,
   })
   paymentStatus: OrderPaymentStatus;
-
-  @Column({
-    name: "delivery_status",
-    type: "enum",
-    enum: OrderDeliveryStatus,
-    enumName: "orders_delivery_status_enum",
-    default: OrderDeliveryStatus.pending,
-  })
-  deliveryStatus: OrderDeliveryStatus;
 
   @Column({ name: "currency", type: "varchar", length: 8 })
   currency: string;

@@ -10,6 +10,8 @@ import type {
   NovaPoshtaContactPersonRecord,
   NovaPoshtaCounterpartyDetails,
   NovaPoshtaCounterpartyRecord,
+  NovaPoshtaCreateWaybillInput,
+  NovaPoshtaCreateWaybillResult,
   NovaPoshtaDeparturePoint,
   NovaPoshtaSettlementRecord,
   NovaPoshtaSettlementSearchResult,
@@ -755,5 +757,61 @@ export class NovaPoshtaApiService {
     }
 
     return (body.data ?? []) as T;
+  }
+
+  async createInternetDocument(
+    apiKey: string,
+    input: NovaPoshtaCreateWaybillInput,
+  ): Promise<NovaPoshtaCreateWaybillResult> {
+    const payload = await this.request<
+      Array<{ IntDocNumber?: string; Ref?: string }>
+    >(apiKey, {
+      modelName: "InternetDocument",
+      calledMethod: "save",
+      methodProperties: {
+        PayerType: input.payerType,
+        PaymentMethod: input.paymentMethod,
+        DateTime: this.formatNovaPoshtaDateTime(new Date()),
+        CargoType: "Cargo",
+        Weight: input.weight,
+        ServiceType: input.serviceType,
+        SeatsAmount: input.seatsAmount,
+        Description: input.description,
+        Cost: input.cost,
+        CitySender: input.citySender,
+        Sender: input.sender,
+        SenderAddress: input.senderAddress,
+        ContactSender: input.contactSender,
+        SendersPhone: input.sendersPhone,
+        CityRecipient: input.cityRecipient,
+        RecipientAddress: input.recipientAddress,
+        RecipientName: input.recipientName,
+        RecipientsPhone: input.recipientsPhone,
+        RecipientType: "PrivatePerson",
+        NewAddress: "1",
+      },
+    });
+
+    const doc = payload[0];
+    const trackingNumber = doc?.IntDocNumber?.trim();
+    if (!trackingNumber) {
+      throw new BadGatewayException(
+        "Nova Poshta did not return a waybill number (IntDocNumber)",
+      );
+    }
+
+    return {
+      trackingNumber,
+      documentRef: doc?.Ref?.trim() ?? "",
+      raw: (doc ?? {}) as Record<string, unknown>,
+    };
+  }
+
+  private formatNovaPoshtaDateTime(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return (
+      `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+      `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    );
   }
 }

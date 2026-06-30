@@ -36,6 +36,7 @@ import { OrderStatusResponseDto } from "./dto/order-status-response.dto";
 import { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
 import { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
+import { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("orders")
@@ -87,6 +88,25 @@ export class OrdersController {
   ) {
     const ownerId = this.requireNumericOwnerId(req);
     return this.orders.updateDeliveryInfo(ownerId, orderId, dto);
+  }
+
+  @Post(":orderId/novaposhta/waybill")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Create Nova Poshta TTN (waybill) for an order",
+    description:
+      "Uses order delivery info (recipient) and workspace Nova Poshta integration (sender). " +
+      "Order must already have delivery set with provider `nova_poshta`, items, and warehouse refs. " +
+      "Writes `trackingNumber` back to order delivery.",
+  })
+  @ApiParam({ name: "orderId", type: Number })
+  createNovaPoshtaWaybill(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+    @Body() dto?: CreateNovaPoshtaWaybillRequestDto,
+  ) {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.createNovaPoshtaWaybill(ownerId, orderId, dto ?? {});
   }
 
   @Get()

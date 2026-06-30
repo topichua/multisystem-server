@@ -15,6 +15,7 @@ import {
   OrderDeliveryInfo,
   OrderEvent,
   OrderItem,
+  OrderDeliveryStatus,
   OrderSource,
   OrderStatus,
   Product,
@@ -35,6 +36,9 @@ import { VariantCustomFieldsService } from "../variant-custom-fields/variant-cus
 import { InventoryService } from "../inventory/inventory.service";
 import { InventoryMode } from "../database/entities/inventory-mode.enum";
 import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
+import { NovaPoshtaWaybillService } from "../novaposhta-integrations/nova-poshta-waybill.service";
+import type { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
+import type { CreateNovaPoshtaWaybillResponseDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import {
   buildVariantAttributesSnapshot,
   buildVariantTitleFromFields,
@@ -46,6 +50,7 @@ export const OrderEventType = {
   ITEM_ADDED: "order.item_added",
   STATUS_CHANGED: "order.status_changed",
   DELIVERY_UPDATED: "order.delivery_updated",
+  WAYBILL_CREATED: "order.waybill_created",
   TOTALS_UPDATED: "order.totals_updated",
 } as const;
 
@@ -78,6 +83,7 @@ export class OrdersService {
     private readonly variantRepo: Repository<ProductVariant>,
     private readonly inventory: InventoryService,
     private readonly workspaceSettings: WorkspaceSettingsService,
+    private readonly novaPoshtaWaybill: NovaPoshtaWaybillService,
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
@@ -456,49 +462,40 @@ export class OrdersService {
       row = this.orderDeliveryRepo.create({
         orderId: order.id,
         provider: dto.provider,
-        providerId: dto.providerId ?? null,
-        recipientName: dto.recipientName ?? null,
-        phone: dto.phone ?? null,
-        city: dto.city ?? null,
-        cityRef: dto.cityRef ?? null,
-        warehouse: dto.warehouse ?? null,
-        warehouseRef: dto.warehouseRef ?? null,
-        deliveryType: dto.deliveryType ?? null,
-        street: dto.street ?? null,
-        building: dto.building ?? null,
-        flat: dto.flat ?? null,
-        trackingNumber: dto.trackingNumber ?? null,
-        rawProviderPayload: dto.rawProviderPayload ?? null,
+        ...this.mapDeliveryDtoToFields(dto, true),
       });
     } else {
+      Object.assign(row, this.mapDeliveryDtoToFields(dto, false));
       row.provider = dto.provider;
-      if (dto.providerId !== undefined) row.providerId = dto.providerId;
-      if (dto.recipientName !== undefined)
-        row.recipientName = dto.recipientName;
-      if (dto.phone !== undefined) row.phone = dto.phone;
-      if (dto.city !== undefined) row.city = dto.city;
-      if (dto.cityRef !== undefined) row.cityRef = dto.cityRef;
-      if (dto.warehouse !== undefined) row.warehouse = dto.warehouse;
-      if (dto.warehouseRef !== undefined) row.warehouseRef = dto.warehouseRef;
-      if (dto.deliveryType !== undefined) row.deliveryType = dto.deliveryType;
-      if (dto.street !== undefined) row.street = dto.street;
-      if (dto.building !== undefined) row.building = dto.building;
-      if (dto.flat !== undefined) row.flat = dto.flat;
-      if (dto.trackingNumber !== undefined) {
-        row.trackingNumber = dto.trackingNumber;
-      }
-      if (dto.rawProviderPayload !== undefined) {
-        row.rawProviderPayload = dto.rawProviderPayload;
-      }
     }
     await this.orderDeliveryRepo.save(row);
 
     await this.appendEvent(order.id, OrderEventType.DELIVERY_UPDATED, ownerId, {
       deliveryInfoId: row.id,
       provider: row.provider,
+      deliveryStatus: row.deliveryStatus,
       trackingNumber: row.trackingNumber,
+      providerStatusCode: row.providerStatusCode,
     });
     return this.getOrderById(ownerId, order.id);
+  }
+
+  async createNovaPoshtaWaybill(
+    ownerId: number,
+    orderId: number,
+    dto: CreateNovaPoshtaWaybillRequestDto = {},
+  ): Promise<CreateNovaPoshtaWaybillResponseDto & { order: Order }> {
+    const waybill = await this.novaPoshtaWaybill.createForOrder(
+      ownerId,
+      orderId,
+      dto,
+    );
+    await this.appendEvent(orderId, OrderEventType.WAYBILL_CREATED, ownerId, {
+      trackingNumber: waybill.trackingNumber,
+      documentRef: waybill.documentRef,
+    });
+    const order = await this.getOrderById(ownerId, orderId);
+    return { ...waybill, order };
   }
 
   async getOrderById(ownerId: number, orderId: number): Promise<Order> {
@@ -770,7 +767,24 @@ export class OrdersService {
     const row = this.orderDeliveryRepo.create({
       orderId,
       provider: dto.provider,
+      ...this.mapDeliveryDtoToFields(dto, true),
+    });
+    await this.orderDeliveryRepo.save(row);
+    await this.appendEvent(orderId, OrderEventType.DELIVERY_UPDATED, ownerId, {
+      deliveryInfoId: row.id,
+      provider: row.provider,
+      deliveryStatus: row.deliveryStatus,
+      trackingNumber: row.trackingNumber,
+    });
+  }
+
+  private mapDeliveryDtoToFields(
+    dto: UpdateOrderDeliveryDto,
+    isCreate: boolean,
+  ): Partial<OrderDeliveryInfo> {
+    const patch: Partial<OrderDeliveryInfo> = {
       providerId: dto.providerId ?? null,
+      deliveryStatus: dto.deliveryStatus ?? OrderDeliveryStatus.pending,
       recipientName: dto.recipientName ?? null,
       phone: dto.phone ?? null,
       city: dto.city ?? null,
@@ -779,17 +793,43 @@ export class OrdersService {
       warehouseRef: dto.warehouseRef ?? null,
       deliveryType: dto.deliveryType ?? null,
       street: dto.street ?? null,
+      streetRef: dto.streetRef ?? null,
       building: dto.building ?? null,
       flat: dto.flat ?? null,
       trackingNumber: dto.trackingNumber ?? null,
-      rawProviderPayload: dto.rawProviderPayload ?? null,
-    });
-    await this.orderDeliveryRepo.save(row);
-    await this.appendEvent(orderId, OrderEventType.DELIVERY_UPDATED, ownerId, {
-      deliveryInfoId: row.id,
-      provider: row.provider,
-      trackingNumber: row.trackingNumber,
-    });
+      providerStatusCode: dto.providerStatusCode ?? null,
+      providerStatusText: dto.providerStatusText ?? null,
+      providerDocumentRef: dto.providerDocumentRef ?? null,
+    };
+
+    if (!isCreate) {
+      const optionalKeys = [
+        "providerId",
+        "deliveryStatus",
+        "recipientName",
+        "phone",
+        "city",
+        "cityRef",
+        "warehouse",
+        "warehouseRef",
+        "deliveryType",
+        "street",
+        "streetRef",
+        "building",
+        "flat",
+        "trackingNumber",
+        "providerStatusCode",
+        "providerStatusText",
+        "providerDocumentRef",
+      ] as const;
+      for (const key of optionalKeys) {
+        if (dto[key] === undefined) {
+          delete patch[key];
+        }
+      }
+    }
+
+    return patch;
   }
 
   private async recalculateOrderTotals(

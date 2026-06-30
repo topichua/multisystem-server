@@ -16,6 +16,7 @@ import {
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
+import { NovaPoshtaIntegrationsModule } from "../novaposhta-integrations/novaposhta-integrations.module";
 import { OrderStatusesController } from "./order-statuses.controller";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
@@ -25,6 +26,7 @@ import { OrdersService } from "./orders.service";
     VariantCustomFieldsModule,
     InventoryModule,
     WorkspaceSettingsModule,
+    NovaPoshtaIntegrationsModule,
     TypeOrmModule.forFeature([
       Client,
       Conversation,

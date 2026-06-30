@@ -11,6 +11,7 @@ import {
 import { Order } from "./order.entity";
 import { OrderDeliveryDestinationType } from "./order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
+import { OrderDeliveryStatus } from "./order-delivery-status.enum";
 
 @Entity("order_delivery_infos")
 @Unique("UQ_order_delivery_infos_order_id", ["orderId"])
@@ -34,6 +35,15 @@ export class OrderDeliveryInfo {
 
   @Column({ name: "provider_id", type: "int", nullable: true })
   providerId: number | null;
+
+  @Column({
+    name: "delivery_status",
+    type: "enum",
+    enum: OrderDeliveryStatus,
+    enumName: "orders_delivery_status_enum",
+    default: OrderDeliveryStatus.pending,
+  })
+  deliveryStatus: OrderDeliveryStatus;
 
   @Column({
     name: "recipient_name",
@@ -75,6 +85,9 @@ export class OrderDeliveryInfo {
   @Column({ name: "street", type: "varchar", length: 255, nullable: true })
   street: string | null;
 
+  @Column({ name: "street_ref", type: "varchar", length: 255, nullable: true })
+  streetRef: string | null;
+
   @Column({ name: "building", type: "varchar", length: 64, nullable: true })
   building: string | null;
 
@@ -89,8 +102,29 @@ export class OrderDeliveryInfo {
   })
   trackingNumber: string | null;
 
-  @Column({ name: "raw_provider_payload", type: "jsonb", nullable: true })
-  rawProviderPayload: Record<string, unknown> | null;
+  @Column({
+    name: "provider_status_code",
+    type: "varchar",
+    length: 32,
+    nullable: true,
+  })
+  providerStatusCode: string | null;
+
+  @Column({
+    name: "provider_status_text",
+    type: "varchar",
+    length: 512,
+    nullable: true,
+  })
+  providerStatusText: string | null;
+
+  @Column({
+    name: "provider_document_ref",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  providerDocumentRef: string | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
