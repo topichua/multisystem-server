@@ -500,6 +500,10 @@ export class TelegramUserApiService {
     return this.createClient(sessionString);
   }
 
+  async destroyClient(client: TelegramClient): Promise<void> {
+    await this.safeDestroyClient(client);
+  }
+
   private createClient(sessionString: string): TelegramClient {
     const { apiId, apiHash } = this.getCredentials();
     return new TelegramClient(new StringSession(sessionString), apiId, apiHash, {

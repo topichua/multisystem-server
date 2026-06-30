@@ -284,7 +284,7 @@ export class TelegramUpdatesListenerService
         this.log.warn(
           `Telegram integration id=${integration.id} session not authorized; skip listener`,
         );
-        await client.disconnect();
+        await this.telegramApi.destroyClient(client);
         return "skipped";
       }
 
@@ -322,22 +322,14 @@ export class TelegramUpdatesListenerService
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       if (this.isAuthKeyDuplicated(e)) {
-        try {
-          await client.disconnect();
-        } catch {
-          /* ignore */
-        }
+        await this.telegramApi.destroyClient(client);
         return "auth_key_duplicated";
       }
 
       this.log.error(
         `Failed to attach Telegram listener id=${integration.id}: ${err}`,
       );
-      try {
-        await client.disconnect();
-      } catch {
-        /* ignore */
-      }
+      await this.telegramApi.destroyClient(client);
       return "failed";
     }
   }
@@ -361,15 +353,12 @@ export class TelegramUpdatesListenerService
 
   async detachIntegration(integrationId: number): Promise<void> {
     const active = this.clients.get(integrationId);
+    this.sessionBusyIntegrationIds.delete(integrationId);
     if (!active) {
       return;
     }
     this.clients.delete(integrationId);
-    try {
-      await active.client.disconnect();
-    } catch {
-      /* ignore */
-    }
+    await this.telegramApi.destroyClient(active.client);
     this.log.log(`Telegram listener detached integration_id=${integrationId}`);
   }
 
