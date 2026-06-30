@@ -124,6 +124,7 @@ export class TelegramUpdatesListenerService
     if (this.useLeaderLock()) {
       const acquired = await this.tryAcquireLeaderLock();
       if (!acquired) {
+        await this.logLeaderLockHolderHint();
         this.log.log(
           "Telegram listener skipped on this instance: another replica holds the leader lock " +
             "(set TELEGRAM_LISTENER_LEADER_LOCK=false only for a single-instance deploy)",
@@ -134,7 +135,16 @@ export class TelegramUpdatesListenerService
       this.log.log("Telegram listener leader lock acquired for this instance");
     }
 
-    await this.attachAllActiveIntegrations();
+    const rows = await this.telegramRepo.find({
+      where: {
+        status: TelegramIntegrationStatus.ACTIVE,
+        sessionString: Not(IsNull()),
+      },
+      order: { id: "ASC" },
+    });
+
+    await this.logActiveIntegrationsDiagnostics(rows);
+    await this.attachAllActiveIntegrations(rows);
 
     if (this.leaderLockHeld || !this.useLeaderLock()) {
       this.watchdogTimer = setInterval(() => {
@@ -174,15 +184,105 @@ export class TelegramUpdatesListenerService
     }
   }
 
-  private async attachAllActiveIntegrations(): Promise<void> {
-    const rows = await this.telegramRepo.find({
-      where: {
-        status: TelegramIntegrationStatus.ACTIVE,
-        sessionString: Not(IsNull()),
-      },
-    });
+  private async logLeaderLockHolderHint(): Promise<void> {
+    try {
+      const rows = (await this.dataSource.query(
+        `
+        SELECT
+          l.pid,
+          l.granted,
+          a.application_name,
+          a.client_addr::text AS client_addr,
+          a.state,
+          a.backend_start
+        FROM pg_locks AS l
+        JOIN pg_stat_activity AS a ON a.pid = l.pid
+        WHERE
+          l.locktype = 'advisory'
+          AND l.objid = $1
+          AND l.classid = 0
+        `,
+        [TELEGRAM_LISTENER_ADVISORY_LOCK_KEY],
+      )) as Array<{
+        pid?: number;
+        granted?: boolean;
+        application_name?: string;
+        client_addr?: string;
+        state?: string;
+        backend_start?: Date;
+      }>;
+
+      if (rows.length === 0) {
+        this.log.warn(
+          "Telegram leader lock is held but no pg_locks row found (stale connection or pooler)",
+        );
+        return;
+      }
+
+      for (const row of rows) {
+        this.log.warn(
+          `Telegram leader lock holder: pid=${row.pid ?? "?"} granted=${row.granted ?? "?"} ` +
+            `app=${row.application_name ?? "?"} addr=${row.client_addr ?? "?"} state=${row.state ?? "?"}`,
+        );
+      }
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.debug(`Could not inspect Telegram leader lock holder: ${err}`);
+    }
+  }
+
+  private async logActiveIntegrationsDiagnostics(
+    rows: TelegramIntegration[],
+  ): Promise<void> {
+    if (rows.length === 0) {
+      return;
+    }
+
+    for (const row of rows) {
+      this.log.log(
+        `Telegram integration candidate id=${row.id} phone=${row.phoneNumber ?? "n/a"} ` +
+          `telegram_user_id=${row.telegramUserId ?? "n/a"} session=${this.describeSession(row.sessionString)}`,
+      );
+    }
+
+    const bySession = new Map<string, TelegramIntegration[]>();
+    for (const row of rows) {
+      const session = row.sessionString?.trim();
+      if (!session) {
+        continue;
+      }
+      const list = bySession.get(session) ?? [];
+      list.push(row);
+      bySession.set(session, list);
+    }
+
+    for (const [session, integrations] of bySession) {
+      if (integrations.length < 2) {
+        continue;
+      }
+      const ids = integrations.map((i) => i.id).join(", ");
+      this.log.warn(
+        `Telegram integrations [${ids}] share the same session (${this.describeSession(session)}). ` +
+          "Only one can listen at a time — later ids may get AUTH_KEY_DUPLICATED from the first attached in this process.",
+      );
+    }
+  }
+
+  private describeSession(session: string | null | undefined): string {
+    const trimmed = session?.trim();
+    if (!trimmed) {
+      return "empty";
+    }
+    return `len=${trimmed.length} prefix=${trimmed.slice(0, 12)}...`;
+  }
+
+  private async attachAllActiveIntegrations(
+    rows: TelegramIntegration[],
+  ): Promise<void> {
 
     this.log.log(`Starting Telegram listeners for ${rows.length} integration(s)`);
+
+    const attachedSessions = new Set<string>();
 
     let attached = 0;
     let skipped = 0;
@@ -192,9 +292,22 @@ export class TelegramUpdatesListenerService
       if (this.sessionBusyIntegrationIds.has(row.id)) {
         continue;
       }
+
+      const session = row.sessionString?.trim();
+      if (session && attachedSessions.has(session)) {
+        skipped += 1;
+        this.log.warn(
+          `Telegram listener skipped integration_id=${row.id}: same session already attached by another integration in this process`,
+        );
+        continue;
+      }
+
       const result = await this.attachIntegrationWithRetry(row);
       if (result === "attached") {
         attached += 1;
+        if (session) {
+          attachedSessions.add(session);
+        }
       } else if (result === "skipped") {
         skipped += 1;
       } else {
@@ -249,8 +362,14 @@ export class TelegramUpdatesListenerService
     const result = await this.attachIntegrationOnce(integration);
     if (result === "auth_key_duplicated") {
       this.sessionBusyIntegrationIds.add(integration.id);
+      const session = integration.sessionString?.trim() ?? "";
+      const localHolderId = this.findLocalSessionHolder(session);
+      const hint =
+        localHolderId != null
+          ? `same session already attached locally as integration_id=${localHolderId}`
+          : "session auth key is active in another process (old deploy, second Railway service, or Telegram still closing previous connection)";
       this.log.warn(
-        `Telegram listener skipped integration_id=${integration.id}: AUTH_KEY_DUPLICATED (session used elsewhere); continuing with other integrations`,
+        `Telegram listener skipped integration_id=${integration.id}: AUTH_KEY_DUPLICATED (${hint})`,
       );
       return "skipped";
     }
@@ -332,6 +451,18 @@ export class TelegramUpdatesListenerService
       await this.telegramApi.destroyClient(client);
       return "failed";
     }
+  }
+
+  private findLocalSessionHolder(session: string): number | undefined {
+    if (!session) {
+      return undefined;
+    }
+    for (const [id, active] of this.clients) {
+      if (active.integration.sessionString?.trim() === session) {
+        return id;
+      }
+    }
+    return undefined;
   }
 
   private isAuthKeyDuplicated(err: unknown): boolean {

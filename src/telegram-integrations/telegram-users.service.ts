@@ -5,6 +5,7 @@ import type { TelegramClient } from "telegram";
 import { Repository } from "typeorm";
 import { TelegramIntegration, TelegramUser } from "../database/entities";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
+import { TelegramUpdatesListenerService } from "./telegram-updates-listener.service";
 import { TelegramUserApiService } from "./telegram-user-api.service";
 
 const PROFILE_RESYNC_MS = 24 * 60 * 60 * 1000;
@@ -20,6 +21,7 @@ export class TelegramUsersService {
     private readonly telegramIntegrationRepo: Repository<TelegramIntegration>,
     private readonly cloudflareImages: CloudflareImagesService,
     private readonly telegramApi: TelegramUserApiService,
+    private readonly updatesListener: TelegramUpdatesListenerService,
   ) {}
 
   /**
@@ -31,8 +33,10 @@ export class TelegramUsersService {
     participantId: string,
     connectedClient?: TelegramClient,
   ): Promise<void> {
-    if (connectedClient) {
-      await this.syncParticipantFromClient(connectedClient, participantId);
+    const listenerClient =
+      connectedClient ?? this.updatesListener.getActiveClient(integration.id);
+    if (listenerClient) {
+      await this.syncParticipantFromClient(listenerClient, participantId);
       return;
     }
 
@@ -54,11 +58,7 @@ export class TelegramUsersService {
         `telegram_users sync failed integrationId=${integration.id} participantId=${participantId}: ${err}`,
       );
     } finally {
-      try {
-        await client.disconnect();
-      } catch {
-        /* ignore */
-      }
+      await this.telegramApi.destroyClient(client);
     }
   }
 
@@ -94,9 +94,14 @@ export class TelegramUsersService {
       if (!integration) {
         continue;
       }
+      const connectedClient = this.updatesListener.getActiveClient(integrationId);
       for (const participantId of participantIds) {
         try {
-          await this.syncParticipantForIntegration(integration, participantId);
+          await this.syncParticipantForIntegration(
+            integration,
+            participantId,
+            connectedClient,
+          );
         } catch (e) {
           const err = e instanceof Error ? e.message : String(e);
           this.log.warn(

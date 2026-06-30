@@ -337,12 +337,19 @@ export class TelegramUserApiService {
   async getPrivateDialogs(
     sessionString: string,
     limit = 50,
+    options?: {
+      /** Reuse the long-lived listener client to avoid AUTH_KEY_DUPLICATED. */
+      connectedClient?: TelegramClient;
+    },
   ): Promise<TelegramPrivateDialogDto[]> {
-    const client = this.createClient(sessionString);
+    const ownsClient = options?.connectedClient == null;
+    const client = options?.connectedClient ?? this.createClient(sessionString);
     try {
-      await client.connect();
-      if (!(await client.isUserAuthorized())) {
-        throw new BadRequestException("Telegram session is not authorized");
+      if (ownsClient) {
+        await client.connect();
+        if (!(await client.isUserAuthorized())) {
+          throw new BadRequestException("Telegram session is not authorized");
+        }
       }
       const dialogs = await client.getDialogs({ limit });
       return dialogs.map((d) => {
@@ -363,7 +370,9 @@ export class TelegramUserApiService {
     } catch (e) {
       throw this.toHttpError(e, "Failed to load Telegram dialogs");
     } finally {
-      await this.safeDisconnect(client);
+      if (ownsClient) {
+        await this.safeDestroyClient(client);
+      }
     }
   }
 
@@ -417,7 +426,7 @@ export class TelegramUserApiService {
       throw this.toHttpError(e, "Failed to send Telegram message");
     } finally {
       if (ownsClient) {
-        await this.safeDisconnect(client);
+        await this.safeDestroyClient(client);
       }
     }
   }
@@ -492,7 +501,7 @@ export class TelegramUserApiService {
     } catch (e) {
       throw this.toHttpError(e, "Telegram session validation failed");
     } finally {
-      await this.safeDisconnect(client);
+      await this.safeDestroyClient(client);
     }
   }
 

@@ -368,9 +368,11 @@ export class TelegramIntegrationsService {
       limitRaw != null && Number.isFinite(limitRaw)
         ? Math.min(Math.max(Math.floor(limitRaw), 1), 100)
         : 50;
+    const connectedClient = this.updatesListener.getActiveClient(id);
     const items = await this.telegramApi.getPrivateDialogs(
       row.sessionString,
       limit,
+      connectedClient ? { connectedClient } : undefined,
     );
     return { items };
   }
