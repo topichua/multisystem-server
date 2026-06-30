@@ -503,7 +503,9 @@ export class TelegramUserApiService {
   private createClient(sessionString: string): TelegramClient {
     const { apiId, apiHash } = this.getCredentials();
     return new TelegramClient(new StringSession(sessionString), apiId, apiHash, {
-      connectionRetries: 5,
+      connectionRetries: 10,
+      retryDelay: 2000,
+      autoReconnect: true,
     });
   }
 
