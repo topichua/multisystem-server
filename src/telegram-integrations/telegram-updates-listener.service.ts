@@ -8,7 +8,7 @@ import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { NewMessage } from "telegram/events";
 import type { TelegramClient } from "telegram";
-import { DataSource, IsNull, Not, Repository } from "typeorm";
+import { DataSource, IsNull, Not, QueryRunner, Repository } from "typeorm";
 import {
   TelegramIntegration,
   TelegramIntegrationStatus,
@@ -23,7 +23,6 @@ type ActiveClient = {
 
 /** PostgreSQL advisory lock id — only one deploy replica should run GramJS listeners. */
 const TELEGRAM_LISTENER_ADVISORY_LOCK_KEY = 1_744_200_093;
-const AUTH_KEY_DUPLICATED_RETRY_MS = [5_000, 15_000, 30_000] as const;
 const WATCHDOG_INTERVAL_MS = 120_000;
 
 @Injectable()
@@ -32,7 +31,10 @@ export class TelegramUpdatesListenerService
 {
   private readonly log = new Logger(TelegramUpdatesListenerService.name);
   private readonly clients = new Map<number, ActiveClient>();
+  /** Integrations skipped due to AUTH_KEY_DUPLICATED — avoid watchdog retry spam. */
+  private readonly sessionBusyIntegrationIds = new Set<number>();
   private leaderLockHeld = false;
+  private leaderLockRunner: QueryRunner | null = null;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startupPromise: Promise<void> | null = null;
 
@@ -78,15 +80,29 @@ export class TelegramUpdatesListenerService
     }
 
     if (this.leaderLockHeld) {
-      try {
-        await this.dataSource.query("SELECT pg_advisory_unlock($1)", [
-          TELEGRAM_LISTENER_ADVISORY_LOCK_KEY,
-        ]);
-      } catch {
-        /* ignore */
-      }
-      this.leaderLockHeld = false;
+      await this.releaseLeaderLock();
     }
+  }
+
+  private async releaseLeaderLock(): Promise<void> {
+    if (!this.leaderLockRunner) {
+      this.leaderLockHeld = false;
+      return;
+    }
+    try {
+      await this.leaderLockRunner.query("SELECT pg_advisory_unlock($1)", [
+        TELEGRAM_LISTENER_ADVISORY_LOCK_KEY,
+      ]);
+    } catch {
+      /* ignore */
+    }
+    try {
+      await this.leaderLockRunner.release();
+    } catch {
+      /* ignore */
+    }
+    this.leaderLockRunner = null;
+    this.leaderLockHeld = false;
   }
 
   private async bootstrapListeners(): Promise<void> {
@@ -128,15 +144,32 @@ export class TelegramUpdatesListenerService
   }
 
   private async tryAcquireLeaderLock(): Promise<boolean> {
+    if (this.leaderLockRunner) {
+      return this.leaderLockHeld;
+    }
+
+    const runner = this.dataSource.createQueryRunner();
     try {
-      const rows = (await this.dataSource.query(
+      await runner.connect();
+      const rows = (await runner.query(
         "SELECT pg_try_advisory_lock($1) AS acquired",
         [TELEGRAM_LISTENER_ADVISORY_LOCK_KEY],
       )) as Array<{ acquired?: boolean }>;
-      return rows[0]?.acquired === true;
+      const acquired = rows[0]?.acquired === true;
+      if (!acquired) {
+        await runner.release();
+        return false;
+      }
+      this.leaderLockRunner = runner;
+      return true;
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       this.log.warn(`Telegram listener leader lock unavailable: ${err}`);
+      try {
+        await runner.release();
+      } catch {
+        /* ignore */
+      }
       return false;
     }
   }
@@ -156,6 +189,9 @@ export class TelegramUpdatesListenerService
     let failed = 0;
 
     for (const row of rows) {
+      if (this.sessionBusyIntegrationIds.has(row.id)) {
+        continue;
+      }
       const result = await this.attachIntegrationWithRetry(row);
       if (result === "attached") {
         attached += 1;
@@ -188,7 +224,7 @@ export class TelegramUpdatesListenerService
       });
 
       for (const row of rows) {
-        if (this.clients.has(row.id)) {
+        if (this.clients.has(row.id) || this.sessionBusyIntegrationIds.has(row.id)) {
           continue;
         }
         this.log.warn(
@@ -203,28 +239,25 @@ export class TelegramUpdatesListenerService
   }
 
   async attachIntegration(integration: TelegramIntegration): Promise<void> {
+    this.sessionBusyIntegrationIds.delete(integration.id);
     await this.attachIntegrationWithRetry(integration);
   }
 
   private async attachIntegrationWithRetry(
     integration: TelegramIntegration,
   ): Promise<"attached" | "skipped" | "failed"> {
-    for (let attempt = 0; attempt <= AUTH_KEY_DUPLICATED_RETRY_MS.length; attempt++) {
-      const result = await this.attachIntegrationOnce(integration);
-      if (result !== "auth_key_duplicated") {
-        return result;
-      }
-      const delayMs = AUTH_KEY_DUPLICATED_RETRY_MS[attempt];
-      if (delayMs == null) {
-        break;
-      }
+    const result = await this.attachIntegrationOnce(integration);
+    if (result === "auth_key_duplicated") {
+      this.sessionBusyIntegrationIds.add(integration.id);
       this.log.warn(
-        `Telegram listener AUTH_KEY_DUPLICATED integration_id=${integration.id}; ` +
-          `retry in ${delayMs}ms (previous container may still be shutting down)`,
+        `Telegram listener skipped integration_id=${integration.id}: AUTH_KEY_DUPLICATED (session used elsewhere); continuing with other integrations`,
       );
-      await this.sleep(delayMs);
+      return "skipped";
     }
-    return "skipped";
+    if (result === "attached") {
+      this.sessionBusyIntegrationIds.delete(integration.id);
+    }
+    return result;
   }
 
   private async attachIntegrationOnce(
@@ -289,9 +322,6 @@ export class TelegramUpdatesListenerService
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       if (this.isAuthKeyDuplicated(e)) {
-        this.log.warn(
-          `Telegram listener skipped integration_id=${integration.id}: ${err}`,
-        );
         try {
           await client.disconnect();
         } catch {
@@ -327,10 +357,6 @@ export class TelegramUpdatesListenerService
       return err.message;
     }
     return String(err);
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async detachIntegration(integrationId: number): Promise<void> {
