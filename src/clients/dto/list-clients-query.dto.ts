@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -8,6 +9,16 @@ import {
   Min,
   MinLength,
 } from "class-validator";
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === true || value === "true" || value === 1 || value === "1") {
+    return true;
+  }
+  if (value === false || value === "false" || value === 0 || value === "0") {
+    return false;
+  }
+  return undefined;
+}
 
 function trimOptionalString(value: unknown): string | undefined {
   if (value == null || value === "") return undefined;
@@ -78,4 +89,14 @@ export class ListClientsQueryDto {
   @Min(1)
   @Max(200)
   pageSize?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "When true, each client includes `orderStats` (order count, total spent, average order price, last order date).",
+    example: true,
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))
+  @IsBoolean()
+  include_order_stat?: boolean;
 }

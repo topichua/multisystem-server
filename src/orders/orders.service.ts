@@ -32,6 +32,7 @@ import type { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-d
 import type { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
 import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
+import type { ClientOrderStatDto } from "../clients/dto/client-order-stat.dto";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
 import { InventoryService } from "../inventory/inventory.service";
@@ -58,6 +59,13 @@ export const OrderEventType = {
 function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
+
+type OrderStatsRawRow = {
+  orderCount: string | number;
+  totalSpent: string;
+  averageOrderPrice: string;
+  lastOrderAt: Date | null;
+};
 
 @Injectable()
 export class OrdersService {
@@ -689,20 +697,70 @@ export class OrdersService {
       .addSelect("MAX(o.createdAt)", "lastOrderAt")
       .where("o.workspaceId = :workspaceId", { workspaceId })
       .andWhere("o.customerId = :clientId", { clientId })
-      .getRawOne<{
-        orderCount: string | number;
-        totalSpent: string;
-        averageOrderPrice: string;
-        lastOrderAt: Date | null;
-      }>();
+      .getRawOne<OrderStatsRawRow>();
 
+    const stats = this.parseOrderStatsRaw(raw);
+
+    return {
+      clientId,
+      ...stats,
+    };
+  }
+
+  async getOrderStatsMapForClientIds(
+    workspaceId: number,
+    clientIds: number[],
+  ): Promise<Map<number, ClientOrderStatDto>> {
+    const uniqueIds = [...new Set(clientIds.filter((id) => id > 0))];
+    const map = new Map<number, ClientOrderStatDto>();
+    for (const id of uniqueIds) {
+      map.set(id, this.emptyOrderStats());
+    }
+    if (uniqueIds.length === 0) {
+      return map;
+    }
+
+    const rows = await this.orderRepo
+      .createQueryBuilder("o")
+      .select("o.customerId", "clientId")
+      .addSelect("COUNT(o.id)::int", "orderCount")
+      .addSelect("COALESCE(SUM(o.totalAmount), 0)", "totalSpent")
+      .addSelect("COALESCE(AVG(o.totalAmount), 0)", "averageOrderPrice")
+      .addSelect("MAX(o.createdAt)", "lastOrderAt")
+      .where("o.workspaceId = :workspaceId", { workspaceId })
+      .andWhere("o.customerId IN (:...clientIds)", { clientIds: uniqueIds })
+      .groupBy("o.customerId")
+      .getRawMany<OrderStatsRawRow & { clientId: string | number }>();
+
+    for (const raw of rows) {
+      const clientId = Number(raw.clientId);
+      if (!Number.isInteger(clientId) || clientId <= 0) {
+        continue;
+      }
+      map.set(clientId, this.parseOrderStatsRaw(raw));
+    }
+
+    return map;
+  }
+
+  private emptyOrderStats(): ClientOrderStatDto {
+    return {
+      orderCount: 0,
+      totalSpent: 0,
+      averageOrderPrice: 0,
+      lastOrderAt: null,
+    };
+  }
+
+  private parseOrderStatsRaw(
+    raw: OrderStatsRawRow | null | undefined,
+  ): ClientOrderStatDto {
     const orderCount = Number(raw?.orderCount ?? 0);
     const totalSpent = roundMoney(Number(raw?.totalSpent ?? 0));
     const averageOrderPrice =
       orderCount > 0 ? roundMoney(Number(raw?.averageOrderPrice ?? 0)) : 0;
 
     return {
-      clientId,
       orderCount,
       totalSpent,
       averageOrderPrice,

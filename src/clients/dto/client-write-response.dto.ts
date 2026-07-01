@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ClientOrderStatDto } from "./client-order-stat.dto";
 
-export class ClientResponseDto {
+/** POST / PUT /clients response — no read-only fields (`avatar_src`, `orderStats`). */
+export class ClientWriteResponseDto {
   @ApiProperty()
   id: number;
 
@@ -31,18 +31,4 @@ export class ClientResponseDto {
 
   @ApiProperty()
   workspaceId: number;
-
-  @ApiPropertyOptional({
-    nullable: true,
-    description:
-      "GET only. Profile picture URL from `telegram_users.profile_pic` or `instagram_users.profile_pic` when the client is linked.",
-  })
-  avatar_src?: string | null;
-
-  @ApiPropertyOptional({
-    type: ClientOrderStatDto,
-    description:
-      "Present when `include_order_stat=true` on GET /clients or GET /clients/:id.",
-  })
-  orderStats?: ClientOrderStatDto;
 }
