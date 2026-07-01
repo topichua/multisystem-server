@@ -90,6 +90,10 @@ import { NovaPoshtaIntegrationsMultiplePerWorkspace1744200000091 } from "./migra
 import { ClientsTelegramUserId1744200000092 } from "./migrations/1744200000092-ClientsTelegramUserId";
 import { ClientsDropDeliveryInfo1744200000093 } from "./migrations/1744200000093-ClientsDropDeliveryInfo";
 import { ClientLinks1744200000094 } from "./migrations/1744200000094-ClientLinks";
+import { WorkspaceDropInventoryMode1744200000095 } from "./migrations/1744200000095-WorkspaceDropInventoryMode";
+import { StockEngine1744200000096 } from "./migrations/1744200000096-StockEngine";
+import { StockMovementReasonText1744200000097 } from "./migrations/1744200000097-StockMovementReasonText";
+import { DropWarehouses1744200000098 } from "./migrations/1744200000098-DropWarehouses";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -125,8 +129,8 @@ import {
   WebhookEvent,
   NovaPoshtaIntegration,
   RegistrationToken,
-  InventoryMovement,
-  InventoryReservation,
+  VariantStock,
+  StockMovement,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -213,8 +217,8 @@ const entities = [
   OrderEvent,
   WebhookEvent,
   RegistrationToken,
-  InventoryMovement,
-  InventoryReservation,
+  VariantStock,
+  StockMovement,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -349,6 +353,10 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ClientsTelegramUserId1744200000092,
       ClientsDropDeliveryInfo1744200000093,
       ClientLinks1744200000094,
+      WorkspaceDropInventoryMode1744200000095,
+      StockEngine1744200000096,
+      StockMovementReasonText1744200000097,
+      DropWarehouses1744200000098,
     ],
   };
 }

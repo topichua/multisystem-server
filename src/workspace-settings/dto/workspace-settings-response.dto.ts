@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty } from "@nestjs/swagger";
 import { InventoryMode } from "../../database/entities/inventory-mode.enum";
 
 export class WorkspaceSettingsResponseDto {
@@ -15,7 +15,7 @@ export class WorkspaceSettingsResponseDto {
   @ApiProperty({
     enum: InventoryMode,
     description:
-      "off — quantity hidden, infinite stock; simple — edit variant quantity on product; advanced — inventory movements and cost tracking.",
+      "simple — editable quantity, no cost tracking; advanced — inventory movements and profit calculation.",
   })
   inventoryMode: InventoryMode;
 }

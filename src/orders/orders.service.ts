@@ -806,17 +806,25 @@ export class OrdersService {
     const variantMainImage = pickMainMediaUrl(variant.media ?? []);
     const imageUrl = variantMainImage || productMainImage || null;
 
-    const inventoryMode =
+    const unitCost = (
+      await this.inventory.getStockMapForVariantIds(workspaceId, [variant.id])
+    ).get(variant.id)?.avgPurchasePrice ?? null;
+
+    const mode =
       await this.workspaceSettings.getInventoryModeForWorkspace(workspaceId);
-    const unitCost =
-      inventoryMode === InventoryMode.advanced
-        ? variant.averagePurchasePrice
-        : null;
+    const costUnit =
+      mode === InventoryMode.advanced ? unitCost : null;
 
     const costSnapshots = this.inventory.buildOrderItemCostSnapshots(
       unitPrice,
       dto.quantity,
-      unitCost,
+      costUnit,
+    );
+
+    await this.inventory.assertVariantSellable(
+      workspaceId,
+      variant.id,
+      dto.quantity,
     );
 
     const item = this.orderItemRepo.create({

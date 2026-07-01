@@ -46,7 +46,8 @@ class CreateProductBodyDto {
   @ApiPropertyOptional({
     enum: ProductType,
     default: ProductType.single,
-    description: "single = one SKU; variants = sold via product_variants.",
+    description:
+      "single = product with one variant (variant is auto-created if omitted); variants = multiple SKUs.",
   })
   @IsOptional()
   @IsEnum(ProductType)
@@ -124,7 +125,7 @@ class CreateProductBodyDto {
   @ApiPropertyOptional({
     type: [CreateProductVariantInputDto],
     description:
-      "Required when productType is variants (at least one). For single, omit or send at most one row.",
+      "Required when productType is variants. For single, omit to auto-create one variant from product fields, or send exactly one row.",
   })
   @IsOptional()
   @IsArray()

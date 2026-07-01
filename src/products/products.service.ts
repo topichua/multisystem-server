@@ -11,6 +11,7 @@ import {
   ProductMedia,
   ProductVariant,
   UploadMedia,
+  Workspace,
   WorkspaceVariantCustomField,
   OrderItem,
 } from "../database/entities";
@@ -32,11 +33,11 @@ import type { UpdateProductMediaDto } from "./dto/update-product-media.dto";
 import type { UpdateProductVariantDto } from "./dto/update-product-variant.dto";
 import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
 import {
-  assertDirectQuantityEditAllowed,
-  presentQuantity,
-  quantityForCreate,
-} from "../inventory/inventory-mode.util";
-import { presentInventoryQuantities } from "../inventory/inventory-quantity.util";
+  assertNoDirectQuantityEdit,
+  presentProductStockFields,
+} from "../inventory/inventory-quantity.util";
+import { InventoryService } from "../inventory/inventory.service";
+import type { VariantStockDto } from "../inventory/dto/stock-response.dto";
 import { ProductMediaService } from "./product-media.service";
 import { mediaSort, pickMainMediaUrl } from "./product-media.util";
 import { UploadMediaService } from "./upload-media.service";
@@ -246,6 +247,7 @@ export class ProductsService {
     private readonly variantCustomFields: VariantCustomFieldsService,
     private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly inventory: InventoryService,
   ) {}
 
   async getWorkspaceIdForOwner(ownerId: number): Promise<number> {
@@ -323,14 +325,18 @@ export class ProductsService {
       productIds,
     );
 
-    const inventoryMode = this.inventoryModeOf(workspace);
+    const variantIds = loaded.flatMap((p) => (p.variants ?? []).map((v) => v.id));
+    const stockMap = await this.inventory.getStockMapForVariantIds(
+      workspace.id,
+      variantIds,
+    );
 
     return {
       items: rows.map((row) => {
         const p = byId.get(row.id) ?? row;
         return {
-          ...this.toListItem(p, mainImageByProductId, inventoryMode),
-          variants: this.buildVariantDtos(p, fieldDefs, inventoryMode),
+          ...this.toListItem(p, mainImageByProductId, stockMap),
+          variants: this.buildVariantDtos(p, fieldDefs, stockMap),
         };
       }),
       total,
@@ -396,16 +402,14 @@ export class ProductsService {
       [...new Set(rows.map((v) => v.productId))],
     );
 
-    const inventoryMode = this.inventoryModeOf(workspace);
+    const stockMap = await this.inventory.getStockMapForVariantIds(
+      workspace.id,
+      rows.map((v) => v.id),
+    );
 
     return {
       items: rows.map((v) =>
-        this.toCatalogVariantItem(
-          v,
-          fieldDefs,
-          mainImageByProductId,
-          inventoryMode,
-        ),
+        this.toCatalogVariantItem(v, fieldDefs, mainImageByProductId, stockMap),
       ),
       total,
       page,
@@ -453,11 +457,14 @@ export class ProductsService {
       [...new Set(rows.map((v) => v.productId))],
     );
 
-    const inventoryMode = this.inventoryModeOf(workspace);
+    const stockMap = await this.inventory.getStockMapForVariantIds(
+      workspace.id,
+      rows.map((v) => v.id),
+    );
 
     return {
       items: rows.map((v) =>
-        this.toVariantListItem(v, fieldDefs, mainImageByProductId, inventoryMode),
+        this.toVariantListItem(v, fieldDefs, mainImageByProductId, stockMap),
       ),
       total,
       page,
@@ -488,11 +495,11 @@ export class ProductsService {
     const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
       workspace.id,
     );
-    return this.toDetail(
-      product,
-      fieldDefs,
-      this.inventoryModeOf(workspace),
+    const stockMap = await this.inventory.getStockMapForVariantIds(
+      workspace.id,
+      (product.variants ?? []).map((v) => v.id),
     );
+    return this.toDetail(product, fieldDefs, stockMap);
   }
 
   async createForOwner(ownerId: number, dto: CreateProductDto): Promise<void> {
@@ -511,16 +518,11 @@ export class ProductsService {
     );
 
     const productType = dto.productType ?? ProductType.single;
-    const variantInputs = dto.variants ?? [];
+    const variantInputs = this.normalizeCreateVariantInputs(dto, productType);
 
     if (productType === ProductType.variants && variantInputs.length === 0) {
       throw new BadRequestException(
         "At least one variant is required when product_type is variants",
-      );
-    }
-    if (productType === ProductType.single && variantInputs.length > 1) {
-      throw new BadRequestException(
-        "product_type single allows at most one variant",
       );
     }
 
@@ -530,76 +532,88 @@ export class ProductsService {
       stagedMediaIds,
     );
     const productStatus = dto.status ?? ProductStatus.active;
-    const inventoryMode = this.inventoryModeOf(workspace);
-    await this.productRepo.manager.transaction(async (em) => {
-      const product = em.create(Product, {
-        workspaceId: workspace.id,
-        categoryId: dto.categoryId ?? null,
-        name,
-        description: dto.description?.trim() || null,
-        status: productStatus,
-        productType,
-        sourceType: dto.sourceType ?? null,
-        price: dto.price ?? null,
-        currency: (dto.currency?.trim() || defaultCurrency).slice(0, 8),
-        inStock: dto.inStock ?? null,
-        quantity: quantityForCreate(inventoryMode, dto.quantity),
-        weightGrams: dto.weightGrams ?? null,
-        lengthCm: dto.lengthCm ?? null,
-        widthCm: dto.widthCm ?? null,
-        heightCm: dto.heightCm ?? null,
-        createdByUserId: ownerId,
-        updatedByUserId: null,
-      });
-      const saved = await em.save(product);
+    const createdVariants = await this.productRepo.manager.transaction(
+      async (em) => {
+        const product = em.create(Product, {
+          workspaceId: workspace.id,
+          categoryId: dto.categoryId ?? null,
+          name,
+          description: dto.description?.trim() || null,
+          status: productStatus,
+          productType,
+          sourceType: dto.sourceType ?? null,
+          price: dto.price ?? null,
+          currency: (dto.currency?.trim() || defaultCurrency).slice(0, 8),
+          inStock: dto.inStock ?? null,
+          weightGrams: dto.weightGrams ?? null,
+          lengthCm: dto.lengthCm ?? null,
+          widthCm: dto.widthCm ?? null,
+          heightCm: dto.heightCm ?? null,
+          createdByUserId: ownerId,
+          updatedByUserId: null,
+        });
+        const saved = await em.save(product);
 
-      for (const spec of variantInputs) {
-        const resolved =
-          await this.variantCustomFields.resolveVariantAttributesFromPayload(
-            ownerId,
-            workspace.id,
-            spec.customFields,
-            em,
+        const variants: Array<{ id: number; quantity?: number }> = [];
+        for (const spec of variantInputs) {
+          const resolved =
+            await this.variantCustomFields.resolveVariantAttributesFromPayload(
+              ownerId,
+              workspace.id,
+              spec.customFields,
+              em,
+            );
+          const variant = await em.save(
+            em.create(ProductVariant, {
+              productId: saved.id,
+              price: spec.price ?? null,
+              inStock: spec.inStock ?? null,
+              sku: spec.sku?.trim() || null,
+              status: spec.status ?? productStatus,
+              createdByUserId: ownerId,
+              updatedByUserId: null,
+            }),
           );
-        const variant = await em.save(
-          em.create(ProductVariant, {
-            productId: saved.id,
-            price: spec.price ?? null,
-            inStock: spec.inStock ?? null,
-            quantity: quantityForCreate(inventoryMode, spec.quantity),
-            sku: spec.sku?.trim() || null,
-            status: spec.status ?? productStatus,
-            createdByUserId: ownerId,
-            updatedByUserId: null,
-          }),
-        );
-        await this.variantCustomFields.upsertValuesForVariant(
-          em,
-          variant.id,
-          resolved,
-        );
+          variants.push({ id: variant.id, quantity: spec.quantity });
+          await this.variantCustomFields.upsertValuesForVariant(
+            em,
+            variant.id,
+            resolved,
+          );
 
-        if (spec.mediaIds?.length) {
+          if (spec.mediaIds?.length) {
+            await this.insertProductMediaFromStaged(
+              em,
+              saved.id,
+              variant.id,
+              spec.mediaIds,
+              stagedById,
+            );
+          }
+        }
+
+        if (dto.mediaIds?.length) {
           await this.insertProductMediaFromStaged(
             em,
             saved.id,
-            variant.id,
-            spec.mediaIds,
+            null,
+            dto.mediaIds,
             stagedById,
           );
         }
-      }
 
-      if (dto.mediaIds?.length) {
-        await this.insertProductMediaFromStaged(
-          em,
-          saved.id,
-          null,
-          dto.mediaIds,
-          stagedById,
-        );
-      }
-    });
+        return variants;
+      },
+    );
+
+    for (const variant of createdVariants) {
+      await this.applySimpleQuantityIfProvided(
+        ownerId,
+        workspace,
+        variant.id,
+        variant.quantity,
+      );
+    }
   }
 
   async updateForOwner(
@@ -618,10 +632,15 @@ export class ProductsService {
     }
     await this.applyProductFieldUpdates(
       workspace.id,
-      this.inventoryModeOf(workspace),
       product,
       ownerId,
       dto,
+    );
+    await this.applySingleProductQuantityFromDto(
+      ownerId,
+      workspace,
+      product,
+      dto.quantity,
     );
     return this.findOneForOwner(ownerId, productId);
   }
@@ -645,22 +664,23 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
-    const inventoryMode = this.inventoryModeOf(workspace);
+    let newVariantQuantities: Array<{
+      variantId: number;
+      quantity: number | undefined;
+    }> = [];
 
     await this.productRepo.manager.transaction(async (em) => {
       await this.applyProductFieldUpdates(
         workspace.id,
-        inventoryMode,
         product,
         ownerId,
         dto,
         em,
       );
       if (dto.variants !== undefined) {
-        await this.syncProductVariants(
+        newVariantQuantities = await this.syncProductVariants(
           em,
-          workspace.id,
-          inventoryMode,
+          workspace,
           product,
           ownerId,
           dto.variants,
@@ -668,10 +688,29 @@ export class ProductsService {
       }
     });
 
+    for (const item of newVariantQuantities) {
+      await this.applySimpleQuantityIfProvided(
+        ownerId,
+        workspace,
+        item.variantId,
+        item.quantity,
+      );
+    }
+
+    await this.applySingleProductQuantityFromDto(
+      ownerId,
+      workspace,
+      product,
+      dto.quantity,
+    );
+
     return this.findOneForOwner(ownerId, productId);
   }
 
-  async removeForOwner(ownerId: number, productId: number): Promise<void> {
+  async removeForOwner(
+    ownerId: number,
+    productId: number,
+  ): Promise<void> {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
@@ -716,12 +755,10 @@ export class ProductsService {
     const stagedById = stagedMediaIds.length
       ? await this.uploadMedia.requireForWorkspace(workspace.id, stagedMediaIds)
       : new Map<number, { cdnUrl: string }>();
-    const inventoryMode = this.inventoryModeOf(workspace);
     const row = this.variantRepo.create({
       productId,
       price: dto.price ?? null,
       inStock: dto.inStock ?? null,
-      quantity: quantityForCreate(inventoryMode, dto.quantity),
       sku: dto.sku?.trim() || null,
       status: dto.status ?? product.status ?? ProductStatus.active,
       createdByUserId: ownerId,
@@ -742,6 +779,12 @@ export class ProductsService {
         stagedById,
       );
     }
+    await this.applySimpleQuantityIfProvided(
+      ownerId,
+      workspace,
+      saved.id,
+      dto.quantity,
+    );
     return this.findOneForOwner(ownerId, productId);
   }
 
@@ -781,8 +824,12 @@ export class ProductsService {
       variant.inStock = dto.inStock;
     }
     if (dto.quantity !== undefined) {
-      assertDirectQuantityEditAllowed(this.inventoryModeOf(workspace));
-      variant.quantity = dto.quantity;
+      await this.applySimpleQuantityIfProvided(
+        ownerId,
+        workspace,
+        variantId,
+        dto.quantity,
+      );
     }
     if (dto.mediaIds !== undefined) {
       const stagedById =
@@ -1012,7 +1059,6 @@ export class ProductsService {
 
   private async applyProductFieldUpdates(
     workspaceId: number,
-    inventoryMode: InventoryMode,
     product: Product,
     ownerId: number,
     dto: UpdateProductDto,
@@ -1052,8 +1098,12 @@ export class ProductsService {
       product.inStock = dto.inStock;
     }
     if (dto.quantity !== undefined) {
-      assertDirectQuantityEditAllowed(inventoryMode);
-      product.quantity = dto.quantity;
+      assertNoDirectQuantityEdit(
+        this.inventoryModeOf(
+          await this.workspaceContext.requireWorkspaceForOwner(ownerId),
+        ),
+        dto.quantity,
+      );
     }
     if (dto.weightGrams !== undefined) {
       product.weightGrams = dto.weightGrams;
@@ -1103,21 +1153,25 @@ export class ProductsService {
 
   private async syncProductVariants(
     em: EntityManager,
-    workspaceId: number,
-    inventoryMode: InventoryMode,
+    workspace: Workspace,
     product: Product,
     ownerId: number,
     variantInputs: UpdateProductVariantSyncDto[],
-  ): Promise<void> {
+  ): Promise<Array<{ variantId: number; quantity: number | undefined }>> {
+    const newVariantQuantities: Array<{
+      variantId: number;
+      quantity: number | undefined;
+    }> = [];
+    const workspaceId = workspace.id;
     const productType = product.productType;
     if (productType === ProductType.variants && variantInputs.length === 0) {
       throw new BadRequestException(
         "At least one variant is required when product_type is variants",
       );
     }
-    if (productType === ProductType.single && variantInputs.length > 1) {
+    if (productType === ProductType.single && variantInputs.length !== 1) {
       throw new BadRequestException(
-        "product_type single allows at most one variant",
+        "product_type single requires exactly one variant",
       );
     }
 
@@ -1169,8 +1223,7 @@ export class ProductsService {
         }
         await this.applyVariantSyncInput(
           em,
-          workspaceId,
-          inventoryMode,
+          workspace,
           product.id,
           variant,
           spec,
@@ -1190,7 +1243,6 @@ export class ProductsService {
             productId: product.id,
             price: spec.price ?? null,
             inStock: spec.inStock ?? null,
-            quantity: quantityForCreate(inventoryMode, spec.quantity),
             sku: spec.sku?.trim() || null,
             status: spec.status ?? product.status,
             createdByUserId: ownerId,
@@ -1209,8 +1261,13 @@ export class ProductsService {
           spec.mediaIds ?? [],
           stagedById,
         );
+        newVariantQuantities.push({
+          variantId: variant.id,
+          quantity: spec.quantity,
+        });
       }
     }
+    return newVariantQuantities;
   }
 
   private collectStagedMediaIdsFromVariantSync(
@@ -1227,8 +1284,7 @@ export class ProductsService {
 
   private async applyVariantSyncInput(
     em: EntityManager,
-    workspaceId: number,
-    inventoryMode: InventoryMode,
+    workspace: Workspace,
     productId: number,
     variant: ProductVariant,
     spec: UpdateProductVariantSyncDto,
@@ -1239,7 +1295,7 @@ export class ProductsService {
       const resolved =
         await this.variantCustomFields.resolveVariantAttributesFromPayload(
           ownerId,
-          workspaceId,
+          workspace.id,
           spec.customFields,
           em,
         );
@@ -1256,8 +1312,12 @@ export class ProductsService {
       variant.inStock = spec.inStock;
     }
     if (spec.quantity !== undefined) {
-      assertDirectQuantityEditAllowed(inventoryMode);
-      variant.quantity = spec.quantity;
+      await this.applySimpleQuantityIfProvided(
+        ownerId,
+        workspace,
+        variant.id,
+        spec.quantity,
+      );
     }
     if (spec.sku !== undefined) {
       variant.sku = spec.sku?.trim() || null;
@@ -1402,7 +1462,7 @@ export class ProductsService {
     v: ProductVariant,
     fieldDefs: WorkspaceVariantCustomField[],
     mainImageByProductId: Map<number, string>,
-    inventoryMode: InventoryMode,
+    stockMap: Map<number, VariantStockDto>,
   ): CatalogVariantListResponseDto["items"][number] {
     const p = v.product;
     if (p == null) {
@@ -1414,6 +1474,10 @@ export class ProductsService {
     const unitPrice = v.price ?? p.price ?? null;
     const variantImage = pickMainMediaUrl(v.media ?? []);
     const imageUrl = variantImage || productMainImage;
+    const stock = stockMap.get(v.id);
+    if (!stock) {
+      throw new Error(`Missing stock snapshot for variant ${v.id}`);
+    }
 
     return {
       id: v.id,
@@ -1423,7 +1487,7 @@ export class ProductsService {
       unitPrice,
       imageUrl,
       inStock: v.inStock ?? p.inStock,
-      ...presentInventoryQuantities(inventoryMode, v),
+      ...presentProductStockFields(stock),
       status: v.status,
       label,
       product: {
@@ -1535,8 +1599,16 @@ export class ProductsService {
   private toListItem(
     p: Product,
     mainImageByProductId?: Map<number, string>,
-    inventoryMode: InventoryMode = InventoryMode.off,
+    stockMap?: Map<number, VariantStockDto>,
   ): ProductListItemBaseDto {
+    const variantIds = (p.variants ?? []).map((v) => v.id);
+    const quantity =
+      stockMap && variantIds.length > 0
+        ? variantIds.reduce(
+            (sum, id) => sum + (stockMap.get(id)?.quantity ?? 0),
+            0,
+          )
+        : null;
     return {
       id: p.id,
       name: p.name,
@@ -1545,7 +1617,7 @@ export class ProductsService {
       price: p.price,
       currency: p.currency,
       inStock: p.inStock,
-      quantity: presentQuantity(inventoryMode, p.quantity),
+      quantity,
       mainImageUrl: this.resolveMainImageUrl(p, mainImageByProductId),
       categoryId: p.categoryId,
       weightGrams: p.weightGrams,
@@ -1625,8 +1697,13 @@ export class ProductsService {
     const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
       productIds,
     );
-
-    const inventoryMode = this.inventoryModeOf(workspace);
+    const allVariantIds = loaded.flatMap((p) =>
+      (p.variants ?? []).map((v) => v.id),
+    );
+    const stockMap = await this.inventory.getStockMapForVariantIds(
+      workspace.id,
+      allVariantIds,
+    );
 
     const items: InstagramReferencedProductListItemDto[] = [];
     for (const productId of [...refsByProductId.keys()].sort((a, b) => a - b)) {
@@ -1641,7 +1718,7 @@ export class ProductsService {
         if (ref.productVariantId == null) {
           continue;
         }
-        const [variant] = this.buildVariantDtos(p, fieldDefs, inventoryMode, {
+        const [variant] = this.buildVariantDtos(p, fieldDefs, stockMap, {
           includeAllVariants: false,
           variantIds: new Set([ref.productVariantId]),
         });
@@ -1657,7 +1734,7 @@ export class ProductsService {
         if (ref.productVariantId != null) {
           continue;
         }
-        for (const variant of this.buildVariantDtos(p, fieldDefs, inventoryMode)) {
+        for (const variant of this.buildVariantDtos(p, fieldDefs, stockMap)) {
           if (!variantById.has(variant.id)) {
             variantById.set(variant.id, {
               ...variant,
@@ -1672,7 +1749,7 @@ export class ProductsService {
       }
 
       items.push({
-        ...this.toListItem(p, mainImageByProductId, inventoryMode),
+        ...this.toListItem(p, mainImageByProductId, stockMap),
         variants: [...variantById.values()].sort((a, b) => a.id - b.id),
       });
     }
@@ -1682,7 +1759,7 @@ export class ProductsService {
   private buildVariantDtos(
     p: Product,
     fieldDefs: WorkspaceVariantCustomField[],
-    inventoryMode: InventoryMode = InventoryMode.off,
+    stockMap: Map<number, VariantStockDto>,
     variantFilter?: {
       includeAllVariants: boolean;
       variantIds: Set<number>;
@@ -1702,6 +1779,10 @@ export class ProductsService {
       }
     }
     return variants.map((v) => {
+      const stock = stockMap.get(v.id);
+      if (!stock) {
+        throw new Error(`Missing stock snapshot for variant ${v.id}`);
+      }
       const vMedia = (mediaByVariant.get(v.id) ?? []).sort(mediaSort);
       const variantImage = pickMainMediaUrl(vMedia);
       return {
@@ -1709,7 +1790,7 @@ export class ProductsService {
         customFields: serializeVariantCustomFields(v, fieldDefs),
         price: v.price,
         inStock: v.inStock,
-        ...presentInventoryQuantities(inventoryMode, v),
+        ...presentProductStockFields(stock),
         imageUrl: variantImage,
         sku: v.sku,
         status: v.status,
@@ -1724,11 +1805,15 @@ export class ProductsService {
     v: ProductVariant,
     fieldDefs: WorkspaceVariantCustomField[],
     mainImageByProductId: Map<number, string>,
-    inventoryMode: InventoryMode,
+    stockMap: Map<number, VariantStockDto>,
   ): ProductVariantListItemDto {
     const p = v.product;
     if (p == null) {
       throw new Error("ProductVariant row missing product (invariant)");
+    }
+    const stock = stockMap.get(v.id);
+    if (!stock) {
+      throw new Error(`Missing stock snapshot for variant ${v.id}`);
     }
     const media = [...(v.media ?? [])].sort(mediaSort);
     const variantImage = pickMainMediaUrl(media);
@@ -1737,7 +1822,7 @@ export class ProductsService {
       customFields: serializeVariantCustomFields(v, fieldDefs),
       price: v.price,
       inStock: v.inStock,
-      ...presentInventoryQuantities(inventoryMode, v),
+      ...presentProductStockFields(stock),
       imageUrl: variantImage,
       sku: v.sku,
       status: v.status,
@@ -1750,8 +1835,85 @@ export class ProductsService {
     };
   }
 
+  private normalizeCreateVariantInputs(
+    dto: CreateProductDto,
+    productType: ProductType,
+  ): CreateProductVariantInputDto[] {
+    const specs = dto.variants ?? [];
+    if (productType === ProductType.single) {
+      if (specs.length === 0) {
+        return [this.mergeProductFieldsIntoVariantSpec(dto, {})];
+      }
+      if (specs.length === 1) {
+        return [this.mergeProductFieldsIntoVariantSpec(dto, specs[0])];
+      }
+      throw new BadRequestException(
+        "product_type single allows at most one variant",
+      );
+    }
+    return specs;
+  }
+
+  private mergeProductFieldsIntoVariantSpec(
+    dto: Pick<CreateProductDto, "price" | "inStock" | "quantity" | "status">,
+    spec: CreateProductVariantInputDto,
+  ): CreateProductVariantInputDto {
+    return {
+      ...spec,
+      price: spec.price ?? dto.price,
+      inStock: spec.inStock ?? dto.inStock,
+      quantity: spec.quantity ?? dto.quantity,
+      status: spec.status ?? dto.status,
+    };
+  }
+
+  private async applySingleProductQuantityFromDto(
+    ownerId: number,
+    workspace: Workspace,
+    product: Product,
+    quantity: number | null | undefined,
+  ): Promise<void> {
+    if (quantity === undefined || product.productType !== ProductType.single) {
+      return;
+    }
+    const variant = await this.variantRepo.findOne({
+      where: { productId: product.id },
+      order: { id: "ASC" },
+    });
+    if (!variant) {
+      return;
+    }
+    await this.applySimpleQuantityIfProvided(
+      ownerId,
+      workspace,
+      variant.id,
+      quantity,
+    );
+  }
+
   private inventoryModeOf(workspace: { inventoryMode?: InventoryMode }): InventoryMode {
-    return workspace.inventoryMode ?? InventoryMode.off;
+    return workspace.inventoryMode ?? InventoryMode.simple;
+  }
+
+  private async applySimpleQuantityIfProvided(
+    ownerId: number,
+    workspace: { inventoryMode?: InventoryMode },
+    variantId: number,
+    quantity: number | null | undefined,
+  ): Promise<void> {
+    if (quantity === undefined) {
+      return;
+    }
+    assertNoDirectQuantityEdit(this.inventoryModeOf(workspace), quantity);
+    if (
+      this.inventoryModeOf(workspace) === InventoryMode.simple &&
+      quantity != null
+    ) {
+      await this.inventory.setSimpleQuantity(ownerId, {
+        variantId,
+        quantity,
+      });
+    }
   }
 
   private toMediaDto(m: ProductMedia): ProductMediaDto {
@@ -1772,7 +1934,7 @@ export class ProductsService {
   private toDetail(
     p: Product,
     fieldDefs: WorkspaceVariantCustomField[],
-    inventoryMode: InventoryMode = InventoryMode.off,
+    stockMap: Map<number, VariantStockDto>,
   ): ProductDetailDto {
     const allMedia = [...(p.media ?? [])];
     const productLevelMedia = allMedia
@@ -1788,13 +1950,13 @@ export class ProductsService {
       : null;
 
     return {
-      ...this.toListItem(p, undefined, inventoryMode),
+      ...this.toListItem(p, undefined, stockMap),
       description: p.description,
       sourceType: p.sourceType,
       createdByUserId: p.createdByUserId,
       updatedByUserId: p.updatedByUserId,
       category: categorySummary,
-      variants: this.buildVariantDtos(p, fieldDefs, inventoryMode),
+      variants: this.buildVariantDtos(p, fieldDefs, stockMap),
       media: productLevelMedia.map((m) => this.toMediaDto(m)),
     };
   }

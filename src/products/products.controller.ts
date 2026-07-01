@@ -30,7 +30,7 @@ import {
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import type { Request } from "express";
-import { ProductInventoryResponseDto } from "../inventory/dto/product-inventory-response.dto";
+import { ProductStockListResponseDto } from "../inventory/dto/stock-response.dto";
 import { InventoryService } from "../inventory/inventory.service";
 import { CloudflareImagesService } from "./cloudflare-images.service";
 import { AddProductGalleryImageFormDto } from "./dto/add-product-gallery-image-form.dto";
@@ -242,14 +242,14 @@ export class ProductsController {
   }
 
   @Get(":id/inventory")
-  @ApiOperation({ summary: "Get inventory counters for all product variants" })
-  @ApiOkResponse({ type: ProductInventoryResponseDto })
+  @ApiOperation({ summary: "Get stock snapshots for all product variants" })
+  @ApiOkResponse({ type: ProductStockListResponseDto })
   async getInventory(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
-  ): Promise<ProductInventoryResponseDto> {
+  ): Promise<ProductStockListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.inventory.getProductInventory(
+    return this.inventory.getProductStock(
       ownerId,
       id,
       req.user?.role,

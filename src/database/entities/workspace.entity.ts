@@ -36,7 +36,7 @@ export class Workspace {
     type: "enum",
     enum: InventoryMode,
     enumName: "workspace_inventory_mode_enum",
-    default: InventoryMode.off,
+    default: InventoryMode.simple,
   })
   inventoryMode: InventoryMode;
 

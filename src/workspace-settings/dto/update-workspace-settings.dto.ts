@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import {
   IsEnum,
@@ -45,14 +45,13 @@ export class UpdateWorkspaceSettingsDto {
   @ApiPropertyOptional({
     enum: InventoryMode,
     description:
-      "Also accepted as `inventory_mode`. off — quantity hidden; simple — edit variant quantity; advanced — inventory movements.",
+      "Also accepted as `inventory_mode`. simple — editable quantity; advanced — inventory movements and cost tracking.",
   })
   @IsOptional()
   @Transform(({ obj }) => pickInventoryMode(obj as Record<string, unknown>))
   @IsEnum(InventoryMode)
   inventoryMode?: InventoryMode;
 
-  /** Snake_case alias for `inventoryMode`. */
   @IsOptional()
   @IsEnum(InventoryMode)
   inventory_mode?: InventoryMode;

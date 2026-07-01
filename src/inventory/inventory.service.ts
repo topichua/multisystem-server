@@ -5,93 +5,294 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, EntityManager, Repository } from "typeorm";
+import { DataSource, EntityManager, In, Repository } from "typeorm";
 import {
-  InventoryMovement,
-  InventoryMovementReason,
-  InventoryMovementType,
-  InventoryReservation,
-  InventoryReservationStatus,
+  InventoryMode,
   Order,
   OrderItem,
   OrderStatusCategory,
   Product,
   ProductVariant,
+  StockMovement,
+  StockMovementType,
+  VariantStock,
+  Workspace,
 } from "../database/entities";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
 import { buildVariantTitleFromFields } from "../variant-custom-fields/variant-custom-fields.util";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
-import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
-import type { CreateInventoryMovementRequestDto } from "./dto/create-inventory-movement-request.dto";
+import type { CreateCorrectionDto } from "./dto/create-correction.dto";
+import type { CreateInitialStockDto } from "./dto/create-initial-stock.dto";
+import type { CreateInventoryCountDto } from "./dto/create-inventory-count.dto";
+import type { CreatePurchaseDto } from "./dto/create-purchase.dto";
+import type { CreateReturnDto } from "./dto/create-return.dto";
+import type { SetSimpleQuantityDto } from "./dto/set-simple-quantity.dto";
 import type {
-  CreateInventoryMovementResponseDto,
-  InventoryMovementItemDto,
-  InventoryMovementListResponseDto,
-  InventoryVariantStateDto,
-} from "./dto/inventory-movement-response.dto";
-import type { ProductInventoryResponseDto } from "./dto/product-inventory-response.dto";
-import type { InventoryMovementCriteriaResponseDto } from "./dto/inventory-criteria-response.dto";
+  ProductStockListResponseDto,
+  StockMovementItemDto,
+  StockMovementListResponseDto,
+  StockOperationResponseDto,
+  VariantStockDto,
+} from "./dto/stock-response.dto";
 import {
-  assertReasonAllowedForType,
-  computeDecreaseStock,
-  computeIncreaseStock,
-  computeSetStock,
-  resolveIncreasePurchasePrice,
-  type StockState,
-  buildInventoryMovementCriteria,
-} from "./inventory-movement.logic";
-import {
-  assertInventoryMovementsAllowed,
-  managesStockOnOrders,
-} from "./inventory-mode.util";
-import { InventoryMode } from "../database/entities/inventory-mode.enum";
-import {
-  computeAvailableQuantity,
-  toVariantInventoryQuantities,
-  variantPhysicalQuantity,
-  variantReservedQuantity,
-} from "./inventory-quantity.util";
+  applyAdvancedQuantityDelta,
+  applyAdvancedSale,
+  applyInitialStock,
+  applyPurchase,
+  applyReturn,
+  applySimpleQuantitySet,
+  applySimpleSale,
+  assertAdvancedMode,
+  assertSimpleMode,
+  assertStockInitialized,
+  type StockSnapshot,
+} from "./stock.logic";
+
+type StockContext = {
+  workspaceId: number;
+  mode: InventoryMode;
+  userId: number;
+};
 
 @Injectable()
 export class InventoryService {
   constructor(
     private readonly dataSource: DataSource,
-    @InjectRepository(InventoryMovement)
-    private readonly movementRepo: Repository<InventoryMovement>,
+    @InjectRepository(StockMovement)
+    private readonly movementRepo: Repository<StockMovement>,
+    @InjectRepository(VariantStock)
+    private readonly stockRepo: Repository<VariantStock>,
     @InjectRepository(ProductVariant)
     private readonly variantRepo: Repository<ProductVariant>,
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
+    @InjectRepository(Workspace)
+    private readonly workspaceRepo: Repository<Workspace>,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepo: Repository<OrderItem>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
-    private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly variantCustomFields: VariantCustomFieldsService,
   ) {}
 
-  getMovementCriteria(): InventoryMovementCriteriaResponseDto {
-    return buildInventoryMovementCriteria();
+  async setSimpleQuantity(
+    userId: number,
+    dto: SetSimpleQuantityDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockOperationResponseDto> {
+    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    assertSimpleMode(ctx.mode);
+    return this.runStockOperation(ctx, dto.variantId, async (stock) => {
+      const result = applySimpleQuantitySet(this.toSnapshot(stock), dto.quantity);
+      return {
+        type: StockMovementType.simpleAdjustment,
+        reason: null,
+        quantityChange: result.quantityChange,
+        purchasePrice: null,
+        totalCostChange: null,
+        comment: dto.comment ?? null,
+        after: result.after,
+      };
+    });
   }
 
-  async getProductInventory(
+  async createInitialStock(
+    userId: number,
+    dto: CreateInitialStockDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockOperationResponseDto> {
+    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    assertAdvancedMode(ctx.mode);
+    return this.runStockOperation(ctx, dto.variantId, async (stock) => {
+      const result = applyInitialStock(
+        this.toSnapshot(stock),
+        dto.quantity,
+        dto.purchasePrice,
+      );
+      return {
+        type: StockMovementType.initialStock,
+        reason: null,
+        quantityChange: result.quantityChange,
+        purchasePrice: dto.purchasePrice,
+        totalCostChange: result.totalCostChange,
+        comment: dto.comment ?? null,
+        after: result.after,
+      };
+    });
+  }
+
+  async createPurchase(
+    userId: number,
+    dto: CreatePurchaseDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockOperationResponseDto> {
+    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    assertAdvancedMode(ctx.mode);
+    return this.runStockOperation(ctx, dto.variantId, async (stock) => {
+      const result = applyPurchase(
+        this.toSnapshot(stock),
+        dto.quantity,
+        dto.purchasePrice,
+      );
+      return {
+        type: StockMovementType.purchase,
+        reason: null,
+        quantityChange: result.quantityChange,
+        purchasePrice: dto.purchasePrice,
+        totalCostChange: result.totalCostChange,
+        comment: dto.comment ?? null,
+        after: result.after,
+      };
+    });
+  }
+
+  async createCorrection(
+    userId: number,
+    dto: CreateCorrectionDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockOperationResponseDto> {
+    if (dto.quantityChange === 0) {
+      throw new BadRequestException("quantityChange must not be 0");
+    }
+    const reason = dto.reason?.trim() || null;
+    if (dto.quantityChange < 0 && !reason) {
+      throw new BadRequestException(
+        "reason is required when quantityChange is negative (write-off)",
+      );
+    }
+    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    assertAdvancedMode(ctx.mode);
+    return this.runStockOperation(ctx, dto.variantId, async (stock) => {
+      const before = this.toSnapshot(stock);
+      assertStockInitialized(before);
+      const result = applyAdvancedQuantityDelta(
+        before,
+        dto.quantityChange,
+        true,
+      );
+      return {
+        type: StockMovementType.correction,
+        reason,
+        quantityChange: dto.quantityChange,
+        purchasePrice: null,
+        totalCostChange: result.totalCostChange,
+        comment: dto.comment ?? null,
+        after: result.after,
+      };
+    });
+  }
+
+  async createInventory(
+    userId: number,
+    dto: CreateInventoryCountDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockOperationResponseDto> {
+    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    assertAdvancedMode(ctx.mode);
+    return this.runStockOperation(ctx, dto.variantId, async (stock) => {
+      const before = this.toSnapshot(stock);
+      assertStockInitialized(before);
+      const quantityChange = dto.quantity - before.quantity;
+      if (quantityChange === 0) {
+        throw new BadRequestException("Counted quantity matches current stock");
+      }
+      const result = applyAdvancedQuantityDelta(
+        before,
+        quantityChange,
+        true,
+      );
+      return {
+        type: StockMovementType.inventory,
+        reason: null,
+        quantityChange,
+        purchasePrice: null,
+        totalCostChange: result.totalCostChange,
+        comment: dto.comment ?? null,
+        after: result.after,
+      };
+    });
+  }
+
+  async createReturn(
+    userId: number,
+    dto: CreateReturnDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockOperationResponseDto> {
+    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    assertAdvancedMode(ctx.mode);
+    return this.runStockOperation(ctx, dto.variantId, async (stock) => {
+      const before = this.toSnapshot(stock);
+      assertStockInitialized(before);
+      const result = applyReturn(before, dto.quantity);
+      return {
+        type: StockMovementType.return,
+        reason: null,
+        quantityChange: dto.quantity,
+        purchasePrice: before.avgPurchasePrice,
+        totalCostChange: result.totalCostChange,
+        comment: dto.comment ?? null,
+        after: result.after,
+      };
+    });
+  }
+
+  async getVariantStock(
+    userId: number,
+    variantId: number,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<VariantStockDto> {
+    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
+    const stock = await this.requireDefaultVariantStock(
+      ctx.workspaceId,
+      variantId,
+    );
+    return this.toStockDto(stock, ctx.mode);
+  }
+
+  async listVariantMovements(
+    userId: number,
+    variantId: number,
+    limit: number,
+    offset: number,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockMovementListResponseDto> {
+    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
+    await this.assertVariantInWorkspace(ctx.workspaceId, variantId);
+
+    const [rows, total] = await this.movementRepo.findAndCount({
+      where: { variantId, workspaceId: ctx.workspaceId },
+      relations: { user: true },
+      order: { createdAt: "DESC", id: "DESC" },
+      take: limit,
+      skip: offset,
+    });
+
+    return {
+      items: rows.map((row) => this.toMovementDto(row, row.user)),
+      total,
+    };
+  }
+
+  async getProductStock(
     userId: number,
     productId: number,
     appRole?: string,
     workspaceIdParam?: number,
-  ): Promise<ProductInventoryResponseDto> {
-    await this.requireInventoryView(userId, appRole, workspaceIdParam);
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      userId,
-      appRole,
-      workspaceIdParam,
-    );
-    assertInventoryMovementsAllowed(workspace.inventoryMode ?? InventoryMode.off);
+  ): Promise<ProductStockListResponseDto> {
+    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
     const product = await this.productRepo.findOne({
-      where: { id: productId, workspaceId: workspace.id },
+      where: { id: productId, workspaceId: ctx.workspaceId },
     });
     if (!product) {
       throw new NotFoundException("Product not found");
@@ -103,99 +304,60 @@ export class InventoryService {
       relations: { customFieldValues: true },
     });
     const fieldDefs =
-      await this.variantCustomFields.listDefinitionsForWorkspace(workspace.id);
+      await this.variantCustomFields.listDefinitionsForWorkspace(ctx.workspaceId);
+    const stocks =
+      variants.length === 0
+        ? []
+        : await this.stockRepo.find({
+            where: {
+              workspaceId: ctx.workspaceId,
+              variantId: In(variants.map((v) => v.id)),
+            },
+          });
+    const stockByVariantId = new Map(stocks.map((s) => [s.variantId, s]));
 
     return {
       productId: product.id,
       variants: variants.map((variant) => {
-        const quantities = toVariantInventoryQuantities(variant);
+        const stock =
+          stockByVariantId.get(variant.id) ??
+          this.emptyStockRow(ctx.workspaceId, variant.id);
+        const dto = this.toStockDto(stock, ctx.mode);
         return {
-          variantId: variant.id,
+          ...dto,
           sku: variant.sku,
           name: buildVariantTitleFromFields(fieldDefs, variant),
-          price: variant.price,
-          quantity: quantities.quantity,
-          reservedQuantity: quantities.reservedQuantity,
-          availableQuantity: quantities.availableQuantity,
-          stockQty: quantities.quantity,
-          stockCostTotal: Number(variant.stockCostTotal),
-          averagePurchasePrice: variant.averagePurchasePrice,
         };
       }),
     };
   }
 
-  async listVariantMovements(
-    userId: number,
-    variantId: number,
-    limit: number,
-    offset: number,
-    appRole?: string,
-    workspaceIdParam?: number,
-  ): Promise<InventoryMovementListResponseDto> {
-    await this.requireInventoryView(userId, appRole, workspaceIdParam);
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      userId,
-      appRole,
-      workspaceIdParam,
-    );
-    assertInventoryMovementsAllowed(workspace.inventoryMode ?? InventoryMode.off);
-    const variant = await this.variantRepo.findOne({
-      where: { id: variantId },
-      relations: { product: true },
-    });
-    if (!variant?.product || variant.product.workspaceId !== workspace.id) {
-      throw new NotFoundException("Variant not found");
+  async getStockMapForVariantIds(
+    workspaceId: number,
+    variantIds: number[],
+  ): Promise<Map<number, VariantStockDto>> {
+    if (variantIds.length === 0) {
+      return new Map();
     }
-
-    const [rows, total] = await this.movementRepo.findAndCount({
-      where: { variantId: variant.id, workspaceId: workspace.id },
-      relations: { createdByUser: true },
-      order: { createdAt: "DESC", id: "DESC" },
-      take: limit,
-      skip: offset,
+    const workspace = await this.workspaceRepo.findOne({
+      where: { id: workspaceId },
     });
-
-    return {
-      items: rows.map((row) => this.toMovementDto(row)),
-      total,
-    };
-  }
-
-  async createMovement(
-    userId: number,
-    dto: CreateInventoryMovementRequestDto,
-    appRole?: string,
-    workspaceIdParam?: number,
-  ): Promise<CreateInventoryMovementResponseDto> {
-    await this.requireInventoryManage(userId, appRole, workspaceIdParam);
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      userId,
-      appRole,
-      workspaceIdParam,
-    );
-    assertInventoryMovementsAllowed(workspace.inventoryMode ?? InventoryMode.off);
-
-    const result = await this.applyMovement({
-      variantId: dto.variantId,
-      workspaceId: workspace.id,
-      type: dto.type,
-      reason: dto.reason,
-      quantity: dto.quantity,
-      purchasePrice: dto.purchasePrice ?? null,
-      comment: dto.comment ?? null,
-      createdByUserId: userId,
+    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+    const rows = await this.stockRepo.find({
+      where: {
+        workspaceId,
+        variantId: In(variantIds),
+      },
     });
-
-    const movementWithUser = await this.movementRepo.findOne({
-      where: { id: result.movement.id },
-      relations: { createdByUser: true },
-    });
-
-    return {
-      movement: this.toMovementDto(movementWithUser ?? result.movement),
-      variant: this.toVariantStateDto(result.variant),
-    };
+    const byVariantId = new Map(rows.map((r) => [r.variantId, r]));
+    const result = new Map<number, VariantStockDto>();
+    for (const variantId of variantIds) {
+      const row =
+        byVariantId.get(variantId) ??
+        this.emptyStockRow(workspaceId, variantId);
+      result.set(variantId, this.toStockDto(row, mode));
+    }
+    return result;
   }
 
   async handleOrderInventoryForStatus(
@@ -211,277 +373,16 @@ export class InventoryService {
       return;
     }
 
-    const mode = await this.workspaceSettings.getInventoryModeForWorkspace(
-      order.workspaceId,
-    );
-    if (!managesStockOnOrders(mode)) {
-      return;
-    }
-
     switch (statusCategory) {
-      case OrderStatusCategory.confirmed:
-        await this.reserveStockForOrder(order, actorUserId);
-        break;
       case OrderStatusCategory.shipped:
-        await this.shipStockForOrder(order, actorUserId, mode);
+        await this.shipStockForOrder(order, actorUserId);
         break;
       case OrderStatusCategory.canceled:
-        await this.releaseStockForOrder(order, actorUserId);
+        await this.restoreStockForOrder(order, actorUserId);
         break;
       default:
         break;
     }
-  }
-
-  /** @deprecated Use handleOrderInventoryForStatus */
-  async deductStockForOrder(
-    orderId: number,
-    actorUserId: number | null,
-  ): Promise<void> {
-    const order = await this.orderRepo.findOne({
-      where: { id: orderId },
-      relations: { status: true },
-    });
-    if (!order?.status) {
-      return;
-    }
-    await this.handleOrderInventoryForStatus(
-      orderId,
-      order.status.category,
-      actorUserId,
-    );
-  }
-
-  private async reserveStockForOrder(
-    order: Order,
-    actorUserId: number | null,
-  ): Promise<void> {
-    for (const item of order.items ?? []) {
-      await this.dataSource.transaction(async (em) => {
-        await this.reserveOrderItem(em, order, item.id, actorUserId);
-      });
-    }
-  }
-
-  private async shipStockForOrder(
-    order: Order,
-    actorUserId: number | null,
-    mode: InventoryMode,
-  ): Promise<void> {
-    for (const item of order.items ?? []) {
-      await this.dataSource.transaction(async (em) => {
-        await this.shipOrderItem(em, order, item.id, actorUserId, mode);
-      });
-    }
-  }
-
-  private async releaseStockForOrder(
-    order: Order,
-    actorUserId: number | null,
-  ): Promise<void> {
-    for (const item of order.items ?? []) {
-      await this.dataSource.transaction(async (em) => {
-        await this.releaseOrderItem(em, order, item.id, actorUserId);
-      });
-    }
-  }
-
-  private async reserveOrderItem(
-    em: EntityManager,
-    order: Order,
-    orderItemId: number,
-    actorUserId: number | null,
-  ): Promise<void> {
-    const lockedItem = await em.findOne(OrderItem, {
-      where: { id: orderItemId },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!lockedItem || lockedItem.stockReservedAt != null) {
-      return;
-    }
-
-    const variant = await this.lockVariantInWorkspace(
-      em,
-      lockedItem.variantId,
-      order.workspaceId,
-    );
-
-    const available = computeAvailableQuantity(variant);
-    if (available < lockedItem.quantity) {
-      throw new BadRequestException(
-        `Insufficient available stock for variant ${variant.id}`,
-      );
-    }
-
-    const now = new Date();
-    await em.save(
-      em.create(InventoryReservation, {
-        workspaceId: order.workspaceId,
-        productId: lockedItem.productId,
-        variantId: lockedItem.variantId,
-        orderId: order.id,
-        orderItemId: lockedItem.id,
-        quantity: lockedItem.quantity,
-        status: InventoryReservationStatus.active,
-        reservedByUserId: actorUserId,
-        reservedAt: now,
-      }),
-    );
-
-    variant.reservedQuantity =
-      variantReservedQuantity(variant) + lockedItem.quantity;
-    await em.save(ProductVariant, variant);
-
-    lockedItem.stockReservedAt = now;
-    await em.save(OrderItem, lockedItem);
-  }
-
-  private async shipOrderItem(
-    em: EntityManager,
-    order: Order,
-    orderItemId: number,
-    actorUserId: number | null,
-    mode: InventoryMode,
-  ): Promise<void> {
-    const lockedItem = await em.findOne(OrderItem, {
-      where: { id: orderItemId },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!lockedItem || lockedItem.stockDeductedAt != null) {
-      return;
-    }
-
-    const reservation = await em.findOne(InventoryReservation, {
-      where: {
-        orderItemId: lockedItem.id,
-        status: InventoryReservationStatus.active,
-      },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!reservation) {
-      throw new BadRequestException(
-        `No active stock reservation for order item ${lockedItem.id}`,
-      );
-    }
-
-    const variant = await this.lockVariantInWorkspace(
-      em,
-      lockedItem.variantId,
-      order.workspaceId,
-    );
-
-    const quantityBefore = variantPhysicalQuantity(variant);
-    const reservedBefore = variantReservedQuantity(variant);
-    const nextQuantity = quantityBefore - lockedItem.quantity;
-    const nextReserved = reservedBefore - lockedItem.quantity;
-
-    if (nextQuantity < 0 || nextReserved < 0) {
-      throw new BadRequestException("Stock quantity cannot become negative");
-    }
-
-    const before: StockState = {
-      quantity: quantityBefore,
-      stockCostTotal: Number(variant.stockCostTotal),
-      averagePurchasePrice: variant.averagePurchasePrice,
-    };
-
-    variant.quantity = nextQuantity;
-    variant.reservedQuantity = nextReserved;
-
-    if (mode === InventoryMode.advanced) {
-      const after = computeDecreaseStock(before, lockedItem.quantity);
-      variant.stockCostTotal = after.stockCostTotal;
-      variant.averagePurchasePrice = after.averagePurchasePrice;
-
-      await em.save(
-        em.create(InventoryMovement, {
-          workspaceId: order.workspaceId,
-          productId: variant.productId,
-          variantId: variant.id,
-          type: InventoryMovementType.decrease,
-          reason: InventoryMovementReason.orderSale,
-          quantityDelta: -lockedItem.quantity,
-          quantityBefore,
-          quantityAfter: nextQuantity,
-          purchasePrice: null,
-          stockCostBefore: before.stockCostTotal,
-          stockCostAfter: after.stockCostTotal,
-          averagePurchasePriceBefore: before.averagePurchasePrice,
-          averagePurchasePriceAfter: after.averagePurchasePrice,
-          comment: null,
-          orderId: order.id,
-          orderItemId: lockedItem.id,
-          createdByUserId: actorUserId,
-        }),
-      );
-    }
-
-    await em.save(ProductVariant, variant);
-
-    const now = new Date();
-    reservation.status = InventoryReservationStatus.deducted;
-    reservation.deductedByUserId = actorUserId;
-    reservation.deductedAt = now;
-    await em.save(InventoryReservation, reservation);
-
-    lockedItem.stockDeductedAt = now;
-    await em.save(OrderItem, lockedItem);
-  }
-
-  private async releaseOrderItem(
-    em: EntityManager,
-    order: Order,
-    orderItemId: number,
-    actorUserId: number | null,
-  ): Promise<void> {
-    const lockedItem = await em.findOne(OrderItem, {
-      where: { id: orderItemId },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!lockedItem || lockedItem.stockDeductedAt != null) {
-      return;
-    }
-    if (lockedItem.stockReleasedAt != null) {
-      return;
-    }
-
-    const reservation = await em.findOne(InventoryReservation, {
-      where: {
-        orderItemId: lockedItem.id,
-        status: InventoryReservationStatus.active,
-      },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!reservation) {
-      return;
-    }
-
-    const variant = await em.findOne(ProductVariant, {
-      where: { id: lockedItem.variantId },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (!variant) {
-      throw new NotFoundException("Variant not found");
-    }
-
-    const nextReserved = variantReservedQuantity(variant) - reservation.quantity;
-    if (nextReserved < 0) {
-      throw new BadRequestException(
-        "Reserved quantity cannot become negative",
-      );
-    }
-
-    variant.reservedQuantity = nextReserved;
-    await em.save(ProductVariant, variant);
-
-    const now = new Date();
-    reservation.status = InventoryReservationStatus.released;
-    reservation.releasedByUserId = actorUserId;
-    reservation.releasedAt = now;
-    await em.save(InventoryReservation, reservation);
-
-    lockedItem.stockReleasedAt = now;
-    await em.save(OrderItem, lockedItem);
   }
 
   buildOrderItemCostSnapshots(
@@ -495,159 +396,433 @@ export class InventoryService {
     totalCostAmount: number | null;
     profitAmount: number | null;
   } {
-    const unitPriceSnapshot = unitPrice;
-    const unitCostSnapshot = unitCost;
-    const totalSaleAmount = Math.round((unitPriceSnapshot * quantity + Number.EPSILON) * 100) / 100;
-    if (unitCostSnapshot == null) {
-      return {
-        unitPriceSnapshot,
-        unitCostSnapshot: null,
-        totalSaleAmount,
-        totalCostAmount: null,
-        profitAmount: null,
-      };
-    }
+    const totalSaleAmount = this.roundMoney(unitPrice * quantity);
     const totalCostAmount =
-      Math.round((unitCostSnapshot * quantity + Number.EPSILON) * 100) / 100;
+      unitCost == null ? null : this.roundMoney(unitCost * quantity);
     const profitAmount =
-      Math.round((totalSaleAmount - totalCostAmount + Number.EPSILON) * 100) /
-      100;
+      totalCostAmount == null
+        ? null
+        : this.roundMoney(totalSaleAmount - totalCostAmount);
     return {
-      unitPriceSnapshot,
-      unitCostSnapshot,
+      unitPriceSnapshot: unitPrice,
+      unitCostSnapshot: unitCost,
       totalSaleAmount,
       totalCostAmount,
       profitAmount,
     };
   }
 
-  private async lockVariantInWorkspace(
-    em: EntityManager,
-    variantId: number,
+  async assertVariantSellable(
     workspaceId: number,
-  ): Promise<ProductVariant> {
-    const variant = await em.findOne(ProductVariant, {
-      where: { id: variantId },
-      lock: { mode: "pessimistic_write" },
+    variantId: number,
+    quantity: number,
+  ): Promise<void> {
+    const workspace = await this.workspaceRepo.findOne({
+      where: { id: workspaceId },
     });
-    if (!variant) {
-      throw new NotFoundException("Variant not found");
+    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+    const stock = await this.requireDefaultVariantStock(workspaceId, variantId);
+    const snapshot = this.toSnapshot(stock);
+    if (mode === InventoryMode.advanced && !snapshot.stockInitialized) {
+      throw new BadRequestException(
+        "Variant stock requires initialization before sale",
+      );
     }
-    const product = await em.findOne(Product, {
-      where: { id: variant.productId, workspaceId },
-    });
-    if (!product) {
-      throw new NotFoundException("Variant not found");
+    if (snapshot.quantity < quantity) {
+      throw new BadRequestException(
+        `Insufficient stock for variant ${variantId}`,
+      );
     }
-    return variant;
   }
 
-  private async applyMovement(
-    input: {
-      variantId: number;
-      workspaceId: number;
-      type: InventoryMovementType;
-      reason: InventoryMovementReason;
-      quantity: number;
+  private async shipStockForOrder(
+    order: Order,
+    actorUserId: number | null,
+  ): Promise<void> {
+    for (const item of order.items ?? []) {
+      await this.dataSource.transaction(async (em) => {
+        await this.shipOrderItem(em, order, item.id, actorUserId);
+      });
+    }
+  }
+
+  private async restoreStockForOrder(
+    order: Order,
+    actorUserId: number | null,
+  ): Promise<void> {
+    for (const item of order.items ?? []) {
+      await this.dataSource.transaction(async (em) => {
+        await this.restoreOrderItem(em, order, item.id, actorUserId);
+      });
+    }
+  }
+
+  private async shipOrderItem(
+    em: EntityManager,
+    order: Order,
+    orderItemId: number,
+    actorUserId: number | null,
+  ): Promise<void> {
+    const lockedItem = await em.findOne(OrderItem, {
+      where: { id: orderItemId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!lockedItem || lockedItem.stockDeductedAt != null) {
+      return;
+    }
+
+    const workspace = await em.findOne(Workspace, {
+      where: { id: order.workspaceId },
+    });
+    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+    const stock = await this.lockVariantStock(
+      em,
+      order.workspaceId,
+      lockedItem.variantId,
+    );
+    const before = this.toSnapshot(stock);
+
+    if (mode === InventoryMode.advanced) {
+      assertStockInitialized(before);
+      const sale = applyAdvancedSale(before, lockedItem.quantity);
+      await this.persistStock(em, stock, sale.after);
+      await em.save(
+        em.create(StockMovement, {
+          workspaceId: order.workspaceId,
+          variantId: lockedItem.variantId,
+          type: StockMovementType.orderSale,
+          quantityChange: sale.quantityChange,
+          purchasePrice: null,
+          totalCostChange: sale.totalCostChange,
+          reason: null,
+          comment: null,
+          orderId: order.id,
+          orderItemId: lockedItem.id,
+          userId: actorUserId,
+        }),
+      );
+    } else {
+      const sale = applySimpleSale(before, lockedItem.quantity);
+      await this.persistStock(em, stock, sale.after);
+      await em.save(
+        em.create(StockMovement, {
+          workspaceId: order.workspaceId,
+          variantId: lockedItem.variantId,
+          type: StockMovementType.simpleOrderSale,
+          quantityChange: sale.quantityChange,
+          purchasePrice: null,
+          totalCostChange: null,
+          reason: null,
+          comment: null,
+          orderId: order.id,
+          orderItemId: lockedItem.id,
+          userId: actorUserId,
+        }),
+      );
+    }
+
+    lockedItem.stockDeductedAt = new Date();
+    await em.save(OrderItem, lockedItem);
+  }
+
+  private async restoreOrderItem(
+    em: EntityManager,
+    order: Order,
+    orderItemId: number,
+    actorUserId: number | null,
+  ): Promise<void> {
+    const lockedItem = await em.findOne(OrderItem, {
+      where: { id: orderItemId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!lockedItem || lockedItem.stockDeductedAt == null) {
+      return;
+    }
+
+    const workspace = await em.findOne(Workspace, {
+      where: { id: order.workspaceId },
+    });
+    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+    const stock = await this.lockVariantStock(
+      em,
+      order.workspaceId,
+      lockedItem.variantId,
+    );
+    const before = this.toSnapshot(stock);
+
+    if (mode === InventoryMode.advanced) {
+      const restored = applyReturn(before, lockedItem.quantity);
+      await this.persistStock(em, stock, restored.after);
+      await em.save(
+        em.create(StockMovement, {
+          workspaceId: order.workspaceId,
+          variantId: lockedItem.variantId,
+          type: StockMovementType.orderCancel,
+          quantityChange: lockedItem.quantity,
+          purchasePrice: before.avgPurchasePrice,
+          totalCostChange: restored.totalCostChange,
+          reason: null,
+          comment: null,
+          orderId: order.id,
+          orderItemId: lockedItem.id,
+          userId: actorUserId,
+        }),
+      );
+    } else {
+      const after = {
+        quantity: before.quantity + lockedItem.quantity,
+        avgPurchasePrice: null,
+        totalCost: null,
+        stockInitialized: false,
+      };
+      await this.persistStock(em, stock, after);
+      await em.save(
+        em.create(StockMovement, {
+          workspaceId: order.workspaceId,
+          variantId: lockedItem.variantId,
+          type: StockMovementType.simpleOrderCancel,
+          quantityChange: lockedItem.quantity,
+          purchasePrice: null,
+          totalCostChange: null,
+          reason: null,
+          comment: null,
+          orderId: order.id,
+          orderItemId: lockedItem.id,
+          userId: actorUserId,
+        }),
+      );
+    }
+
+    lockedItem.stockDeductedAt = null;
+    await em.save(OrderItem, lockedItem);
+  }
+
+  private async runStockOperation(
+    ctx: StockContext,
+    variantId: number,
+    build: (stock: VariantStock) => Promise<{
+      type: StockMovementType;
+      reason: string | null;
+      quantityChange: number;
       purchasePrice: number | null;
+      totalCostChange: number | null;
       comment: string | null;
+      after: StockSnapshot;
       orderId?: number | null;
       orderItemId?: number | null;
-      createdByUserId?: number | null;
-      markOrderItemDeducted?: number;
-    },
-    existingEm?: EntityManager,
-  ): Promise<{ movement: InventoryMovement; variant: ProductVariant }> {
-    if (input.quantity <= 0) {
-      throw new BadRequestException("quantity must be greater than 0");
-    }
-    assertReasonAllowedForType(input.type, input.reason);
-
-    const run = async (
-      em: EntityManager,
-    ): Promise<{ movement: InventoryMovement; variant: ProductVariant }> => {
-      const variant = await this.lockVariantInWorkspace(
+    }>,
+  ): Promise<StockOperationResponseDto> {
+    return this.dataSource.transaction(async (em) => {
+      const stock = await this.lockVariantStock(
         em,
-        input.variantId,
-        input.workspaceId,
+        ctx.workspaceId,
+        variantId,
       );
-
-      const before: StockState = {
-        quantity: variant.quantity ?? 0,
-        stockCostTotal: Number(variant.stockCostTotal),
-        averagePurchasePrice: variant.averagePurchasePrice,
+      const op = await build(stock);
+      await this.persistStock(em, stock, op.after);
+      const movement = await em.save(
+        em.create(StockMovement, {
+          workspaceId: ctx.workspaceId,
+          variantId,
+          type: op.type,
+          quantityChange: op.quantityChange,
+          purchasePrice: op.purchasePrice,
+          totalCostChange: op.totalCostChange,
+          reason: op.reason,
+          comment: op.comment,
+          orderId: op.orderId ?? null,
+          orderItemId: op.orderItemId ?? null,
+          userId: ctx.userId,
+        }),
+      );
+      return {
+        movement: this.toMovementDto(movement, null),
+        stock: this.toStockDto(stock, ctx.mode),
       };
+    });
+  }
 
-      let after: StockState;
-      let quantityDelta: number;
-      let movementPurchasePrice: number | null = input.purchasePrice;
-
-      if (input.type === InventoryMovementType.increase) {
-        movementPurchasePrice = resolveIncreasePurchasePrice(
-          input.reason,
-          input.purchasePrice,
-          before.averagePurchasePrice,
-        );
-        after = computeIncreaseStock(
-          before,
-          input.quantity,
-          movementPurchasePrice,
-        );
-        quantityDelta = input.quantity;
-      } else if (input.type === InventoryMovementType.decrease) {
-        after = computeDecreaseStock(before, input.quantity);
-        quantityDelta = -input.quantity;
-        movementPurchasePrice = null;
-      } else {
-        after = computeSetStock(before, input.quantity, input.purchasePrice);
-        quantityDelta = after.quantity - before.quantity;
-        if (quantityDelta > 0) {
-          movementPurchasePrice =
-            input.purchasePrice ?? before.averagePurchasePrice;
-        } else {
-          movementPurchasePrice = input.purchasePrice ?? null;
-        }
-      }
-
-      variant.quantity = after.quantity;
-      variant.stockCostTotal = after.stockCostTotal;
-      variant.averagePurchasePrice = after.averagePurchasePrice;
-      await em.save(ProductVariant, variant);
-
-      const movement = em.create(InventoryMovement, {
-        workspaceId: input.workspaceId,
-        productId: variant.productId,
-        variantId: variant.id,
-        type: input.type,
-        reason: input.reason,
-        quantityDelta,
-        quantityBefore: before.quantity,
-        quantityAfter: after.quantity,
-        purchasePrice: movementPurchasePrice,
-        stockCostBefore: before.stockCostTotal,
-        stockCostAfter: after.stockCostTotal,
-        averagePurchasePriceBefore: before.averagePurchasePrice,
-        averagePurchasePriceAfter: after.averagePurchasePrice,
-        comment: input.comment,
-        orderId: input.orderId ?? null,
-        orderItemId: input.orderItemId ?? null,
-        createdByUserId: input.createdByUserId ?? null,
-      });
-      const savedMovement = await em.save(InventoryMovement, movement);
-
-      if (input.markOrderItemDeducted != null) {
-        await em.update(OrderItem, input.markOrderItemDeducted, {
-          stockDeductedAt: new Date(),
-        });
-      }
-
-      return { movement: savedMovement, variant };
+  private async requireManageContext(
+    userId: number,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockContext> {
+    await this.requireInventoryManage(userId, appRole, workspaceIdParam);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
+    return {
+      workspaceId: workspace.id,
+      mode: workspace.inventoryMode ?? InventoryMode.simple,
+      userId,
     };
+  }
 
-    if (existingEm) {
-      return run(existingEm);
+  private async requireViewContext(
+    userId: number,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<{ workspaceId: number; mode: InventoryMode }> {
+    await this.requireInventoryView(userId, appRole, workspaceIdParam);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
+    return {
+      workspaceId: workspace.id,
+      mode: workspace.inventoryMode ?? InventoryMode.simple,
+    };
+  }
+
+  private async ensureVariantStock(
+    em: EntityManager,
+    workspaceId: number,
+    variantId: number,
+  ): Promise<VariantStock> {
+    let stock = await em.findOne(VariantStock, {
+      where: { workspaceId, variantId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!stock) {
+      stock = await em.save(
+        em.create(VariantStock, {
+          workspaceId,
+          variantId,
+          quantity: 0,
+          avgPurchasePrice: null,
+          totalCost: null,
+          stockInitialized: false,
+        }),
+      );
     }
-    return this.dataSource.transaction(run);
+    return stock;
+  }
+
+  private async lockVariantStock(
+    em: EntityManager,
+    workspaceId: number,
+    variantId: number,
+  ): Promise<VariantStock> {
+    await this.assertVariantInWorkspace(workspaceId, variantId, em);
+    return this.ensureVariantStock(em, workspaceId, variantId);
+  }
+
+  private async requireDefaultVariantStock(
+    workspaceId: number,
+    variantId: number,
+  ): Promise<VariantStock> {
+    await this.assertVariantInWorkspace(workspaceId, variantId);
+    let stock = await this.stockRepo.findOne({
+      where: {
+        workspaceId,
+        variantId,
+      },
+    });
+    if (!stock) {
+      stock = await this.stockRepo.save(
+        this.stockRepo.create({
+          workspaceId,
+          variantId,
+          quantity: 0,
+          avgPurchasePrice: null,
+          totalCost: null,
+          stockInitialized: false,
+        }),
+      );
+    }
+    return stock;
+  }
+
+  private async assertVariantInWorkspace(
+    workspaceId: number,
+    variantId: number,
+    em?: EntityManager,
+  ): Promise<void> {
+    const variantRepo = em
+      ? em.getRepository(ProductVariant)
+      : this.variantRepo;
+    const variant = await variantRepo.findOne({
+      where: { id: variantId },
+      relations: { product: true },
+    });
+    if (!variant?.product || variant.product.workspaceId !== workspaceId) {
+      throw new NotFoundException("Variant not found");
+    }
+  }
+
+  private persistStock(
+    em: EntityManager,
+    stock: VariantStock,
+    after: StockSnapshot,
+  ): Promise<VariantStock> {
+    stock.quantity = after.quantity;
+    stock.avgPurchasePrice = after.avgPurchasePrice;
+    stock.totalCost = after.totalCost;
+    stock.stockInitialized = after.stockInitialized;
+    return em.save(VariantStock, stock);
+  }
+
+  private toSnapshot(stock: VariantStock): StockSnapshot {
+    return {
+      quantity: stock.quantity,
+      avgPurchasePrice: stock.avgPurchasePrice,
+      totalCost: stock.totalCost,
+      stockInitialized: stock.stockInitialized,
+    };
+  }
+
+  private emptyStockRow(
+    workspaceId: number,
+    variantId: number,
+  ): VariantStock {
+    return this.stockRepo.create({
+      workspaceId,
+      variantId,
+      quantity: 0,
+      avgPurchasePrice: null,
+      totalCost: null,
+      stockInitialized: false,
+    });
+  }
+
+  private toStockDto(stock: VariantStock, mode: InventoryMode): VariantStockDto {
+    return {
+      variantId: stock.variantId,
+      quantity: stock.quantity,
+      avgPurchasePrice: stock.avgPurchasePrice,
+      totalCost: stock.totalCost,
+      stockInitialized: stock.stockInitialized,
+      requiresInitialization:
+        mode === InventoryMode.advanced && !stock.stockInitialized,
+    };
+  }
+
+  private toMovementDto(
+    row: StockMovement,
+    user: { id: number; name?: string | null } | null | undefined,
+  ): StockMovementItemDto {
+    return {
+      id: row.id,
+      type: row.type,
+      reason: row.reason,
+      quantityChange: row.quantityChange,
+      purchasePrice: row.purchasePrice,
+      totalCostChange: row.totalCostChange,
+      comment: row.comment,
+      orderId: row.orderId,
+      orderItemId: row.orderItemId,
+      user:
+        user == null
+          ? null
+          : {
+              id: user.id,
+              name: user.name?.trim() || `User #${user.id}`,
+            },
+      createdAt: row.createdAt,
+    };
   }
 
   private async requireInventoryView(
@@ -682,49 +857,7 @@ export class InventoryService {
     }
   }
 
-  private toMovementDto(row: InventoryMovement): InventoryMovementItemDto {
-    const user = row.createdByUser;
-    const name =
-      user == null
-        ? null
-        : [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
-          user.email ||
-          `User #${user.id}`;
-
-    return {
-      id: row.id,
-      type: row.type,
-      reason: row.reason,
-      quantityDelta: row.quantityDelta,
-      quantityBefore: row.quantityBefore,
-      quantityAfter: row.quantityAfter,
-      purchasePrice: row.purchasePrice,
-      stockCostBefore: Number(row.stockCostBefore),
-      stockCostAfter: Number(row.stockCostAfter),
-      averagePurchasePriceBefore: row.averagePurchasePriceBefore,
-      averagePurchasePriceAfter: row.averagePurchasePriceAfter,
-      comment: row.comment,
-      createdByUser:
-        user == null
-          ? null
-          : {
-              id: user.id,
-              name: name ?? `User #${user.id}`,
-            },
-      createdAt: row.createdAt,
-    };
-  }
-
-  private toVariantStateDto(variant: ProductVariant): InventoryVariantStateDto {
-    const quantities = toVariantInventoryQuantities(variant);
-    return {
-      id: variant.id,
-      quantity: quantities.quantity,
-      reservedQuantity: quantities.reservedQuantity,
-      availableQuantity: quantities.availableQuantity,
-      stockQty: quantities.quantity,
-      stockCostTotal: Number(variant.stockCostTotal),
-      averagePurchasePrice: variant.averagePurchasePrice,
-    };
+  private roundMoney(n: number): number {
+    return Math.round((n + Number.EPSILON) * 100) / 100;
   }
 }

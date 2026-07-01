@@ -55,38 +55,6 @@ export class ProductVariant {
   @Column({ name: "in_stock", type: "boolean", nullable: true })
   inStock: boolean | null;
 
-  @Column({ type: "int", nullable: true })
-  quantity: number | null;
-
-  @Column({ name: "reserved_quantity", type: "int", default: 0 })
-  reservedQuantity: number;
-
-  @Column({
-    name: "stock_cost_total",
-    type: "decimal",
-    precision: 14,
-    scale: 2,
-    default: 0,
-    transformer: {
-      to: (v: number) => v,
-      from: (v: string | null) => (v == null ? 0 : Number(v)),
-    },
-  })
-  stockCostTotal: number;
-
-  @Column({
-    name: "average_purchase_price",
-    type: "decimal",
-    precision: 14,
-    scale: 2,
-    nullable: true,
-    transformer: {
-      to: (v: number | null) => v,
-      from: (v: string | null) => (v == null ? null : Number(v)),
-    },
-  })
-  averagePurchasePrice: number | null;
-
   @Column({ type: "varchar", length: 128, nullable: true })
   sku: string | null;
 

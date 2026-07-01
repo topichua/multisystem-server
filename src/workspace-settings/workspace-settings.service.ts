@@ -4,7 +4,8 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { InventoryMode, Workspace } from "../database/entities";
+import { InventoryMode, VariantStock, Workspace } from "../database/entities";
+import { resetAdvancedStockOnModeSwitch } from "../inventory/stock.logic";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { UpdateWorkspaceSettingsDto } from "./dto/update-workspace-settings.dto";
 import type { WorkspaceSettingsResponseDto } from "./dto/workspace-settings-response.dto";
@@ -14,6 +15,8 @@ export class WorkspaceSettingsService {
   constructor(
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
+    @InjectRepository(VariantStock)
+    private readonly stockRepo: Repository<VariantStock>,
     private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
@@ -32,6 +35,8 @@ export class WorkspaceSettingsService {
       );
     }
     const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const previousMode = ws.inventoryMode ?? InventoryMode.simple;
+
     if (dto.currency !== undefined) {
       const code = dto.currency.slice(0, 8);
       if (!code) {
@@ -39,14 +44,21 @@ export class WorkspaceSettingsService {
       }
       ws.defaultCurrency = code;
     }
+
     if (dto.inventoryMode !== undefined) {
       ws.inventoryMode = dto.inventoryMode;
+      if (
+        previousMode === InventoryMode.simple &&
+        dto.inventoryMode === InventoryMode.advanced
+      ) {
+        await this.resetStocksForAdvancedSwitch(ws.id);
+      }
     }
+
     await this.workspaceRepo.save(ws);
     return this.toDto(ws);
   }
 
-  /** Default product/catalog currency when the client omits `currency`. */
   async getDefaultCurrencyForOwner(ownerId: number): Promise<string> {
     const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     return (ws.defaultCurrency?.trim() || "UAH").slice(0, 8);
@@ -54,19 +66,32 @@ export class WorkspaceSettingsService {
 
   async getInventoryModeForWorkspace(workspaceId: number): Promise<InventoryMode> {
     const ws = await this.workspaceRepo.findOne({ where: { id: workspaceId } });
-    return ws?.inventoryMode ?? InventoryMode.off;
+    return ws?.inventoryMode ?? InventoryMode.simple;
   }
 
-  async getInventoryModeForOwner(ownerId: number): Promise<InventoryMode> {
-    const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    return ws.inventoryMode ?? InventoryMode.off;
+  private async resetStocksForAdvancedSwitch(workspaceId: number): Promise<void> {
+    const rows = await this.stockRepo.find({ where: { workspaceId } });
+    for (const row of rows) {
+      const after = resetAdvancedStockOnModeSwitch({
+        quantity: row.quantity,
+        avgPurchasePrice: row.avgPurchasePrice,
+        totalCost: row.totalCost,
+        stockInitialized: row.stockInitialized,
+      });
+      row.avgPurchasePrice = after.avgPurchasePrice;
+      row.totalCost = after.totalCost;
+      row.stockInitialized = after.stockInitialized;
+    }
+    if (rows.length > 0) {
+      await this.stockRepo.save(rows);
+    }
   }
 
   private toDto(ws: Workspace): WorkspaceSettingsResponseDto {
     return {
       workspaceId: ws.id,
       currency: (ws.defaultCurrency?.trim() || "UAH").slice(0, 8),
-      inventoryMode: ws.inventoryMode ?? InventoryMode.off,
+      inventoryMode: ws.inventoryMode ?? InventoryMode.simple,
     };
   }
 }
