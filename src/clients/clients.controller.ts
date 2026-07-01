@@ -47,25 +47,47 @@ export class ClientsController {
 
   @Get()
   @ApiOperation({
-    summary: "List clients or look up by Instagram id",
+    summary: "List clients or look up by id / social user id",
     description:
-      "**Modes:** (1) Pass `instagramId` — same as before: one lookup in your workspace; HTTP 200 with `associated: false` if none. (2) Omit `instagramId` — paginated list of all clients in your workspace (`page` / `pageSize`, defaults 1 / 50).",
+      "**Lookup** (at most one of): `id`, `instagramUserId` / `instagramId`, `telegramUserId` — returns `ClientLookupResponseDto` (HTTP 200, `associated: false` if none). **List:** omit all lookup params — paginated workspace clients (`page` / `pageSize`, defaults 1 / 50).",
   })
   @ApiOkResponse({
     description:
-      "`ClientLookupResponseDto` when `instagramId` is set; `ClientsListResponseDto` when listing.",
+      "`ClientLookupResponseDto` when a lookup param is set; `ClientsListResponseDto` when listing.",
   })
   async listOrLookup(
     @Req() req: { user?: AuthUser },
     @Query() query: ListClientsQueryDto,
   ): Promise<ClientLookupResponseDto | ClientsListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    if (query.instagramId !== undefined) {
-      return this.clients.lookupByInstagramIdForOwner(
-        ownerId,
-        query.instagramId,
+    const instagramUserId = query.instagramUserId ?? query.instagramId;
+    const lookupModes = [
+      query.id != null,
+      instagramUserId != null,
+      query.telegramUserId != null,
+    ].filter(Boolean).length;
+    if (lookupModes > 1) {
+      throw new BadRequestException(
+        "Provide at most one of id, instagramUserId, instagramId, or telegramUserId",
       );
     }
+
+    if (query.id != null) {
+      return this.clients.lookupByIdForOwner(ownerId, query.id);
+    }
+    if (instagramUserId != null) {
+      return this.clients.lookupByInstagramIdForOwner(
+        ownerId,
+        instagramUserId,
+      );
+    }
+    if (query.telegramUserId != null) {
+      return this.clients.lookupByTelegramUserIdForOwner(
+        ownerId,
+        query.telegramUserId,
+      );
+    }
+
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
     return this.clients.listPagedForOwner(ownerId, page, pageSize);

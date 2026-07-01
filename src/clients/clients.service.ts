@@ -144,6 +144,13 @@ export class ClientsService {
     };
   }
 
+  async lookupByIdForOwner(
+    ownerId: number,
+    clientId: number,
+  ): Promise<ClientLookupResponseDto> {
+    return this.lookupOneInWorkspaceForOwner(ownerId, { id: clientId });
+  }
+
   async lookupByInstagramIdForOwner(
     ownerId: number,
     instagramIdRaw: string,
@@ -151,25 +158,25 @@ export class ClientsService {
     const instagramUserId = instagramIdRaw.trim();
     if (!instagramUserId) {
       throw new BadRequestException(
-        "instagramId query parameter is required and non-empty",
+        "instagramUserId / instagramId query parameter is required and non-empty",
       );
     }
 
-    const workspaceId =
-      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    return this.lookupOneInWorkspaceForOwner(ownerId, { instagramUserId });
+  }
 
-    const row = await this.clientRepo.findOne({
-      where: { instagramUserId, workspaceId },
-    });
-
-    if (!row) {
-      return { associated: false, status: "ok" };
+  async lookupByTelegramUserIdForOwner(
+    ownerId: number,
+    telegramUserIdRaw: string,
+  ): Promise<ClientLookupResponseDto> {
+    const telegramUserId = telegramUserIdRaw.trim();
+    if (!telegramUserId) {
+      throw new BadRequestException(
+        "telegramUserId query parameter is required and non-empty",
+      );
     }
 
-    return {
-      associated: true,
-      client: this.toClientDto(row),
-    };
+    return this.lookupOneInWorkspaceForOwner(ownerId, { telegramUserId });
   }
 
   async getByIdForOwner(
@@ -185,6 +192,30 @@ export class ClientsService {
       throw new NotFoundException("Client not found");
     }
     return this.toClientDto(row);
+  }
+
+  private async lookupOneInWorkspaceForOwner(
+    ownerId: number,
+    where: Pick<
+      FindOptionsWhere<Client>,
+      "id" | "instagramUserId" | "telegramUserId"
+    >,
+  ): Promise<ClientLookupResponseDto> {
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+
+    const row = await this.clientRepo.findOne({
+      where: { ...where, workspaceId },
+    });
+
+    if (!row) {
+      return { associated: false, status: "ok" };
+    }
+
+    return {
+      associated: true,
+      client: this.toClientDto(row),
+    };
   }
 
   private parseSocialLinkInput(dto: CreateClientRequestDto): {

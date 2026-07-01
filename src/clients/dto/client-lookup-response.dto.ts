@@ -8,7 +8,7 @@ import { ClientResponseDto } from "./client-response.dto";
 export class ClientLookupResponseDto {
   @ApiProperty({
     description:
-      "When true, `client` is populated. When false, no row exists for this Instagram id in your workspace — still a successful response (`status: ok`).",
+      "When true, `client` is populated. When false, no matching client exists in your workspace — still a successful response (`status: ok`).",
   })
   associated: boolean;
 
