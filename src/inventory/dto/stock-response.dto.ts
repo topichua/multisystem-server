@@ -11,7 +11,7 @@ export class StockMovementUserDto {
 
 export class StockMovementItemDto {
   @ApiProperty()
-  id: string;
+  id: number;
 
   @ApiProperty({ enum: StockMovementType })
   type: StockMovementType;

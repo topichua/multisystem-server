@@ -95,6 +95,7 @@ import { StockEngine1744200000096 } from "./migrations/1744200000096-StockEngine
 import { StockMovementReasonText1744200000097 } from "./migrations/1744200000097-StockMovementReasonText";
 import { DropWarehouses1744200000098 } from "./migrations/1744200000098-DropWarehouses";
 import { DropProductDraftDeleteTrigger1744200000099 } from "./migrations/1744200000099-DropProductDraftDeleteTrigger";
+import { StockMovementIntegerId1744200000100 } from "./migrations/1744200000100-StockMovementIntegerId";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -359,6 +360,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       StockMovementReasonText1744200000097,
       DropWarehouses1744200000098,
       DropProductDraftDeleteTrigger1744200000099,
+      StockMovementIntegerId1744200000100,
     ],
   };
 }

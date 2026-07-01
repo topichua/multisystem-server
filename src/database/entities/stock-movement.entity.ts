@@ -24,8 +24,8 @@ const moneyTransformer = {
 @Index("IDX_stock_movements_variant_id", ["variantId"])
 @Index("IDX_stock_movements_created_at", ["createdAt"])
 export class StockMovement {
-  @PrimaryGeneratedColumn("uuid", { name: "id" })
-  id: string;
+  @PrimaryGeneratedColumn({ name: "id" })
+  id: number;
 
   @Column({ name: "workspace_id", type: "int" })
   workspaceId: number;

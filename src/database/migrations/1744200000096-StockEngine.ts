@@ -86,7 +86,7 @@ export class StockEngine1744200000096 implements MigrationInterface {
     `);
     await queryRunner.query(`
       CREATE TABLE "stock_movements" (
-        "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+        "id" SERIAL NOT NULL,
         "workspace_id" integer NOT NULL,
         "variant_id" integer NOT NULL,
         "type" "stock_movement_type_enum" NOT NULL,
