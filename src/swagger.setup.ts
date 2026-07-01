@@ -22,6 +22,7 @@ export function setupSwagger(app: INestApplication, path = "api"): void {
     .addTag("app", "Health and status")
     .addTag("auth", "Authentication")
     .addTag("admin — users", "User management (super_admin only)")
+    .addTag("clients", "CRM clients and social account links (`client_links`)")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

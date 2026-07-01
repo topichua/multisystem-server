@@ -285,11 +285,37 @@ export class ClientsService {
       }),
     );
 
-    const socialIds = await this.loadSocialIdsByClientIds([clientId]);
-    return this.toWriteClientDto(
-      row,
-      socialIds.get(clientId) ?? EMPTY_SOCIAL_IDS,
-    );
+    return this.writeClientDtoWithLinks(row, clientId);
+  }
+
+  async removeLinkForOwner(
+    ownerId: number,
+    clientId: number,
+    provider: ClientLinkProvider,
+    externalIdRaw: string,
+  ): Promise<ClientWriteResponseDto> {
+    const externalId = externalIdRaw.trim();
+    if (!externalId) {
+      throw new BadRequestException("externalId is required and non-empty");
+    }
+
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const row = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!row) {
+      throw new NotFoundException("Client not found");
+    }
+
+    await this.clientLinkRepo.delete({
+      clientId,
+      workspaceId,
+      provider,
+      externalId,
+    });
+
+    return this.writeClientDtoWithLinks(row, clientId);
   }
 
   async getByIdForOwner(
@@ -521,6 +547,17 @@ export class ClientsService {
         includeAvatarSrc: options.includeAvatarSrc === true,
       });
     });
+  }
+
+  private async writeClientDtoWithLinks(
+    row: Client,
+    clientId: number,
+  ): Promise<ClientWriteResponseDto> {
+    const socialIds = await this.loadSocialIdsByClientIds([clientId]);
+    return this.toWriteClientDto(
+      row,
+      socialIds.get(clientId) ?? EMPTY_SOCIAL_IDS,
+    );
   }
 
   private toWriteClientDto(

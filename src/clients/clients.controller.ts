@@ -38,7 +38,6 @@ import { GetClientQueryDto } from "./dto/get-client-query.dto";
 import { ListClientsQueryDto } from "./dto/list-clients-query.dto";
 import { ClientOrderStatsResponseDto } from "./dto/client-order-stats-response.dto";
 import { ClientWriteResponseDto } from "./dto/client-write-response.dto";
-import { AddClientLinkRequestDto } from "./dto/add-client-link-request.dto";
 import { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
 @ApiTags("clients")
@@ -186,37 +185,6 @@ export class ClientsController {
     return this.clients.getByIdForOwner(ownerId, clientId, {
       includeOrderStat: query.include_order_stat === true,
     });
-  }
-
-  @Post(":id/links")
-  @ApiOperation({
-    summary: "Attach social link to client",
-    description:
-      "Adds one row to `client_links` for an existing client. Idempotent when the same link is already attached to this client. " +
-      "Returns HTTP 409 if another client in the workspace already uses the same `externalId`.",
-  })
-  @ApiParam({ name: "id", type: Number, description: "Client primary key" })
-  @ApiBody({ type: AddClientLinkRequestDto })
-  @ApiCreatedResponse({ type: ClientWriteResponseDto })
-  async addLink(
-    @Req() req: { user?: AuthUser },
-    @Param("id") id: string,
-    @Body() dto: AddClientLinkRequestDto,
-  ): Promise<ClientWriteResponseDto> {
-    const ownerId = this.requireNumericOwnerId(req);
-    const clientId = this.parsePositiveInt(id, "id");
-    const externalId = dto.resolvedExternalId();
-    if (!externalId) {
-      throw new BadRequestException(
-        "externalId is required (or use deprecated instagramUserId / telegramUserId matching provider)",
-      );
-    }
-    return this.clients.addLinkForOwner(
-      ownerId,
-      clientId,
-      dto.provider,
-      externalId,
-    );
   }
 
   @Put(":id")

@@ -8,6 +8,7 @@ import {
 } from "../database/entities";
 import { OrdersModule } from "../orders/orders.module";
 import { ClientsController } from "./clients.controller";
+import { ClientLinksController } from "./client-links.controller";
 import { ClientsService } from "./clients.service";
 
 @Module({
@@ -15,7 +16,7 @@ import { ClientsService } from "./clients.service";
     TypeOrmModule.forFeature([Client, ClientLink, InstagramUser, TelegramUser]),
     OrdersModule,
   ],
-  controllers: [ClientsController],
+  controllers: [ClientLinksController, ClientsController],
   providers: [ClientsService],
   exports: [ClientsService],
 })

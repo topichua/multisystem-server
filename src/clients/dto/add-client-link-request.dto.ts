@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { ClientLinkProvider } from "../../database/entities/client-link-provider.enum";
 
+/** POST / DELETE /clients/:id/links — attach or detach a social account link. */
 export class AddClientLinkRequestDto {
   @ApiProperty({
     enum: ClientLinkProvider,
