@@ -1,5 +1,16 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsOptional, IsString, MaxLength } from "class-validator";
+import { Transform } from "class-transformer";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from "class-validator";
+import {
+  appendSingularToArray,
+  normalizeStringArray,
+} from "./client-link-input.util";
 
 export class CreateClientRequestDto {
   @ApiPropertyOptional({
@@ -27,10 +38,35 @@ export class CreateClientRequestDto {
   phone?: string;
 
   @ApiPropertyOptional({
-    nullable: true,
+    type: [String],
     description:
-      "Instagram scoped user id (`instagram_users.id`). Omit or null for no Instagram link. " +
-      "Mutually exclusive with `telegramUserId`.",
+      "Instagram scoped user ids (`client_links.external_id`, provider `instagram`).",
+  })
+  @IsOptional()
+  @Transform(({ value }) => normalizeStringArray(value))
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(255, { each: true })
+  instagramUserIds?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      "Telegram user ids (`client_links.external_id`, provider `telegram`).",
+  })
+  @IsOptional()
+  @Transform(({ value }) => normalizeStringArray(value))
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(32, { each: true })
+  telegramUserIds?: string[];
+
+  @ApiPropertyOptional({
+    nullable: true,
+    deprecated: true,
+    description: "Deprecated alias — appended to `instagramUserIds` when set.",
   })
   @IsOptional()
   @IsString()
@@ -39,9 +75,8 @@ export class CreateClientRequestDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description:
-      "Telegram user id (`telegram_users.id`). Omit or null for no Telegram link. " +
-      "Mutually exclusive with `instagramUserId`.",
+    deprecated: true,
+    description: "Deprecated alias — appended to `telegramUserIds` when set.",
   })
   @IsOptional()
   @IsString()
@@ -51,10 +86,28 @@ export class CreateClientRequestDto {
   @ApiPropertyOptional({
     nullable: true,
     deprecated: true,
-    description: "Alias for `instagramUserId` (kept for backward compatibility).",
+    description: "Deprecated alias for `instagramUserId`.",
   })
   @IsOptional()
   @IsString()
   @MaxLength(255)
   instagramId?: string | null;
+
+  resolvedInstagramUserIds(): string[] | undefined {
+    const singular =
+      this.instagramUserId !== undefined ? this.instagramUserId : this.instagramId;
+    const merged = appendSingularToArray(this.instagramUserIds, singular);
+    if (merged === undefined) {
+      return undefined;
+    }
+    return [...new Set(merged)];
+  }
+
+  resolvedTelegramUserIds(): string[] | undefined {
+    const merged = appendSingularToArray(this.telegramUserIds, this.telegramUserId);
+    if (merged === undefined) {
+      return undefined;
+    }
+    return [...new Set(merged)];
+  }
 }

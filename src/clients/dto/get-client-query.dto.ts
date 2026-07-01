@@ -16,8 +16,9 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
 export class GetClientQueryDto {
   @ApiPropertyOptional({
     description:
-      "When true, includes `orderStats` on the client (order count, total spent, average order price, last order date).",
+      "When true, includes `orderStats` on the client. `avatar_src` is always included on GET.",
     example: true,
+    default: false,
   })
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))

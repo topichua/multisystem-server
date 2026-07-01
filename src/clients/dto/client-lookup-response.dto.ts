@@ -7,6 +7,7 @@ import { ClientResponseDto } from "./client-response.dto";
  */
 export class ClientLookupResponseDto {
   @ApiProperty({
+    example: true,
     description:
       "When true, `client` is populated. When false, no matching client exists in your workspace — still a successful response (`status: ok`).",
   })
@@ -14,10 +15,16 @@ export class ClientLookupResponseDto {
 
   @ApiPropertyOptional({
     enum: ["ok"],
+    example: "ok",
     description: "Set when `associated` is false.",
   })
   status?: "ok";
 
-  @ApiPropertyOptional({ type: ClientResponseDto, nullable: true })
+  @ApiPropertyOptional({
+    type: ClientResponseDto,
+    nullable: true,
+    description:
+      "Populated when `associated` is true. Includes `avatar_src`; `orderStats` when `include_order_stat=true`.",
+  })
   client?: ClientResponseDto | null;
 }

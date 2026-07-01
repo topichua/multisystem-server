@@ -5,10 +5,17 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { FindOptionsWhere, In, Not, Repository } from "typeorm";
-import { Client, InstagramUser, TelegramUser } from "../database/entities";
+import { In, Repository } from "typeorm";
+import {
+  Client,
+  ClientLink,
+  ClientLinkProvider,
+  InstagramUser,
+  TelegramUser,
+} from "../database/entities";
 import { OrdersService } from "../orders/orders.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import type { ClientSocialIds } from "./dto/client-link-input.util";
 import type { ClientOrderStatDto } from "./dto/client-order-stat.dto";
 import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import type { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
@@ -25,11 +32,18 @@ type ClientSerializeOptions = ClientReadOptions & {
   includeAvatarSrc?: boolean;
 };
 
+const EMPTY_SOCIAL_IDS: ClientSocialIds = {
+  instagramUserIds: [],
+  telegramUserIds: [],
+};
+
 @Injectable()
 export class ClientsService {
   constructor(
     @InjectRepository(Client)
     private readonly clientRepo: Repository<Client>,
+    @InjectRepository(ClientLink)
+    private readonly clientLinkRepo: Repository<ClientLink>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
     @InjectRepository(TelegramUser)
@@ -44,28 +58,29 @@ export class ClientsService {
   ): Promise<ClientWriteResponseDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-    const { instagramUserId, telegramUserId } =
-      this.parseSocialLinkInput(dto);
+    const instagramUserIds = dto.resolvedInstagramUserIds() ?? [];
+    const telegramUserIds = dto.resolvedTelegramUserIds() ?? [];
 
     const row = this.clientRepo.create({
       firstName: (dto.first_name?.trim() ?? "") || "",
       lastName: (dto.last_name?.trim() ?? "") || "",
       phone: (dto.phone?.trim() ?? "") || "",
-      instagramUserId: await this.resolveInstagramUserIdForWorkspace(
-        workspaceId,
-        instagramUserId,
-        undefined,
-      ),
-      telegramUserId: await this.resolveTelegramUserIdForWorkspace(
-        workspaceId,
-        telegramUserId,
-        undefined,
-      ),
       workspaceId,
     });
-    this.assertSingleSocialLink(row.instagramUserId, row.telegramUserId);
-    await this.clientRepo.save(row);
-    return this.toWriteClientDto(row);
+
+    return this.clientRepo.manager.transaction(async (em) => {
+      const clientRepo = em.getRepository(Client);
+      const linkRepo = em.getRepository(ClientLink);
+      const saved = await clientRepo.save(row);
+      await this.replaceClientLinksInTransaction(linkRepo, {
+        clientId: saved.id,
+        workspaceId,
+        instagramUserIds,
+        telegramUserIds,
+      });
+      const socialIds = { instagramUserIds, telegramUserIds };
+      return this.toWriteClientDto(saved, socialIds);
+    });
   }
 
   async updateForOwner(
@@ -94,32 +109,40 @@ export class ClientsService {
     if (dto.phone !== undefined) {
       row.phone = dto.phone.trim();
     }
-    const instagramRaw =
-      dto.instagramUserId !== undefined ? dto.instagramUserId : dto.instagramId;
-    if (instagramRaw !== undefined || dto.telegramUserId !== undefined) {
-      this.assertSocialLinkInputNotBoth(instagramRaw, dto.telegramUserId);
-    }
-    if (
-      dto.instagramUserId !== undefined ||
-      dto.instagramId !== undefined
-    ) {
-      row.instagramUserId = await this.resolveInstagramUserIdForWorkspace(
-        workspaceId,
-        instagramRaw,
-        row.id,
-      );
-    }
-    if (dto.telegramUserId !== undefined) {
-      row.telegramUserId = await this.resolveTelegramUserIdForWorkspace(
-        workspaceId,
-        dto.telegramUserId,
-        row.id,
-      );
-    }
-    this.assertSingleSocialLink(row.instagramUserId, row.telegramUserId);
 
-    await this.clientRepo.save(row);
-    return this.toWriteClientDto(row);
+    const instagramUserIds = dto.resolvedInstagramUserIds();
+    const telegramUserIds = dto.resolvedTelegramUserIds();
+
+    return this.clientRepo.manager.transaction(async (em) => {
+      const clientRepo = em.getRepository(Client);
+      const linkRepo = em.getRepository(ClientLink);
+      const saved = await clientRepo.save(row);
+
+      if (instagramUserIds !== undefined) {
+        await this.replaceProviderLinksInTransaction(
+          linkRepo,
+          saved.id,
+          workspaceId,
+          ClientLinkProvider.INSTAGRAM,
+          instagramUserIds,
+        );
+      }
+      if (telegramUserIds !== undefined) {
+        await this.replaceProviderLinksInTransaction(
+          linkRepo,
+          saved.id,
+          workspaceId,
+          ClientLinkProvider.TELEGRAM,
+          telegramUserIds,
+        );
+      }
+
+      const socialIds = await this.loadSocialIdsByClientIds([saved.id]);
+      return this.toWriteClientDto(
+        saved,
+        socialIds.get(saved.id) ?? EMPTY_SOCIAL_IDS,
+      );
+    });
   }
 
   async deleteForOwner(ownerId: number, clientId: number): Promise<void> {
@@ -131,10 +154,6 @@ export class ClientsService {
     }
   }
 
-  /**
-   * Looks up `clients.instagram_user_id` within the owner’s workspace.
-   * Missing client → HTTP 200 with `{ associated: false, status: 'ok' }` (not 404).
-   */
   async listPagedForOwner(
     ownerId: number,
     page: number,
@@ -166,11 +185,15 @@ export class ClientsService {
     clientId: number,
     options?: ClientReadOptions,
   ): Promise<ClientLookupResponseDto> {
-    return this.lookupOneInWorkspaceForOwner(
-      ownerId,
-      { id: clientId },
-      options,
-    );
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const row = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!row) {
+      return { associated: false, status: "ok" };
+    }
+    return this.clientLookupFromRow(row, workspaceId, options);
   }
 
   async lookupByInstagramIdForOwner(
@@ -178,16 +201,16 @@ export class ClientsService {
     instagramIdRaw: string,
     options?: ClientReadOptions,
   ): Promise<ClientLookupResponseDto> {
-    const instagramUserId = instagramIdRaw.trim();
-    if (!instagramUserId) {
+    const externalId = instagramIdRaw.trim();
+    if (!externalId) {
       throw new BadRequestException(
         "instagramUserId / instagramId query parameter is required and non-empty",
       );
     }
-
-    return this.lookupOneInWorkspaceForOwner(
+    return this.lookupByExternalIdForOwner(
       ownerId,
-      { instagramUserId },
+      ClientLinkProvider.INSTAGRAM,
+      externalId,
       options,
     );
   }
@@ -197,17 +220,75 @@ export class ClientsService {
     telegramUserIdRaw: string,
     options?: ClientReadOptions,
   ): Promise<ClientLookupResponseDto> {
-    const telegramUserId = telegramUserIdRaw.trim();
-    if (!telegramUserId) {
+    const externalId = telegramUserIdRaw.trim();
+    if (!externalId) {
       throw new BadRequestException(
         "telegramUserId query parameter is required and non-empty",
       );
     }
-
-    return this.lookupOneInWorkspaceForOwner(
+    return this.lookupByExternalIdForOwner(
       ownerId,
-      { telegramUserId },
+      ClientLinkProvider.TELEGRAM,
+      externalId,
       options,
+    );
+  }
+
+  async addLinkForOwner(
+    ownerId: number,
+    clientId: number,
+    provider: ClientLinkProvider,
+    externalIdRaw: string,
+  ): Promise<ClientWriteResponseDto> {
+    const externalId = externalIdRaw.trim();
+    if (!externalId) {
+      throw new BadRequestException("externalId is required and non-empty");
+    }
+
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const row = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!row) {
+      throw new NotFoundException("Client not found");
+    }
+
+    await this.assertExternalUserExists(provider, externalId);
+
+    const existing = await this.clientLinkRepo.findOne({
+      where: { workspaceId, provider, externalId },
+    });
+    if (existing) {
+      if (existing.clientId === clientId) {
+        const socialIds = await this.loadSocialIdsByClientIds([clientId]);
+        return this.toWriteClientDto(
+          row,
+          socialIds.get(clientId) ?? EMPTY_SOCIAL_IDS,
+        );
+      }
+      const label =
+        provider === ClientLinkProvider.INSTAGRAM
+          ? "instagramId"
+          : "telegramUserId";
+      throw new ConflictException(
+        `Another client in this workspace already uses this ${label}`,
+      );
+    }
+
+    await this.clientLinkRepo.save(
+      this.clientLinkRepo.create({
+        clientId,
+        workspaceId,
+        provider,
+        externalId,
+      }),
+    );
+
+    const socialIds = await this.loadSocialIdsByClientIds([clientId]);
+    return this.toWriteClientDto(
+      row,
+      socialIds.get(clientId) ?? EMPTY_SOCIAL_IDS,
     );
   }
 
@@ -231,154 +312,177 @@ export class ClientsService {
     return dto;
   }
 
-  private async lookupOneInWorkspaceForOwner(
+  private async lookupByExternalIdForOwner(
     ownerId: number,
-    where: Pick<
-      FindOptionsWhere<Client>,
-      "id" | "instagramUserId" | "telegramUserId"
-    >,
+    provider: ClientLinkProvider,
+    externalId: string,
     options?: ClientReadOptions,
   ): Promise<ClientLookupResponseDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-
-    const row = await this.clientRepo.findOne({
-      where: { ...where, workspaceId },
+    const link = await this.clientLinkRepo.findOne({
+      where: { workspaceId, provider, externalId },
     });
-
+    if (!link) {
+      return { associated: false, status: "ok" };
+    }
+    const row = await this.clientRepo.findOne({
+      where: { id: link.clientId, workspaceId },
+    });
     if (!row) {
       return { associated: false, status: "ok" };
     }
+    return this.clientLookupFromRow(row, workspaceId, options);
+  }
 
+  private async clientLookupFromRow(
+    row: Client,
+    workspaceId: number,
+    options?: ClientReadOptions,
+  ): Promise<ClientLookupResponseDto> {
     const [client] = await this.toClientDtos([row], workspaceId, {
       includeOrderStat: options?.includeOrderStat === true,
       includeAvatarSrc: true,
     });
-
-    return {
-      associated: true,
-      client,
-    };
+    return { associated: true, client };
   }
 
-  private parseSocialLinkInput(dto: CreateClientRequestDto): {
-    instagramUserId: string | null | undefined;
-    telegramUserId: string | null | undefined;
-  } {
-    const instagramUserId =
-      dto.instagramUserId !== undefined ? dto.instagramUserId : dto.instagramId;
-    const telegramUserId = dto.telegramUserId;
-    this.assertSocialLinkInputNotBoth(instagramUserId, telegramUserId);
-    return { instagramUserId, telegramUserId };
+  private async replaceClientLinksInTransaction(
+    linkRepo: Repository<ClientLink>,
+    params: {
+      clientId: number;
+      workspaceId: number;
+      instagramUserIds: string[];
+      telegramUserIds: string[];
+    },
+  ): Promise<void> {
+    await this.replaceProviderLinksInTransaction(
+      linkRepo,
+      params.clientId,
+      params.workspaceId,
+      ClientLinkProvider.INSTAGRAM,
+      params.instagramUserIds,
+    );
+    await this.replaceProviderLinksInTransaction(
+      linkRepo,
+      params.clientId,
+      params.workspaceId,
+      ClientLinkProvider.TELEGRAM,
+      params.telegramUserIds,
+    );
   }
 
-  private assertSocialLinkInputNotBoth(
-    instagramRaw: string | null | undefined,
-    telegramRaw: string | null | undefined,
-  ): void {
-    const hasInstagram =
-      instagramRaw !== undefined &&
-      instagramRaw !== null &&
-      String(instagramRaw).trim() !== "";
-    const hasTelegram =
-      telegramRaw !== undefined &&
-      telegramRaw !== null &&
-      String(telegramRaw).trim() !== "";
-    if (hasInstagram && hasTelegram) {
-      throw new BadRequestException(
-        "Provide at most one of instagramUserId or telegramUserId",
-      );
-    }
-  }
-
-  private assertSingleSocialLink(
-    instagramUserId: string | null,
-    telegramUserId: string | null,
-  ): void {
-    if (instagramUserId && telegramUserId) {
-      throw new BadRequestException(
-        "Client cannot be linked to both Instagram and Telegram",
-      );
-    }
-  }
-
-  /**
-   * `raw` undefined → treat as absent (caller should not pass for create).
-   * `raw` null or blank string → NULL column (no Instagram link).
-   * Otherwise must exist in `instagram_users` and be unique per workspace.
-   */
-  private async resolveInstagramUserIdForWorkspace(
+  private async replaceProviderLinksInTransaction(
+    linkRepo: Repository<ClientLink>,
+    clientId: number,
     workspaceId: number,
-    raw: string | null | undefined,
-    excludeClientId: number | undefined,
-  ): Promise<string | null> {
-    if (raw === undefined || raw === null) {
-      return null;
-    }
-    const id = String(raw).trim();
-    if (!id) {
-      return null;
-    }
-
-    const ig = await this.instagramUserRepo.findOne({ where: { id } });
-    if (!ig) {
-      throw new BadRequestException(
-        `No instagram_users row for instagramId=${id}; sync or create the Instagram user first.`,
+    provider: ClientLinkProvider,
+    externalIds: string[],
+  ): Promise<void> {
+    const uniqueIds = [...new Set(externalIds.map((id) => id.trim()).filter(Boolean))];
+    for (const externalId of uniqueIds) {
+      await this.assertExternalUserExists(provider, externalId);
+      await this.assertExternalIdAvailable(
+        linkRepo,
+        workspaceId,
+        provider,
+        externalId,
+        clientId,
       );
     }
 
-    const dupWhere: FindOptionsWhere<Client> = {
-      workspaceId,
-      instagramUserId: id,
-    };
-    if (excludeClientId != null) {
-      dupWhere.id = Not(excludeClientId);
-    }
-    const dup = await this.clientRepo.exist({ where: dupWhere });
-    if (dup) {
-      throw new ConflictException(
-        "Another client in this workspace already uses this instagramId",
-      );
+    await linkRepo.delete({ clientId, provider });
+    if (uniqueIds.length === 0) {
+      return;
     }
 
-    return id;
+    await linkRepo.save(
+      uniqueIds.map((externalId) =>
+        linkRepo.create({
+          clientId,
+          workspaceId,
+          provider,
+          externalId,
+        }),
+      ),
+    );
   }
 
-  private async resolveTelegramUserIdForWorkspace(
-    workspaceId: number,
-    raw: string | null | undefined,
-    excludeClientId: number | undefined,
-  ): Promise<string | null> {
-    if (raw === undefined || raw === null) {
-      return null;
-    }
-    const id = String(raw).trim();
-    if (!id) {
-      return null;
+  private async assertExternalUserExists(
+    provider: ClientLinkProvider,
+    externalId: string,
+  ): Promise<void> {
+    if (provider === ClientLinkProvider.INSTAGRAM) {
+      const ig = await this.instagramUserRepo.findOne({
+        where: { id: externalId },
+      });
+      if (!ig) {
+        throw new BadRequestException(
+          `No instagram_users row for instagramId=${externalId}; sync or create the Instagram user first.`,
+        );
+      }
+      return;
     }
 
-    const tg = await this.telegramUserRepo.findOne({ where: { id } });
+    const tg = await this.telegramUserRepo.findOne({ where: { id: externalId } });
     if (!tg) {
       throw new BadRequestException(
-        `No telegram_users row for telegramUserId=${id}; sync or create the Telegram user first.`,
+        `No telegram_users row for telegramUserId=${externalId}; sync or create the Telegram user first.`,
       );
     }
+  }
 
-    const dupWhere: FindOptionsWhere<Client> = {
-      workspaceId,
-      telegramUserId: id,
-    };
-    if (excludeClientId != null) {
-      dupWhere.id = Not(excludeClientId);
-    }
-    const dup = await this.clientRepo.exist({ where: dupWhere });
-    if (dup) {
+  private async assertExternalIdAvailable(
+    linkRepo: Repository<ClientLink>,
+    workspaceId: number,
+    provider: ClientLinkProvider,
+    externalId: string,
+    clientId: number,
+  ): Promise<void> {
+    const existing = await linkRepo.findOne({
+      where: { workspaceId, provider, externalId },
+    });
+    if (existing && existing.clientId !== clientId) {
+      const label =
+        provider === ClientLinkProvider.INSTAGRAM
+          ? "instagramId"
+          : "telegramUserId";
       throw new ConflictException(
-        "Another client in this workspace already uses this telegramUserId",
+        `Another client in this workspace already uses this ${label}`,
       );
     }
+  }
 
-    return id;
+  private async loadSocialIdsByClientIds(
+    clientIds: number[],
+  ): Promise<Map<number, ClientSocialIds>> {
+    const map = new Map<number, ClientSocialIds>();
+    for (const clientId of clientIds) {
+      map.set(clientId, {
+        instagramUserIds: [],
+        telegramUserIds: [],
+      });
+    }
+    if (clientIds.length === 0) {
+      return map;
+    }
+
+    const links = await this.clientLinkRepo.find({
+      where: { clientId: In(clientIds) },
+      order: { id: "ASC" },
+    });
+
+    for (const link of links) {
+      const bucket = map.get(link.clientId);
+      if (!bucket) continue;
+      if (link.provider === ClientLinkProvider.INSTAGRAM) {
+        bucket.instagramUserIds.push(link.externalId);
+      } else {
+        bucket.telegramUserIds.push(link.externalId);
+      }
+    }
+
+    return map;
   }
 
   private async toClientDtos(
@@ -390,73 +494,72 @@ export class ClientsService {
       return [];
     }
 
+    const clientIds = rows.map((row) => row.id);
+    const socialIdsByClientId = await this.loadSocialIdsByClientIds(clientIds);
+
     let statsByClientId: Map<number, ClientOrderStatDto> | undefined;
     if (options.includeOrderStat === true) {
       statsByClientId = await this.orders.getOrderStatsMapForClientIds(
         workspaceId,
-        rows.map((row) => row.id),
+        clientIds,
       );
     }
 
     const avatarMaps =
       options.includeAvatarSrc === true
-        ? await this.loadAvatarSrcMaps(rows)
+        ? await this.loadAvatarSrcMaps(socialIdsByClientId)
         : undefined;
 
-    return rows.map((row) =>
-      this.toClientDto(row, {
+    return rows.map((row) => {
+      const socialIds = socialIdsByClientId.get(row.id) ?? EMPTY_SOCIAL_IDS;
+      return this.toClientDto(row, socialIds, {
         orderStats: statsByClientId?.get(row.id),
         avatarSrc:
           avatarMaps != null
-            ? this.resolveAvatarSrc(row, avatarMaps)
+            ? this.resolveAvatarSrc(socialIds, avatarMaps)
             : undefined,
         includeAvatarSrc: options.includeAvatarSrc === true,
-      }),
-    );
+      });
+    });
   }
 
-  private toWriteClientDto(row: Client): ClientWriteResponseDto {
+  private toWriteClientDto(
+    row: Client,
+    socialIds: ClientSocialIds,
+  ): ClientWriteResponseDto {
     return {
       id: row.id,
       firstName: row.firstName,
       lastName: row.lastName,
       createdAt: row.createdAt,
       phone: row.phone,
-      instagramUserId: row.instagramUserId,
-      telegramUserId: row.telegramUserId,
+      instagramUserIds: socialIds.instagramUserIds,
+      telegramUserIds: socialIds.telegramUserIds,
       workspaceId: row.workspaceId,
     };
   }
 
-  private async loadAvatarSrcMaps(rows: Client[]): Promise<{
+  private async loadAvatarSrcMaps(socialIdsByClientId: Map<number, ClientSocialIds>): Promise<{
     telegram: Map<string, string>;
     instagram: Map<string, string>;
   }> {
-    const telegramIds = [
-      ...new Set(
-        rows
-          .map((row) => row.telegramUserId?.trim())
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
-    const instagramIds = [
-      ...new Set(
-        rows
-          .map((row) => row.instagramUserId?.trim())
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
+    const telegramIds = new Set<string>();
+    const instagramIds = new Set<string>();
+    for (const socialIds of socialIdsByClientId.values()) {
+      for (const id of socialIds.telegramUserIds) telegramIds.add(id);
+      for (const id of socialIds.instagramUserIds) instagramIds.add(id);
+    }
 
     const [telegramUsers, instagramUsers] = await Promise.all([
-      telegramIds.length > 0
+      telegramIds.size > 0
         ? this.telegramUserRepo.find({
-            where: { id: In(telegramIds) },
+            where: { id: In([...telegramIds]) },
             select: { id: true, profilePic: true },
           })
         : Promise.resolve([]),
-      instagramIds.length > 0
+      instagramIds.size > 0
         ? this.instagramUserRepo.find({
-            where: { id: In(instagramIds) },
+            where: { id: In([...instagramIds]) },
             select: { id: true, profilePic: true },
           })
         : Promise.resolve([]),
@@ -473,26 +576,27 @@ export class ClientsService {
   }
 
   private resolveAvatarSrc(
-    row: Client,
+    socialIds: ClientSocialIds,
     maps: { telegram: Map<string, string>; instagram: Map<string, string> },
   ): string | null {
-    const telegramUserId = row.telegramUserId?.trim();
-    if (telegramUserId) {
+    for (const telegramUserId of socialIds.telegramUserIds) {
       const profilePic = maps.telegram.get(telegramUserId);
-      return profilePic && profilePic.length > 0 ? profilePic : null;
+      if (profilePic && profilePic.length > 0) {
+        return profilePic;
+      }
     }
-
-    const instagramUserId = row.instagramUserId?.trim();
-    if (instagramUserId) {
+    for (const instagramUserId of socialIds.instagramUserIds) {
       const profilePic = maps.instagram.get(instagramUserId);
-      return profilePic && profilePic.length > 0 ? profilePic : null;
+      if (profilePic && profilePic.length > 0) {
+        return profilePic;
+      }
     }
-
     return null;
   }
 
   private toClientDto(
     row: Client,
+    socialIds: ClientSocialIds,
     options?: {
       orderStats?: ClientOrderStatDto;
       avatarSrc?: string | null;
@@ -505,8 +609,8 @@ export class ClientsService {
       lastName: row.lastName,
       createdAt: row.createdAt,
       phone: row.phone,
-      instagramUserId: row.instagramUserId,
-      telegramUserId: row.telegramUserId,
+      instagramUserIds: socialIds.instagramUserIds,
+      telegramUserIds: socialIds.telegramUserIds,
       workspaceId: row.workspaceId,
       ...(options?.includeAvatarSrc === true
         ? { avatar_src: options.avatarSrc ?? null }

@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty } from "@nestjs/swagger";
 
 /** POST / PUT /clients response — no read-only fields (`avatar_src`, `orderStats`). */
 export class ClientWriteResponseDto {
@@ -17,17 +17,11 @@ export class ClientWriteResponseDto {
   @ApiProperty()
   phone: string;
 
-  @ApiPropertyOptional({
-    nullable: true,
-    description: "Instagram scoped user id when linked; null if none.",
-  })
-  instagramUserId: string | null;
+  @ApiProperty({ type: [String] })
+  instagramUserIds: string[];
 
-  @ApiPropertyOptional({
-    nullable: true,
-    description: "Telegram user id when linked; null if none.",
-  })
-  telegramUserId: string | null;
+  @ApiProperty({ type: [String] })
+  telegramUserIds: string[];
 
   @ApiProperty()
   workspaceId: number;

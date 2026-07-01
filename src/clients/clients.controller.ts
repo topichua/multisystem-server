@@ -17,10 +17,13 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
+  getSchemaPath,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
@@ -35,10 +38,12 @@ import { GetClientQueryDto } from "./dto/get-client-query.dto";
 import { ListClientsQueryDto } from "./dto/list-clients-query.dto";
 import { ClientOrderStatsResponseDto } from "./dto/client-order-stats-response.dto";
 import { ClientWriteResponseDto } from "./dto/client-write-response.dto";
+import { AddClientLinkRequestDto } from "./dto/add-client-link-request.dto";
 import { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
 @ApiTags("clients")
 @ApiBearerAuth("bearer")
+@ApiExtraModels(ClientLookupResponseDto, ClientsListResponseDto, ClientResponseDto)
 @UseGuards(JwtAuthGuard)
 @Controller("clients")
 export class ClientsController {
@@ -51,11 +56,20 @@ export class ClientsController {
   @ApiOperation({
     summary: "List clients or look up by id / social user id",
     description:
-      "**Lookup** (at most one of): `id`, `instagramUserId` / `instagramId`, `telegramUserId` — returns `ClientLookupResponseDto` (HTTP 200, `associated: false` if none). **List:** omit all lookup params — paginated workspace clients (`page` / `pageSize`, defaults 1 / 50). Pass `include_order_stat=true` to embed order aggregates on each client.",
+      "**Lookup** (at most one of): `id`, `instagramUserId` / `instagramId`, `telegramUserId` — returns `ClientLookupResponseDto` (HTTP 200, `associated: false` if none). " +
+      "**List:** omit all lookup params — paginated workspace clients (`page` / `pageSize`, defaults 1 / 50). " +
+      "Every client in GET responses includes read-only `avatar_src` (from linked `telegram_users` or `instagram_users`). " +
+      "Pass `include_order_stat=true` to also embed `orderStats` (order count, total spent, average order price, last order date).",
   })
   @ApiOkResponse({
     description:
-      "`ClientLookupResponseDto` when a lookup param is set; `ClientsListResponseDto` when listing.",
+      "`ClientLookupResponseDto` when a lookup query param is set; otherwise `ClientsListResponseDto`.",
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(ClientLookupResponseDto) },
+        { $ref: getSchemaPath(ClientsListResponseDto) },
+      ],
+    },
   })
   async listOrLookup(
     @Req() req: { user?: AuthUser },
@@ -108,9 +122,8 @@ export class ClientsController {
   @ApiOperation({
     summary: "Create client",
     description:
-      "Creates a client in your workspace. `first_name`, `last_name`, and `phone` are optional (stored as empty strings when omitted). " +
-      "Optionally link one social account: `instagramUserId` **or** `telegramUserId` (not both). " +
-      "Omit both (or pass null) for a client with no platform link.",
+      "Creates a client in your workspace. Link zero or more social accounts via `instagramUserIds` and/or `telegramUserIds` (`client_links` table). " +
+      "Deprecated singular fields `instagramUserId` / `telegramUserId` still accepted.",
   })
   @ApiBody({ type: CreateClientRequestDto })
   @ApiCreatedResponse({ type: ClientWriteResponseDto })
@@ -158,8 +171,10 @@ export class ClientsController {
   @ApiOperation({
     summary: "Get client by id",
     description:
-      "Returns the client if it exists in your workspace (`workspace_id` from your integration). Pass `include_order_stat=true` to embed order aggregates.",
+      "Returns the client in your workspace. Includes read-only `avatar_src` from the linked Telegram or Instagram user. " +
+      "Pass `include_order_stat=true` to embed `orderStats`. Returns HTTP 404 when not found.",
   })
+  @ApiParam({ name: "id", type: Number, description: "Client primary key" })
   @ApiOkResponse({ type: ClientResponseDto })
   async getById(
     @Req() req: { user?: AuthUser },
@@ -173,11 +188,42 @@ export class ClientsController {
     });
   }
 
+  @Post(":id/links")
+  @ApiOperation({
+    summary: "Attach social link to client",
+    description:
+      "Adds one row to `client_links` for an existing client. Idempotent when the same link is already attached to this client. " +
+      "Returns HTTP 409 if another client in the workspace already uses the same `externalId`.",
+  })
+  @ApiParam({ name: "id", type: Number, description: "Client primary key" })
+  @ApiBody({ type: AddClientLinkRequestDto })
+  @ApiCreatedResponse({ type: ClientWriteResponseDto })
+  async addLink(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+    @Body() dto: AddClientLinkRequestDto,
+  ): Promise<ClientWriteResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    const clientId = this.parsePositiveInt(id, "id");
+    const externalId = dto.resolvedExternalId();
+    if (!externalId) {
+      throw new BadRequestException(
+        "externalId is required (or use deprecated instagramUserId / telegramUserId matching provider)",
+      );
+    }
+    return this.clients.addLinkForOwner(
+      ownerId,
+      clientId,
+      dto.provider,
+      externalId,
+    );
+  }
+
   @Put(":id")
   @ApiOperation({
     summary: "Update client",
     description:
-      "Partial update. Set `instagramUserId` or `telegramUserId` to null / `\"\"` to clear a link. Only one platform link is allowed per client. `avatar_src` is read-only (GET only).",
+      "Partial update. `instagramUserIds` / `telegramUserIds` replace all links of that provider when set (`[]` clears). `avatar_src` is read-only (GET only).",
   })
   @ApiBody({ type: UpdateClientRequestDto })
   @ApiOkResponse({ type: ClientWriteResponseDto })

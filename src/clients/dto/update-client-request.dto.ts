@@ -1,5 +1,14 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { Transform } from "class-transformer";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from "class-validator";
+import { normalizeStringArray } from "./client-link-input.util";
 
 export class UpdateClientRequestDto {
   @ApiPropertyOptional()
@@ -23,9 +32,36 @@ export class UpdateClientRequestDto {
   phone?: string;
 
   @ApiPropertyOptional({
-    nullable: true,
+    type: [String],
     description:
-      "Set to a new Instagram id, or null / empty string to clear the link. Mutually exclusive with `telegramUserId`.",
+      "Replaces all Instagram links when set (`[]` clears). Stored in `client_links`.",
+  })
+  @IsOptional()
+  @Transform(({ value }) => normalizeStringArray(value))
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(255, { each: true })
+  instagramUserIds?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      "Replaces all Telegram links when set (`[]` clears). Stored in `client_links`.",
+  })
+  @IsOptional()
+  @Transform(({ value }) => normalizeStringArray(value))
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(32, { each: true })
+  telegramUserIds?: string[];
+
+  @ApiPropertyOptional({
+    nullable: true,
+    deprecated: true,
+    description:
+      "Deprecated. When set without `instagramUserIds`, replaces Instagram links with this single id (null/empty clears).",
   })
   @IsOptional()
   @IsString()
@@ -34,8 +70,9 @@ export class UpdateClientRequestDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    deprecated: true,
     description:
-      "Set to a Telegram user id, or null / empty string to clear the link. Mutually exclusive with `instagramUserId`.",
+      "Deprecated. When set without `telegramUserIds`, replaces Telegram links with this single id (null/empty clears).",
   })
   @IsOptional()
   @IsString()
@@ -45,10 +82,40 @@ export class UpdateClientRequestDto {
   @ApiPropertyOptional({
     nullable: true,
     deprecated: true,
-    description: "Alias for `instagramUserId`.",
+    description: "Deprecated alias for `instagramUserId`.",
   })
   @IsOptional()
   @IsString()
   @MaxLength(255)
   instagramId?: string | null;
+
+  resolvedInstagramUserIds(): string[] | undefined {
+    if (this.instagramUserIds !== undefined) {
+      return [...new Set(this.instagramUserIds)];
+    }
+    const singular =
+      this.instagramUserId !== undefined ? this.instagramUserId : this.instagramId;
+    if (singular === undefined) {
+      return undefined;
+    }
+    if (singular === null) {
+      return [];
+    }
+    const s = String(singular).trim();
+    return s ? [s] : [];
+  }
+
+  resolvedTelegramUserIds(): string[] | undefined {
+    if (this.telegramUserIds !== undefined) {
+      return [...new Set(this.telegramUserIds)];
+    }
+    if (this.telegramUserId === undefined) {
+      return undefined;
+    }
+    if (this.telegramUserId === null) {
+      return [];
+    }
+    const s = String(this.telegramUserId).trim();
+    return s ? [s] : [];
+  }
 }

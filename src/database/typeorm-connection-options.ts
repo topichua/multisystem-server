@@ -89,9 +89,11 @@ import { OrderDeliveryInfoCashOnDelivery1744200000090 } from "./migrations/17442
 import { NovaPoshtaIntegrationsMultiplePerWorkspace1744200000091 } from "./migrations/1744200000091-NovaPoshtaIntegrationsMultiplePerWorkspace";
 import { ClientsTelegramUserId1744200000092 } from "./migrations/1744200000092-ClientsTelegramUserId";
 import { ClientsDropDeliveryInfo1744200000093 } from "./migrations/1744200000093-ClientsDropDeliveryInfo";
+import { ClientLinks1744200000094 } from "./migrations/1744200000094-ClientLinks";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
+  ClientLink,
   InstagramIntegration,
   Conversation,
   ConversationGroup,
@@ -189,6 +191,7 @@ const entities = [
   InstagramUser,
   TelegramUser,
   Client,
+  ClientLink,
   ConversationGroup,
   Conversation,
   ConversationMessage,
@@ -345,6 +348,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       NovaPoshtaIntegrationsMultiplePerWorkspace1744200000091,
       ClientsTelegramUserId1744200000092,
       ClientsDropDeliveryInfo1744200000093,
+      ClientLinks1744200000094,
     ],
   };
 }

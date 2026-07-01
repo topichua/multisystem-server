@@ -1,4 +1,6 @@
 export { Client } from "./client.entity";
+export { ClientLink } from "./client-link.entity";
+export { ClientLinkProvider } from "./client-link-provider.enum";
 export { InstagramIntegration } from "./instagram-integration.entity";
 export { TelegramIntegration } from "./telegram-integration.entity";
 export { TelegramIntegrationStatus } from "./telegram-integration-status.enum";

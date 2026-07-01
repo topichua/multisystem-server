@@ -5,15 +5,13 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { InstagramUser } from "./instagram-user.entity";
-import { TelegramUser } from "./telegram-user.entity";
+import { ClientLink } from "./client-link.entity";
 import { Workspace } from "./workspace.entity";
 
 @Entity("clients")
-@Index("IDX_clients_instagram_user_id", ["instagramUserId"])
-@Index("IDX_clients_telegram_user_id", ["telegramUserId"])
 @Index("IDX_clients_workspace_id", ["workspaceId"])
 export class Client {
   @PrimaryGeneratedColumn({ name: "id" })
@@ -31,34 +29,13 @@ export class Client {
   @Column({ name: "phone", type: "varchar", length: 64 })
   phone: string;
 
-  @Column({
-    name: "instagram_user_id",
-    type: "varchar",
-    length: 255,
-    nullable: true,
-  })
-  instagramUserId: string | null;
-
-  @Column({
-    name: "telegram_user_id",
-    type: "varchar",
-    length: 32,
-    nullable: true,
-  })
-  telegramUserId: string | null;
-
   @Column({ name: "workspace_id", type: "int" })
   workspaceId: number;
-
-  @ManyToOne(() => InstagramUser, { onDelete: "RESTRICT", nullable: true })
-  @JoinColumn({ name: "instagram_user_id", referencedColumnName: "id" })
-  instagramUser: InstagramUser | null;
-
-  @ManyToOne(() => TelegramUser, { onDelete: "RESTRICT", nullable: true })
-  @JoinColumn({ name: "telegram_user_id", referencedColumnName: "id" })
-  telegramUser: TelegramUser | null;
 
   @ManyToOne(() => Workspace, { onDelete: "RESTRICT" })
   @JoinColumn({ name: "workspace_id" })
   workspace: Workspace;
+
+  @OneToMany(() => ClientLink, (link) => link.client)
+  links: ClientLink[];
 }
