@@ -23,8 +23,25 @@ export class TelegramIntegrationResponseDto {
   @ApiPropertyOptional()
   telegramUsername?: string;
 
-  @ApiPropertyOptional({ description: "ISO 8601 when user-account session became active" })
+  @ApiPropertyOptional({
+    description: "ISO 8601 when user-account session became active",
+  })
   connectedAt?: string;
+
+  @ApiPropertyOptional({
+    description: "Server instance id currently listening (if lock held)",
+  })
+  listenerInstanceId?: string;
+
+  @ApiPropertyOptional({
+    description: "ISO 8601 of last listener lock heartbeat",
+  })
+  listenerHeartbeatAt?: string;
+
+  @ApiPropertyOptional({
+    description: "Last fatal listener error (e.g. AUTH_KEY_DUPLICATED)",
+  })
+  lastError?: string;
 
   @ApiPropertyOptional({
     description: "Next step hint for the client UI",

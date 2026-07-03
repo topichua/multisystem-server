@@ -267,6 +267,8 @@ export class TelegramIntegrationsService {
     row.name = profile.displayName;
     row.connectedAt = new Date();
     row.lastError = null;
+    row.listenerInstanceId = null;
+    row.listenerHeartbeatAt = null;
   }
 
   async confirmCodeForOwner(
@@ -336,12 +338,15 @@ export class TelegramIntegrationsService {
     id: number,
   ): Promise<TelegramIntegrationResponseDto> {
     const row = await this.requireOwnedRow(ownerId, id);
-    await this.updatesListener.detachIntegration(id);
+    await this.updatesListener.detachIntegration(id, { releaseLock: true });
     row.status = TelegramIntegrationStatus.DISCONNECTED;
     row.sessionString = null;
     row.authSessionString = null;
     row.phoneCodeHash = null;
     row.connectedAt = null;
+    row.listenerInstanceId = null;
+    row.listenerHeartbeatAt = null;
+    row.lastError = null;
     await this.telegramRepo.save(row);
     return this.toDto(row);
   }
@@ -359,7 +364,7 @@ export class TelegramIntegrationsService {
   /** Removes the integration row after detaching the live Telegram session. */
   async deleteForOwner(ownerId: number, id: number): Promise<void> {
     const row = await this.requireOwnedRow(ownerId, id);
-    await this.updatesListener.detachIntegration(id);
+    await this.updatesListener.detachIntegration(id, { releaseLock: true });
     await this.telegramRepo.remove(row);
   }
 
@@ -459,6 +464,14 @@ export class TelegramIntegrationsService {
       ...(row.connectedAt != null && !Number.isNaN(row.connectedAt.getTime())
         ? { connectedAt: row.connectedAt.toISOString() }
         : {}),
+      ...(row.listenerInstanceId
+        ? { listenerInstanceId: row.listenerInstanceId }
+        : {}),
+      ...(row.listenerHeartbeatAt != null &&
+      !Number.isNaN(row.listenerHeartbeatAt.getTime())
+        ? { listenerHeartbeatAt: row.listenerHeartbeatAt.toISOString() }
+        : {}),
+      ...(row.lastError ? { lastError: row.lastError } : {}),
       ...(extra?.nextStep ? { nextStep: extra.nextStep } : {}),
       ...(extra?.codeDelivery ? { codeDelivery: extra.codeDelivery } : {}),
     };

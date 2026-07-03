@@ -4,10 +4,12 @@ import {
   Conversation,
   ConversationMessage,
   TelegramIntegration,
+  TelegramIntegrationLock,
   TelegramUser,
 } from "../database/entities";
 import { ConversationsModule } from "../conversations/conversations.module";
 import { ProductsModule } from "../products/products.module";
+import { TelegramIntegrationLockService } from "./telegram-integration-lock.service";
 import { TelegramIntegrationsController } from "./telegram-integrations.controller";
 import { TelegramIntegrationsService } from "./telegram-integrations.service";
 import { TelegramConversationMessagingService } from "./telegram-conversation-messaging.service";
@@ -21,6 +23,7 @@ import { TELEGRAM_CONVERSATION_MESSAGING } from "./telegram-integrations.tokens"
   imports: [
     TypeOrmModule.forFeature([
       TelegramIntegration,
+      TelegramIntegrationLock,
       TelegramUser,
       Conversation,
       ConversationMessage,
@@ -32,6 +35,7 @@ import { TELEGRAM_CONVERSATION_MESSAGING } from "./telegram-integrations.tokens"
   providers: [
     TelegramIntegrationsService,
     TelegramUserApiService,
+    TelegramIntegrationLockService,
     TelegramUsersService,
     TelegramMessagePersistenceService,
     TelegramConversationMessagingService,

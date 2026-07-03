@@ -3,6 +3,7 @@ export { ClientLink } from "./client-link.entity";
 export { ClientLinkProvider } from "./client-link-provider.enum";
 export { InstagramIntegration } from "./instagram-integration.entity";
 export { TelegramIntegration } from "./telegram-integration.entity";
+export { TelegramIntegrationLock } from "./telegram-integration-lock.entity";
 export { TelegramIntegrationStatus } from "./telegram-integration-status.enum";
 export { Conversation } from "./conversation.entity";
 export { ConversationGroup } from "./conversation-group.entity";

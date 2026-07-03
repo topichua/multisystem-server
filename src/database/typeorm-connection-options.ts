@@ -97,6 +97,7 @@ import { DropWarehouses1744200000098 } from "./migrations/1744200000098-DropWare
 import { DropProductDraftDeleteTrigger1744200000099 } from "./migrations/1744200000099-DropProductDraftDeleteTrigger";
 import { StockMovementIntegerId1744200000100 } from "./migrations/1744200000100-StockMovementIntegerId";
 import { ProductMediaWorkspaceId1744200000101 } from "./migrations/1744200000101-ProductMediaWorkspaceId";
+import { TelegramIntegrationListenerLocks1744200000102 } from "./migrations/1744200000102-TelegramIntegrationListenerLocks";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -123,6 +124,7 @@ import {
   WorkspaceVariantCustomField,
   WorkspaceVariantCustomFieldOption,
   TelegramIntegration,
+  TelegramIntegrationLock,
   User,
   Workspace,
   WorkspaceInvitation,
@@ -194,6 +196,7 @@ const entities = [
   WorkspaceInvitation,
   InstagramIntegration,
   TelegramIntegration,
+  TelegramIntegrationLock,
   NovaPoshtaIntegration,
   InstagramUser,
   TelegramUser,
@@ -363,6 +366,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       DropProductDraftDeleteTrigger1744200000099,
       StockMovementIntegerId1744200000100,
       ProductMediaWorkspaceId1744200000101,
+      TelegramIntegrationListenerLocks1744200000102,
     ],
   };
 }

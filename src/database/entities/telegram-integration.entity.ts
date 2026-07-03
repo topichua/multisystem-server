@@ -69,6 +69,18 @@ export class TelegramIntegration {
   @Column({ name: "last_error", type: "text", nullable: true })
   lastError: string | null;
 
+  /** Server instance id that currently holds the listener lock (if any). */
+  @Column({
+    name: "listener_instance_id",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  listenerInstanceId: string | null;
+
+  @Column({ name: "listener_heartbeat_at", type: "timestamptz", nullable: true })
+  listenerHeartbeatAt: Date | null;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 
