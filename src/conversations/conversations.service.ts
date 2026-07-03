@@ -2884,6 +2884,8 @@ export class ConversationsService {
       throw new BadGatewayException(maybeError.error.message);
     }
 
+    await this.conversationWorkflow.onOutboundAgentReply(conv);
+
     return result;
   }
 

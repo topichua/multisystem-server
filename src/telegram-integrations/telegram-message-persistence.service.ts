@@ -64,6 +64,7 @@ export class TelegramMessagePersistenceService {
 
   /**
    * Backfill recent private messages after reconnect/deploy (deduped by external_id).
+   * Does not run status workflow (especially new → processing on outbound history).
    */
   async catchUpRecentPrivateMessages(
     integration: TelegramIntegration,
@@ -111,7 +112,7 @@ export class TelegramMessagePersistenceService {
             msg,
             chatId,
             client,
-            { skipWorkflow: true, skipNotify: true },
+            { isCatchUp: true },
           );
           if (isNew) {
             saved += 1;
@@ -134,7 +135,7 @@ export class TelegramMessagePersistenceService {
     msg: Api.Message,
     chatId: string,
     connectedClient?: TelegramClient,
-    options?: { skipWorkflow?: boolean; skipNotify?: boolean },
+    options?: { isCatchUp?: boolean },
   ): Promise<boolean> {
     if (!msg.id) {
       return false;
@@ -232,17 +233,14 @@ export class TelegramMessagePersistenceService {
     });
 
     const saved = await this.conversationMessageRepo.save(row);
-    if (!options?.skipNotify) {
+    if (!options?.isCatchUp) {
       await this.messageNotify.notifyPersistedMessage(saved, ownerId);
-    }
-
-    if (!options?.skipWorkflow) {
       if (!isOutgoing) {
         await this.conversationWorkflow.onInboundCustomerMessage(conv);
-      } else {
-        await this.conversationWorkflow.onOutboundAgentReply(conv);
       }
     }
+
+    // new → processing is only via system API (persistOutboundMessage) or assign responsible.
 
     this.log.debug(
       `Saved telegram message id=${externalMessageId} conversation_id=${conv.id} integration_id=${integration.id}`,

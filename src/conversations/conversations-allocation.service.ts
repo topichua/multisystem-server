@@ -271,8 +271,6 @@ export class ConversationsAllocationService {
     const senderId = msg.from?.id?.trim() ?? "";
     if (senderId && senderId === customerUserId) {
       await this.conversationWorkflow.onInboundCustomerMessage(conv);
-    } else {
-      await this.conversationWorkflow.onOutboundAgentReply(conv);
     }
 
     await this.syncInstagramUsersForWebhookAllocation(
