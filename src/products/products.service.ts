@@ -584,6 +584,7 @@ export class ProductsService {
           if (spec.mediaIds?.length) {
             await this.insertProductMediaFromStaged(
               em,
+              workspace.id,
               saved.id,
               variant.id,
               spec.mediaIds,
@@ -595,6 +596,7 @@ export class ProductsService {
         if (dto.mediaIds?.length) {
           await this.insertProductMediaFromStaged(
             em,
+            workspace.id,
             saved.id,
             null,
             dto.mediaIds,
@@ -773,6 +775,7 @@ export class ProductsService {
     if (stagedMediaIds.length > 0) {
       await this.insertProductMediaFromStaged(
         this.variantRepo.manager,
+        workspace.id,
         productId,
         saved.id,
         stagedMediaIds,
@@ -841,6 +844,7 @@ export class ProductsService {
           : new Map<number, UploadMedia>();
       await this.replaceVariantMediaFromStaged(
         this.variantRepo.manager,
+        workspace.id,
         productId,
         variant.id,
         dto.mediaIds,
@@ -984,6 +988,7 @@ export class ProductsService {
 
   private async insertProductMediaFromStaged(
     em: EntityManager,
+    workspaceId: number,
     productId: number,
     variantId: number | null,
     mediaIds: number[],
@@ -998,6 +1003,7 @@ export class ProductsService {
         continue;
       }
       await em.insert(ProductMedia, {
+        workspaceId,
         productId,
         variantId,
         uploadMediaId: mediaIds[i],
@@ -1012,6 +1018,7 @@ export class ProductsService {
   /** Replaces product-level gallery (variant_id IS NULL) from staged upload_media ids. */
   private async replaceProductMediaFromStaged(
     em: EntityManager,
+    workspaceId: number,
     productId: number,
     mediaIds: number[],
     stagedById: Map<number, { cdnUrl: string }>,
@@ -1027,6 +1034,7 @@ export class ProductsService {
       .execute();
     await this.insertProductMediaFromStaged(
       em,
+      workspaceId,
       productId,
       null,
       mediaIds,
@@ -1037,6 +1045,7 @@ export class ProductsService {
   /** Replaces a variant gallery from staged upload_media ids (same semantics as POST create). */
   private async replaceVariantMediaFromStaged(
     em: EntityManager,
+    workspaceId: number,
     productId: number,
     variantId: number,
     mediaIds: number[],
@@ -1050,6 +1059,7 @@ export class ProductsService {
       .execute();
     await this.insertProductMediaFromStaged(
       em,
+      workspaceId,
       productId,
       variantId,
       mediaIds,
@@ -1128,6 +1138,7 @@ export class ProductsService {
       const manager = em ?? this.productRepo.manager;
       await this.replaceProductMediaFromStaged(
         manager,
+        workspaceId,
         product.id,
         dto.mediaIds,
         stagedById,
@@ -1256,6 +1267,7 @@ export class ProductsService {
         );
         await this.replaceVariantMediaFromStaged(
           em,
+          workspaceId,
           product.id,
           variant.id,
           spec.mediaIds ?? [],
@@ -1330,6 +1342,7 @@ export class ProductsService {
 
     await this.replaceVariantMediaFromStaged(
       em,
+      workspace.id,
       productId,
       variant.id,
       spec.mediaIds ?? [],

@@ -13,14 +13,23 @@ import { ProductMediaType } from "./product-media-type.enum";
 import { Product } from "./product.entity";
 import { ProductVariant } from "./product-variant.entity";
 import { UploadMedia } from "./upload-media.entity";
+import { Workspace } from "./workspace.entity";
 
 @Entity({ name: "product_media" })
+@Index("IDX_product_media_workspace_id", ["workspaceId"])
 @Index("IDX_product_media_product_id", ["productId"])
 @Index("IDX_product_media_variant_id", ["variantId"])
 @Index("IDX_product_media_upload_media_id", ["uploadMediaId"])
 export class ProductMedia {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
+
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
+
+  @ManyToOne(() => Workspace, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace: Workspace;
 
   @Column({ name: "product_id", type: "int" })
   productId: number;

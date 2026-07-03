@@ -60,6 +60,7 @@ export class ProductMediaService {
     }
 
     const row = this.mediaRepo.create({
+      workspaceId,
       productId: payload.productId,
       variantId,
       url: payload.url.trim(),
@@ -148,6 +149,7 @@ export class ProductMediaService {
       let order = 0;
       for (const item of items) {
         await em.insert(ProductMedia, {
+          workspaceId,
           productId,
           variantId: null,
           url: item.url.trim(),
@@ -187,6 +189,7 @@ export class ProductMediaService {
       let order = 0;
       for (const item of items) {
         await em.insert(ProductMedia, {
+          workspaceId,
           productId: variant.productId,
           variantId,
           url: item.url.trim(),
