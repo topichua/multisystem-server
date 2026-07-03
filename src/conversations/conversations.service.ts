@@ -38,6 +38,9 @@ import type {
 } from "./dto/http/instagram-messages-response.dto";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
+import { ConversationEventsService } from "./conversation-events.service";
+import { ConversationGroupDefaultsService } from "./conversation-group-defaults.service";
+import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import type { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
@@ -52,6 +55,7 @@ import type {
   ConversationRowDto,
   ConversationParticipantDto,
 } from "./dto/http/conversations-list-response.dto";
+import type { ConversationEventsListResponseDto } from "./dto/http/conversation-events-list-response.dto";
 import type { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import type { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import type { ProductSuggestionItemDto } from "./dto/http/conversation-product-suggestions-response.dto";
@@ -113,6 +117,9 @@ export class ConversationsService {
     private readonly telegramMessaging: TelegramConversationMessagingPort,
     private readonly telegramUsers: TelegramUsersService,
     private readonly products: ProductsService,
+    private readonly conversationWorkflow: ConversationWorkflowService,
+    private readonly conversationEvents: ConversationEventsService,
+    private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
   ) {}
 
   async listConversationsForOwner(
@@ -126,6 +133,7 @@ export class ConversationsService {
       filters?.workspaceId,
       filters?.sessionWorkspaceId,
     );
+    await this.conversationGroupDefaults.ensureSystemGroups(workspaceId);
     const integration = await this.instagramIntegrationRepo.findOne({
       where: { workspaceId },
       order: { id: "DESC" },
@@ -215,6 +223,7 @@ export class ConversationsService {
       let row = await this.conversationRepo.findOne({
         where: { managerId: ownerId, externalId },
       });
+      const isNew = !row;
       if (!row) {
         row = this.conversationRepo.create({
           externalSourceId: pageId,
@@ -234,6 +243,9 @@ export class ConversationsService {
         row.workspaceId = integration.workspaceId;
       }
       await this.conversationRepo.save(row);
+      if (isNew) {
+        await this.conversationWorkflow.onConversationCreated(row, ownerId);
+      }
       upserted++;
     }
     return { upserted };
@@ -337,21 +349,27 @@ export class ConversationsService {
 
     if (dto.groupId !== undefined) {
       if (dto.groupId == null) {
-        conv.groupId = null;
-      } else {
-        const group = await this.conversationGroupRepo.findOne({
-          where: { id: dto.groupId, workspaceId },
-        });
-        if (!group) {
-          throw new BadRequestException(
-            "Conversation group not found or does not belong to this workspace",
-          );
-        }
-        conv.groupId = dto.groupId;
+        throw new BadRequestException(
+          "groupId cannot be cleared; assign a conversation group (e.g. archived)",
+        );
       }
+      const group = await this.conversationGroupRepo.findOne({
+        where: { id: dto.groupId, workspaceId },
+      });
+      if (!group) {
+        throw new BadRequestException(
+          "Conversation group not found or does not belong to this workspace",
+        );
+      }
+      await this.conversationWorkflow.onManualGroupChange(
+        conv,
+        dto.groupId,
+        ownerId,
+      );
     }
 
     if (dto.responsible_member_id !== undefined) {
+      const fromMemberId = conv.responsibleMemberId;
       if (dto.responsible_member_id == null) {
         conv.responsibleMemberId = null;
         conv.responsibleMemberSetAt = null;
@@ -376,10 +394,39 @@ export class ConversationsService {
         conv.responsibleMemberId = member.id;
         conv.responsibleMemberSetAt = new Date();
       }
+      await this.conversationRepo.save(conv);
+      await this.conversationWorkflow.onResponsibleMemberChange(
+        conv,
+        fromMemberId,
+        conv.responsibleMemberId,
+        ownerId,
+      );
     }
 
-    await this.conversationRepo.save(conv);
     return this.getConversationForOwnerById(ownerId, conversationId);
+  }
+
+  async listConversationEventsForOwner(
+    ownerId: number,
+    conversationId: number,
+  ): Promise<ConversationEventsListResponseDto> {
+    const conv = await this.conversationRepo.findOne({
+      where: { id: conversationId, managerId: ownerId },
+    });
+    if (!conv) {
+      throw new NotFoundException("Conversation not found");
+    }
+    const rows = await this.conversationEvents.listForConversation(conversationId);
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        conversationId: row.conversationId,
+        type: row.type,
+        actorId: row.actorId,
+        payload: row.payload,
+        createdAt: row.createdAt,
+      })),
+    };
   }
 
   async listProductSuggestionsForConversation(

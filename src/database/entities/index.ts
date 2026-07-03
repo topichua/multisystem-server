@@ -7,6 +7,12 @@ export { TelegramIntegrationLock } from "./telegram-integration-lock.entity";
 export { TelegramIntegrationStatus } from "./telegram-integration-status.enum";
 export { Conversation } from "./conversation.entity";
 export { ConversationGroup } from "./conversation-group.entity";
+export {
+  ConversationGroupSystemKey,
+  CONVERSATION_GROUP_SYSTEM_DEFAULTS,
+} from "./conversation-group-system-key.enum";
+export { ConversationEvent } from "./conversation-event.entity";
+export { ConversationEventType } from "./conversation-event-type.enum";
 export { ConversationMessage } from "./conversation-message.entity";
 export { ConversationSource } from "./conversation-source.enum";
 export { InstagramUser } from "./instagram-user.entity";

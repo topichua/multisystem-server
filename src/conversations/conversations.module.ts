@@ -4,6 +4,7 @@ import {
   InstagramIntegration,
   Conversation,
   ConversationGroup,
+  ConversationEvent,
   ConversationMessage,
   InstagramUser,
   TelegramUser,
@@ -16,8 +17,11 @@ import {
 import { AuthModule } from "../auth/auth.module";
 import { ProductsModule } from "../products/products.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
+import { ConversationGroupDefaultsModule } from "./conversation-group-defaults.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
 import { ConversationGroupsService } from "./conversation-groups.service";
+import { ConversationEventsService } from "./conversation-events.service";
+import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
 import { ConversationsController } from "./conversations.controller";
@@ -30,11 +34,13 @@ import { ConversationsService } from "./conversations.service";
   imports: [
     AuthModule,
     ProductsModule,
+    ConversationGroupDefaultsModule,
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
       InstagramIntegration,
       Conversation,
       ConversationGroup,
+      ConversationEvent,
       ConversationMessage,
       InstagramUser,
       TelegramUser,
@@ -50,6 +56,8 @@ import { ConversationsService } from "./conversations.service";
     ConversationsService,
     ConversationsAllocationService,
     ConversationGroupsService,
+    ConversationEventsService,
+    ConversationWorkflowService,
     ConversationMessagePresenterService,
     ConversationMessageNotifyService,
     ConversationsRealtimeService,
@@ -60,6 +68,7 @@ import { ConversationsService } from "./conversations.service";
     ConversationsAllocationService,
     ConversationGroupsService,
     ConversationMessageNotifyService,
+    ConversationWorkflowService,
   ],
 })
 export class ConversationsModule {}

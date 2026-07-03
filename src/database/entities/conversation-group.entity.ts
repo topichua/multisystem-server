@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { Workspace } from "./workspace.entity";
+import { ConversationGroupSystemKey } from "./conversation-group-system-key.enum";
 
 @Entity("conversation_groups")
 @Index("IDX_conversation_groups_workspace_id", ["workspaceId"])
@@ -40,4 +41,14 @@ export class ConversationGroup {
   /** Display order within the workspace (SQL `order` is reserved). */
   @Column({ name: "sort_order", type: "int", default: 0 })
   sortOrder: number;
+
+  /**
+   * System status key (`new`, `processing`, `archived`) for built-in groups.
+   * Null for user-created custom groups.
+   */
+  @Column({ name: "system_key", type: "varchar", length: 32, nullable: true })
+  systemKey: ConversationGroupSystemKey | null;
+
+  @Column({ name: "is_system", type: "boolean", default: false })
+  isSystem: boolean;
 }

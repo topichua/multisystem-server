@@ -98,12 +98,15 @@ import { DropProductDraftDeleteTrigger1744200000099 } from "./migrations/1744200
 import { StockMovementIntegerId1744200000100 } from "./migrations/1744200000100-StockMovementIntegerId";
 import { ProductMediaWorkspaceId1744200000101 } from "./migrations/1744200000101-ProductMediaWorkspaceId";
 import { TelegramIntegrationListenerLocks1744200000102 } from "./migrations/1744200000102-TelegramIntegrationListenerLocks";
+import { ConversationGroupSystemStatuses1744200000103 } from "./migrations/1744200000103-ConversationGroupSystemStatuses";
+import { RestoreConversationGroupSystemDefaults1744200000104 } from "./migrations/1744200000104-RestoreConversationGroupSystemDefaults";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
   ClientLink,
   InstagramIntegration,
   Conversation,
+  ConversationEvent,
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
@@ -204,6 +207,7 @@ const entities = [
   ClientLink,
   ConversationGroup,
   Conversation,
+  ConversationEvent,
   ConversationMessage,
   ProductCategory,
   Product,
@@ -367,6 +371,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       StockMovementIntegerId1744200000100,
       ProductMediaWorkspaceId1744200000101,
       TelegramIntegrationListenerLocks1744200000102,
+      ConversationGroupSystemStatuses1744200000103,
+      RestoreConversationGroupSystemDefaults1744200000104,
     ],
   };
 }

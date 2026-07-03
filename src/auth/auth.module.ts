@@ -13,6 +13,7 @@ import {
 } from "../database/entities";
 import { ProductsModule } from "../products/products.module";
 import { SendgridModule } from "../sendgrid/sendgrid.module";
+import { ConversationGroupDefaultsModule } from "../conversations/conversation-group-defaults.module";
 import { PasswordService } from "../users/crypto/password.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
 import { AuthController } from "./auth.controller";
@@ -26,6 +27,7 @@ import { RegistrationService } from "./registration.service";
   imports: [
     ProductsModule,
     SendgridModule,
+    ConversationGroupDefaultsModule,
     TypeOrmModule.forFeature([
       User,
       Workspace,

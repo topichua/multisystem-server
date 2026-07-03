@@ -90,7 +90,8 @@ export class ConversationGroupsController {
   @ApiOperation({
     summary: "Delete a conversation group",
     description:
-      "Conversations referencing this group have `group_id` set to null (`ON DELETE SET NULL`).",
+      "System groups (new, processing, archived) cannot be deleted. " +
+      "Conversations referencing a deleted custom group have `group_id` set to null.",
   })
   @ApiNoContentResponse()
   async remove(

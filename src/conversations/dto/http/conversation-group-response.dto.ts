@@ -24,4 +24,16 @@ export class ConversationGroupResponseDto {
 
   @ApiProperty()
   sortOrder: number;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Built-in status key: new, processing, archived",
+    example: "new",
+  })
+  systemKey?: string | null;
+
+  @ApiProperty({
+    description: "System groups cannot be deleted; only name/color are editable",
+  })
+  isSystem: boolean;
 }

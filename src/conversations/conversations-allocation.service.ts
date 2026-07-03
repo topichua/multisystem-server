@@ -29,6 +29,7 @@ import type {
   InstagramWebhookPayload,
 } from "../webhook/instagram-webhook-payload.types";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
+import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 
@@ -77,6 +78,7 @@ export class ConversationsAllocationService {
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
     private readonly messageNotify: ConversationMessageNotifyService,
+    private readonly conversationWorkflow: ConversationWorkflowService,
   ) {
     setInterval(() => this.sweepExpiredCompanyContextCache(), 60_000).unref?.();
   }
@@ -248,6 +250,10 @@ export class ConversationsAllocationService {
 
     if (saveConversation) {
       await this.conversationRepo.save(conv);
+      await this.conversationWorkflow.onConversationCreated(
+        conv,
+        ctx.companyCtx.ownerId,
+      );
     }
 
     const existingMessage = await this.conversationMessageRepo.findOne({
@@ -262,6 +268,14 @@ export class ConversationsAllocationService {
     );
 
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
+
+    const senderId = msg.from?.id?.trim() ?? "";
+    if (senderId && senderId === customerUserId) {
+      await this.conversationWorkflow.onInboundCustomerMessage(conv);
+    } else {
+      await this.conversationWorkflow.onOutboundAgentReply(conv);
+    }
+
     await this.syncInstagramUsersForWebhookAllocation(
       msg,
       participantExtras,

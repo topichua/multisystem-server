@@ -11,6 +11,7 @@ import {
   TelegramIntegration,
 } from "../database/entities";
 import { ConversationMessageNotifyService } from "../conversations/conversation-message-notify.service";
+import { ConversationWorkflowService } from "../conversations/conversation-workflow.service";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { TelegramUsersService } from "./telegram-users.service";
 
@@ -27,6 +28,7 @@ export class TelegramMessagePersistenceService {
     private readonly cloudflareImages: CloudflareImagesService,
     @Inject(forwardRef(() => TelegramUsersService))
     private readonly telegramUsers: TelegramUsersService,
+    private readonly conversationWorkflow: ConversationWorkflowService,
   ) {}
 
   /**
@@ -176,6 +178,7 @@ export class TelegramMessagePersistenceService {
     });
     if (convSaved) {
       await this.conversationRepo.save(conv);
+      await this.conversationWorkflow.onConversationCreated(conv, ownerId);
     } else if (conv.instUpdatedAt.getTime() < messageDate.getTime()) {
       conv.instUpdatedAt = messageDate;
       await this.conversationRepo.save(conv);
@@ -228,6 +231,12 @@ export class TelegramMessagePersistenceService {
 
     const saved = await this.conversationMessageRepo.save(row);
     await this.messageNotify.notifyPersistedMessage(saved, ownerId);
+
+    if (!isOutgoing) {
+      await this.conversationWorkflow.onInboundCustomerMessage(conv);
+    } else {
+      await this.conversationWorkflow.onOutboundAgentReply(conv);
+    }
 
     this.log.debug(
       `Saved telegram message id=${externalMessageId} conversation_id=${conv.id} integration_id=${integration.id}`,
@@ -320,6 +329,7 @@ export class TelegramMessagePersistenceService {
 
     const saved = await this.conversationMessageRepo.save(row);
     await this.messageNotify.notifyPersistedMessage(saved, ownerId);
+    await this.conversationWorkflow.onOutboundAgentReply(conversation);
     return saved;
   }
 

@@ -33,6 +33,7 @@ import { SyncConversationsResponseDto } from "./dto/http/sync-conversations-resp
 import { InstagramMessagesResponseDto } from "./dto/http/instagram-messages-response.dto";
 import { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
+import { ConversationEventsListResponseDto } from "./dto/http/conversation-events-list-response.dto";
 import { ProductSuggestionItemDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
 import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
@@ -275,7 +276,8 @@ export class ConversationsController {
   @ApiOperation({
     summary: "Update conversation",
     description:
-      "Set `groupId` and/or `responsible_member_id`. Member must be active in the workspace and `can_be_assigned_to_chat`. Pass null to clear assignment.",
+      "Set `groupId` (status column: new / processing / archived or custom) and/or `responsible_member_id`. " +
+      "Member must be active in the workspace and `can_be_assigned_to_chat`. Pass null to clear responsible assignment.",
   })
   @ApiBody({ type: UpdateConversationRequestDto })
   @ApiOkResponse({ type: ConversationRowDto })
@@ -302,6 +304,37 @@ export class ConversationsController {
       ownerId,
       numericId,
       dto,
+    );
+  }
+
+  @Get(":id/events")
+  @ApiOperation({
+    summary: "Conversation change history",
+    description:
+      "Append-only log of group/status and responsible-member changes for this conversation.",
+  })
+  @ApiOkResponse({ type: ConversationEventsListResponseDto })
+  async listConversationEvents(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ConversationEventsListResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    return this.conversationsService.listConversationEventsForOwner(
+      ownerId,
+      numericId,
     );
   }
 

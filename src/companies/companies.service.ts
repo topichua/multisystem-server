@@ -3,6 +3,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import type { CreateCompanyWithOwnerInput } from "./dto/create-company.dto";
 import { User, UserStatus, Workspace } from "../database/entities";
+import { ConversationGroupDefaultsService } from "../conversations/conversation-group-defaults.service";
 import { PasswordService } from "../users/crypto/password.service";
 
 @Injectable()
@@ -11,6 +12,7 @@ export class CompaniesService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly passwordService: PasswordService,
+    private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
   ) {}
 
   async createCompanyWithOwner(
@@ -26,7 +28,7 @@ export class CompaniesService {
 
     const passwordHash = await this.passwordService.hash(input.password);
 
-    return this.dataSource.transaction(async (mgr) => {
+    const result = await this.dataSource.transaction(async (mgr) => {
       const userRepo = mgr.getRepository(User);
       const workspaceRepo = mgr.getRepository(Workspace);
 
@@ -48,5 +50,8 @@ export class CompaniesService {
 
       return { workspace, user };
     });
+
+    await this.conversationGroupDefaults.ensureSystemGroups(result.workspace.id);
+    return result;
   }
 }
