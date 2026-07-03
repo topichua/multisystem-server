@@ -333,6 +333,85 @@ export class TelegramMessagePersistenceService {
     return saved;
   }
 
+  /**
+   * Participant read our outbound messages up to `maxId` (Telegram UpdateReadHistoryOutbox).
+   * Sets `conversation_messages.read_at` only — does not touch `conversations.read_at`.
+   */
+  async persistOutboxReadReceipt(
+    integration: TelegramIntegration,
+    update: Api.UpdateReadHistoryOutbox,
+  ): Promise<void> {
+    const myUserId = integration.telegramUserId?.trim();
+    if (!myUserId) {
+      return;
+    }
+
+    if (!(update.peer instanceof Api.PeerUser)) {
+      return;
+    }
+
+    const maxId = Number(update.maxId);
+    if (!Number.isInteger(maxId) || maxId <= 0) {
+      return;
+    }
+
+    const chatId = this.resolvePeerUserId(update.peer);
+    if (!chatId) {
+      return;
+    }
+
+    const conv = await this.conversationRepo.findOne({
+      where: {
+        workspaceId: integration.workspaceId,
+        source: ConversationSource.TELEGRAM,
+        externalSourceId: String(integration.id),
+        participantId: chatId,
+      },
+      order: { id: "DESC" },
+    });
+    if (!conv) {
+      return;
+    }
+
+    const readAt = new Date();
+    const result = await this.conversationMessageRepo
+      .createQueryBuilder()
+      .update(ConversationMessage)
+      .set({ readAt })
+      .where("conversation_id = :conversationId", { conversationId: conv.id })
+      .andWhere("sender_id = :myUserId", { myUserId })
+      .andWhere("read_at IS NULL")
+      .andWhere("external_id LIKE :externalIdPrefix", {
+        externalIdPrefix: `tg:${chatId}:%`,
+      })
+      .andWhere("CAST(SPLIT_PART(external_id, ':', 3) AS INTEGER) <= :maxId", {
+        maxId,
+      })
+      .execute();
+
+    const affected = result.affected ?? 0;
+    if (affected === 0) {
+      return;
+    }
+
+    await this.messageNotify.notifyConversationForOwner(
+      integration.ownerId,
+      conv.id,
+    );
+
+    this.log.debug(
+      `Telegram outbox read receipt chat_id=${chatId} max_id=${maxId} messages_updated=${affected} conversation_id=${conv.id}`,
+    );
+  }
+
+  private resolvePeerUserId(peer: Api.PeerUser): string {
+    try {
+      return utils.getPeerId(peer);
+    } catch {
+      return this.bigIntToId(peer.userId);
+    }
+  }
+
   private async ensureConversation(params: {
     integration: TelegramIntegration;
     ownerId: number;

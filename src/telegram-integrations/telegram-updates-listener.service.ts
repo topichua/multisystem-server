@@ -11,7 +11,8 @@ import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { randomUUID } from "crypto";
 import { hostname } from "os";
-import { NewMessage } from "telegram/events";
+import { NewMessage, Raw } from "telegram/events";
+import { Api } from "telegram";
 import type { TelegramClient } from "telegram";
 import { IsNull, Not, Repository } from "typeorm";
 import {
@@ -501,7 +502,51 @@ export class TelegramUpdatesListenerService
         }
       };
 
+      const readReceiptHandler = async (update: Api.TypeUpdate) => {
+        if (!(update instanceof Api.UpdateReadHistoryOutbox)) {
+          return;
+        }
+
+        const active = this.clients.get(integration.id);
+        if (!active) {
+          return;
+        }
+
+        const fenceOk = await this.lockService.verifyFence(
+          integration.id,
+          this.instanceId,
+          active.lockVersion,
+        );
+        if (!fenceOk) {
+          this.log.warn(
+            `Telegram listener stale read receipt ignored integration_id=${integration.id}: lost lock (fencing)`,
+          );
+          void this.stopListenerDueToLostLock(integration.id);
+          return;
+        }
+
+        try {
+          await this.persistence.persistOutboxReadReceipt(integration, update);
+        } catch (e) {
+          if (this.isAuthKeyDuplicated(e)) {
+            void this.handleAuthKeyDuplicated(integration, {
+              client,
+              hint: "session auth key duplicated during read receipt",
+            });
+            return;
+          }
+          const err = e instanceof Error ? e.message : String(e);
+          this.log.warn(
+            `Telegram read receipt handler failed integration_id=${integration.id}: ${err}`,
+          );
+        }
+      };
+
       client.addEventHandler(handler, new NewMessage({}));
+      client.addEventHandler(
+        readReceiptHandler,
+        new Raw({ types: [Api.UpdateReadHistoryOutbox] }),
+      );
 
       try {
         await client.getDialogs({ limit: 100 });
