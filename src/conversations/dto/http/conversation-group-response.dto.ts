@@ -36,4 +36,10 @@ export class ConversationGroupResponseDto {
     description: "System groups cannot be deleted; only name/color are editable",
   })
   isSystem: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Number of conversations in this group visible to the current user (with `include_distribution=true`).",
+  })
+  conversationCount?: number;
 }

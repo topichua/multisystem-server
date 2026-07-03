@@ -171,6 +171,57 @@ export class ConversationsService {
     return { channels, responsibleUsers };
   }
 
+  /** Accessible conversation counts per `group_id` (owners / full_access / grants). */
+  async getConversationDistributionByGroupForUser(
+    userId: number,
+    context: { sessionWorkspaceId: number; appRole?: string },
+  ): Promise<{ byGroupId: Map<number, number>; total: number }> {
+    const workspaceId = await this.resolveWorkspaceIdForConversationList(
+      userId,
+      context.sessionWorkspaceId,
+    );
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      context.appRole,
+      workspaceId,
+    );
+
+    if (permissions.isOwner || permissions.conversations.fullAccess) {
+      const rows = await this.countConversationsByGroupQuery(workspaceId);
+      return this.mapConversationDistributionRows(rows);
+    }
+
+    const grantContext = await this.prepareIntegrationGrantListContext(
+      workspaceId,
+      userId,
+      permissions.integrationGrants,
+    );
+    if (grantContext == null) {
+      return { byGroupId: new Map(), total: 0 };
+    }
+
+    const qb = this.conversationRepo
+      .createQueryBuilder("c")
+      .select("c.group_id", "groupId")
+      .addSelect("COUNT(*)::int", "count")
+      .where("c.workspace_id = :workspaceId", { workspaceId })
+      .andWhere(
+        new Brackets((sub) => {
+          this.applyIntegrationGrantAccessWhere(
+            sub,
+            grantContext.effectiveGrants,
+            grantContext.memberId,
+            grantContext.instagramById,
+            grantContext.telegramById,
+          );
+        }),
+      )
+      .groupBy("c.group_id");
+
+    const rows = await qb.getRawMany<{ groupId: string | null; count: string }>();
+    return this.mapConversationDistributionRows(rows);
+  }
+
   async listConversationsForOwner(
     ownerId: number,
     filters: {
@@ -1936,6 +1987,36 @@ export class ConversationsService {
     return rows
       .map((row) => Number(row.memberId))
       .filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  private mapConversationDistributionRows(
+    rows: Array<{ groupId: string | null; count: string }>,
+  ): { byGroupId: Map<number, number>; total: number } {
+    let total = 0;
+    const byGroupId = new Map<number, number>();
+    for (const row of rows) {
+      const count = Number(row.count);
+      if (!Number.isFinite(count) || count < 0) {
+        continue;
+      }
+      total += count;
+      if (row.groupId != null && row.groupId !== "") {
+        byGroupId.set(Number(row.groupId), count);
+      }
+    }
+    return { byGroupId, total };
+  }
+
+  private countConversationsByGroupQuery(
+    workspaceId: number,
+  ): Promise<Array<{ groupId: string | null; count: string }>> {
+    return this.conversationRepo
+      .createQueryBuilder("c")
+      .select("c.group_id", "groupId")
+      .addSelect("COUNT(*)::int", "count")
+      .where("c.workspace_id = :workspaceId", { workspaceId })
+      .groupBy("c.group_id")
+      .getRawMany();
   }
 
   private async findConversationsForWorkspace(

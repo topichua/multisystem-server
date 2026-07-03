@@ -8,7 +8,9 @@ import { Repository } from "typeorm";
 import { ConversationGroup } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { ConversationGroupDefaultsService } from "./conversation-group-defaults.service";
+import { ConversationsService } from "./conversations.service";
 import type { ConversationGroupResponseDto } from "./dto/http/conversation-group-response.dto";
+import type { ConversationGroupsListResponseDto } from "./dto/http/conversation-groups-list-response.dto";
 import type { CreateConversationGroupRequestDto } from "./dto/http/create-conversation-group-request.dto";
 import type { UpdateConversationGroupRequestDto } from "./dto/http/update-conversation-group-request.dto";
 
@@ -19,7 +21,49 @@ export class ConversationGroupsService {
     private readonly groupRepo: Repository<ConversationGroup>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly groupDefaults: ConversationGroupDefaultsService,
+    private readonly conversations: ConversationsService,
   ) {}
+
+  async listForUser(
+    userId: number,
+    options: {
+      sessionWorkspaceId: number;
+      appRole?: string;
+      includeDistribution?: boolean;
+    },
+  ): Promise<ConversationGroupsListResponseDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceOwner(
+      userId,
+      options.sessionWorkspaceId,
+      options.appRole,
+    );
+    const workspaceId = workspace.id;
+    await this.groupDefaults.ensureSystemGroups(workspaceId);
+    const rows = await this.groupRepo.find({
+      where: { workspaceId },
+      order: { sortOrder: "ASC", id: "ASC" },
+    });
+
+    if (!options.includeDistribution) {
+      return { items: rows.map((r) => this.toDto(r)) };
+    }
+
+    const distribution =
+      await this.conversations.getConversationDistributionByGroupForUser(
+        userId,
+        {
+          sessionWorkspaceId: options.sessionWorkspaceId,
+          appRole: options.appRole,
+        },
+      );
+
+    return {
+      items: rows.map((r) =>
+        this.toDto(r, distribution.byGroupId.get(r.id) ?? 0),
+      ),
+      totalConversations: distribution.total,
+    };
+  }
 
   async listForOwner(
     ownerId: number,
@@ -144,7 +188,10 @@ export class ConversationGroupsService {
     await this.groupRepo.delete({ id: groupId, workspaceId });
   }
 
-  private toDto(row: ConversationGroup): ConversationGroupResponseDto {
+  private toDto(
+    row: ConversationGroup,
+    conversationCount?: number,
+  ): ConversationGroupResponseDto {
     return {
       id: row.id,
       workspaceId: row.workspaceId,
@@ -156,6 +203,9 @@ export class ConversationGroupsService {
       sortOrder: row.sortOrder,
       systemKey: row.systemKey,
       isSystem: row.isSystem,
+      ...(conversationCount !== undefined
+        ? { conversationCount }
+        : {}),
     };
   }
 }

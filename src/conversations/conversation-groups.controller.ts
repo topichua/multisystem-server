@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -18,6 +19,7 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -39,14 +41,36 @@ export class ConversationGroupsController {
   @ApiOperation({
     summary: "List conversation groups for the current user workspace",
     description:
-      "Resolves `workspace_id` from the latest `integration` row for this owner and returns all `conversation_groups` in that workspace.",
+      "Uses `workspaceId` from the JWT session. With `include_distribution=true`, each group includes " +
+      "`conversationCount` (respecting full access or integration grants) and the response includes `totalConversations`.",
+  })
+  @ApiQuery({
+    name: "include_distribution",
+    required: false,
+    type: Boolean,
+    description:
+      "When true, attach per-group conversation counts and total accessible conversations for the current user.",
+    example: true,
   })
   @ApiOkResponse({ type: ConversationGroupsListResponseDto })
   async list(
     @Req() req: { user?: AuthUser },
+    @Query("include_distribution") includeDistributionRaw?: string,
   ): Promise<ConversationGroupsListResponseDto> {
-    const ownerId = Number(req.user?.userId);
-    return this.groups.listForOwner(ownerId);
+    const userId = Number(req.user?.userId);
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
+    const includeDistribution = this.parseOptionalBooleanQuery(
+      includeDistributionRaw,
+      "include_distribution",
+    );
+    return this.groups.listForUser(userId, {
+      sessionWorkspaceId,
+      appRole: req.user?.role,
+      includeDistribution,
+    });
   }
 
   @Get(":id")
@@ -113,5 +137,22 @@ export class ConversationGroupsController {
       throw new BadRequestException(`${field} must be a positive integer`);
     }
     return n;
+  }
+
+  private parseOptionalBooleanQuery(
+    raw: string | undefined,
+    paramName: string,
+  ): boolean | undefined {
+    if (raw == null || raw.trim() === "") {
+      return undefined;
+    }
+    const value = raw.trim().toLowerCase();
+    if (value === "true" || value === "1") {
+      return true;
+    }
+    if (value === "false" || value === "0") {
+      return false;
+    }
+    throw new BadRequestException(`${paramName} must be true or false`);
   }
 }

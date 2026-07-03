@@ -103,6 +103,7 @@ import { RestoreConversationGroupSystemDefaults1744200000104 } from "./migration
 import { WorkspaceRoleIntegrationGrantCanTakeChat1744200000105 } from "./migrations/1744200000105-WorkspaceRoleIntegrationGrantCanTakeChat";
 import { RemoveConversationManagerId1744200000106 } from "./migrations/1744200000106-RemoveConversationManagerId";
 import { SocialUsersWorkspaceId1744200000107 } from "./migrations/1744200000107-SocialUsersWorkspaceId";
+import { TelegramUsersPhone1744200000109 } from "./migrations/1744200000109-TelegramUsersPhone";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -379,6 +380,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceRoleIntegrationGrantCanTakeChat1744200000105,
       RemoveConversationManagerId1744200000106,
       SocialUsersWorkspaceId1744200000107,
+      TelegramUsersPhone1744200000109,
     ],
   };
 }

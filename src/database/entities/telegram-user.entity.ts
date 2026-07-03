@@ -31,6 +31,10 @@ export class TelegramUser {
   @Column({ name: "username", type: "varchar", length: 255, nullable: true })
   username: string | null;
 
+  /** E.164 when the participant shared a phone or it is visible on their Telegram profile. */
+  @Column({ name: "phone", type: "varchar", length: 64, nullable: true })
+  phone: string | null;
+
   @Column({ name: "profile_pic", type: "text", default: "" })
   profilePic: string;
 

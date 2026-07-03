@@ -125,6 +125,50 @@ export class TelegramUsersService {
     }
   }
 
+  /** Upserts participant phone when shared in chat (contact message). */
+  async upsertParticipantPhone(
+    workspaceId: number,
+    participantId: string,
+    phoneRaw: string,
+  ): Promise<void> {
+    const id = participantId.trim();
+    const phone = TelegramUsersService.normalizePhoneOptional(phoneRaw);
+    if (!id || !/^\d+$/.test(id) || !phone) {
+      return;
+    }
+
+    const now = new Date();
+    const existing = await this.telegramUserRepo.findOne({
+      where: { workspaceId, id },
+    });
+    if (!existing) {
+      await this.telegramUserRepo.save(
+        this.telegramUserRepo.create({
+          workspaceId,
+          id,
+          firstName: "",
+          lastName: null,
+          username: null,
+          phone,
+          profilePic: "",
+          syncedAt: null,
+          lastSeen: now,
+        }),
+      );
+      return;
+    }
+
+    if (existing.phone === phone) {
+      existing.lastSeen = now;
+      await this.telegramUserRepo.save(existing);
+      return;
+    }
+
+    existing.phone = phone;
+    existing.lastSeen = now;
+    await this.telegramUserRepo.save(existing);
+  }
+
   /** Upserts participant profile when a private Telegram message is persisted. */
   async syncParticipantFromClient(
     client: TelegramClient,
@@ -167,6 +211,7 @@ export class TelegramUsersService {
     const firstName = entity.firstName?.trim() || "";
     const lastName = entity.lastName?.trim() || null;
     const username = entity.username?.trim() || null;
+    const profilePhone = TelegramUsersService.normalizePhoneOptional(entity.phone);
     let profilePic = existing?.profilePic?.trim() || "";
 
     if (entity.photo) {
@@ -184,6 +229,7 @@ export class TelegramUsersService {
           firstName,
           lastName,
           username,
+          phone: profilePhone,
           profilePic,
           syncedAt: now,
           lastSeen: now,
@@ -195,6 +241,9 @@ export class TelegramUsersService {
     existing.firstName = firstName;
     existing.lastName = lastName;
     existing.username = username;
+    if (profilePhone) {
+      existing.phone = profilePhone;
+    }
     existing.profilePic = profilePic;
     existing.syncedAt = now;
     existing.lastSeen = now;
@@ -212,6 +261,20 @@ export class TelegramUsersService {
       .join(" ")
       .trim();
     return fullName || user.username?.trim() || user.id;
+  }
+
+  static normalizePhoneOptional(raw: string | null | undefined): string | null {
+    const trimmed = raw?.trim().replace(/[\s()-]/g, "");
+    if (!trimmed) {
+      return null;
+    }
+    const normalized = trimmed.startsWith("+")
+      ? trimmed
+      : `+${trimmed.replace(/\D/g, "")}`;
+    if (!/^\+[1-9]\d{6,14}$/.test(normalized)) {
+      return null;
+    }
+    return normalized;
   }
 
   private async uploadProfilePhoto(

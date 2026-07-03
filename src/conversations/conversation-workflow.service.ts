@@ -70,6 +70,10 @@ export class ConversationWorkflowService {
     if (conversation.responsibleMemberId == null) {
       return;
     }
+    const current = await this.describeGroup(conversation.groupId);
+    if (current?.systemKey !== ConversationGroupSystemKey.NEW) {
+      return;
+    }
     await this.setSystemGroup(
       conversation,
       ConversationGroupSystemKey.PROCESSING,

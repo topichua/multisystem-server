@@ -166,9 +166,13 @@ export class TelegramMessagePersistenceService {
         photoContent = this.extractPhotoContent(msg, cdnUrl);
       }
     }
-    const text = photoContent
-      ? photoContent.displayText
-      : (msg.message ?? "").trim() || "[non-text message]";
+    const sharedPhone = this.extractParticipantSharedPhone(msg, participantId);
+    const text =
+      sharedPhone != null
+        ? sharedPhone
+        : photoContent
+          ? photoContent.displayText
+          : (msg.message ?? "").trim() || "[non-text message]";
     const externalMessageId = `tg:${chatId}:${msg.id}`;
     const externalConversationId = `telegram:private:${chatId}`;
 
@@ -192,6 +196,13 @@ export class TelegramMessagePersistenceService {
       participantId,
       connectedClient,
     );
+    if (sharedPhone) {
+      await this.telegramUsers.upsertParticipantPhone(
+        integration.workspaceId,
+        participantId,
+        sharedPhone,
+      );
+    }
 
     const existing = await this.conversationMessageRepo.findOne({
       where: { externalId: externalMessageId },
@@ -215,6 +226,7 @@ export class TelegramMessagePersistenceService {
           peerId: chatId,
           out: msg.out ?? isOutgoing,
           ...(photoContent ? { mediaType: "photo" } : {}),
+          ...(sharedPhone ? { mediaType: "contact", phone: sharedPhone } : {}),
           ...(cdnUrl ? { cdnUrl } : {}),
         },
       }),
@@ -530,6 +542,31 @@ export class TelegramMessagePersistenceService {
       this.log.warn(`Telegram photo Cloudflare upload failed chat=${chatId}: ${err}`);
       return null;
     }
+  }
+
+  private extractParticipantSharedPhone(
+    msg: Api.Message,
+    participantId: string,
+  ): string | null {
+    const media = msg.media;
+    if (!(media instanceof Api.MessageMediaContact)) {
+      return null;
+    }
+
+    const phone = TelegramUsersService.normalizePhoneOptional(media.phoneNumber);
+    if (!phone) {
+      return null;
+    }
+
+    const contactUserIdRaw =
+      media.userId != null ? this.bigIntToId(media.userId) : null;
+    const contactUserId =
+      contactUserIdRaw && contactUserIdRaw !== "0" ? contactUserIdRaw : null;
+    if (contactUserId != null && contactUserId !== participantId) {
+      return null;
+    }
+
+    return phone;
   }
 
   private extractPhotoContent(
