@@ -131,6 +131,7 @@ export function getIntegrationGrant(
       read: "all",
       write: "all",
       assignResponsibility: true,
+      canTakeChat: true,
       instagramCommentsView: integrationType === "instagram",
       instagramCommentsWrite: integrationType === "instagram",
     };
@@ -152,6 +153,17 @@ export function canAssignConversationResponsibility(
   return (
     getIntegrationGrant(resolved, integrationType, integrationId)
       ?.assignResponsibility === true
+  );
+}
+
+export function canTakeChat(
+  resolved: ResolvedUserPermissions,
+  integrationType: IntegrationType,
+  integrationId: number,
+): boolean {
+  return (
+    getIntegrationGrant(resolved, integrationType, integrationId)?.canTakeChat ===
+    true
   );
 }
 

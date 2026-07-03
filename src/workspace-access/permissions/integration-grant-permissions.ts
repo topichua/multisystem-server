@@ -5,6 +5,7 @@ export type IntegrationGrantConversationPermissions = {
   read: VisibilityScope;
   write: VisibilityScope;
   assignResponsibility: boolean;
+  canTakeChat: boolean;
   instagramCommentsView: boolean;
   instagramCommentsWrite: boolean;
 };
@@ -37,6 +38,12 @@ export const INTEGRATION_GRANT_PERMISSION_CATALOG = [
     default: false,
   },
   {
+    key: "canTakeChat",
+    type: "boolean" as const,
+    description: "Take unassigned chats",
+    default: false,
+  },
+  {
     key: "instagramCommentsView",
     type: "boolean" as const,
     description: "View comments [Instagram]",
@@ -57,6 +64,7 @@ export const DEFAULT_INTEGRATION_GRANT_PERMISSIONS: IntegrationGrantConversation
     read: "mine",
     write: "mine",
     assignResponsibility: false,
+    canTakeChat: false,
     instagramCommentsView: false,
     instagramCommentsWrite: false,
   };
@@ -74,6 +82,7 @@ export function normalizeIntegrationGrantPermissions(
     read: normalizeVisibilityScope(input?.read),
     write: normalizeVisibilityScope(input?.write),
     assignResponsibility: Boolean(input?.assignResponsibility),
+    canTakeChat: Boolean(input?.canTakeChat),
     instagramCommentsView: Boolean(input?.instagramCommentsView),
     instagramCommentsWrite: Boolean(input?.instagramCommentsWrite),
   };

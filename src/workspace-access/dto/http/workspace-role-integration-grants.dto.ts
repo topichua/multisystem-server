@@ -31,6 +31,14 @@ export class IntegrationGrantPermissionsDto {
 
   @ApiPropertyOptional({
     description:
+      "Present when the integration is granted. Take unassigned chats on this integration.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  canTakeChat?: boolean;
+
+  @ApiPropertyOptional({
+    description:
       "Present when the integration is granted. Instagram integrations only.",
   })
   @IsOptional()

@@ -66,6 +66,9 @@ export class WorkspaceRoleIntegrationGrant {
   @Column({ name: "conversations_assign_responsibility", type: "boolean" })
   conversationsAssignResponsibility: boolean;
 
+  @Column({ name: "conversations_can_take_chat", type: "boolean" })
+  conversationsCanTakeChat: boolean;
+
   @Column({ name: "granted_by_user_id", type: "int", nullable: true })
   grantedByUserId: number | null;
 

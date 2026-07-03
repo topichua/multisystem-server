@@ -113,6 +113,7 @@ export class WorkspaceRoleIntegrationGrantsService {
             conversationsWriteScope: grant.permissions.write,
             conversationsAssignResponsibility:
               grant.permissions.assignResponsibility,
+            conversationsCanTakeChat: grant.permissions.canTakeChat,
             instagramCommentsRead: grant.permissions.instagramCommentsView,
             instagramCommentsWrite: grant.permissions.instagramCommentsWrite,
             grantedByUserId: actorUserId,
@@ -177,6 +178,7 @@ export class WorkspaceRoleIntegrationGrantsService {
         read: "all",
         write: "all",
         assignResponsibility: true,
+        canTakeChat: true,
         instagramCommentsView: true,
         instagramCommentsWrite: true,
       });
@@ -188,6 +190,7 @@ export class WorkspaceRoleIntegrationGrantsService {
         read: "all",
         write: "all",
         assignResponsibility: true,
+        canTakeChat: true,
         instagramCommentsView: false,
         instagramCommentsWrite: false,
       });
@@ -294,6 +297,7 @@ export class WorkspaceRoleIntegrationGrantsService {
             read: grant.permissions.read,
             write: grant.permissions.write,
             assignResponsibility: grant.permissions.assignResponsibility,
+            canTakeChat: grant.permissions.canTakeChat,
             instagramCommentsView: grant.permissions.instagramCommentsView,
             instagramCommentsWrite: grant.permissions.instagramCommentsWrite,
           },
@@ -349,6 +353,7 @@ export class WorkspaceRoleIntegrationGrantsService {
       read: grant.conversationsReadScope,
       write: grant.conversationsWriteScope,
       assignResponsibility: grant.conversationsAssignResponsibility,
+      canTakeChat: grant.conversationsCanTakeChat,
       instagramCommentsView: grant.instagramCommentsRead,
       instagramCommentsWrite: grant.instagramCommentsWrite,
     };
@@ -428,6 +433,7 @@ export class WorkspaceRoleIntegrationGrantsService {
         read: grant.conversationsReadScope,
         write: grant.conversationsWriteScope,
         assignResponsibility: grant.conversationsAssignResponsibility,
+        canTakeChat: grant.conversationsCanTakeChat,
         instagramCommentsView: grant.instagramCommentsRead,
         instagramCommentsWrite: grant.instagramCommentsWrite,
       },
@@ -450,6 +456,7 @@ export class WorkspaceRoleIntegrationGrantsService {
       read: permissions.read,
       write: permissions.write,
       assignResponsibility: permissions.assignResponsibility,
+      canTakeChat: permissions.canTakeChat,
     };
     if (integrationType === "instagram") {
       dto.instagramCommentsView = permissions.instagramCommentsView;

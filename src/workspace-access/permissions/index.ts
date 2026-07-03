@@ -10,6 +10,7 @@ export {
 } from "./integration-grant-permissions";
 export {
   canAssignConversationResponsibility,
+  canTakeChat,
   getIntegrationGrant,
   hasBooleanPermission,
   resolveOwnerPermissions,

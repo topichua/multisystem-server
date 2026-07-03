@@ -104,6 +104,9 @@ export class ResolvedIntegrationGrantItemDto {
   assignResponsibility: boolean;
 
   @ApiProperty()
+  canTakeChat: boolean;
+
+  @ApiProperty()
   instagramCommentsView: boolean;
 
   @ApiProperty()
