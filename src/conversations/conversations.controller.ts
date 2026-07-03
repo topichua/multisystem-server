@@ -40,6 +40,7 @@ import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-messag
 import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 import { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
 import { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
+import { ConversationChannelCriteriaResponseDto } from "./dto/http/conversations-channel-criteria-response.dto";
 
 @ApiTags("admin — conversations")
 @ApiBearerAuth("bearer")
@@ -55,7 +56,9 @@ export class ConversationsController {
       "Returns conversations for the workspace from JWT session `workspaceId`. " +
       "Owners and roles with `conversations.full_access` see all chats. " +
       "Otherwise, results are built from the role's integration grants: each grant matches conversations by integration source and `external_source_id`; `read=all` returns all chats on that integration, `read=mine` only chats where you are responsible. " +
-      "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace.",
+      "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace. " +
+      "Optional `show_without_responsible_only=true`: only unassigned chats (`responsible_member_id` null) you can access (takeable queue / unassigned inbox). " +
+      "Optional `channel_ids`: comma-separated integration ids from GET /conversations/criteria (e.g. `1,2`).",
   })
   @ApiQuery({
     name: "groupIds",
@@ -64,20 +67,76 @@ export class ConversationsController {
       "Comma-separated conversation group ids, e.g. `1,2`. Omit for all conversations.",
     example: "1,2",
   })
+  @ApiQuery({
+    name: "channel_ids",
+    required: false,
+    description:
+      "Comma-separated integration ids from GET /conversations/criteria, e.g. `1,2`.",
+    example: "1,2",
+  })
+  @ApiQuery({
+    name: "show_without_responsible_only",
+    required: false,
+    type: Boolean,
+    description:
+      "When true, return only conversations with no responsible member that you can access.",
+    example: true,
+  })
   @ApiOkResponse({ type: ConversationsListResponseDto })
   async getAll(
     @Req() req: { user?: AuthUser },
     @Query("groupIds") groupIdsRaw?: string | string[],
+    @Query("channel_ids") channelIdsRaw?: string | string[],
+    @Query("show_without_responsible_only")
+    showWithoutResponsibleOnlyRaw?: string,
   ): Promise<ConversationsListResponseDto> {
     const ownerId = Number(req.user?.userId);
     const sessionWorkspaceId = req.user?.workspaceId;
     if (sessionWorkspaceId == null) {
       throw new BadRequestException("workspaceId is required in JWT session");
     }
-    const groupIds = this.parseOptionalGroupIdsQuery(groupIdsRaw);
+    const groupIds = this.parseOptionalPositiveIntIdsQuery(
+      groupIdsRaw,
+      "groupIds",
+    );
+    const channelIds = this.parseOptionalPositiveIntIdsQuery(
+      channelIdsRaw,
+      "channel_ids",
+    );
+    const showWithoutResponsibleOnly = this.parseOptionalBooleanQuery(
+      showWithoutResponsibleOnlyRaw,
+      "show_without_responsible_only",
+    );
     return this.conversationsService.listConversationsForOwner(ownerId, {
       sessionWorkspaceId,
       groupIds,
+      channelIds,
+      showWithoutResponsibleOnly,
+      appRole: req.user?.role,
+    });
+  }
+
+  @Get("criteria")
+  @ApiOperation({
+    summary: "List conversation filter criteria for the current user",
+    description:
+      "Returns `channels` (integration id, name, type) for `channel_ids` filter on GET /conversations, " +
+      "and `responsibleUsers` (workspace member id, name, email, avatar) for responsible filter — " +
+      "only members who are responsible on conversations you can access. " +
+      "Owners and roles with `conversations.full_access` see all workspace integrations and responsibles. " +
+      "Otherwise, scoped by integration grants.",
+  })
+  @ApiOkResponse({ type: ConversationChannelCriteriaResponseDto })
+  async getCriteria(
+    @Req() req: { user?: AuthUser },
+  ): Promise<ConversationChannelCriteriaResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
+    return this.conversationsService.getConversationCriteriaForOwner(ownerId, {
+      sessionWorkspaceId,
       appRole: req.user?.role,
     });
   }
@@ -86,8 +145,26 @@ export class ConversationsController {
    * Accepts `?groupIds=1,2` or repeated `groupIds` (framework-dependent).
    * Empty / absent → undefined (no filter).
    */
-  private parseOptionalGroupIdsQuery(
-    raw?: string | string[],
+  private parseOptionalBooleanQuery(
+    raw: string | undefined,
+    paramName: string,
+  ): boolean | undefined {
+    if (raw == null || raw.trim() === "") {
+      return undefined;
+    }
+    const value = raw.trim().toLowerCase();
+    if (value === "true" || value === "1") {
+      return true;
+    }
+    if (value === "false" || value === "0") {
+      return false;
+    }
+    throw new BadRequestException(`${paramName} must be true or false`);
+  }
+
+  private parseOptionalPositiveIntIdsQuery(
+    raw: string | string[] | undefined,
+    paramName: string,
   ): number[] | undefined {
     if (raw == null) return undefined;
     const chunks = Array.isArray(raw) ? raw : [raw];
@@ -98,13 +175,13 @@ export class ConversationsController {
         if (!t) continue;
         if (!/^\d+$/.test(t)) {
           throw new BadRequestException(
-            `groupIds must be comma-separated positive integers; invalid segment: "${part.trim()}"`,
+            `${paramName} must be comma-separated positive integers; invalid segment: "${part.trim()}"`,
           );
         }
         const n = Number(t);
         if (!Number.isInteger(n) || n <= 0) {
           throw new BadRequestException(
-            `groupIds must be comma-separated positive integers; invalid segment: "${part.trim()}"`,
+            `${paramName} must be comma-separated positive integers; invalid segment: "${part.trim()}"`,
           );
         }
         ids.push(n);

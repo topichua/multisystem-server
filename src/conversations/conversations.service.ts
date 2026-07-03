@@ -10,7 +10,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Brackets, FindOptionsWhere, In, Repository } from "typeorm";
+import { Brackets, FindOptionsWhere, In, IsNull, Repository, SelectQueryBuilder, WhereExpressionBuilder } from "typeorm";
 import {
   InstagramIntegration,
   Conversation,
@@ -54,11 +54,15 @@ import { WorkspaceAccessContextService } from "../workspace-access/workspace-acc
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
 import { canAssignConversationResponsibility } from "../workspace-access/permissions/permissions-resolver";
 import type { IntegrationType } from "../integrations/integration-type";
-import type { ResolvedIntegrationGrant } from "../workspace-access/permissions/resolved-permissions.type";
+import type {
+  ResolvedIntegrationGrant,
+  ResolvedUserPermissions,
+} from "../workspace-access/permissions/resolved-permissions.type";
 import type {
   ConversationRowDto,
   ConversationParticipantDto,
 } from "./dto/http/conversations-list-response.dto";
+import type { User } from "../database/entities/user.entity";
 import type { ConversationEventsListResponseDto } from "./dto/http/conversation-events-list-response.dto";
 import type { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import type { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
@@ -127,11 +131,48 @@ export class ConversationsService {
     private readonly workspacePermissions: WorkspacePermissionsService,
   ) {}
 
+  async getConversationCriteriaForOwner(
+    ownerId: number,
+    filters: {
+      sessionWorkspaceId: number;
+      appRole?: string;
+    },
+  ): Promise<{
+    channels: Array<{
+      integrationId: number;
+      name: string;
+      type: "instagram" | "telegram";
+    }>;
+    responsibleUsers: Array<{
+      id: number;
+      name: string;
+      email: string;
+      avatar: string | null;
+    }>;
+  }> {
+    const workspaceId = await this.resolveWorkspaceIdForConversationList(
+      ownerId,
+      filters.sessionWorkspaceId,
+    );
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      ownerId,
+      filters.appRole,
+      workspaceId,
+    );
+    const [channels, responsibleUsers] = await Promise.all([
+      this.resolveAccessibleConversationChannels(workspaceId, permissions),
+      this.resolveAccessibleResponsibleUsers(workspaceId, ownerId, permissions),
+    ]);
+    return { channels, responsibleUsers };
+  }
+
   async listConversationsForOwner(
     ownerId: number,
     filters: {
       sessionWorkspaceId: number;
       groupIds?: number[];
+      channelIds?: number[];
+      showWithoutResponsibleOnly?: boolean;
       appRole?: string;
     },
   ): Promise<{
@@ -153,15 +194,31 @@ export class ConversationsService {
       workspaceId,
       filters.groupIds,
     );
+    const channelIds = await this.validateOptionalChannelIds(
+      workspaceId,
+      permissions,
+      filters.channelIds,
+    );
+    const channelFilter =
+      channelIds != null
+        ? await this.buildChannelFilter(workspaceId, permissions, channelIds)
+        : undefined;
 
     const rows =
       permissions.isOwner || permissions.conversations.fullAccess
-        ? await this.findConversationsForWorkspace(workspaceId, groupIds)
+        ? await this.findConversationsForWorkspace(
+            workspaceId,
+            groupIds,
+            filters.showWithoutResponsibleOnly,
+            channelFilter,
+          )
         : await this.findConversationsForIntegrationGrants(
             workspaceId,
             ownerId,
             permissions.integrationGrants,
             groupIds,
+            filters.showWithoutResponsibleOnly,
+            channelFilter,
           );
 
     const listAccessContext =
@@ -1021,18 +1078,569 @@ export class ConversationsService {
     return unique;
   }
 
+  private resolveInstagramChannelName(row: InstagramIntegration): string {
+    return (
+      row.facebookPageName?.trim() ||
+      row.name?.trim() ||
+      `Instagram #${row.id}`
+    );
+  }
+
+  private resolveTelegramChannelName(row: TelegramIntegration): string {
+    return (
+      row.name?.trim() ||
+      row.telegramUsername?.trim() ||
+      `Telegram #${row.id}`
+    );
+  }
+
+  private async resolveAccessibleConversationChannels(
+    workspaceId: number,
+    permissions: Pick<
+      ResolvedUserPermissions,
+      "isOwner" | "conversations" | "integrationGrants"
+    >,
+  ): Promise<
+    Array<{
+      integrationId: number;
+      name: string;
+      type: "instagram" | "telegram";
+    }>
+  > {
+    if (permissions.isOwner || permissions.conversations.fullAccess) {
+      const [instagram, telegram] = await Promise.all([
+        this.instagramIntegrationRepo.find({
+          where: { workspaceId },
+          order: { id: "ASC" },
+        }),
+        this.telegramIntegrationRepo.find({
+          where: { workspaceId },
+          order: { id: "ASC" },
+        }),
+      ]);
+      const channels: Array<{
+        integrationId: number;
+        name: string;
+        type: "instagram" | "telegram";
+      }> = [];
+      for (const row of instagram) {
+        channels.push({
+          integrationId: row.id,
+          name: this.resolveInstagramChannelName(row),
+          type: "instagram",
+        });
+      }
+      for (const row of telegram) {
+        channels.push({
+          integrationId: row.id,
+          name: this.resolveTelegramChannelName(row),
+          type: "telegram",
+        });
+      }
+      return channels;
+    }
+
+    const conversationGrants = permissions.integrationGrants.filter(
+      (grant) =>
+        grant.integrationType === "instagram" ||
+        grant.integrationType === "telegram",
+    );
+    const { instagramById, telegramById } =
+      await this.loadIntegrationMapsForGrants(workspaceId, conversationGrants);
+
+    const channels: Array<{
+      integrationId: number;
+      name: string;
+      type: "instagram" | "telegram";
+    }> = [];
+    const seen = new Set<string>();
+    for (const grant of conversationGrants) {
+      if (grant.integrationType === "instagram") {
+        const row = instagramById.get(grant.integrationId);
+        if (!row) {
+          continue;
+        }
+        const key = `instagram:${row.id}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        channels.push({
+          integrationId: row.id,
+          name: this.resolveInstagramChannelName(row),
+          type: "instagram",
+        });
+        continue;
+      }
+      const row = telegramById.get(grant.integrationId);
+      if (!row) {
+        continue;
+      }
+      const key = `telegram:${row.id}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      channels.push({
+        integrationId: row.id,
+        name: this.resolveTelegramChannelName(row),
+        type: "telegram",
+      });
+    }
+    return channels;
+  }
+
+  private async validateOptionalChannelIds(
+    workspaceId: number,
+    permissions: Pick<
+      ResolvedUserPermissions,
+      "isOwner" | "conversations" | "integrationGrants"
+    >,
+    channelIds?: number[],
+  ): Promise<number[] | undefined> {
+    if (channelIds == null || channelIds.length === 0) {
+      return undefined;
+    }
+    const accessible = await this.resolveAccessibleConversationChannels(
+      workspaceId,
+      permissions,
+    );
+    const accessibleIds = new Set(accessible.map((channel) => channel.integrationId));
+    const missing = channelIds.filter((id) => !accessibleIds.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Unknown or inaccessible channel id(s): ${missing.join(", ")}`,
+      );
+    }
+    return channelIds;
+  }
+
+  private async buildChannelFilter(
+    workspaceId: number,
+    permissions: Pick<
+      ResolvedUserPermissions,
+      "isOwner" | "conversations" | "integrationGrants"
+    >,
+    channelIds: number[],
+  ): Promise<{
+    instagram: InstagramIntegration[];
+    telegram: TelegramIntegration[];
+  }> {
+    const accessible = await this.resolveAccessibleConversationChannels(
+      workspaceId,
+      permissions,
+    );
+    const instagramIds = [
+      ...new Set(
+        accessible
+          .filter(
+            (channel) =>
+              channel.type === "instagram" &&
+              channelIds.includes(channel.integrationId),
+          )
+          .map((channel) => channel.integrationId),
+      ),
+    ];
+    const telegramIds = [
+      ...new Set(
+        accessible
+          .filter(
+            (channel) =>
+              channel.type === "telegram" &&
+              channelIds.includes(channel.integrationId),
+          )
+          .map((channel) => channel.integrationId),
+      ),
+    ];
+    const [instagram, telegram] = await Promise.all([
+      instagramIds.length > 0
+        ? this.instagramIntegrationRepo.find({
+            where: { workspaceId, id: In(instagramIds) },
+          })
+        : Promise.resolve([]),
+      telegramIds.length > 0
+        ? this.telegramIntegrationRepo.find({
+            where: { workspaceId, id: In(telegramIds) },
+          })
+        : Promise.resolve([]),
+    ]);
+    return { instagram, telegram };
+  }
+
+  private applyChannelFilterToQuery(
+    qb: SelectQueryBuilder<Conversation>,
+    channelFilter: {
+      instagram: InstagramIntegration[];
+      telegram: TelegramIntegration[];
+    },
+  ): void {
+    qb.andWhere(
+      new Brackets((sub) => {
+        let added = false;
+        channelFilter.instagram.forEach((integration, index) => {
+          const externalSourceIds = [
+            integration.pageId,
+            integration.instagramAccountId,
+          ]
+            .map((value) => value?.trim())
+            .filter((value): value is string => Boolean(value));
+          if (externalSourceIds.length === 0) {
+            return;
+          }
+          const sourceParam = `channelInstagramSource${index}`;
+          const externalParam = `channelInstagramExternal${index}`;
+          sub.orWhere(
+            `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam})`,
+            {
+              [sourceParam]: ConversationSource.INSTAGRAM,
+              [externalParam]: externalSourceIds,
+            },
+          );
+          added = true;
+        });
+        channelFilter.telegram.forEach((integration, index) => {
+          const sourceParam = `channelTelegramSource${index}`;
+          const externalParam = `channelTelegramExternal${index}`;
+          sub.orWhere(
+            `c.source = :${sourceParam} AND c.external_source_id = :${externalParam}`,
+            {
+              [sourceParam]: ConversationSource.TELEGRAM,
+              [externalParam]: String(integration.id),
+            },
+          );
+          added = true;
+        });
+        if (!added) {
+          sub.orWhere("1 = 0");
+        }
+      }),
+    );
+  }
+
+  private resolveResponsibleUserDisplayName(user: User): string {
+    const fullName = [user.firstName, user.lastName]
+      .map((part) => part?.trim())
+      .filter((part): part is string => Boolean(part))
+      .join(" ");
+    return fullName || user.email;
+  }
+
+  private async resolveAccessibleResponsibleUsers(
+    workspaceId: number,
+    userId: number,
+    permissions: Pick<
+      ResolvedUserPermissions,
+      "isOwner" | "conversations" | "integrationGrants"
+    >,
+  ): Promise<
+    Array<{
+      id: number;
+      name: string;
+      email: string;
+      avatar: string | null;
+    }>
+  > {
+    const memberIds =
+      permissions.isOwner || permissions.conversations.fullAccess
+        ? await this.findDistinctResponsibleMemberIdsForWorkspace(workspaceId)
+        : await this.findDistinctResponsibleMemberIdsForIntegrationGrants(
+            workspaceId,
+            userId,
+            permissions.integrationGrants,
+          );
+    if (memberIds.length === 0) {
+      return [];
+    }
+
+    const members = await this.workspaceMemberRepo.find({
+      where: { workspaceId, id: In(memberIds) },
+      relations: ["user"],
+      order: { id: "ASC" },
+    });
+
+    return members
+      .filter((member) => member.user != null)
+      .map((member) => ({
+        id: member.id,
+        name: this.resolveResponsibleUserDisplayName(member.user),
+        email: member.user.email,
+        avatar: member.user.avatarSrc ?? null,
+      }));
+  }
+
+  private async findDistinctResponsibleMemberIdsForWorkspace(
+    workspaceId: number,
+  ): Promise<number[]> {
+    const rows = await this.conversationRepo
+      .createQueryBuilder("c")
+      .select("DISTINCT c.responsible_member_id", "memberId")
+      .where("c.workspace_id = :workspaceId", { workspaceId })
+      .andWhere("c.responsible_member_id IS NOT NULL")
+      .orderBy("c.responsible_member_id", "ASC")
+      .getRawMany<{ memberId: string | number }>();
+
+    return rows
+      .map((row) => Number(row.memberId))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+
+  private filterEffectiveIntegrationGrants(
+    grants: ResolvedIntegrationGrant[],
+    channelFilter?: {
+      instagram: InstagramIntegration[];
+      telegram: TelegramIntegration[];
+    },
+  ): ResolvedIntegrationGrant[] {
+    const allowedInstagramIds =
+      channelFilter != null
+        ? new Set(channelFilter.instagram.map((row) => row.id))
+        : null;
+    const allowedTelegramIds =
+      channelFilter != null
+        ? new Set(channelFilter.telegram.map((row) => row.id))
+        : null;
+
+    return grants.filter((grant) => {
+      if (allowedInstagramIds == null && allowedTelegramIds == null) {
+        return true;
+      }
+      if (grant.integrationType === "instagram") {
+        return allowedInstagramIds?.has(grant.integrationId) ?? false;
+      }
+      if (grant.integrationType === "telegram") {
+        return allowedTelegramIds?.has(grant.integrationId) ?? false;
+      }
+      return false;
+    });
+  }
+
+  private async prepareIntegrationGrantListContext(
+    workspaceId: number,
+    userId: number,
+    grants: ResolvedIntegrationGrant[],
+    channelFilter?: {
+      instagram: InstagramIntegration[];
+      telegram: TelegramIntegration[];
+    },
+  ): Promise<{
+    effectiveGrants: ResolvedIntegrationGrant[];
+    memberId: number | null;
+    instagramById: Map<number, InstagramIntegration>;
+    telegramById: Map<number, TelegramIntegration>;
+  } | null> {
+    if (grants.length === 0) {
+      return null;
+    }
+
+    const effectiveGrants = this.filterEffectiveIntegrationGrants(
+      grants,
+      channelFilter,
+    );
+    if (effectiveGrants.length === 0) {
+      return null;
+    }
+
+    const member = await this.workspaceMemberRepo.findOne({
+      where: {
+        workspaceId,
+        userId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+    });
+    const memberId = member?.id ?? null;
+    const { instagramById, telegramById } =
+      await this.loadIntegrationMapsForGrants(workspaceId, effectiveGrants);
+
+    return { effectiveGrants, memberId, instagramById, telegramById };
+  }
+
+  private applyIntegrationGrantAccessWhere(
+    sub: WhereExpressionBuilder,
+    grants: ResolvedIntegrationGrant[],
+    memberId: number | null,
+    instagramById: Map<number, InstagramIntegration>,
+    telegramById: Map<number, TelegramIntegration>,
+  ): void {
+    let added = false;
+    grants.forEach((grant, index) => {
+      if (grant.integrationType === "instagram") {
+        const integration = instagramById.get(grant.integrationId);
+        if (!integration) {
+          return;
+        }
+        const externalSourceIds = [
+          integration.pageId,
+          integration.instagramAccountId,
+        ]
+          .map((value) => value?.trim())
+          .filter((value): value is string => Boolean(value));
+        if (externalSourceIds.length === 0) {
+          return;
+        }
+        if (grant.read === "mine" && memberId == null) {
+          return;
+        }
+        const sourceParam = `instagramSource${index}`;
+        const externalParam = `instagramExternalSourceIds${index}`;
+        const memberParam = `memberId${index}`;
+        if (grant.read === "all") {
+          sub.orWhere(
+            `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam})`,
+            {
+              [sourceParam]: ConversationSource.INSTAGRAM,
+              [externalParam]: externalSourceIds,
+            },
+          );
+        } else {
+          sub.orWhere(
+            `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id = :${memberParam}`,
+            {
+              [sourceParam]: ConversationSource.INSTAGRAM,
+              [externalParam]: externalSourceIds,
+              [memberParam]: memberId,
+            },
+          );
+          if (
+            grant.canTakeChat &&
+            grant.write === "mine" &&
+            memberId != null
+          ) {
+            sub.orWhere(
+              `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id IS NULL`,
+              {
+                [sourceParam]: ConversationSource.INSTAGRAM,
+                [externalParam]: externalSourceIds,
+              },
+            );
+          }
+        }
+        added = true;
+        return;
+      }
+
+      if (grant.integrationType === "telegram") {
+        const integration = telegramById.get(grant.integrationId);
+        if (!integration) {
+          return;
+        }
+        if (grant.read === "mine" && memberId == null) {
+          return;
+        }
+        const sourceParam = `telegramSource${index}`;
+        const externalParam = `telegramExternalSourceId${index}`;
+        const memberParam = `memberId${index}`;
+        if (grant.read === "all") {
+          sub.orWhere(
+            `c.source = :${sourceParam} AND c.external_source_id = :${externalParam}`,
+            {
+              [sourceParam]: ConversationSource.TELEGRAM,
+              [externalParam]: String(integration.id),
+            },
+          );
+        } else {
+          sub.orWhere(
+            `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id = :${memberParam}`,
+            {
+              [sourceParam]: ConversationSource.TELEGRAM,
+              [externalParam]: String(integration.id),
+              [memberParam]: memberId,
+            },
+          );
+          if (
+            grant.canTakeChat &&
+            grant.write === "mine" &&
+            memberId != null
+          ) {
+            sub.orWhere(
+              `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id IS NULL`,
+              {
+                [sourceParam]: ConversationSource.TELEGRAM,
+                [externalParam]: String(integration.id),
+              },
+            );
+          }
+        }
+        added = true;
+      }
+    });
+    if (!added) {
+      sub.orWhere("1 = 0");
+    }
+  }
+
+  private async findDistinctResponsibleMemberIdsForIntegrationGrants(
+    workspaceId: number,
+    userId: number,
+    grants: ResolvedIntegrationGrant[],
+  ): Promise<number[]> {
+    const context = await this.prepareIntegrationGrantListContext(
+      workspaceId,
+      userId,
+      grants,
+    );
+    if (context == null) {
+      return [];
+    }
+
+    const rows = await this.conversationRepo
+      .createQueryBuilder("c")
+      .select("DISTINCT c.responsible_member_id", "memberId")
+      .where("c.workspace_id = :workspaceId", { workspaceId })
+      .andWhere("c.responsible_member_id IS NOT NULL")
+      .andWhere(
+        new Brackets((sub) => {
+          this.applyIntegrationGrantAccessWhere(
+            sub,
+            context.effectiveGrants,
+            context.memberId,
+            context.instagramById,
+            context.telegramById,
+          );
+        }),
+      )
+      .orderBy("c.responsible_member_id", "ASC")
+      .getRawMany<{ memberId: string | number }>();
+
+    return rows
+      .map((row) => Number(row.memberId))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+
   private async findConversationsForWorkspace(
     workspaceId: number,
     groupIds?: number[],
+    showWithoutResponsibleOnly?: boolean,
+    channelFilter?: {
+      instagram: InstagramIntegration[];
+      telegram: TelegramIntegration[];
+    },
   ): Promise<Conversation[]> {
-    const where: FindOptionsWhere<Conversation> =
-      groupIds != null && groupIds.length > 0
-        ? { workspaceId, groupId: In(groupIds) }
-        : { workspaceId };
-    return this.conversationRepo.find({
-      where,
-      order: { instUpdatedAt: "DESC" },
-    });
+    if (channelFilter == null) {
+      const where: FindOptionsWhere<Conversation> =
+        groupIds != null && groupIds.length > 0
+          ? { workspaceId, groupId: In(groupIds) }
+          : { workspaceId };
+      if (showWithoutResponsibleOnly) {
+        where.responsibleMemberId = IsNull();
+      }
+      return this.conversationRepo.find({
+        where,
+        order: { instUpdatedAt: "DESC" },
+      });
+    }
+
+    const qb = this.conversationRepo
+      .createQueryBuilder("c")
+      .where("c.workspace_id = :workspaceId", { workspaceId });
+    if (groupIds != null && groupIds.length > 0) {
+      qb.andWhere("c.group_id IN (:...groupIds)", { groupIds });
+    }
+    if (showWithoutResponsibleOnly) {
+      qb.andWhere("c.responsible_member_id IS NULL");
+    }
+    this.applyChannelFilterToQuery(qb, channelFilter);
+    qb.orderBy("c.inst_updated_at", "DESC");
+    return qb.getMany();
   }
 
   private async loadIntegrationMapsForGrants(
@@ -1219,22 +1827,21 @@ export class ConversationsService {
     userId: number,
     grants: ResolvedIntegrationGrant[],
     groupIds?: number[],
+    showWithoutResponsibleOnly?: boolean,
+    channelFilter?: {
+      instagram: InstagramIntegration[];
+      telegram: TelegramIntegration[];
+    },
   ): Promise<Conversation[]> {
-    if (grants.length === 0) {
+    const context = await this.prepareIntegrationGrantListContext(
+      workspaceId,
+      userId,
+      grants,
+      channelFilter,
+    );
+    if (context == null) {
       return [];
     }
-
-    const member = await this.workspaceMemberRepo.findOne({
-      where: {
-        workspaceId,
-        userId,
-        status: WorkspaceMemberStatus.ACTIVE,
-      },
-    });
-    const memberId = member?.id ?? null;
-
-    const { instagramById, telegramById } =
-      await this.loadIntegrationMapsForGrants(workspaceId, grants);
 
     const qb = this.conversationRepo
       .createQueryBuilder("c")
@@ -1244,113 +1851,23 @@ export class ConversationsService {
       qb.andWhere("c.group_id IN (:...groupIds)", { groupIds });
     }
 
+    if (showWithoutResponsibleOnly) {
+      qb.andWhere("c.responsible_member_id IS NULL");
+    }
+
+    if (channelFilter != null) {
+      this.applyChannelFilterToQuery(qb, channelFilter);
+    }
+
     qb.andWhere(
       new Brackets((sub) => {
-        let added = false;
-        grants.forEach((grant, index) => {
-          if (grant.integrationType === "instagram") {
-            const integration = instagramById.get(grant.integrationId);
-            if (!integration) {
-              return;
-            }
-            const externalSourceIds = [
-              integration.pageId,
-              integration.instagramAccountId,
-            ]
-              .map((value) => value?.trim())
-              .filter((value): value is string => Boolean(value));
-            if (externalSourceIds.length === 0) {
-              return;
-            }
-            if (grant.read === "mine" && memberId == null) {
-              return;
-            }
-            const sourceParam = `instagramSource${index}`;
-            const externalParam = `instagramExternalSourceIds${index}`;
-            const memberParam = `memberId${index}`;
-            if (grant.read === "all") {
-              sub.orWhere(
-                `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam})`,
-                {
-                  [sourceParam]: ConversationSource.INSTAGRAM,
-                  [externalParam]: externalSourceIds,
-                },
-              );
-            } else {
-              sub.orWhere(
-                `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id = :${memberParam}`,
-                {
-                  [sourceParam]: ConversationSource.INSTAGRAM,
-                  [externalParam]: externalSourceIds,
-                  [memberParam]: memberId,
-                },
-              );
-              if (
-                grant.canTakeChat &&
-                grant.write === "mine" &&
-                memberId != null
-              ) {
-                sub.orWhere(
-                  `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id IS NULL`,
-                  {
-                    [sourceParam]: ConversationSource.INSTAGRAM,
-                    [externalParam]: externalSourceIds,
-                  },
-                );
-              }
-            }
-            added = true;
-            return;
-          }
-
-          if (grant.integrationType === "telegram") {
-            const integration = telegramById.get(grant.integrationId);
-            if (!integration) {
-              return;
-            }
-            if (grant.read === "mine" && memberId == null) {
-              return;
-            }
-            const sourceParam = `telegramSource${index}`;
-            const externalParam = `telegramExternalSourceId${index}`;
-            const memberParam = `memberId${index}`;
-            if (grant.read === "all") {
-              sub.orWhere(
-                `c.source = :${sourceParam} AND c.external_source_id = :${externalParam}`,
-                {
-                  [sourceParam]: ConversationSource.TELEGRAM,
-                  [externalParam]: String(integration.id),
-                },
-              );
-            } else {
-              sub.orWhere(
-                `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id = :${memberParam}`,
-                {
-                  [sourceParam]: ConversationSource.TELEGRAM,
-                  [externalParam]: String(integration.id),
-                  [memberParam]: memberId,
-                },
-              );
-              if (
-                grant.canTakeChat &&
-                grant.write === "mine" &&
-                memberId != null
-              ) {
-                sub.orWhere(
-                  `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id IS NULL`,
-                  {
-                    [sourceParam]: ConversationSource.TELEGRAM,
-                    [externalParam]: String(integration.id),
-                  },
-                );
-              }
-            }
-            added = true;
-          }
-        });
-        if (!added) {
-          sub.orWhere("1 = 0");
-        }
+        this.applyIntegrationGrantAccessWhere(
+          sub,
+          context.effectiveGrants,
+          context.memberId,
+          context.instagramById,
+          context.telegramById,
+        );
       }),
     );
 
