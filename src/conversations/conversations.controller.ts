@@ -263,11 +263,48 @@ export class ConversationsController {
     );
   }
 
+  @Post(":id/take")
+  @ApiOperation({
+    summary: "Take conversation",
+    description:
+      "Assigns the current workspace member as responsible and sets status to `new` (pending). " +
+      "Requires `canTakeChat` on the matching integration grant, or owner / conversations.full_access.",
+  })
+  @ApiOkResponse({ type: ConversationRowDto })
+  async takeConversation(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ConversationRowDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    return this.conversationsService.takeConversationForUser(ownerId, numericId, {
+      sessionWorkspaceId,
+      appRole: req.user?.role,
+    });
+  }
+
   @Put(":id")
   @ApiOperation({
     summary: "Update conversation",
     description:
       "Set `groupId` (status column: new / processing / archived or custom) and/or `responsible_member_id`. " +
+      "`responsible_member_id` requires `assignResponsibility` on the conversation integration grant. " +
       "Member must be active in the workspace and `can_be_assigned_to_chat`. Pass null to clear responsible assignment.",
   })
   @ApiBody({ type: UpdateConversationRequestDto })

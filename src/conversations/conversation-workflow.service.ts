@@ -16,6 +16,7 @@ export type ConversationWorkflowTrigger =
   | "outbound_reply"
   | "responsible_assigned"
   | "responsible_cleared"
+  | "take"
   | "manual";
 
 @Injectable()
@@ -142,6 +143,29 @@ export class ConversationWorkflowService {
         trigger: "responsible_cleared",
       });
     }
+  }
+
+  async onTakeChat(
+    conversation: Conversation,
+    fromMemberId: number | null,
+    actorId: number,
+  ): Promise<void> {
+    if (fromMemberId !== conversation.responsibleMemberId) {
+      await this.events.append(
+        conversation.id,
+        ConversationEventType.RESPONSIBLE_CHANGED,
+        actorId,
+        {
+          fromResponsibleMemberId: fromMemberId,
+          toResponsibleMemberId: conversation.responsibleMemberId,
+        },
+      );
+    }
+
+    await this.setSystemGroup(conversation, ConversationGroupSystemKey.NEW, {
+      actorId,
+      trigger: "take",
+    });
   }
 
   private async setSystemGroup(

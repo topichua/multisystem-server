@@ -52,6 +52,8 @@ import { TelegramUsersService } from "../telegram-integrations/telegram-users.se
 import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
+import { canAssignConversationResponsibility } from "../workspace-access/permissions/permissions-resolver";
+import type { IntegrationType } from "../integrations/integration-type";
 import type { ResolvedIntegrationGrant } from "../workspace-access/permissions/resolved-permissions.type";
 import type {
   ConversationRowDto,
@@ -377,6 +379,12 @@ export class ConversationsService {
     }
 
     if (dto.responsible_member_id !== undefined) {
+      await this.assertCanAssignConversationResponsibility(
+        ownerId,
+        conv,
+        workspaceId,
+      );
+
       const fromMemberId = conv.responsibleMemberId;
       if (dto.responsible_member_id == null) {
         conv.responsibleMemberId = null;
@@ -412,6 +420,210 @@ export class ConversationsService {
     }
 
     return this.getConversationForOwnerById(ownerId, conversationId);
+  }
+
+  private async assertCanAssignConversationResponsibility(
+    userId: number,
+    conversation: Conversation,
+    workspaceId: number,
+  ): Promise<void> {
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      undefined,
+      workspaceId,
+    );
+    if (permissions.isOwner || permissions.conversations.fullAccess) {
+      return;
+    }
+
+    const integration = await this.resolveConversationIntegration(
+      conversation,
+      workspaceId,
+    );
+    if (
+      integration == null ||
+      !canAssignConversationResponsibility(
+        permissions,
+        integration.integrationType,
+        integration.integrationId,
+      )
+    ) {
+      throw new ForbiddenException(
+        "Missing permission: assignResponsibility on this integration",
+      );
+    }
+  }
+
+  private async resolveConversationIntegration(
+    conversation: Conversation,
+    workspaceId: number,
+  ): Promise<{ integrationType: IntegrationType; integrationId: number } | null> {
+    if (conversation.source === ConversationSource.TELEGRAM) {
+      const integrationId = Number.parseInt(
+        conversation.externalSourceId.trim(),
+        10,
+      );
+      if (!Number.isInteger(integrationId) || integrationId <= 0) {
+        return null;
+      }
+      const integration = await this.telegramIntegrationRepo.findOne({
+        where: { id: integrationId, workspaceId },
+      });
+      if (!integration) {
+        return null;
+      }
+      return { integrationType: "telegram", integrationId: integration.id };
+    }
+
+    if (conversation.source !== ConversationSource.INSTAGRAM) {
+      return null;
+    }
+
+    const externalSourceId = conversation.externalSourceId?.trim();
+    if (!externalSourceId) {
+      return null;
+    }
+
+    const integrations = await this.instagramIntegrationRepo.find({
+      where: { workspaceId },
+    });
+    const integration = integrations.find((row) => {
+      const pageId = row.pageId?.trim();
+      const accountId = row.instagramAccountId?.trim();
+      return pageId === externalSourceId || accountId === externalSourceId;
+    });
+    if (!integration) {
+      return null;
+    }
+    return { integrationType: "instagram", integrationId: integration.id };
+  }
+
+  async takeConversationForUser(
+    userId: number,
+    conversationId: number,
+    context: { sessionWorkspaceId: number; appRole?: string },
+  ): Promise<ConversationRowDto> {
+    const workspaceId = await this.resolveWorkspaceIdForConversationList(
+      userId,
+      context.sessionWorkspaceId,
+    );
+    await this.conversationGroupDefaults.ensureSystemGroups(workspaceId);
+
+    const conversation = await this.loadConversationInWorkspace(
+      workspaceId,
+      String(conversationId),
+    );
+    if (!conversation) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      context.appRole,
+      workspaceId,
+    );
+
+    const member = await this.workspaceMemberRepo.findOne({
+      where: {
+        workspaceId,
+        userId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+    });
+    if (!member) {
+      throw new ForbiddenException("Workspace membership required");
+    }
+    if (!member.canBeAssignedToChat) {
+      throw new BadRequestException(
+        "Workspace member is not eligible for chat assignment",
+      );
+    }
+
+    if (
+      conversation.responsibleMemberId != null &&
+      conversation.responsibleMemberId !== member.id
+    ) {
+      throw new BadRequestException("Conversation is already assigned");
+    }
+
+    const fromMemberId = conversation.responsibleMemberId;
+    const alreadyMine = fromMemberId === member.id;
+
+    if (!alreadyMine) {
+      const listAccessContext = await this.buildConversationListAccessContext(
+        workspaceId,
+        userId,
+        permissions.integrationGrants,
+      );
+      const canTake =
+        permissions.isOwner ||
+        permissions.conversations.fullAccess ||
+        this.resolveCanTakeChatFlag(conversation, listAccessContext);
+
+      if (!canTake) {
+        throw new ForbiddenException("Missing permission to take this chat");
+      }
+
+      conversation.responsibleMemberId = member.id;
+      conversation.responsibleMemberSetAt = new Date();
+      await this.conversationRepo.save(conversation);
+    }
+
+    await this.conversationWorkflow.onTakeChat(conversation, fromMemberId, userId);
+
+    return this.buildConversationRowForUser(
+      userId,
+      conversation.id,
+      workspaceId,
+      permissions,
+    );
+  }
+
+  private async buildConversationRowForUser(
+    userId: number,
+    conversationId: number,
+    workspaceId: number,
+    permissions: Awaited<
+      ReturnType<WorkspacePermissionsService["getResolvedForUser"]>
+    >,
+  ): Promise<ConversationRowDto> {
+    const row = await this.conversationRepo.findOne({
+      where: { id: conversationId, workspaceId },
+    });
+    if (!row) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    const integration = await this.instagramIntegrationRepo.findOne({
+      where: { workspaceId },
+      order: { id: "DESC" },
+    });
+    const myAccountIds = await this.buildMyAccountIdsForWorkspace(
+      workspaceId,
+      integration,
+    );
+    const lastMessageByConversationId =
+      await this.getLastMessageByConversationIds([row.id]);
+    const { instagramById, telegramById } =
+      await this.getParticipantMapsForRows([row], { maxTelegramSync: 1 });
+
+    const listAccessContext =
+      permissions.isOwner || permissions.conversations.fullAccess
+        ? null
+        : await this.buildConversationListAccessContext(
+            workspaceId,
+            userId,
+            permissions.integrationGrants,
+          );
+
+    return this.toConversationRowDto(
+      row,
+      lastMessageByConversationId.get(row.id),
+      instagramById,
+      telegramById,
+      myAccountIds,
+      listAccessContext ? this.resolveCanTakeChatFlag(row, listAccessContext) : false,
+    );
   }
 
   async listConversationEventsForOwner(
