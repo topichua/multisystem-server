@@ -13,6 +13,8 @@ import {
   ProductSuggestion,
   Product,
   ProductVariant,
+  Client,
+  ClientLink,
 } from "../database/entities";
 import { AuthModule } from "../auth/auth.module";
 import { ProductsModule } from "../products/products.module";
@@ -49,6 +51,8 @@ import { ConversationsService } from "./conversations.service";
       ProductSuggestion,
       Product,
       ProductVariant,
+      Client,
+      ClientLink,
     ]),
   ],
   controllers: [ConversationsController, ConversationGroupsController],

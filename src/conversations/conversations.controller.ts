@@ -60,6 +60,7 @@ export class ConversationsController {
       "Optional `show_without_responsible_only=true`: only unassigned chats (`responsible_member_id` null) you can access (takeable queue / unassigned inbox). " +
       "Optional `channel_ids`: comma-separated integration ids from GET /conversations/criteria (e.g. `1,2`). " +
       "Optional `responsible_user_ids`: comma-separated workspace member ids from GET /conversations/criteria `responsibleUsers` (e.g. `5,7`). " +
+      "Optional `keyword`: search in participant Instagram/Telegram name or username and linked CRM client first/last name (case-insensitive). " +
       "Optional `unread_only=true`: return only conversations where `isUnread` is true in the list payload.",
   })
   @ApiQuery({
@@ -92,6 +93,13 @@ export class ConversationsController {
     example: true,
   })
   @ApiQuery({
+    name: "keyword",
+    required: false,
+    description:
+      "Case-insensitive substring match in Instagram/Telegram participant name or username, and linked CRM client first/last name.",
+    example: "Ivan",
+  })
+  @ApiQuery({
     name: "unread_only",
     required: false,
     type: Boolean,
@@ -107,6 +115,7 @@ export class ConversationsController {
     @Query("responsible_user_ids") responsibleUserIdsRaw?: string | string[],
     @Query("show_without_responsible_only")
     showWithoutResponsibleOnlyRaw?: string,
+    @Query("keyword") keywordRaw?: string,
     @Query("unread_only") unreadOnlyRaw?: string,
   ): Promise<ConversationsListResponseDto> {
     const ownerId = Number(req.user?.userId);
@@ -130,6 +139,7 @@ export class ConversationsController {
       showWithoutResponsibleOnlyRaw,
       "show_without_responsible_only",
     );
+    const keyword = this.parseOptionalKeywordQuery(keywordRaw);
     const unreadOnly = this.parseOptionalBooleanQuery(
       unreadOnlyRaw,
       "unread_only",
@@ -140,6 +150,7 @@ export class ConversationsController {
       channelIds,
       responsibleUserIds,
       showWithoutResponsibleOnly,
+      keyword,
       unreadOnly,
       appRole: req.user?.role,
     });
@@ -174,6 +185,14 @@ export class ConversationsController {
    * Accepts `?groupIds=1,2` or repeated `groupIds` (framework-dependent).
    * Empty / absent → undefined (no filter).
    */
+  private parseOptionalKeywordQuery(raw?: string): string | undefined {
+    if (raw == null) {
+      return undefined;
+    }
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
   private parseOptionalBooleanQuery(
     raw: string | undefined,
     paramName: string,

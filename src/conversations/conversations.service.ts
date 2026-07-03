@@ -26,6 +26,7 @@ import {
   ProductSuggestion,
   Product,
   ProductVariant,
+  ClientLink,
 } from "../database/entities";
 import type {
   InstagramConversationDto,
@@ -118,6 +119,8 @@ export class ConversationsService {
     private readonly productRepo: Repository<Product>,
     @InjectRepository(ProductVariant)
     private readonly productVariantRepo: Repository<ProductVariant>,
+    @InjectRepository(ClientLink)
+    private readonly clientLinkRepo: Repository<ClientLink>,
     private readonly messagePresenter: ConversationMessagePresenterService,
     @Inject(forwardRef(() => ConversationMessageNotifyService))
     private readonly messageNotify: ConversationMessageNotifyService,
@@ -175,6 +178,7 @@ export class ConversationsService {
       responsibleUserIds?: number[];
       showWithoutResponsibleOnly?: boolean;
       unreadOnly?: boolean;
+      keyword?: string;
       appRole?: string;
     },
   ): Promise<{
@@ -221,6 +225,17 @@ export class ConversationsService {
         ? await this.buildChannelFilter(workspaceId, permissions, channelIds)
         : undefined;
 
+    const participantIds =
+      filters.keyword != null
+        ? await this.resolveParticipantIdsByKeyword(
+            workspaceId,
+            filters.keyword,
+          )
+        : undefined;
+    if (participantIds != null && participantIds.length === 0) {
+      return { items: [] };
+    }
+
     const rows =
       permissions.isOwner || permissions.conversations.fullAccess
         ? await this.findConversationsForWorkspace(
@@ -229,6 +244,7 @@ export class ConversationsService {
             filters.showWithoutResponsibleOnly,
             channelFilter,
             responsibleMemberIds,
+            participantIds,
           )
         : await this.findConversationsForIntegrationGrants(
             workspaceId,
@@ -238,6 +254,7 @@ export class ConversationsService {
             filters.showWithoutResponsibleOnly,
             channelFilter,
             responsibleMemberIds,
+            participantIds,
           );
 
     const listAccessContext =
@@ -1318,6 +1335,80 @@ export class ConversationsService {
     return { instagram, telegram };
   }
 
+  private buildLikePattern(keyword: string): string {
+    const escaped = keyword.replace(/[%_\\]/g, (char) => `\\${char}`);
+    return `%${escaped}%`;
+  }
+
+  private async resolveParticipantIdsByKeyword(
+    workspaceId: number,
+    keyword: string,
+  ): Promise<string[]> {
+    const trimmed = keyword.trim();
+    if (!trimmed) {
+      return [];
+    }
+    const pattern = this.buildLikePattern(trimmed);
+    const likeParams = { pattern };
+
+    const [instagramRows, telegramRows, clientLinkRows] = await Promise.all([
+      this.instagramUserRepo
+        .createQueryBuilder("u")
+        .select("u.id", "id")
+        .where(
+          "(u.name ILIKE :pattern ESCAPE '\\' OR u.username ILIKE :pattern ESCAPE '\\')",
+          likeParams,
+        )
+        .getRawMany<{ id: string }>(),
+      this.telegramUserRepo
+        .createQueryBuilder("u")
+        .select("u.id", "id")
+        .where(
+          "(u.first_name ILIKE :pattern ESCAPE '\\' OR u.last_name ILIKE :pattern ESCAPE '\\' OR u.username ILIKE :pattern ESCAPE '\\' OR (u.first_name || ' ' || COALESCE(u.last_name, '')) ILIKE :pattern ESCAPE '\\')",
+          likeParams,
+        )
+        .getRawMany<{ id: string }>(),
+      this.clientLinkRepo
+        .createQueryBuilder("cl")
+        .innerJoin("cl.client", "client")
+        .select("cl.external_id", "externalId")
+        .where("cl.workspace_id = :workspaceId", { workspaceId })
+        .andWhere(
+          "(client.first_name ILIKE :pattern ESCAPE '\\' OR client.last_name ILIKE :pattern ESCAPE '\\' OR (client.first_name || ' ' || client.last_name) ILIKE :pattern ESCAPE '\\')",
+          likeParams,
+        )
+        .getRawMany<{ externalId: string }>(),
+    ]);
+
+    const participantIds = new Set<string>();
+    for (const row of instagramRows) {
+      const id = row.id?.trim();
+      if (id) {
+        participantIds.add(id);
+      }
+    }
+    for (const row of telegramRows) {
+      const id = row.id?.trim();
+      if (id) {
+        participantIds.add(id);
+      }
+    }
+    for (const row of clientLinkRows) {
+      const id = row.externalId?.trim();
+      if (id) {
+        participantIds.add(id);
+      }
+    }
+    return [...participantIds];
+  }
+
+  private applyParticipantIdsFilter(
+    qb: SelectQueryBuilder<Conversation>,
+    participantIds: string[],
+  ): void {
+    qb.andWhere("c.participant_id IN (:...participantIds)", { participantIds });
+  }
+
   private applyChannelFilterToQuery(
     qb: SelectQueryBuilder<Conversation>,
     channelFilter: {
@@ -1735,10 +1826,12 @@ export class ConversationsService {
       telegram: TelegramIntegration[];
     },
     responsibleMemberIds?: number[],
+    participantIds?: string[],
   ): Promise<Conversation[]> {
     const useQueryBuilder =
       channelFilter != null ||
-      (responsibleMemberIds != null && responsibleMemberIds.length > 0);
+      (responsibleMemberIds != null && responsibleMemberIds.length > 0) ||
+      (participantIds != null && participantIds.length > 0);
 
     if (!useQueryBuilder) {
       const where: FindOptionsWhere<Conversation> =
@@ -1767,6 +1860,9 @@ export class ConversationsService {
       qb.andWhere("c.responsible_member_id IN (:...responsibleMemberIds)", {
         responsibleMemberIds,
       });
+    }
+    if (participantIds != null && participantIds.length > 0) {
+      this.applyParticipantIdsFilter(qb, participantIds);
     }
     if (channelFilter != null) {
       this.applyChannelFilterToQuery(qb, channelFilter);
@@ -1965,6 +2061,7 @@ export class ConversationsService {
       telegram: TelegramIntegration[];
     },
     responsibleMemberIds?: number[],
+    participantIds?: string[],
   ): Promise<Conversation[]> {
     const context = await this.prepareIntegrationGrantListContext(
       workspaceId,
@@ -1992,6 +2089,10 @@ export class ConversationsService {
       qb.andWhere("c.responsible_member_id IN (:...responsibleMemberIds)", {
         responsibleMemberIds,
       });
+    }
+
+    if (participantIds != null && participantIds.length > 0) {
+      this.applyParticipantIdsFilter(qb, participantIds);
     }
 
     if (channelFilter != null) {
