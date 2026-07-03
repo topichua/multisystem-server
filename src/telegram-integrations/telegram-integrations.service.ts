@@ -346,6 +346,16 @@ export class TelegramIntegrationsService {
     return this.toDto(row);
   }
 
+  /**
+   * Tears down every live Telegram listener held by THIS process.
+   * Does not touch `telegram_integrations` rows — the periodic reconcile
+   * re-attaches active integrations shortly after. Useful to force-release
+   * local sessions (e.g. after AUTH_KEY_DUPLICATED caused by a local duplicate).
+   */
+  async killAllListeners(): Promise<number> {
+    return this.updatesListener.killAllListeners();
+  }
+
   /** Removes the integration row after detaching the live Telegram session. */
   async deleteForOwner(ownerId: number, id: number): Promise<void> {
     const row = await this.requireOwnedRow(ownerId, id);

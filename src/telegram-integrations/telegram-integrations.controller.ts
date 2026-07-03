@@ -22,6 +22,7 @@ import {
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { ConfirmTelegramCodeRequestDto } from "./dto/http/confirm-telegram-code-request.dto";
+import { KillTelegramListenersResponseDto } from "./dto/http/kill-telegram-listeners-response.dto";
 import { ConfirmTelegramPasswordRequestDto } from "./dto/http/confirm-telegram-password-request.dto";
 import { StartTelegramIntegrationRequestDto } from "./dto/http/start-telegram-integration-request.dto";
 import { StartTelegramQrLoginRequestDto } from "./dto/http/start-telegram-qr-login-request.dto";
@@ -54,6 +55,25 @@ export class TelegramIntegrationsController {
       this.requireOwnerId(req),
       this.parseOptionalWorkspaceId(workspaceIdRaw),
     );
+  }
+
+  @Post("listeners/kill-all")
+  @ApiOperation({
+    summary: "Force-close all live Telegram listeners in this process",
+    description:
+      "Tears down every in-memory GramJS client held by the current server " +
+      "process and releases their sessions. Integration rows are left " +
+      "unchanged, so active ones are re-attached automatically within ~30s. " +
+      "Only helps AUTH_KEY_DUPLICATED when the duplicate connection is local " +
+      "to this process; it cannot stop a session held by another deploy/replica.",
+  })
+  @ApiOkResponse({ type: KillTelegramListenersResponseDto })
+  async killAllListeners(
+    @Req() req: { user?: AuthUser },
+  ): Promise<KillTelegramListenersResponseDto> {
+    this.requireOwnerId(req);
+    const closed = await this.telegram.killAllListeners();
+    return { closed };
   }
 
   @Get(":id")
