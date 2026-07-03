@@ -183,6 +183,11 @@ export class ConversationsService {
     },
   ): Promise<{
     items: ConversationRowDto[];
+    counters: {
+      total: number;
+      unread: number;
+      withoutResponsible: number;
+    };
   }> {
     const workspaceId = await this.resolveWorkspaceIdForConversationList(
       ownerId,
@@ -233,17 +238,20 @@ export class ConversationsService {
           )
         : undefined;
     if (participantIds != null && participantIds.length === 0) {
-      return { items: [] };
+      return {
+        items: [],
+        counters: { total: 0, unread: 0, withoutResponsible: 0 },
+      };
     }
 
-    const rows =
+    const baseRows =
       permissions.isOwner || permissions.conversations.fullAccess
         ? await this.findConversationsForWorkspace(
             workspaceId,
             groupIds,
-            filters.showWithoutResponsibleOnly,
+            undefined,
             channelFilter,
-            responsibleMemberIds,
+            undefined,
             participantIds,
           )
         : await this.findConversationsForIntegrationGrants(
@@ -251,9 +259,9 @@ export class ConversationsService {
             ownerId,
             permissions.integrationGrants,
             groupIds,
-            filters.showWithoutResponsibleOnly,
+            undefined,
             channelFilter,
-            responsibleMemberIds,
+            undefined,
             participantIds,
           );
 
@@ -275,11 +283,11 @@ export class ConversationsService {
       integration,
     );
     const lastMessageByConversationId =
-      await this.getLastMessageByConversationIds(rows.map((r) => r.id));
+      await this.getLastMessageByConversationIds(baseRows.map((r) => r.id));
     const { instagramById, telegramById } =
-      await this.getParticipantMapsForRows(rows, { maxTelegramSync: 10 });
+      await this.getParticipantMapsForRows(baseRows, { maxTelegramSync: 10 });
 
-    let items = rows.map((r) =>
+    const allItems = baseRows.map((r) =>
       this.toConversationRowDto(
         r,
         lastMessageByConversationId.get(r.id),
@@ -287,15 +295,36 @@ export class ConversationsService {
         telegramById,
         myAccountIds,
         listAccessContext
-          ? this.resolveCanTakeChatFlag(r, listAccessContext)
-          : false,
+          ? this.resolveConversationActionFlags(r, permissions, listAccessContext)
+          : this.resolveConversationActionFlags(r, permissions, null),
       ),
     );
+
+    const counters = {
+      total: allItems.length,
+      unread: allItems.filter((item) => item.isUnread).length,
+      withoutResponsible: allItems.filter(
+        (item) => item.responsibleMemberId == null,
+      ).length,
+    };
+
+    let items = allItems;
+    if (filters.showWithoutResponsibleOnly) {
+      items = items.filter((item) => item.responsibleMemberId == null);
+    }
+    if (responsibleMemberIds != null && responsibleMemberIds.length > 0) {
+      const allowed = new Set(responsibleMemberIds);
+      items = items.filter(
+        (item) =>
+          item.responsibleMemberId != null &&
+          allowed.has(item.responsibleMemberId),
+      );
+    }
     if (filters.unreadOnly) {
       items = items.filter((item) => item.isUnread);
     }
 
-    return { items };
+    return { items, counters };
   }
 
   /**
@@ -403,28 +432,6 @@ export class ConversationsService {
       nextUrl = batch.paging?.next ?? null;
     }
     return out;
-  }
-
-  async getConversationForOwnerById(
-    ownerId: number,
-    id: number,
-  ): Promise<ConversationRowDto> {
-    const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
-    const row = await this.requireConversationInWorkspace(ownerId, { id });
-    const myAccountIds = await this.buildMyAccountIds(ownerId, integration, row);
-    const lastMessageByConversationId =
-      await this.getLastMessageByConversationIds([row.id]);
-    const { instagramById, telegramById } =
-      await this.getParticipantMapsForRows([row], { maxTelegramSync: 1 });
-    return this.toConversationRowDto(
-      row,
-      lastMessageByConversationId.get(row.id),
-      instagramById,
-      telegramById,
-      myAccountIds,
-      false,
-    );
   }
 
   /**
@@ -718,7 +725,36 @@ export class ConversationsService {
       instagramById,
       telegramById,
       myAccountIds,
-      listAccessContext ? this.resolveCanTakeChatFlag(row, listAccessContext) : false,
+      listAccessContext
+        ? this.resolveConversationActionFlags(row, permissions, listAccessContext)
+        : this.resolveConversationActionFlags(row, permissions, null),
+    );
+  }
+
+  async getConversationForOwnerById(
+    ownerId: number,
+    id: number,
+    context?: { sessionWorkspaceId?: number; appRole?: string },
+  ): Promise<ConversationRowDto> {
+    const workspaceId =
+      context?.sessionWorkspaceId != null
+        ? await this.resolveWorkspaceIdForConversationList(
+            ownerId,
+            context.sessionWorkspaceId,
+          )
+        : (await this.requireConversationInWorkspace(ownerId, { id })).workspaceId;
+
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      ownerId,
+      context?.appRole,
+      workspaceId,
+    );
+
+    return this.buildConversationRowForUser(
+      ownerId,
+      id,
+      workspaceId,
+      permissions,
     );
   }
 
@@ -726,7 +762,7 @@ export class ConversationsService {
     ownerId: number,
     conversationId: number,
   ): Promise<ConversationEventsListResponseDto> {
-    const conv = await this.requireConversationInWorkspace(ownerId, {
+    await this.requireConversationInWorkspace(ownerId, {
       id: conversationId,
     });
     const rows = await this.conversationEvents.listForConversation(conversationId);
@@ -847,7 +883,7 @@ export class ConversationsService {
     instagramById: Map<string, InstagramUser>,
     telegramById: Map<string, TelegramUser>,
     myAccountIds: Set<string>,
-    canTakeChat: boolean,
+    actions: { canTakeChat: boolean; canAssignResponsible: boolean },
   ): ConversationRowDto {
     const participant = this.toConversationParticipantDto(
       row,
@@ -873,7 +909,8 @@ export class ConversationsService {
       lastMessage: lastMessage?.message ?? "",
       isLastMessageFromMe,
       participant,
-      canTakeChat,
+      canTakeChat: actions.canTakeChat,
+      canAssignResponsible: actions.canAssignResponsible,
     };
   }
 
@@ -939,6 +976,65 @@ export class ConversationsService {
     }
 
     return false;
+  }
+
+  private resolveCanAssignResponsibleFlag(
+    conversation: Conversation,
+    context: {
+      instagramById: Map<number, InstagramIntegration>;
+      telegramById: Map<number, TelegramIntegration>;
+      grants: ResolvedIntegrationGrant[];
+    },
+  ): boolean {
+    for (const grant of context.grants) {
+      if (!grant.assignResponsibility) {
+        continue;
+      }
+      if (
+        this.conversationBelongsToGrant(
+          conversation,
+          grant,
+          context.instagramById,
+          context.telegramById,
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private resolveConversationActionFlags(
+    conversation: Conversation,
+    permissions: Pick<
+      ResolvedUserPermissions,
+      "isOwner" | "conversations" | "integrationGrants"
+    >,
+    context: {
+      memberId: number | null;
+      instagramById: Map<number, InstagramIntegration>;
+      telegramById: Map<number, TelegramIntegration>;
+      grants: ResolvedIntegrationGrant[];
+    } | null,
+  ): { canTakeChat: boolean; canAssignResponsible: boolean } {
+    const fullAccess =
+      permissions.isOwner || permissions.conversations.fullAccess;
+
+    const canAssignResponsible =
+      fullAccess ||
+      (context != null &&
+        this.resolveCanAssignResponsibleFlag(conversation, context));
+
+    let canTakeChat = false;
+    if (conversation.responsibleMemberId == null) {
+      if (fullAccess) {
+        canTakeChat = true;
+      } else if (context?.memberId != null) {
+        canTakeChat = this.resolveCanTakeChatFlag(conversation, context);
+      }
+    }
+
+    return { canTakeChat, canAssignResponsible };
   }
 
   private grantAllowsConversationWrite(

@@ -61,7 +61,8 @@ export class ConversationsController {
       "Optional `channel_ids`: comma-separated integration ids from GET /conversations/criteria (e.g. `1,2`). " +
       "Optional `responsible_user_ids`: comma-separated workspace member ids from GET /conversations/criteria `responsibleUsers` (e.g. `5,7`). " +
       "Optional `keyword`: search in participant Instagram/Telegram name or username and linked CRM client first/last name (case-insensitive). " +
-      "Optional `unread_only=true`: return only conversations where `isUnread` is true in the list payload.",
+      "Optional `unread_only=true`: return only conversations where `isUnread` is true in the list payload. " +
+      "Response includes `counters` (total, unread, withoutResponsible) for the shared filters above, excluding list-only filters.",
   })
   @ApiQuery({
     name: "groupIds",
@@ -550,6 +551,10 @@ export class ConversationsController {
     return this.conversationsService.getConversationForOwnerById(
       ownerId,
       numericId,
+      {
+        sessionWorkspaceId: req.user?.workspaceId,
+        appRole: req.user?.role,
+      },
     );
   }
 }
