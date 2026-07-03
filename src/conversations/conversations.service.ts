@@ -10,7 +10,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { FindOptionsWhere, In, Repository } from "typeorm";
+import { Brackets, FindOptionsWhere, In, Repository } from "typeorm";
 import {
   InstagramIntegration,
   Conversation,
@@ -51,6 +51,8 @@ import {
 import { TelegramUsersService } from "../telegram-integrations/telegram-users.service";
 import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
+import type { ResolvedIntegrationGrant } from "../workspace-access/permissions/resolved-permissions.type";
 import type {
   ConversationRowDto,
   ConversationParticipantDto,
@@ -120,20 +122,46 @@ export class ConversationsService {
     private readonly conversationWorkflow: ConversationWorkflowService,
     private readonly conversationEvents: ConversationEventsService,
     private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
+    private readonly workspacePermissions: WorkspacePermissionsService,
   ) {}
 
   async listConversationsForOwner(
     ownerId: number,
-    filters?: { workspaceId?: number; sessionWorkspaceId?: number; groupIds?: number[] },
+    filters: {
+      sessionWorkspaceId: number;
+      groupIds?: number[];
+      appRole?: string;
+    },
   ): Promise<{
     items: ConversationRowDto[];
   }> {
     const workspaceId = await this.resolveWorkspaceIdForConversationList(
       ownerId,
-      filters?.workspaceId,
-      filters?.sessionWorkspaceId,
+      filters.sessionWorkspaceId,
     );
     await this.conversationGroupDefaults.ensureSystemGroups(workspaceId);
+
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      ownerId,
+      filters.appRole,
+      workspaceId,
+    );
+
+    const groupIds = await this.validateOptionalGroupIds(
+      workspaceId,
+      filters.groupIds,
+    );
+
+    const rows =
+      permissions.isOwner || permissions.conversations.fullAccess
+        ? await this.findConversationsForWorkspace(workspaceId, groupIds)
+        : await this.findConversationsForIntegrationGrants(
+            workspaceId,
+            ownerId,
+            permissions.integrationGrants,
+            groupIds,
+          );
+
     const integration = await this.instagramIntegrationRepo.findOne({
       where: { workspaceId },
       order: { id: "DESC" },
@@ -142,30 +170,6 @@ export class ConversationsService {
       workspaceId,
       integration,
     );
-
-    const groupIds = filters?.groupIds?.filter(
-      (id) => Number.isInteger(id) && id > 0,
-    );
-    let where: FindOptionsWhere<Conversation> = { workspaceId };
-    if (groupIds != null && groupIds.length > 0) {
-      const unique = [...new Set(groupIds)];
-      const groups = await this.conversationGroupRepo.find({
-        where: { workspaceId, id: In(unique) },
-      });
-      const found = new Set(groups.map((g) => g.id));
-      const missing = unique.filter((id) => !found.has(id));
-      if (missing.length > 0) {
-        throw new BadRequestException(
-          `Unknown or inaccessible group id(s) for this workspace: ${missing.join(", ")}`,
-        );
-      }
-      where = { workspaceId, groupId: In(unique) };
-    }
-
-    const rows = await this.conversationRepo.find({
-      where,
-      order: { instUpdatedAt: "DESC" },
-    });
     const lastMessageByConversationId =
       await this.getLastMessageByConversationIds(rows.map((r) => r.id));
     const { instagramById, telegramById } =
@@ -586,41 +590,178 @@ export class ConversationsService {
     );
   }
 
-  private async resolveWorkspaceIdForConversationList(
-    ownerId: number,
-    workspaceIdParam?: number,
-    sessionWorkspaceId?: number,
-  ): Promise<number> {
-    if (workspaceIdParam != null) {
-      const workspace =
-        await this.workspaceContext.requireExistingWorkspace(workspaceIdParam);
-      return workspace.id;
+  private async validateOptionalGroupIds(
+    workspaceId: number,
+    groupIdsRaw?: number[],
+  ): Promise<number[] | undefined> {
+    const groupIds = groupIdsRaw?.filter(
+      (id) => Number.isInteger(id) && id > 0,
+    );
+    if (groupIds == null || groupIds.length === 0) {
+      return undefined;
     }
-    if (sessionWorkspaceId != null) {
-      const workspace =
-        await this.workspaceContext.requireExistingWorkspace(sessionWorkspaceId);
-      return workspace.id;
-    }
-
-    const integration = await this.instagramIntegrationRepo.findOne({
-      where: { ownerId },
-      order: { id: "DESC" },
+    const unique = [...new Set(groupIds)];
+    const groups = await this.conversationGroupRepo.find({
+      where: { workspaceId, id: In(unique) },
     });
-    if (integration) {
-      return integration.workspaceId;
+    const found = new Set(groups.map((g) => g.id));
+    const missing = unique.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Unknown or inaccessible group id(s) for this workspace: ${missing.join(", ")}`,
+      );
+    }
+    return unique;
+  }
+
+  private async findConversationsForWorkspace(
+    workspaceId: number,
+    groupIds?: number[],
+  ): Promise<Conversation[]> {
+    const where: FindOptionsWhere<Conversation> =
+      groupIds != null && groupIds.length > 0
+        ? { workspaceId, groupId: In(groupIds) }
+        : { workspaceId };
+    return this.conversationRepo.find({
+      where,
+      order: { instUpdatedAt: "DESC" },
+    });
+  }
+
+  private async findConversationsForIntegrationGrants(
+    workspaceId: number,
+    userId: number,
+    grants: ResolvedIntegrationGrant[],
+    groupIds?: number[],
+  ): Promise<Conversation[]> {
+    if (grants.length === 0) {
+      return [];
     }
 
     const member = await this.workspaceMemberRepo.findOne({
-      where: { userId: ownerId, status: WorkspaceMemberStatus.ACTIVE },
-      order: { id: "DESC" },
+      where: {
+        workspaceId,
+        userId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
     });
-    if (member) {
-      return member.workspaceId;
+    const memberId = member?.id ?? null;
+
+    const instagramIds = grants
+      .filter((grant) => grant.integrationType === "instagram")
+      .map((grant) => grant.integrationId);
+    const telegramIds = grants
+      .filter((grant) => grant.integrationType === "telegram")
+      .map((grant) => grant.integrationId);
+
+    const instagramById = new Map(
+      (
+        instagramIds.length > 0
+          ? await this.instagramIntegrationRepo.find({
+              where: { workspaceId, id: In(instagramIds) },
+            })
+          : []
+      ).map((row) => [row.id, row]),
+    );
+    const telegramById = new Map(
+      (
+        telegramIds.length > 0
+          ? await this.telegramIntegrationRepo.find({
+              where: { workspaceId, id: In(telegramIds) },
+            })
+          : []
+      ).map((row) => [row.id, row]),
+    );
+
+    const qb = this.conversationRepo
+      .createQueryBuilder("c")
+      .where("c.workspace_id = :workspaceId", { workspaceId });
+
+    if (groupIds != null && groupIds.length > 0) {
+      qb.andWhere("c.group_id IN (:...groupIds)", { groupIds });
     }
 
-    throw new NotFoundException(
-      "Workspace not found; pass workspace_id or connect an integration",
+    qb.andWhere(
+      new Brackets((sub) => {
+        let added = false;
+        grants.forEach((grant, index) => {
+          if (grant.integrationType === "instagram") {
+            const integration = instagramById.get(grant.integrationId);
+            if (!integration) {
+              return;
+            }
+            const externalSourceIds = [
+              integration.pageId,
+              integration.instagramAccountId,
+            ]
+              .map((value) => value?.trim())
+              .filter((value): value is string => Boolean(value));
+            if (externalSourceIds.length === 0) {
+              return;
+            }
+            if (grant.read === "mine" && memberId == null) {
+              return;
+            }
+            const sourceParam = `instagramSource${index}`;
+            const externalParam = `instagramExternalSourceIds${index}`;
+            const memberParam = `memberId${index}`;
+            sub.orWhere(
+              grant.read === "all"
+                ? `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam})`
+                : `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id = :${memberParam}`,
+              {
+                [sourceParam]: ConversationSource.INSTAGRAM,
+                [externalParam]: externalSourceIds,
+                ...(grant.read === "mine" ? { [memberParam]: memberId } : {}),
+              },
+            );
+            added = true;
+            return;
+          }
+
+          if (grant.integrationType === "telegram") {
+            const integration = telegramById.get(grant.integrationId);
+            if (!integration) {
+              return;
+            }
+            if (grant.read === "mine" && memberId == null) {
+              return;
+            }
+            const sourceParam = `telegramSource${index}`;
+            const externalParam = `telegramExternalSourceId${index}`;
+            const memberParam = `memberId${index}`;
+            sub.orWhere(
+              grant.read === "all"
+                ? `c.source = :${sourceParam} AND c.external_source_id = :${externalParam}`
+                : `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id = :${memberParam}`,
+              {
+                [sourceParam]: ConversationSource.TELEGRAM,
+                [externalParam]: String(integration.id),
+                ...(grant.read === "mine" ? { [memberParam]: memberId } : {}),
+              },
+            );
+            added = true;
+          }
+        });
+        if (!added) {
+          sub.orWhere("1 = 0");
+        }
+      }),
     );
+
+    qb.orderBy("c.inst_updated_at", "DESC");
+    return qb.getMany();
+  }
+
+  private async resolveWorkspaceIdForConversationList(
+    ownerId: number,
+    sessionWorkspaceId: number,
+  ): Promise<number> {
+    const workspace = await this.workspaceContext.requireWorkspaceOwner(
+      ownerId,
+      sessionWorkspaceId,
+    );
+    return workspace.id;
   }
 
   private async buildMyAccountIdsForWorkspace(

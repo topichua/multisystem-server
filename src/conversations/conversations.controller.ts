@@ -52,15 +52,10 @@ export class ConversationsController {
   @ApiOperation({
     summary: "List conversations for a workspace",
     description:
-      "Returns conversations scoped by `workspace_id` (query param, else JWT session `workspaceId`, else your latest integration workspace). " +
+      "Returns conversations for the workspace from JWT session `workspaceId`. " +
+      "Owners and roles with `conversations.full_access` see all chats. " +
+      "Otherwise, results are built from the role's integration grants: each grant matches conversations by integration source and `external_source_id`; `read=all` returns all chats on that integration, `read=mine` only chats where you are responsible. " +
       "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace.",
-  })
-  @ApiQuery({
-    name: "workspace_id",
-    required: false,
-    description:
-      "Workspace to list conversations for. When omitted, uses `workspaceId` from the JWT session.",
-    schema: { type: "integer", minimum: 1 },
   })
   @ApiQuery({
     name: "groupIds",
@@ -72,15 +67,18 @@ export class ConversationsController {
   @ApiOkResponse({ type: ConversationsListResponseDto })
   async getAll(
     @Req() req: { user?: AuthUser },
-    @Query("workspace_id") workspaceIdRaw?: string,
     @Query("groupIds") groupIdsRaw?: string | string[],
   ): Promise<ConversationsListResponseDto> {
     const ownerId = Number(req.user?.userId);
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
     const groupIds = this.parseOptionalGroupIdsQuery(groupIdsRaw);
     return this.conversationsService.listConversationsForOwner(ownerId, {
-      workspaceId: this.parseOptionalWorkspaceId(workspaceIdRaw),
-      sessionWorkspaceId: req.user?.workspaceId,
+      sessionWorkspaceId,
       groupIds,
+      appRole: req.user?.role,
     });
   }
 
@@ -113,21 +111,6 @@ export class ConversationsController {
       }
     }
     return ids.length > 0 ? [...new Set(ids)] : undefined;
-  }
-
-  private parseOptionalWorkspaceId(raw?: string): number | undefined {
-    if (raw == null || raw.trim() === "") {
-      return undefined;
-    }
-    const trimmed = raw.trim();
-    if (!/^\d+$/.test(trimmed)) {
-      throw new BadRequestException("workspace_id must be a positive integer");
-    }
-    const workspaceId = Number(trimmed);
-    if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
-      throw new BadRequestException("workspace_id must be a positive integer");
-    }
-    return workspaceId;
   }
 
   @Post("sync")
