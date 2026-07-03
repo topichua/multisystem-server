@@ -65,6 +65,12 @@ export class ConversationRowDto {
       "Profile of the participant opposite to the current account in this conversation.",
   })
   participant: ConversationParticipantDto | null;
+
+  @ApiProperty({
+    description:
+      "True when the chat is unassigned and the user may take it (assign themselves as responsible). Messages are not available until taken.",
+  })
+  canTakeChat: boolean;
 }
 
 export class ConversationsListResponseDto {

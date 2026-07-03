@@ -162,6 +162,15 @@ export class ConversationsService {
             groupIds,
           );
 
+    const listAccessContext =
+      permissions.isOwner || permissions.conversations.fullAccess
+        ? null
+        : await this.buildConversationListAccessContext(
+            workspaceId,
+            ownerId,
+            permissions.integrationGrants,
+          );
+
     const integration = await this.instagramIntegrationRepo.findOne({
       where: { workspaceId },
       order: { id: "DESC" },
@@ -183,6 +192,9 @@ export class ConversationsService {
           instagramById,
           telegramById,
           myAccountIds,
+          listAccessContext
+            ? this.resolveCanTakeChatFlag(r, listAccessContext)
+            : false,
         ),
       ),
     };
@@ -313,6 +325,7 @@ export class ConversationsService {
       instagramById,
       telegramById,
       myAccountIds,
+      false,
     );
   }
 
@@ -526,6 +539,7 @@ export class ConversationsService {
     instagramById: Map<string, InstagramUser>,
     telegramById: Map<string, TelegramUser>,
     myAccountIds: Set<string>,
+    canTakeChat: boolean,
   ): ConversationRowDto {
     const participant = this.toConversationParticipantDto(
       row,
@@ -551,7 +565,104 @@ export class ConversationsService {
       lastMessage: lastMessage?.message ?? "",
       isLastMessageFromMe,
       participant,
+      canTakeChat,
     };
+  }
+
+  private async buildConversationListAccessContext(
+    workspaceId: number,
+    userId: number,
+    grants: ResolvedIntegrationGrant[],
+  ): Promise<{
+    memberId: number | null;
+    instagramById: Map<number, InstagramIntegration>;
+    telegramById: Map<number, TelegramIntegration>;
+    grants: ResolvedIntegrationGrant[];
+  }> {
+    const member = await this.workspaceMemberRepo.findOne({
+      where: {
+        workspaceId,
+        userId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+    });
+    const { instagramById, telegramById } =
+      await this.loadIntegrationMapsForGrants(workspaceId, grants);
+    return {
+      memberId: member?.id ?? null,
+      instagramById,
+      telegramById,
+      grants,
+    };
+  }
+
+  private resolveCanTakeChatFlag(
+    conversation: Conversation,
+    context: {
+      memberId: number | null;
+      instagramById: Map<number, InstagramIntegration>;
+      telegramById: Map<number, TelegramIntegration>;
+      grants: ResolvedIntegrationGrant[];
+    },
+  ): boolean {
+    if (conversation.responsibleMemberId != null || context.memberId == null) {
+      return false;
+    }
+
+    for (const grant of context.grants) {
+      if (
+        !this.conversationBelongsToGrant(
+          conversation,
+          grant,
+          context.instagramById,
+          context.telegramById,
+        )
+      ) {
+        continue;
+      }
+      if (
+        !grant.canTakeChat ||
+        grant.write !== "mine" ||
+        (grant.read !== "all" && grant.read !== "mine")
+      ) {
+        continue;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  private grantAllowsConversationMessages(
+    conversation: Conversation,
+    grant: ResolvedIntegrationGrant,
+    memberId: number | null,
+  ): boolean {
+    if (this.isTakeableQueueConversation(conversation, grant, memberId)) {
+      return false;
+    }
+    if (grant.read === "all") {
+      return true;
+    }
+    return (
+      grant.read === "mine" &&
+      memberId != null &&
+      conversation.responsibleMemberId === memberId
+    );
+  }
+
+  private isTakeableQueueConversation(
+    conversation: Conversation,
+    grant: ResolvedIntegrationGrant,
+    memberId: number | null,
+  ): boolean {
+    return (
+      conversation.responsibleMemberId == null &&
+      memberId != null &&
+      grant.canTakeChat &&
+      grant.write === "mine" &&
+      (grant.read === "all" || grant.read === "mine")
+    );
   }
 
   /**
@@ -739,14 +850,7 @@ export class ConversationsService {
       ) {
         continue;
       }
-      if (grant.read === "all") {
-        return true;
-      }
-      if (
-        grant.read === "mine" &&
-        memberId != null &&
-        conversation.responsibleMemberId === memberId
-      ) {
+      if (this.grantAllowsConversationMessages(conversation, grant, memberId)) {
         return true;
       }
     }
@@ -868,16 +972,37 @@ export class ConversationsService {
             const sourceParam = `instagramSource${index}`;
             const externalParam = `instagramExternalSourceIds${index}`;
             const memberParam = `memberId${index}`;
-            sub.orWhere(
-              grant.read === "all"
-                ? `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam})`
-                : `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id = :${memberParam}`,
-              {
-                [sourceParam]: ConversationSource.INSTAGRAM,
-                [externalParam]: externalSourceIds,
-                ...(grant.read === "mine" ? { [memberParam]: memberId } : {}),
-              },
-            );
+            if (grant.read === "all") {
+              sub.orWhere(
+                `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam})`,
+                {
+                  [sourceParam]: ConversationSource.INSTAGRAM,
+                  [externalParam]: externalSourceIds,
+                },
+              );
+            } else {
+              sub.orWhere(
+                `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id = :${memberParam}`,
+                {
+                  [sourceParam]: ConversationSource.INSTAGRAM,
+                  [externalParam]: externalSourceIds,
+                  [memberParam]: memberId,
+                },
+              );
+              if (
+                grant.canTakeChat &&
+                grant.write === "mine" &&
+                memberId != null
+              ) {
+                sub.orWhere(
+                  `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id IS NULL`,
+                  {
+                    [sourceParam]: ConversationSource.INSTAGRAM,
+                    [externalParam]: externalSourceIds,
+                  },
+                );
+              }
+            }
             added = true;
             return;
           }
@@ -893,16 +1018,37 @@ export class ConversationsService {
             const sourceParam = `telegramSource${index}`;
             const externalParam = `telegramExternalSourceId${index}`;
             const memberParam = `memberId${index}`;
-            sub.orWhere(
-              grant.read === "all"
-                ? `c.source = :${sourceParam} AND c.external_source_id = :${externalParam}`
-                : `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id = :${memberParam}`,
-              {
-                [sourceParam]: ConversationSource.TELEGRAM,
-                [externalParam]: String(integration.id),
-                ...(grant.read === "mine" ? { [memberParam]: memberId } : {}),
-              },
-            );
+            if (grant.read === "all") {
+              sub.orWhere(
+                `c.source = :${sourceParam} AND c.external_source_id = :${externalParam}`,
+                {
+                  [sourceParam]: ConversationSource.TELEGRAM,
+                  [externalParam]: String(integration.id),
+                },
+              );
+            } else {
+              sub.orWhere(
+                `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id = :${memberParam}`,
+                {
+                  [sourceParam]: ConversationSource.TELEGRAM,
+                  [externalParam]: String(integration.id),
+                  [memberParam]: memberId,
+                },
+              );
+              if (
+                grant.canTakeChat &&
+                grant.write === "mine" &&
+                memberId != null
+              ) {
+                sub.orWhere(
+                  `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id IS NULL`,
+                  {
+                    [sourceParam]: ConversationSource.TELEGRAM,
+                    [externalParam]: String(integration.id),
+                  },
+                );
+              }
+            }
             added = true;
           }
         });

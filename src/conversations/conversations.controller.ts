@@ -161,7 +161,7 @@ export class ConversationsController {
   @ApiOperation({
     summary: "Get messages for a conversation from local database with paging.",
     description:
-      "Same access rules as GET /conversations: full access or matching integration grant with `read=all` / `read=mine`.",
+      "Same access rules as GET /conversations. Takeable queue chats (`canTakeChat` on list) are not readable until assigned.",
   })
   @ApiQuery({
     name: "page",
