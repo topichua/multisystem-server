@@ -172,6 +172,7 @@ export class ConversationsService {
       sessionWorkspaceId: number;
       groupIds?: number[];
       channelIds?: number[];
+      responsibleUserIds?: number[];
       showWithoutResponsibleOnly?: boolean;
       appRole?: string;
     },
@@ -199,6 +200,21 @@ export class ConversationsService {
       permissions,
       filters.channelIds,
     );
+    const responsibleMemberIds = await this.validateOptionalResponsibleUserIds(
+      workspaceId,
+      ownerId,
+      permissions,
+      filters.responsibleUserIds,
+    );
+    if (
+      filters.showWithoutResponsibleOnly &&
+      responsibleMemberIds != null &&
+      responsibleMemberIds.length > 0
+    ) {
+      throw new BadRequestException(
+        "show_without_responsible_only cannot be used together with responsible_user_ids",
+      );
+    }
     const channelFilter =
       channelIds != null
         ? await this.buildChannelFilter(workspaceId, permissions, channelIds)
@@ -211,6 +227,7 @@ export class ConversationsService {
             groupIds,
             filters.showWithoutResponsibleOnly,
             channelFilter,
+            responsibleMemberIds,
           )
         : await this.findConversationsForIntegrationGrants(
             workspaceId,
@@ -219,6 +236,7 @@ export class ConversationsService {
             groupIds,
             filters.showWithoutResponsibleOnly,
             channelFilter,
+            responsibleMemberIds,
           );
 
     const listAccessContext =
@@ -1215,6 +1233,35 @@ export class ConversationsService {
     return channelIds;
   }
 
+  private async validateOptionalResponsibleUserIds(
+    workspaceId: number,
+    userId: number,
+    permissions: Pick<
+      ResolvedUserPermissions,
+      "isOwner" | "conversations" | "integrationGrants"
+    >,
+    responsibleUserIds?: number[],
+  ): Promise<number[] | undefined> {
+    if (responsibleUserIds == null || responsibleUserIds.length === 0) {
+      return undefined;
+    }
+    const accessible = await this.resolveAccessibleResponsibleUsers(
+      workspaceId,
+      userId,
+      permissions,
+    );
+    const accessibleIds = new Set(
+      accessible.map((user) => user.id),
+    );
+    const missing = responsibleUserIds.filter((id) => !accessibleIds.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Unknown or inaccessible responsible user id(s): ${missing.join(", ")}`,
+      );
+    }
+    return responsibleUserIds;
+  }
+
   private async buildChannelFilter(
     workspaceId: number,
     permissions: Pick<
@@ -1614,8 +1661,13 @@ export class ConversationsService {
       instagram: InstagramIntegration[];
       telegram: TelegramIntegration[];
     },
+    responsibleMemberIds?: number[],
   ): Promise<Conversation[]> {
-    if (channelFilter == null) {
+    const useQueryBuilder =
+      channelFilter != null ||
+      (responsibleMemberIds != null && responsibleMemberIds.length > 0);
+
+    if (!useQueryBuilder) {
       const where: FindOptionsWhere<Conversation> =
         groupIds != null && groupIds.length > 0
           ? { workspaceId, groupId: In(groupIds) }
@@ -1638,7 +1690,14 @@ export class ConversationsService {
     if (showWithoutResponsibleOnly) {
       qb.andWhere("c.responsible_member_id IS NULL");
     }
-    this.applyChannelFilterToQuery(qb, channelFilter);
+    if (responsibleMemberIds != null && responsibleMemberIds.length > 0) {
+      qb.andWhere("c.responsible_member_id IN (:...responsibleMemberIds)", {
+        responsibleMemberIds,
+      });
+    }
+    if (channelFilter != null) {
+      this.applyChannelFilterToQuery(qb, channelFilter);
+    }
     qb.orderBy("c.inst_updated_at", "DESC");
     return qb.getMany();
   }
@@ -1832,6 +1891,7 @@ export class ConversationsService {
       instagram: InstagramIntegration[];
       telegram: TelegramIntegration[];
     },
+    responsibleMemberIds?: number[],
   ): Promise<Conversation[]> {
     const context = await this.prepareIntegrationGrantListContext(
       workspaceId,
@@ -1853,6 +1913,12 @@ export class ConversationsService {
 
     if (showWithoutResponsibleOnly) {
       qb.andWhere("c.responsible_member_id IS NULL");
+    }
+
+    if (responsibleMemberIds != null && responsibleMemberIds.length > 0) {
+      qb.andWhere("c.responsible_member_id IN (:...responsibleMemberIds)", {
+        responsibleMemberIds,
+      });
     }
 
     if (channelFilter != null) {
