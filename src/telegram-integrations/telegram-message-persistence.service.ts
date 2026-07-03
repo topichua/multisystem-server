@@ -340,12 +340,12 @@ export class TelegramMessagePersistenceService {
     externalConversationId: string;
     messageDate: Date;
   }): Promise<{ conv: Conversation; convSaved: boolean }> {
-    const { integration, ownerId, participantId, externalConversationId, messageDate } =
+    const { integration, participantId, externalConversationId, messageDate } =
       params;
 
     let row = await this.conversationRepo.findOne({
       where: {
-        managerId: ownerId,
+        workspaceId: integration.workspaceId,
         participantId,
         source: ConversationSource.TELEGRAM,
       },
@@ -357,7 +357,7 @@ export class TelegramMessagePersistenceService {
 
     row = await this.conversationRepo.findOne({
       where: {
-        managerId: ownerId,
+        workspaceId: integration.workspaceId,
         externalId: externalConversationId,
       },
     });
@@ -372,7 +372,6 @@ export class TelegramMessagePersistenceService {
       readAt: null,
       participantId,
       source: ConversationSource.TELEGRAM,
-      managerId: ownerId,
       workspaceId: integration.workspaceId,
       groupId: null,
     });

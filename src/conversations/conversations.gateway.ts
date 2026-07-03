@@ -22,6 +22,7 @@ import { Repository } from "typeorm";
 import { ROLE_SUPER_ADMIN } from "../auth/constants";
 import type { JwtPayload } from "../auth/interfaces/jwt-payload.interface";
 import { Conversation } from "../database/entities";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { ConversationsRealtimeService } from "./conversations-realtime.service";
 
 class SubscribeConversationDto {
@@ -47,6 +48,7 @@ export class ConversationsGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly realtime: ConversationsRealtimeService,
+    private readonly workspaceContext: WorkspaceAccessContextService,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
   ) {}
@@ -84,11 +86,15 @@ export class ConversationsGateway
   ): Promise<{ ok: true; conversationId: number }> {
     const ownerId = client.data.ownerId;
     const conv = await this.conversationRepo.findOne({
-      where: { id: body.conversationId, managerId: ownerId },
+      where: { id: body.conversationId },
     });
     if (!conv) {
       throw new UnauthorizedException("Conversation not found");
     }
+    await this.workspaceContext.requireWorkspaceOwner(
+      ownerId,
+      conv.workspaceId,
+    );
     await client.join(this.realtime.conversationRoom(conv.id));
     return { ok: true, conversationId: conv.id };
   }

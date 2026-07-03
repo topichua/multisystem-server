@@ -37,7 +37,7 @@ export type Conversation = {
   readAt: Date | null;
   participantId: string;
   source: ConversationSource;
-  managerId: number;
+  workspaceId: number;
   groupId?: number | null;
 };
 

@@ -101,6 +101,7 @@ import { TelegramIntegrationListenerLocks1744200000102 } from "./migrations/1744
 import { ConversationGroupSystemStatuses1744200000103 } from "./migrations/1744200000103-ConversationGroupSystemStatuses";
 import { RestoreConversationGroupSystemDefaults1744200000104 } from "./migrations/1744200000104-RestoreConversationGroupSystemDefaults";
 import { WorkspaceRoleIntegrationGrantCanTakeChat1744200000105 } from "./migrations/1744200000105-WorkspaceRoleIntegrationGrantCanTakeChat";
+import { RemoveConversationManagerId1744200000106 } from "./migrations/1744200000106-RemoveConversationManagerId";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -375,6 +376,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationGroupSystemStatuses1744200000103,
       RestoreConversationGroupSystemDefaults1744200000104,
       WorkspaceRoleIntegrationGrantCanTakeChat1744200000105,
+      RemoveConversationManagerId1744200000106,
     ],
   };
 }

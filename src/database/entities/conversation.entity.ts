@@ -10,13 +10,11 @@ import {
 } from "typeorm";
 import { ConversationSource } from "./conversation-source.enum";
 import { ConversationGroup } from "./conversation-group.entity";
-import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 import { WorkspaceMember } from "./workspace-member.entity";
 
 @Entity("conversations")
-@Unique("UQ_conversations_manager_external_id", ["managerId", "externalId"])
-@Index("IDX_conversations_manager_id", ["managerId"])
+@Unique("UQ_conversations_workspace_external_id", ["workspaceId", "externalId"])
 @Index("IDX_conversations_group_id", ["groupId"])
 @Index("IDX_conversations_responsible_member_id", ["responsibleMemberId"])
 @Index("IDX_conversations_workspace_id", ["workspaceId"])
@@ -43,13 +41,6 @@ export class Conversation {
 
   @Column({ name: "source", type: "smallint" })
   source: ConversationSource;
-
-  @Column({ name: "manager_id", type: "int" })
-  managerId: number;
-
-  @ManyToOne(() => User, { onDelete: "RESTRICT" })
-  @JoinColumn({ name: "manager_id" })
-  manager: User;
 
   @Column({ name: "workspace_id", type: "int" })
   workspaceId: number;

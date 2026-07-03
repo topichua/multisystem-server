@@ -186,7 +186,7 @@ export class ConversationsService {
 
   /**
    * Pulls the Instagram conversation list for the company page and upserts `conversations` rows
-   * for the current owner as `manager_id`.
+   * for the workspace.
    */
   async syncInstagramConversationsForOwner(
     ownerId: number,
@@ -221,7 +221,7 @@ export class ConversationsService {
       if (Number.isNaN(instUpdatedAt.getTime())) continue;
 
       let row = await this.conversationRepo.findOne({
-        where: { managerId: ownerId, externalId },
+        where: { workspaceId: integration.workspaceId, externalId },
       });
       const isNew = !row;
       if (!row) {
@@ -232,7 +232,6 @@ export class ConversationsService {
           readAt: null,
           participantId,
           source: ConversationSource.INSTAGRAM,
-          managerId: ownerId,
           workspaceId: integration.workspaceId,
           groupId: null,
         });
@@ -298,12 +297,7 @@ export class ConversationsService {
   ): Promise<ConversationRowDto> {
     const integration =
       await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
-    const row = await this.conversationRepo.findOne({
-      where: { id, managerId: ownerId },
-    });
-    if (!row) {
-      throw new NotFoundException("Conversation not found");
-    }
+    const row = await this.requireConversationInWorkspace(ownerId, { id });
     const myAccountIds = await this.buildMyAccountIds(ownerId, integration, row);
     const lastMessageByConversationId =
       await this.getLastMessageByConversationIds([row.id]);
@@ -340,12 +334,9 @@ export class ConversationsService {
     );
     const workspaceId = workspace.id;
 
-    const conv = await this.conversationRepo.findOne({
-      where: { id: conversationId, managerId: ownerId },
+    const conv = await this.requireConversationInWorkspace(ownerId, {
+      id: conversationId,
     });
-    if (!conv) {
-      throw new NotFoundException("Conversation not found");
-    }
 
     if (dto.groupId !== undefined) {
       if (dto.groupId == null) {
@@ -410,12 +401,9 @@ export class ConversationsService {
     ownerId: number,
     conversationId: number,
   ): Promise<ConversationEventsListResponseDto> {
-    const conv = await this.conversationRepo.findOne({
-      where: { id: conversationId, managerId: ownerId },
+    const conv = await this.requireConversationInWorkspace(ownerId, {
+      id: conversationId,
     });
-    if (!conv) {
-      throw new NotFoundException("Conversation not found");
-    }
     const rows = await this.conversationEvents.listForConversation(conversationId);
     return {
       items: rows.map((row) => ({
@@ -433,12 +421,9 @@ export class ConversationsService {
     ownerId: number,
     conversationId: number,
   ): Promise<ConversationProductSuggestionsResponseDto> {
-    const conv = await this.conversationRepo.findOne({
-      where: { id: conversationId, managerId: ownerId },
+    const conv = await this.requireConversationInWorkspace(ownerId, {
+      id: conversationId,
     });
-    if (!conv) {
-      throw new NotFoundException("Conversation not found");
-    }
 
     const rows = await this.productSuggestionRepo.find({
       where: { conversationId },
@@ -472,12 +457,9 @@ export class ConversationsService {
     ownerId: number,
     dto: CreateProductSuggestionRequestDto,
   ): Promise<ProductSuggestionItemDto> {
-    const conv = await this.conversationRepo.findOne({
-      where: { id: dto.conversationId, managerId: ownerId },
+    const conv = await this.requireConversationInWorkspace(ownerId, {
+      id: dto.conversationId,
     });
-    if (!conv) {
-      throw new NotFoundException("Conversation not found");
-    }
 
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
@@ -829,6 +811,32 @@ export class ConversationsService {
     return out;
   }
 
+  private async requireConversationInWorkspace(
+    userId: number,
+    find: { id?: number; externalId?: string },
+    workspaceIdParam?: number,
+  ): Promise<Conversation> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      undefined,
+      workspaceIdParam,
+    );
+    const where: FindOptionsWhere<Conversation> = {
+      workspaceId: workspace.id,
+    };
+    if (find.id != null) {
+      where.id = find.id;
+    }
+    if (find.externalId != null) {
+      where.externalId = find.externalId;
+    }
+    const row = await this.conversationRepo.findOne({ where });
+    if (!row) {
+      throw new NotFoundException("Conversation not found");
+    }
+    return row;
+  }
+
   /**
    * Path `conversationId`: numeric = DB primary key, otherwise stored Instagram `external_id`.
    */
@@ -842,16 +850,17 @@ export class ConversationsService {
     }
     if (/^\d+$/.test(trimmed)) {
       const id = Number(trimmed);
-      const byPk = await this.conversationRepo.findOne({
-        where: { id, managerId: ownerId },
-      });
-      if (byPk) return byPk;
+      try {
+        return await this.requireConversationInWorkspace(ownerId, { id });
+      } catch (e) {
+        if (!(e instanceof NotFoundException)) {
+          throw e;
+        }
+      }
     }
-    const byExternal = await this.conversationRepo.findOne({
-      where: { externalId: trimmed, managerId: ownerId },
+    return this.requireConversationInWorkspace(ownerId, {
+      externalId: trimmed,
     });
-    if (byExternal) return byExternal;
-    throw new NotFoundException("Conversation not found");
   }
 
   private buildConversationMessagesGraphUrl(

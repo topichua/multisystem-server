@@ -769,7 +769,7 @@ export class ConversationsAllocationService {
 
     let row = await this.conversationRepo.findOne({
       where: {
-        managerId: ownerId,
+        workspaceId: params.workspaceId,
         participantId: customerUserId,
         source: ConversationSource.INSTAGRAM,
       },
@@ -841,7 +841,7 @@ export class ConversationsAllocationService {
         "unknown");
 
     row = await this.conversationRepo.findOne({
-      where: { managerId: ownerId, externalId: graphConversationId },
+      where: { workspaceId: params.workspaceId, externalId: graphConversationId },
     });
 
     if (!row) {
@@ -852,7 +852,6 @@ export class ConversationsAllocationService {
         readAt: null,
         participantId,
         source: ConversationSource.INSTAGRAM,
-        managerId: ownerId,
         workspaceId: params.workspaceId,
         groupId: null,
       });
