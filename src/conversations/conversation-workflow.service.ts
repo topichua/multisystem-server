@@ -15,7 +15,6 @@ export type ConversationWorkflowTrigger =
   | "inbound_message"
   | "outbound_reply"
   | "responsible_assigned"
-  | "responsible_cleared"
   | "take"
   | "manual";
 
@@ -43,6 +42,10 @@ export class ConversationWorkflowService {
   }
 
   async onInboundCustomerMessage(conversation: Conversation): Promise<void> {
+    const current = await this.describeGroup(conversation.groupId);
+    if (current?.systemKey !== ConversationGroupSystemKey.ARCHIVED) {
+      return;
+    }
     await this.setSystemGroup(conversation, ConversationGroupSystemKey.NEW, {
       actorId: null,
       trigger: "inbound_message",
@@ -135,14 +138,6 @@ export class ConversationWorkflowService {
       await this.onResponsibleAssigned(conversation, actorId);
       return;
     }
-
-    const hasAgentReply = await this.conversationHasAgentReply(conversation.id);
-    if (!hasAgentReply) {
-      await this.setSystemGroup(conversation, ConversationGroupSystemKey.NEW, {
-        actorId,
-        trigger: "responsible_cleared",
-      });
-    }
   }
 
   async onTakeChat(
@@ -162,10 +157,7 @@ export class ConversationWorkflowService {
       );
     }
 
-    await this.setSystemGroup(conversation, ConversationGroupSystemKey.NEW, {
-      actorId,
-      trigger: "take",
-    });
+    await this.onResponsibleAssigned(conversation, actorId);
   }
 
   private async setSystemGroup(
@@ -215,32 +207,5 @@ export class ConversationWorkflowService {
       where: { id: groupId },
       select: { id: true, systemKey: true },
     });
-  }
-
-  private async conversationHasAgentReply(
-    conversationId: number,
-  ): Promise<boolean> {
-    const conv = await this.conversationRepo.findOne({
-      where: { id: conversationId },
-      select: { id: true, participantId: true },
-    });
-    if (!conv) {
-      return false;
-    }
-    const participantId = conv.participantId?.trim();
-    if (!participantId) {
-      return false;
-    }
-    const count = await this.conversationRepo.manager
-      .createQueryBuilder()
-      .select("1")
-      .from("conversation_messages", "m")
-      .where("m.conversation_id = :conversationId", { conversationId })
-      .andWhere("m.sender_id IS NOT NULL")
-      .andWhere("m.sender_id <> :participantId", { participantId })
-      .andWhere("m.sender_id <> '0'")
-      .limit(1)
-      .getRawOne();
-    return count != null;
   }
 }
