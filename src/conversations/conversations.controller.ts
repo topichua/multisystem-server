@@ -160,6 +160,8 @@ export class ConversationsController {
   @Get(":conversationId/messages")
   @ApiOperation({
     summary: "Get messages for a conversation from local database with paging.",
+    description:
+      "Same access rules as GET /conversations: full access or matching integration grant with `read=all` / `read=mine`.",
   })
   @ApiQuery({
     name: "page",
@@ -186,6 +188,10 @@ export class ConversationsController {
         "Current authorized user does not contain numeric owner id",
       );
     }
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
     const { page, pageSize } =
       this.conversationsService.parseDbPagingForMessages(pageRaw, pageSizeRaw);
     return this.conversationsService.getInstagramMessagesForConversation(
@@ -194,6 +200,8 @@ export class ConversationsController {
       {
         page,
         pageSize,
+        sessionWorkspaceId,
+        appRole: req.user?.role,
       },
     );
   }

@@ -628,25 +628,13 @@ export class ConversationsService {
     });
   }
 
-  private async findConversationsForIntegrationGrants(
+  private async loadIntegrationMapsForGrants(
     workspaceId: number,
-    userId: number,
     grants: ResolvedIntegrationGrant[],
-    groupIds?: number[],
-  ): Promise<Conversation[]> {
-    if (grants.length === 0) {
-      return [];
-    }
-
-    const member = await this.workspaceMemberRepo.findOne({
-      where: {
-        workspaceId,
-        userId,
-        status: WorkspaceMemberStatus.ACTIVE,
-      },
-    });
-    const memberId = member?.id ?? null;
-
+  ): Promise<{
+    instagramById: Map<number, InstagramIntegration>;
+    telegramById: Map<number, TelegramIntegration>;
+  }> {
     const instagramIds = grants
       .filter((grant) => grant.integrationType === "instagram")
       .map((grant) => grant.integrationId);
@@ -672,6 +660,181 @@ export class ConversationsService {
           : []
       ).map((row) => [row.id, row]),
     );
+
+    return { instagramById, telegramById };
+  }
+
+  private conversationBelongsToGrant(
+    conversation: Conversation,
+    grant: ResolvedIntegrationGrant,
+    instagramById: Map<number, InstagramIntegration>,
+    telegramById: Map<number, TelegramIntegration>,
+  ): boolean {
+    const externalSourceId = conversation.externalSourceId?.trim();
+    if (!externalSourceId) {
+      return false;
+    }
+
+    if (grant.integrationType === "telegram") {
+      const integration = telegramById.get(grant.integrationId);
+      if (!integration) {
+        return false;
+      }
+      return (
+        conversation.source === ConversationSource.TELEGRAM &&
+        externalSourceId === String(integration.id)
+      );
+    }
+
+    if (grant.integrationType !== "instagram") {
+      return false;
+    }
+
+    const integration = instagramById.get(grant.integrationId);
+    if (!integration) {
+      return false;
+    }
+    const integrationExternalIds = [
+      integration.pageId,
+      integration.instagramAccountId,
+    ]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value));
+
+    return (
+      conversation.source === ConversationSource.INSTAGRAM &&
+      integrationExternalIds.includes(externalSourceId)
+    );
+  }
+
+  private async isConversationReadableByGrants(
+    conversation: Conversation,
+    workspaceId: number,
+    userId: number,
+    grants: ResolvedIntegrationGrant[],
+  ): Promise<boolean> {
+    if (grants.length === 0) {
+      return false;
+    }
+
+    const member = await this.workspaceMemberRepo.findOne({
+      where: {
+        workspaceId,
+        userId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+    });
+    const memberId = member?.id ?? null;
+    const { instagramById, telegramById } =
+      await this.loadIntegrationMapsForGrants(workspaceId, grants);
+
+    for (const grant of grants) {
+      if (
+        !this.conversationBelongsToGrant(
+          conversation,
+          grant,
+          instagramById,
+          telegramById,
+        )
+      ) {
+        continue;
+      }
+      if (grant.read === "all") {
+        return true;
+      }
+      if (
+        grant.read === "mine" &&
+        memberId != null &&
+        conversation.responsibleMemberId === memberId
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async loadConversationInWorkspace(
+    workspaceId: number,
+    conversationIdParam: string,
+  ): Promise<Conversation | null> {
+    const trimmed = conversationIdParam.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (/^\d+$/.test(trimmed)) {
+      const byId = await this.conversationRepo.findOne({
+        where: { workspaceId, id: Number(trimmed) },
+      });
+      if (byId) {
+        return byId;
+      }
+    }
+    return this.conversationRepo.findOne({
+      where: { workspaceId, externalId: trimmed },
+    });
+  }
+
+  private async requireReadableConversation(
+    userId: number,
+    conversationIdParam: string,
+    context: { sessionWorkspaceId: number; appRole?: string },
+  ): Promise<Conversation> {
+    const workspaceId = await this.resolveWorkspaceIdForConversationList(
+      userId,
+      context.sessionWorkspaceId,
+    );
+    const conversation = await this.loadConversationInWorkspace(
+      workspaceId,
+      conversationIdParam,
+    );
+    if (!conversation) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      context.appRole,
+      workspaceId,
+    );
+    if (permissions.isOwner || permissions.conversations.fullAccess) {
+      return conversation;
+    }
+
+    const allowed = await this.isConversationReadableByGrants(
+      conversation,
+      workspaceId,
+      userId,
+      permissions.integrationGrants,
+    );
+    if (!allowed) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    return conversation;
+  }
+
+  private async findConversationsForIntegrationGrants(
+    workspaceId: number,
+    userId: number,
+    grants: ResolvedIntegrationGrant[],
+    groupIds?: number[],
+  ): Promise<Conversation[]> {
+    if (grants.length === 0) {
+      return [];
+    }
+
+    const member = await this.workspaceMemberRepo.findOne({
+      where: {
+        workspaceId,
+        userId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+    });
+    const memberId = member?.id ?? null;
+
+    const { instagramById, telegramById } =
+      await this.loadIntegrationMapsForGrants(workspaceId, grants);
 
     const qb = this.conversationRepo
       .createQueryBuilder("c")
@@ -1282,15 +1445,24 @@ export class ConversationsService {
   async getInstagramMessagesForConversation(
     ownerId: number,
     conversationId: string,
-    options?: { page?: number; pageSize?: number },
+    options: {
+      page?: number;
+      pageSize?: number;
+      sessionWorkspaceId: number;
+      appRole?: string;
+    },
   ): Promise<InstagramMessagesResponseDto> {
-    const conv = await this.requireConversationForOwnerFromParam(
+    const conv = await this.requireReadableConversation(
       ownerId,
       conversationId,
+      {
+        sessionWorkspaceId: options.sessionWorkspaceId,
+        appRole: options.appRole,
+      },
     );
     const result = await this.getConversationMessagesFromDb(conv.id, {
-      page: options?.page ?? 1,
-      pageSize: options?.pageSize ?? 50,
+      page: options.page ?? 1,
+      pageSize: options.pageSize ?? 50,
     });
     return result;
   }
