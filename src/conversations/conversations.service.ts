@@ -845,6 +845,90 @@ export class ConversationsService {
     return false;
   }
 
+  private grantAllowsConversationWrite(
+    conversation: Conversation,
+    grant: ResolvedIntegrationGrant,
+    memberId: number | null,
+  ): boolean {
+    if (this.isTakeableQueueConversation(conversation, grant, memberId)) {
+      return false;
+    }
+    if (grant.write === "all") {
+      return true;
+    }
+    return (
+      grant.write === "mine" &&
+      memberId != null &&
+      conversation.responsibleMemberId === memberId
+    );
+  }
+
+  private async isConversationWritableByGrants(
+    conversation: Conversation,
+    workspaceId: number,
+    userId: number,
+    grants: ResolvedIntegrationGrant[],
+  ): Promise<boolean> {
+    if (grants.length === 0) {
+      return false;
+    }
+
+    const member = await this.workspaceMemberRepo.findOne({
+      where: {
+        workspaceId,
+        userId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+    });
+    const memberId = member?.id ?? null;
+    const { instagramById, telegramById } =
+      await this.loadIntegrationMapsForGrants(workspaceId, grants);
+
+    for (const grant of grants) {
+      if (
+        !this.conversationBelongsToGrant(
+          conversation,
+          grant,
+          instagramById,
+          telegramById,
+        )
+      ) {
+        continue;
+      }
+      if (this.grantAllowsConversationWrite(conversation, grant, memberId)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async assertCanWriteConversation(
+    userId: number,
+    conversation: Conversation,
+  ): Promise<void> {
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      undefined,
+      conversation.workspaceId,
+    );
+    if (permissions.isOwner || permissions.conversations.fullAccess) {
+      return;
+    }
+
+    const allowed = await this.isConversationWritableByGrants(
+      conversation,
+      conversation.workspaceId,
+      userId,
+      permissions.integrationGrants,
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        "Missing permission to write on this conversation",
+      );
+    }
+  }
+
   private grantAllowsConversationMessages(
     conversation: Conversation,
     grant: ResolvedIntegrationGrant,
@@ -1903,6 +1987,7 @@ export class ConversationsService {
       ownerId,
       conversationIdParam,
     );
+    await this.assertCanWriteConversation(ownerId, conv);
     if (conv.source === ConversationSource.TELEGRAM) {
       return this.telegramMessaging.sendMessageForConversation(
         ownerId,

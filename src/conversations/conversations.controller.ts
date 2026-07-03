@@ -238,7 +238,8 @@ export class ConversationsController {
   @ApiOperation({
     summary:
       "Send a message in this thread (Instagram or Telegram). `reply_to_id` is optional: omit for a normal message; set to a parent message id from GET .../messages (Instagram Graph `mid` or Telegram `tg:{chatId}:{messageId}`). " +
-      "Instagram: within 24h of the last customer message uses `RESPONSE`; within 7 days uses `MESSAGE_TAG` + `HUMAN_AGENT`; after 7 days returns 400.",
+      "Instagram: within 24h of the last customer message uses `RESPONSE`; within 7 days uses `MESSAGE_TAG` + `HUMAN_AGENT`; after 7 days returns 400. " +
+      "Requires `write` on the conversation integration grant, or owner / conversations.full_access.",
   })
   @ApiBody({
     type: SendInstagramMessageRequestDto,
