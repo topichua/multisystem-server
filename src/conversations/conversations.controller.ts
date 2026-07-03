@@ -59,7 +59,8 @@ export class ConversationsController {
       "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace. " +
       "Optional `show_without_responsible_only=true`: only unassigned chats (`responsible_member_id` null) you can access (takeable queue / unassigned inbox). " +
       "Optional `channel_ids`: comma-separated integration ids from GET /conversations/criteria (e.g. `1,2`). " +
-      "Optional `responsible_user_ids`: comma-separated workspace member ids from GET /conversations/criteria `responsibleUsers` (e.g. `5,7`).",
+      "Optional `responsible_user_ids`: comma-separated workspace member ids from GET /conversations/criteria `responsibleUsers` (e.g. `5,7`). " +
+      "Optional `unread_only=true`: return only conversations where `isUnread` is true in the list payload.",
   })
   @ApiQuery({
     name: "groupIds",
@@ -90,6 +91,14 @@ export class ConversationsController {
       "When true, return only conversations with no responsible member that you can access.",
     example: true,
   })
+  @ApiQuery({
+    name: "unread_only",
+    required: false,
+    type: Boolean,
+    description:
+      "When true, return only conversations where `isUnread` is true (latest customer message newer than `read_at`, or never opened).",
+    example: true,
+  })
   @ApiOkResponse({ type: ConversationsListResponseDto })
   async getAll(
     @Req() req: { user?: AuthUser },
@@ -98,6 +107,7 @@ export class ConversationsController {
     @Query("responsible_user_ids") responsibleUserIdsRaw?: string | string[],
     @Query("show_without_responsible_only")
     showWithoutResponsibleOnlyRaw?: string,
+    @Query("unread_only") unreadOnlyRaw?: string,
   ): Promise<ConversationsListResponseDto> {
     const ownerId = Number(req.user?.userId);
     const sessionWorkspaceId = req.user?.workspaceId;
@@ -120,12 +130,17 @@ export class ConversationsController {
       showWithoutResponsibleOnlyRaw,
       "show_without_responsible_only",
     );
+    const unreadOnly = this.parseOptionalBooleanQuery(
+      unreadOnlyRaw,
+      "unread_only",
+    );
     return this.conversationsService.listConversationsForOwner(ownerId, {
       sessionWorkspaceId,
       groupIds,
       channelIds,
       responsibleUserIds,
       showWithoutResponsibleOnly,
+      unreadOnly,
       appRole: req.user?.role,
     });
   }
@@ -135,10 +150,10 @@ export class ConversationsController {
     summary: "List conversation filter criteria for the current user",
     description:
       "Returns `channels` (integration id, name, type) for `channel_ids` filter on GET /conversations, " +
-      "and `responsibleUsers` (workspace member id, name, email, avatar) for responsible filter — " +
-      "only members who are responsible on conversations you can access. " +
-      "Owners and roles with `conversations.full_access` see all workspace integrations and responsibles. " +
-      "Otherwise, scoped by integration grants.",
+      "and `responsibleUsers` (workspace member id, name, email, avatar) for `responsible_user_ids` filter — " +
+      "distinct responsibles on integrations where your grant has `assignResponsibility`. " +
+      "Owners and roles with `conversations.full_access` see all workspace responsibles. " +
+      "Otherwise, only integrations granted with `assignResponsibility`.",
   })
   @ApiOkResponse({ type: ConversationChannelCriteriaResponseDto })
   async getCriteria(

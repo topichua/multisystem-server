@@ -39,7 +39,7 @@ export class ConversationChannelCriteriaResponseDto {
   @ApiProperty({
     type: [ConversationResponsibleUserCriteriaItemDto],
     description:
-      "Distinct responsible members on conversations you can access (for responsible filter).",
+      "Distinct responsible members on integrations where your grant has `assignResponsibility` (for `responsible_user_ids` filter).",
   })
   responsibleUsers: ConversationResponsibleUserCriteriaItemDto[];
 }
