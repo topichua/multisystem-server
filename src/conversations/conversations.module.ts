@@ -17,6 +17,7 @@ import {
   ClientLink,
 } from "../database/entities";
 import { AuthModule } from "../auth/auth.module";
+import { InstagramModule } from "../instagram/instagram.module";
 import { ProductsModule } from "../products/products.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
 import { ConversationGroupDefaultsModule } from "./conversation-group-defaults.module";
@@ -35,6 +36,7 @@ import { ConversationsService } from "./conversations.service";
 @Module({
   imports: [
     AuthModule,
+    InstagramModule,
     ProductsModule,
     ConversationGroupDefaultsModule,
     forwardRef(() => TelegramIntegrationsModule),

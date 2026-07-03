@@ -11,7 +11,6 @@ import {
   Conversation,
   ConversationMessage,
   ConversationSource,
-  InstagramUser,
 } from "../database/entities";
 import type {
   InstagramConversationDto,
@@ -32,6 +31,7 @@ import { ConversationMessageNotifyService } from "./conversation-message-notify.
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
+import { InstagramUsersService } from "../instagram/instagram-users.service";
 
 type WebhookMessagingEventKind =
   | "new_message"
@@ -75,8 +75,7 @@ export class ConversationsAllocationService {
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
-    @InjectRepository(InstagramUser)
-    private readonly instagramUserRepo: Repository<InstagramUser>,
+    private readonly instagramUsers: InstagramUsersService,
     private readonly messageNotify: ConversationMessageNotifyService,
     private readonly conversationWorkflow: ConversationWorkflowService,
   ) {
@@ -277,6 +276,7 @@ export class ConversationsAllocationService {
     }
 
     await this.syncInstagramUsersForWebhookAllocation(
+      conv.workspaceId,
       msg,
       participantExtras,
       ctx.accessToken,
@@ -1111,6 +1111,7 @@ export class ConversationsAllocationService {
 
   /** Upserts `instagram_users` from message actors + optional conversation participants (Graph profile fields). */
   private async syncInstagramUsersForWebhookAllocation(
+    workspaceId: number,
     msg: InstagramMessageDto,
     participantExtras: InstagramConversationParticipantDto[] | undefined,
     accessToken: string,
@@ -1135,7 +1136,11 @@ export class ConversationsAllocationService {
 
     for (const instagramUserId of ids) {
       try {
-        await this.upsertInstagramUserFromGraph(instagramUserId, accessToken);
+        await this.instagramUsers.upsertScopedUserFromPageToken(
+          workspaceId,
+          instagramUserId,
+          accessToken,
+        );
         this.log.debug(`${t} instagram_users upserted id=${instagramUserId}`);
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
@@ -1144,53 +1149,6 @@ export class ConversationsAllocationService {
         );
       }
     }
-  }
-
-  private async upsertInstagramUserFromGraph(
-    instagramUserId: string,
-    accessToken: string,
-  ): Promise<void> {
-    const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(instagramUserId)}`,
-    );
-    url.searchParams.set("access_token", accessToken);
-    const node = await this.instagramGraphFetch<{
-      id?: string;
-      name?: string;
-      username?: string;
-      profile_pic?: string;
-    }>(url);
-
-    const name =
-      node.name?.trim() ||
-      node.username?.trim() ||
-      node.id?.trim() ||
-      instagramUserId;
-    const username =
-      node.username?.trim() || node.id?.trim() || instagramUserId;
-    const profilePic = node.profile_pic?.trim() || "";
-    const now = new Date();
-
-    let row = await this.instagramUserRepo.findOne({
-      where: { id: instagramUserId },
-    });
-    if (!row) {
-      row = this.instagramUserRepo.create({
-        id: instagramUserId,
-        name,
-        username,
-        profilePic,
-        syncedAt: now,
-        lastSeen: now,
-      });
-    } else {
-      row.name = name;
-      row.username = username;
-      row.profilePic = profilePic;
-      row.syncedAt = now;
-      row.lastSeen = now;
-    }
-    await this.instagramUserRepo.save(row);
   }
 
   private normalizeRecipientIdInput(raw: string | undefined | null): string {

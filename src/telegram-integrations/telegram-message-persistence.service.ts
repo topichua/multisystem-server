@@ -244,7 +244,7 @@ export class TelegramMessagePersistenceService {
     return true;
   }
 
-  private static readonly CATCHUP_WINDOW_MS = 48 * 60 * 60 * 1000;
+  private static readonly CATCHUP_WINDOW_MS = 1 * 60 * 60 * 1000;
   private static readonly CATCHUP_MAX_DIALOGS = 100;
   private static readonly CATCHUP_MESSAGES_PER_DIALOG = 30;
 

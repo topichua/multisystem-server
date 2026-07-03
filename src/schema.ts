@@ -42,6 +42,7 @@ export type Conversation = {
 };
 
 export type InstagramUser = {
+  workspaceId: number;
   id: string;
   name: string;
   username: string;

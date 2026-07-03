@@ -1,9 +1,24 @@
-import { Column, Entity, Index, PrimaryColumn } from "typeorm";
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
+} from "typeorm";
+import { Workspace } from "./workspace.entity";
 
 @Entity("telegram_users")
-@Index("IDX_telegram_users_username", ["username"])
+@Index("IDX_telegram_users_workspace_username", ["workspaceId", "username"])
 export class TelegramUser {
-  /** Telegram user id (matches `conversations.participant_id`). Primary key. */
+  @PrimaryColumn({ name: "workspace_id", type: "int" })
+  workspaceId: number;
+
+  @ManyToOne(() => Workspace, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace: Workspace;
+
+  /** Telegram user id (matches `conversations.participant_id`). */
   @PrimaryColumn({ name: "id", type: "varchar", length: 32 })
   id: string;
 

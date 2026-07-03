@@ -26,6 +26,6 @@ import { InstagramService } from "./instagram.service";
     InstagramProductAiService,
     InstagramPostAiExtractionService,
   ],
-  exports: [InstagramIntegrationProfileService],
+  exports: [InstagramIntegrationProfileService, InstagramUsersService],
 })
 export class InstagramModule {}

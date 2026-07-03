@@ -37,7 +37,11 @@ export class TelegramUsersService {
     const listenerClient =
       connectedClient ?? this.updatesListener.getActiveClient(integration.id);
     if (listenerClient) {
-      await this.syncParticipantFromClient(listenerClient, participantId);
+      await this.syncParticipantFromClient(
+        listenerClient,
+        participantId,
+        integration.workspaceId,
+      );
       return;
     }
 
@@ -52,7 +56,11 @@ export class TelegramUsersService {
       if (!(await client.isUserAuthorized())) {
         return;
       }
-      await this.syncParticipantFromClient(client, participantId);
+      await this.syncParticipantFromClient(
+        client,
+        participantId,
+        integration.workspaceId,
+      );
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       this.log.warn(
@@ -68,7 +76,11 @@ export class TelegramUsersService {
    * Used by GET /conversations when serving Telegram threads.
    */
   async syncMissingParticipantsForConversations(
-    conversations: Array<{ externalSourceId: string; participantId: string }>,
+    conversations: Array<{
+      workspaceId: number;
+      externalSourceId: string;
+      participantId: string;
+    }>,
   ): Promise<void> {
     const byIntegration = new Map<number, Set<string>>();
     for (const conv of conversations) {
@@ -117,6 +129,7 @@ export class TelegramUsersService {
   async syncParticipantFromClient(
     client: TelegramClient,
     participantId: string,
+    workspaceId: number,
   ): Promise<void> {
     const id = participantId.trim();
     if (!id || id === "unknown" || !/^\d+$/.test(id)) {
@@ -124,7 +137,9 @@ export class TelegramUsersService {
     }
 
     const now = new Date();
-    const existing = await this.telegramUserRepo.findOne({ where: { id } });
+    const existing = await this.telegramUserRepo.findOne({
+      where: { workspaceId, id },
+    });
     const needsFullSync =
       !existing ||
       !existing.syncedAt ||
@@ -164,6 +179,7 @@ export class TelegramUsersService {
     if (!existing) {
       await this.telegramUserRepo.save(
         this.telegramUserRepo.create({
+          workspaceId,
           id,
           firstName,
           lastName,

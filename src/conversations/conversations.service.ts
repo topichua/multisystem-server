@@ -50,6 +50,7 @@ import {
   type TelegramConversationMessagingPort,
 } from "../telegram-integrations/telegram-integrations.tokens";
 import { TelegramUsersService } from "../telegram-integrations/telegram-users.service";
+import { InstagramUsersService } from "../instagram/instagram-users.service";
 import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
@@ -127,6 +128,7 @@ export class ConversationsService {
     @Inject(TELEGRAM_CONVERSATION_MESSAGING)
     private readonly telegramMessaging: TelegramConversationMessagingPort,
     private readonly telegramUsers: TelegramUsersService,
+    private readonly instagramUsers: InstagramUsersService,
     private readonly products: ProductsService,
     private readonly conversationWorkflow: ConversationWorkflowService,
     private readonly conversationEvents: ConversationEventsService,
@@ -351,6 +353,27 @@ export class ConversationsService {
       { data: conversations, paging: undefined },
       token,
     );
+
+    const participantIds = new Set<string>();
+    for (const ig of conversations) {
+      for (const p of ig.participants?.data ?? []) {
+        const id = p.id?.trim();
+        if (id) participantIds.add(id);
+      }
+    }
+    if (participantIds.size > 0) {
+      await this.instagramUsers.syncMissingFromGraph(
+        integration.workspaceId,
+        [...participantIds],
+        {
+          pageAccessToken: token,
+          userAccessToken: integration.userAccessToken,
+          businessAccountId: integration.instagramAccountId,
+          pageId: integration.pageId,
+        },
+        { maxSync: participantIds.size },
+      );
+    }
 
     let upserted = 0;
     for (const ig of conversations) {
@@ -1451,7 +1474,8 @@ export class ConversationsService {
       this.instagramUserRepo
         .createQueryBuilder("u")
         .select("u.id", "id")
-        .where(
+        .where("u.workspace_id = :workspaceId", { workspaceId })
+        .andWhere(
           "(u.name ILIKE :pattern ESCAPE '\\' OR u.username ILIKE :pattern ESCAPE '\\')",
           likeParams,
         )
@@ -1459,7 +1483,8 @@ export class ConversationsService {
       this.telegramUserRepo
         .createQueryBuilder("u")
         .select("u.id", "id")
-        .where(
+        .where("u.workspace_id = :workspaceId", { workspaceId })
+        .andWhere(
           "(u.first_name ILIKE :pattern ESCAPE '\\' OR u.last_name ILIKE :pattern ESCAPE '\\' OR u.username ILIKE :pattern ESCAPE '\\' OR (u.first_name || ' ' || COALESCE(u.last_name, '')) ILIKE :pattern ESCAPE '\\')",
           likeParams,
         )
@@ -2311,6 +2336,10 @@ export class ConversationsService {
     instagramById: Map<string, InstagramUser>;
     telegramById: Map<string, TelegramUser>;
   }> {
+    if (rows.length === 0) {
+      return { instagramById: new Map(), telegramById: new Map() };
+    }
+    const workspaceId = rows[0].workspaceId;
     const instagramIds: string[] = [];
     const telegramIds: string[] = [];
     for (const row of rows) {
@@ -2323,8 +2352,8 @@ export class ConversationsService {
       }
     }
     const [instagramById, telegramById] = await Promise.all([
-      this.getInstagramUsersByIds(instagramIds),
-      this.getTelegramUsersByIds(telegramIds),
+      this.getInstagramUsersByIds(workspaceId, instagramIds),
+      this.getTelegramUsersByIds(workspaceId, telegramIds),
     ]);
 
     const missingTelegramRows = rows.filter((row) => {
@@ -2354,6 +2383,7 @@ export class ConversationsService {
     }
 
     const refreshed = await this.getTelegramUsersByIds(
+      workspaceId,
       toSync.map((row) => row.participantId),
     );
     for (const [id, user] of refreshed) {
@@ -2364,23 +2394,25 @@ export class ConversationsService {
   }
 
   private async getInstagramUsersByIds(
+    workspaceId: number,
     ids: string[],
   ): Promise<Map<string, InstagramUser>> {
     const uniqIds = [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
     if (uniqIds.length === 0) return new Map();
     const users = await this.instagramUserRepo.find({
-      where: { id: In(uniqIds) },
+      where: { workspaceId, id: In(uniqIds) },
     });
     return new Map(users.map((u) => [u.id, u]));
   }
 
   private async getTelegramUsersByIds(
+    workspaceId: number,
     ids: string[],
   ): Promise<Map<string, TelegramUser>> {
     const uniqIds = [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
     if (uniqIds.length === 0) return new Map();
     const users = await this.telegramUserRepo.find({
-      where: { id: In(uniqIds) },
+      where: { workspaceId, id: In(uniqIds) },
     });
     return new Map(users.map((u) => [u.id, u]));
   }
@@ -2590,90 +2622,6 @@ export class ConversationsService {
         await this.messageNotify.notifyPersistedMessage(saved, options.ownerId);
       }
     }
-  }
-
-  /** Upserts `instagram_users` from message actors + optional conversation participants (Graph profile fields). */
-  private async syncInstagramUsersForWebhookAllocation(
-    msg: InstagramMessageDto,
-    participantExtras: InstagramConversationParticipantDto[] | undefined,
-    accessToken: string,
-    traceId: string,
-    /** e.g. user who sent a reaction (from webhook `sender`) */
-    webhookSenderHintId?: string | null,
-  ): Promise<void> {
-    const t = `[webhook trace=${traceId}]`;
-    const ids = new Set<string>();
-    const take = (id: string | undefined) => {
-      const x = id?.trim();
-      if (x && this.isLikelyInstagramPsid(x)) ids.add(x);
-    };
-    take(msg.from?.id);
-    for (const u of msg.to?.data ?? []) take(u.id);
-    for (const p of participantExtras ?? []) take(p.id);
-    take(webhookSenderHintId ?? undefined);
-    for (const item of msg.reactions?.data ?? []) {
-      const users = (item as { users?: Array<{ id?: string }> }).users;
-      for (const u of users ?? []) take(u.id);
-    }
-
-    for (const instagramUserId of ids) {
-      try {
-        await this.upsertInstagramUserFromGraph(instagramUserId, accessToken);
-        this.log.debug(`${t} instagram_users upserted id=${instagramUserId}`);
-      } catch (e) {
-        const err = e instanceof Error ? e.message : String(e);
-        this.log.warn(
-          `${t} instagram_users upsert failed id=${instagramUserId}: ${err}`,
-        );
-      }
-    }
-  }
-
-  private async upsertInstagramUserFromGraph(
-    instagramUserId: string,
-    accessToken: string,
-  ): Promise<void> {
-    const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(instagramUserId)}`,
-    );
-    url.searchParams.set("access_token", accessToken);
-    const node = await this.instagramGraphFetch<{
-      id?: string;
-      name?: string;
-      username?: string;
-      profile_pic?: string;
-    }>(url);
-
-    const name =
-      node.name?.trim() ||
-      node.username?.trim() ||
-      node.id?.trim() ||
-      instagramUserId;
-    const username =
-      node.username?.trim() || node.id?.trim() || instagramUserId;
-    const profilePic = node.profile_pic?.trim() || "";
-    const now = new Date();
-
-    let row = await this.instagramUserRepo.findOne({
-      where: { id: instagramUserId },
-    });
-    if (!row) {
-      row = this.instagramUserRepo.create({
-        id: instagramUserId,
-        name,
-        username,
-        profilePic,
-        syncedAt: now,
-        lastSeen: now,
-      });
-    } else {
-      row.name = name;
-      row.username = username;
-      row.profilePic = profilePic;
-      row.syncedAt = now;
-      row.lastSeen = now;
-    }
-    await this.instagramUserRepo.save(row);
   }
 
   private async getConversationMessagesFromDb(

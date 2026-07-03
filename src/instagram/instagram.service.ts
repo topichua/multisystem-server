@@ -443,13 +443,20 @@ export class InstagramService {
       return comments;
     }
 
-    await this.instagramUsers.syncMissingFromGraph(authorIds, {
-      pageAccessToken,
-      userAccessToken: integration.userAccessToken,
-      businessAccountId: integration.instagramAccountId,
-      pageId: integration.pageId,
-    });
-    const userById = await this.instagramUsers.getMapByIds(authorIds);
+    await this.instagramUsers.syncMissingFromGraph(
+      integration.workspaceId,
+      authorIds,
+      {
+        pageAccessToken,
+        userAccessToken: integration.userAccessToken,
+        businessAccountId: integration.instagramAccountId,
+        pageId: integration.pageId,
+      },
+    );
+    const userById = await this.instagramUsers.getMapByIds(
+      integration.workspaceId,
+      authorIds,
+    );
 
     return comments.map((comment) =>
       this.enrichCommentWithUser(comment, userById),

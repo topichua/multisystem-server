@@ -1,9 +1,24 @@
-import { Column, Entity, Index, PrimaryColumn } from "typeorm";
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
+} from "typeorm";
+import { Workspace } from "./workspace.entity";
 
 @Entity("instagram_users")
-@Index("IDX_instagram_users_username", ["username"])
+@Index("IDX_instagram_users_workspace_username", ["workspaceId", "username"])
 export class InstagramUser {
-  /** Instagram user id (PSID / IGSID from Graph). Primary key. */
+  @PrimaryColumn({ name: "workspace_id", type: "int" })
+  workspaceId: number;
+
+  @ManyToOne(() => Workspace, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace: Workspace;
+
+  /** Instagram user id (PSID / IGSID from Graph). */
   @PrimaryColumn({ name: "id", type: "varchar", length: 255 })
   id: string;
 

@@ -102,6 +102,7 @@ import { ConversationGroupSystemStatuses1744200000103 } from "./migrations/17442
 import { RestoreConversationGroupSystemDefaults1744200000104 } from "./migrations/1744200000104-RestoreConversationGroupSystemDefaults";
 import { WorkspaceRoleIntegrationGrantCanTakeChat1744200000105 } from "./migrations/1744200000105-WorkspaceRoleIntegrationGrantCanTakeChat";
 import { RemoveConversationManagerId1744200000106 } from "./migrations/1744200000106-RemoveConversationManagerId";
+import { SocialUsersWorkspaceId1744200000107 } from "./migrations/1744200000107-SocialUsersWorkspaceId";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -377,6 +378,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       RestoreConversationGroupSystemDefaults1744200000104,
       WorkspaceRoleIntegrationGrantCanTakeChat1744200000105,
       RemoveConversationManagerId1744200000106,
+      SocialUsersWorkspaceId1744200000107,
     ],
   };
 }

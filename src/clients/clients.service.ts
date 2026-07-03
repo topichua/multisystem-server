@@ -254,7 +254,7 @@ export class ClientsService {
       throw new NotFoundException("Client not found");
     }
 
-    await this.assertExternalUserExists(provider, externalId);
+    await this.assertExternalUserExists(provider, externalId, workspaceId);
 
     const existing = await this.clientLinkRepo.findOne({
       where: { workspaceId, provider, externalId },
@@ -407,7 +407,7 @@ export class ClientsService {
   ): Promise<void> {
     const uniqueIds = [...new Set(externalIds.map((id) => id.trim()).filter(Boolean))];
     for (const externalId of uniqueIds) {
-      await this.assertExternalUserExists(provider, externalId);
+      await this.assertExternalUserExists(provider, externalId, workspaceId);
       await this.assertExternalIdAvailable(
         linkRepo,
         workspaceId,
@@ -437,10 +437,11 @@ export class ClientsService {
   private async assertExternalUserExists(
     provider: ClientLinkProvider,
     externalId: string,
+    workspaceId: number,
   ): Promise<void> {
     if (provider === ClientLinkProvider.INSTAGRAM) {
       const ig = await this.instagramUserRepo.findOne({
-        where: { id: externalId },
+        where: { workspaceId, id: externalId },
       });
       if (!ig) {
         throw new BadRequestException(
@@ -450,7 +451,9 @@ export class ClientsService {
       return;
     }
 
-    const tg = await this.telegramUserRepo.findOne({ where: { id: externalId } });
+    const tg = await this.telegramUserRepo.findOne({
+      where: { workspaceId, id: externalId },
+    });
     if (!tg) {
       throw new BadRequestException(
         `No telegram_users row for telegramUserId=${externalId}; sync or create the Telegram user first.`,
@@ -533,7 +536,7 @@ export class ClientsService {
 
     const avatarMaps =
       options.includeAvatarSrc === true
-        ? await this.loadAvatarSrcMaps(socialIdsByClientId)
+        ? await this.loadAvatarSrcMaps(workspaceId, socialIdsByClientId)
         : undefined;
 
     return rows.map((row) => {
@@ -576,7 +579,10 @@ export class ClientsService {
     };
   }
 
-  private async loadAvatarSrcMaps(socialIdsByClientId: Map<number, ClientSocialIds>): Promise<{
+  private async loadAvatarSrcMaps(
+    workspaceId: number,
+    socialIdsByClientId: Map<number, ClientSocialIds>,
+  ): Promise<{
     telegram: Map<string, string>;
     instagram: Map<string, string>;
   }> {
@@ -590,13 +596,13 @@ export class ClientsService {
     const [telegramUsers, instagramUsers] = await Promise.all([
       telegramIds.size > 0
         ? this.telegramUserRepo.find({
-            where: { id: In([...telegramIds]) },
+            where: { workspaceId, id: In([...telegramIds]) },
             select: { id: true, profilePic: true },
           })
         : Promise.resolve([]),
       instagramIds.size > 0
         ? this.instagramUserRepo.find({
-            where: { id: In([...instagramIds]) },
+            where: { workspaceId, id: In([...instagramIds]) },
             select: { id: true, profilePic: true },
           })
         : Promise.resolve([]),

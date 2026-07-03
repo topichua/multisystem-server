@@ -37,19 +37,23 @@ export class InstagramUsersService {
     private readonly instagramUserRepo: Repository<InstagramUser>,
   ) {}
 
-  async getMapByIds(ids: string[]): Promise<Map<string, InstagramUser>> {
+  async getMapByIds(
+    workspaceId: number,
+    ids: string[],
+  ): Promise<Map<string, InstagramUser>> {
     const uniqIds = [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
     if (uniqIds.length === 0) {
       return new Map();
     }
     const rows = await this.instagramUserRepo.find({
-      where: { id: In(uniqIds) },
+      where: { workspaceId, id: In(uniqIds) },
     });
     return new Map(rows.map((row) => [row.id, row]));
   }
 
   /** Upserts users that are not in `instagram_users` yet (best effort). */
   async syncMissingFromGraph(
+    workspaceId: number,
     ids: string[],
     context: InstagramUserSyncContext,
     options?: { maxSync?: number },
@@ -59,32 +63,52 @@ export class InstagramUsersService {
       return;
     }
 
-    const existing = await this.getMapByIds(uniqIds);
+    const existing = await this.getMapByIds(workspaceId, uniqIds);
     const missing = uniqIds.filter((id) => !existing.has(id));
     const maxSync = options?.maxSync ?? 25;
     const toSync = missing.slice(0, maxSync);
 
     await Promise.all(
       toSync.map((id) =>
-        this.upsertFromGraph(id, context).catch((e) => {
+        this.upsertFromGraph(workspaceId, id, context).catch((e) => {
           const err = e instanceof Error ? e.message : String(e);
-          this.log.warn(`instagram_users upsert failed id=${id}: ${err}`);
+          this.log.warn(
+            `instagram_users upsert failed workspaceId=${workspaceId} id=${id}: ${err}`,
+          );
         }),
       ),
     );
   }
 
-  private async upsertFromGraph(
+  /** Upserts one participant using the page access token (webhooks / messaging). */
+  async upsertScopedUserFromPageToken(
+    workspaceId: number,
+    instagramUserId: string,
+    pageAccessToken: string,
+  ): Promise<void> {
+    await this.upsertScopedUserFromGraph(
+      workspaceId,
+      instagramUserId,
+      pageAccessToken,
+    );
+  }
+
+  async upsertFromGraph(
+    workspaceId: number,
     instagramUserId: string,
     context: InstagramUserSyncContext,
   ): Promise<void> {
     const id = instagramUserId.trim();
     if (this.isConnectedBusinessAccount(id, context)) {
-      await this.upsertBusinessAccountFromGraph(id, context);
+      await this.upsertBusinessAccountFromGraph(workspaceId, id, context);
       return;
     }
 
-    await this.upsertScopedUserFromGraph(id, context.pageAccessToken);
+    await this.upsertScopedUserFromGraph(
+      workspaceId,
+      id,
+      context.pageAccessToken,
+    );
   }
 
   private isConnectedBusinessAccount(
@@ -102,6 +126,7 @@ export class InstagramUsersService {
 
   /** Instagram messaging / comment participant (scoped id). */
   private async upsertScopedUserFromGraph(
+    workspaceId: number,
     instagramUserId: string,
     pageAccessToken: string,
   ): Promise<void> {
@@ -113,6 +138,7 @@ export class InstagramUsersService {
 
     const node = await this.graphFetch<InstagramScopedUserNode>(url);
     await this.saveUserRow({
+      workspaceId,
       id: instagramUserId,
       name: node.name,
       username: node.username,
@@ -122,6 +148,7 @@ export class InstagramUsersService {
 
   /** Connected Instagram Business/Creator account (your own profile). */
   private async upsertBusinessAccountFromGraph(
+    workspaceId: number,
     instagramUserId: string,
     context: InstagramUserSyncContext,
   ): Promise<void> {
@@ -135,6 +162,7 @@ export class InstagramUsersService {
 
     const node = await this.graphFetch<InstagramBusinessUserNode>(url);
     await this.saveUserRow({
+      workspaceId,
       id: instagramUserId,
       name: node.name,
       username: node.username,
@@ -143,6 +171,7 @@ export class InstagramUsersService {
   }
 
   private async saveUserRow(params: {
+    workspaceId: number;
     id: string;
     name?: string;
     username?: string;
@@ -159,10 +188,11 @@ export class InstagramUsersService {
     const now = new Date();
 
     let row = await this.instagramUserRepo.findOne({
-      where: { id: instagramUserId },
+      where: { workspaceId: params.workspaceId, id: instagramUserId },
     });
     if (!row) {
       row = this.instagramUserRepo.create({
+        workspaceId: params.workspaceId,
         id: instagramUserId,
         name,
         username,
