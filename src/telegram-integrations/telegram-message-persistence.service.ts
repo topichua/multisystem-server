@@ -111,6 +111,7 @@ export class TelegramMessagePersistenceService {
             msg,
             chatId,
             client,
+            { skipWorkflow: true, skipNotify: true },
           );
           if (isNew) {
             saved += 1;
@@ -133,6 +134,7 @@ export class TelegramMessagePersistenceService {
     msg: Api.Message,
     chatId: string,
     connectedClient?: TelegramClient,
+    options?: { skipWorkflow?: boolean; skipNotify?: boolean },
   ): Promise<boolean> {
     if (!msg.id) {
       return false;
@@ -230,12 +232,16 @@ export class TelegramMessagePersistenceService {
     });
 
     const saved = await this.conversationMessageRepo.save(row);
-    await this.messageNotify.notifyPersistedMessage(saved, ownerId);
+    if (!options?.skipNotify) {
+      await this.messageNotify.notifyPersistedMessage(saved, ownerId);
+    }
 
-    if (!isOutgoing) {
-      await this.conversationWorkflow.onInboundCustomerMessage(conv);
-    } else {
-      await this.conversationWorkflow.onOutboundAgentReply(conv);
+    if (!options?.skipWorkflow) {
+      if (!isOutgoing) {
+        await this.conversationWorkflow.onInboundCustomerMessage(conv);
+      } else {
+        await this.conversationWorkflow.onOutboundAgentReply(conv);
+      }
     }
 
     this.log.debug(
