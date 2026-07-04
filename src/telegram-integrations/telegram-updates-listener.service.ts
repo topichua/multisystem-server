@@ -12,6 +12,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { randomUUID } from "crypto";
 import { hostname } from "os";
 import { NewMessage, Raw } from "telegram/events";
+import { DeletedMessage } from "telegram/events/DeletedMessage";
+import { EditedMessage } from "telegram/events/EditedMessage";
 import { Api } from "telegram";
 import type { TelegramClient } from "telegram";
 import { IsNull, Not, Repository } from "typeorm";
@@ -502,6 +504,85 @@ export class TelegramUpdatesListenerService
         }
       };
 
+      const editedHandler = async (event: unknown) => {
+        const active = this.clients.get(integration.id);
+        if (!active) {
+          return;
+        }
+
+        const fenceOk = await this.lockService.verifyFence(
+          integration.id,
+          this.instanceId,
+          active.lockVersion,
+        );
+        if (!fenceOk) {
+          this.log.warn(
+            `Telegram listener stale edit ignored integration_id=${integration.id}: lost lock (fencing)`,
+          );
+          void this.stopListenerDueToLostLock(integration.id);
+          return;
+        }
+
+        try {
+          await this.persistence.persistEditedMessageEvent(
+            integration,
+            event as import("telegram/events/EditedMessage").EditedMessageEvent,
+            client,
+          );
+        } catch (e) {
+          if (this.isAuthKeyDuplicated(e)) {
+            void this.handleAuthKeyDuplicated(integration, {
+              client,
+              hint: "session auth key duplicated during message edit",
+            });
+            return;
+          }
+          const err = e instanceof Error ? e.message : String(e);
+          this.log.warn(
+            `Telegram edit handler failed integration_id=${integration.id}: ${err}`,
+          );
+        }
+      };
+
+      const deletedHandler = async (event: unknown) => {
+        const active = this.clients.get(integration.id);
+        if (!active) {
+          return;
+        }
+
+        const fenceOk = await this.lockService.verifyFence(
+          integration.id,
+          this.instanceId,
+          active.lockVersion,
+        );
+        if (!fenceOk) {
+          this.log.warn(
+            `Telegram listener stale delete ignored integration_id=${integration.id}: lost lock (fencing)`,
+          );
+          void this.stopListenerDueToLostLock(integration.id);
+          return;
+        }
+
+        try {
+          await this.persistence.persistDeletedMessageEvent(
+            integration,
+            event as import("telegram/events/DeletedMessage").DeletedMessageEvent,
+          );
+        } catch (e) {
+          if (this.isAuthKeyDuplicated(e)) {
+            void this.handleAuthKeyDuplicated(integration, {
+              client,
+              hint: "session auth key duplicated during message delete",
+            });
+            return;
+          }
+          const err = e instanceof Error ? e.message : String(e);
+          this.log.warn(
+            `Telegram delete handler failed integration_id=${integration.id}: ${err}`,
+          );
+        }
+      };
+
       const readReceiptHandler = async (update: Api.TypeUpdate) => {
         if (!(update instanceof Api.UpdateReadHistoryOutbox)) {
           return;
@@ -543,6 +624,8 @@ export class TelegramUpdatesListenerService
       };
 
       client.addEventHandler(handler, new NewMessage({}));
+      client.addEventHandler(editedHandler, new EditedMessage({}));
+      client.addEventHandler(deletedHandler, new DeletedMessage({}));
       client.addEventHandler(
         readReceiptHandler,
         new Raw({ types: [Api.UpdateReadHistoryOutbox] }),

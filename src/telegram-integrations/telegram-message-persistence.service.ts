@@ -2,6 +2,8 @@ import { BadRequestException, forwardRef, Inject, Injectable, Logger } from "@ne
 import { InjectRepository } from "@nestjs/typeorm";
 import { Api, utils } from "telegram";
 import type { TelegramClient } from "telegram";
+import type { DeletedMessageEvent } from "telegram/events/DeletedMessage";
+import type { EditedMessageEvent } from "telegram/events/EditedMessage";
 import type { NewMessageEvent } from "telegram/events";
 import { Repository } from "typeorm";
 import {
@@ -35,6 +37,144 @@ export class TelegramMessagePersistenceService {
    * Persists a Telegram update into `conversations` + `conversation_messages`
    * (reuses `instagram_json` column for stored platform payload).
    */
+  async persistEditedMessageEvent(
+    integration: TelegramIntegration,
+    event: EditedMessageEvent,
+    connectedClient?: TelegramClient,
+  ): Promise<void> {
+    const msg = event.message;
+    if (!msg?.id) {
+      return;
+    }
+
+    const myUserId = integration.telegramUserId?.trim();
+    if (!myUserId) {
+      return;
+    }
+
+    if (!event.isPrivate) {
+      return;
+    }
+
+    const chatId = this.bigIntToId(event.chatId);
+    if (!chatId) {
+      return;
+    }
+
+    const externalMessageId = `tg:${chatId}:${msg.id}`;
+    const row = await this.conversationMessageRepo.findOne({
+      where: { externalId: externalMessageId },
+    });
+    if (!row) {
+      this.log.debug(
+        `Telegram edit skipped: message not in DB id=${externalMessageId} integration_id=${integration.id}`,
+      );
+      return;
+    }
+
+    const conv = await this.conversationRepo.findOne({
+      where: { id: row.conversationId },
+    });
+    if (
+      !conv ||
+      conv.source !== ConversationSource.TELEGRAM ||
+      conv.externalSourceId !== String(integration.id)
+    ) {
+      return;
+    }
+
+    const { participantId, isOutgoing } = this.resolvePrivateMessageActors(
+      msg,
+      chatId,
+      myUserId,
+    );
+    const { text, attachments, rawExtras } =
+      await this.resolvePrivateMessageContent(
+        msg,
+        chatId,
+        participantId,
+        connectedClient,
+      );
+    const editedAt =
+      typeof msg.editDate === "number"
+        ? new Date(msg.editDate * 1000)
+        : new Date();
+
+    const storedPayload = this.buildStoredPayload({
+      externalMessageId,
+      messageDate: row.createdAt,
+      text,
+      senderId: row.senderId,
+      receiverId: row.receiverId,
+      chatId,
+      messageId: String(msg.id),
+      isOutgoing,
+      attachments,
+      raw: {
+        peerId: chatId,
+        out: msg.out ?? isOutgoing,
+        edited: true,
+        ...rawExtras,
+      },
+    });
+    row.message = text;
+    row.instagramJson = JSON.stringify(
+      this.mergeStoredPayload(row.instagramJson, storedPayload),
+    );
+    row.editedAt = editedAt;
+
+    const saved = await this.conversationMessageRepo.save(row);
+    await this.messageNotify.notifyPersistedMessage(saved, integration.ownerId);
+
+    this.log.debug(
+      `Updated telegram message edit id=${externalMessageId} conversation_id=${conv.id} integration_id=${integration.id}`,
+    );
+  }
+
+  async persistDeletedMessageEvent(
+    integration: TelegramIntegration,
+    event: DeletedMessageEvent,
+  ): Promise<void> {
+    const deletedIds = event.deletedIds ?? [];
+    if (deletedIds.length === 0) {
+      return;
+    }
+
+    let chatId: string | null = null;
+    if (event.peer) {
+      try {
+        chatId = utils.getPeerId(event.peer);
+      } catch {
+        chatId = this.bigIntToId(event.peer);
+      }
+      if (!chatId) {
+        chatId = null;
+      }
+    }
+
+    const notifiedConversationIds = new Set<number>();
+    for (const messageId of deletedIds) {
+      if (!Number.isInteger(messageId) || messageId <= 0) {
+        continue;
+      }
+      const removed = await this.deletePersistedTelegramMessage(
+        integration,
+        messageId,
+        chatId,
+      );
+      for (const conversationId of removed) {
+        if (notifiedConversationIds.has(conversationId)) {
+          continue;
+        }
+        notifiedConversationIds.add(conversationId);
+        await this.messageNotify.notifyConversationForOwner(
+          integration.ownerId,
+          conversationId,
+        );
+      }
+    }
+  }
+
   async persistNewMessageEvent(
     integration: TelegramIntegration,
     event: NewMessageEvent,
@@ -158,21 +298,13 @@ export class TelegramMessagePersistenceService {
       typeof msg.date === "number"
         ? new Date(msg.date * 1000)
         : new Date();
-    let photoContent = this.extractPhotoContent(msg);
-    let cdnUrl: string | null = null;
-    if (photoContent && connectedClient) {
-      cdnUrl = await this.uploadTelegramPhotoToCdn(connectedClient, msg, chatId);
-      if (cdnUrl) {
-        photoContent = this.extractPhotoContent(msg, cdnUrl);
-      }
-    }
-    const sharedPhone = this.extractParticipantSharedPhone(msg, participantId);
-    const text =
-      sharedPhone != null
-        ? sharedPhone
-        : photoContent
-          ? photoContent.displayText
-          : (msg.message ?? "").trim() || "[non-text message]";
+    const { text, attachments, rawExtras } =
+      await this.resolvePrivateMessageContent(
+        msg,
+        chatId,
+        participantId,
+        connectedClient,
+      );
     const externalMessageId = `tg:${chatId}:${msg.id}`;
     const externalConversationId = `telegram:private:${chatId}`;
 
@@ -196,6 +328,8 @@ export class TelegramMessagePersistenceService {
       participantId,
       connectedClient,
     );
+    const sharedPhone =
+      typeof rawExtras.phone === "string" ? rawExtras.phone : null;
     if (sharedPhone) {
       await this.telegramUsers.upsertParticipantPhone(
         integration.workspaceId,
@@ -221,13 +355,11 @@ export class TelegramMessagePersistenceService {
         chatId,
         messageId: String(msg.id),
         isOutgoing,
-        attachments: photoContent?.attachments,
+        attachments,
         raw: {
           peerId: chatId,
           out: msg.out ?? isOutgoing,
-          ...(photoContent ? { mediaType: "photo" } : {}),
-          ...(sharedPhone ? { mediaType: "contact", phone: sharedPhone } : {}),
-          ...(cdnUrl ? { cdnUrl } : {}),
+          ...rawExtras,
         },
       }),
     );
@@ -473,6 +605,116 @@ export class TelegramMessagePersistenceService {
     return { conv: row, convSaved: true };
   }
 
+  private async resolvePrivateMessageContent(
+    msg: Api.Message,
+    chatId: string,
+    participantId: string,
+    connectedClient?: TelegramClient,
+  ): Promise<{
+    text: string;
+    attachments?: { data: Array<Record<string, unknown>> };
+    rawExtras: Record<string, unknown>;
+  }> {
+    let photoContent = this.extractPhotoContent(msg);
+    let cdnUrl: string | null = null;
+    if (photoContent && connectedClient) {
+      cdnUrl = await this.uploadTelegramPhotoToCdn(connectedClient, msg, chatId);
+      if (cdnUrl) {
+        photoContent = this.extractPhotoContent(msg, cdnUrl);
+      }
+    }
+    const sharedPhone = this.extractParticipantSharedPhone(msg, participantId);
+    const text =
+      sharedPhone != null
+        ? sharedPhone
+        : photoContent
+          ? photoContent.displayText
+          : (msg.message ?? "").trim() || "[non-text message]";
+
+    return {
+      text,
+      attachments: photoContent?.attachments,
+      rawExtras: {
+        ...(photoContent ? { mediaType: "photo" } : {}),
+        ...(sharedPhone ? { mediaType: "contact", phone: sharedPhone } : {}),
+        ...(cdnUrl ? { cdnUrl } : {}),
+      },
+    };
+  }
+
+  private mergeStoredPayload(
+    existingJson: string,
+    nextPayload: Record<string, unknown>,
+  ): Record<string, unknown> {
+    try {
+      const existing = JSON.parse(existingJson) as Record<string, unknown>;
+      const existingTelegram =
+        existing.telegram && typeof existing.telegram === "object"
+          ? (existing.telegram as Record<string, unknown>)
+          : {};
+      const nextTelegram =
+        nextPayload.telegram && typeof nextPayload.telegram === "object"
+          ? (nextPayload.telegram as Record<string, unknown>)
+          : {};
+
+      return {
+        ...existing,
+        ...nextPayload,
+        telegram: {
+          ...existingTelegram,
+          ...nextTelegram,
+        },
+      };
+    } catch {
+      return nextPayload;
+    }
+  }
+
+  private async deletePersistedTelegramMessage(
+    integration: TelegramIntegration,
+    telegramMessageId: number,
+    chatId: string | null,
+  ): Promise<number[]> {
+    const qb = this.conversationMessageRepo
+      .createQueryBuilder("m")
+      .innerJoin("m.conversation", "c")
+      .where("c.workspace_id = :workspaceId", {
+        workspaceId: integration.workspaceId,
+      })
+      .andWhere("c.source = :source", {
+        source: ConversationSource.TELEGRAM,
+      })
+      .andWhere("c.external_source_id = :integrationId", {
+        integrationId: String(integration.id),
+      });
+
+    if (chatId) {
+      qb.andWhere("m.external_id = :externalId", {
+        externalId: `tg:${chatId}:${telegramMessageId}`,
+      });
+    } else {
+      qb.andWhere(
+        "CAST(SPLIT_PART(m.external_id, ':', 3) AS INTEGER) = :messageId",
+        { messageId: telegramMessageId },
+      );
+    }
+
+    const rows = await qb.getMany();
+    if (rows.length === 0) {
+      return [];
+    }
+
+    await this.conversationMessageRepo.remove(rows);
+
+    for (const row of rows) {
+      this.log.debug(
+        `Deleted telegram message id=${row.externalId} conversation_id=${row.conversationId} integration_id=${integration.id}`,
+      );
+    }
+
+    return [...new Set(rows.map((row) => row.conversationId))];
+  }
+
   private buildStoredPayload(params: {
     externalMessageId: string;
     messageDate: Date;
@@ -500,7 +742,7 @@ export class TelegramMessagePersistenceService {
     return {
       id: externalMessageId,
       created_time: messageDate.toISOString(),
-      ...(text.length > 0 ? { message: text } : {}),
+      message: text,
       from: { id: senderId },
       to: { data: [{ id: receiverId }] },
       ...(attachments ? { attachments } : {}),
