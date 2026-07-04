@@ -14,6 +14,7 @@ import {
 import { ProductsModule } from "../products/products.module";
 import { SendgridModule } from "../sendgrid/sendgrid.module";
 import { ConversationGroupDefaultsModule } from "../conversations/conversation-group-defaults.module";
+import { OrderStatusDefaultsModule } from "../orders/order-status-defaults.module";
 import { PasswordService } from "../users/crypto/password.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
 import { AuthController } from "./auth.controller";
@@ -28,6 +29,7 @@ import { RegistrationService } from "./registration.service";
     ProductsModule,
     SendgridModule,
     ConversationGroupDefaultsModule,
+    OrderStatusDefaultsModule,
     TypeOrmModule.forFeature([
       User,
       Workspace,

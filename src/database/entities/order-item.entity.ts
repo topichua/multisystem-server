@@ -14,15 +14,22 @@ import { ProductVariant } from "./product-variant.entity";
 
 @Entity("order_items")
 @Index("IDX_order_items_order_id", ["orderId"])
+@Index("IDX_order_items_workspace_order", ["workspaceId", "orderId"])
 export class OrderItem {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
+
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
 
   @Column({ name: "order_id", type: "int" })
   orderId: number;
 
   @ManyToOne(() => Order, (o) => o.items, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "order_id" })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "order_id", referencedColumnName: "id" },
+  ])
   order: Order;
 
   @Column({ name: "product_id", type: "int" })

@@ -361,12 +361,13 @@ export class InventoryService {
   }
 
   async handleOrderInventoryForStatus(
+    workspaceId: number,
     orderId: number,
     statusCategory: OrderStatusCategory,
     actorUserId: number | null,
   ): Promise<void> {
     const order = await this.orderRepo.findOne({
-      where: { id: orderId },
+      where: { workspaceId, id: orderId },
       relations: { items: true },
     });
     if (!order) {

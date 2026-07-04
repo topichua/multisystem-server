@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import type { EntityManager } from "typeorm";
 import { Repository } from "typeorm";
 import {
   Client,
@@ -19,6 +20,7 @@ import {
   OrderDeliveryStatus,
   OrderSource,
   OrderStatus,
+  OrderStatusCategory,
   Product,
   ProductVariant,
 } from "../database/entities";
@@ -30,7 +32,9 @@ import type { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
 import type { OrderStatusResponseDto } from "./dto/order-status-response.dto";
 import type { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
 import type { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
+import type { UpdateOrderDto } from "./dto/update-order.dto";
 import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
+import type { OrderEventsListResponseDto } from "./dto/order-events-list-response.dto";
 import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
 import type { ClientOrderStatDto } from "../clients/dto/client-order-stat.dto";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
@@ -39,6 +43,7 @@ import { InventoryService } from "../inventory/inventory.service";
 import { InventoryMode } from "../database/entities/inventory-mode.enum";
 import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
 import { NovaPoshtaWaybillService } from "../novaposhta-integrations/nova-poshta-waybill.service";
+import { hydrateDeliveryTrackingFlags } from "../delivery/delivery-tracking.util";
 import type { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import type { CreateNovaPoshtaWaybillResponseDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import {
@@ -46,13 +51,17 @@ import {
   buildVariantTitleFromFields,
 } from "../variant-custom-fields/variant-custom-fields.util";
 import { pickMainMediaUrl } from "../products/product-media.util";
+import { OrderStatusDefaultsService } from "./order-status-defaults.service";
+import { OrderIdAllocationService } from "./order-id-allocation.service";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
   ITEM_ADDED: "order.item_added",
+  ITEMS_UPDATED: "order.items_updated",
   STATUS_CHANGED: "order.status_changed",
   DELIVERY_UPDATED: "order.delivery_updated",
   WAYBILL_CREATED: "order.waybill_created",
+  WAYBILL_REMOVED: "order.waybill_removed",
   TOTALS_UPDATED: "order.totals_updated",
 } as const;
 
@@ -93,6 +102,8 @@ export class OrdersService {
     private readonly inventory: InventoryService,
     private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly novaPoshtaWaybill: NovaPoshtaWaybillService,
+    private readonly orderStatusDefaults: OrderStatusDefaultsService,
+    private readonly orderIdAllocation: OrderIdAllocationService,
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
@@ -146,44 +157,137 @@ export class OrdersService {
 
     const statusId = await this.resolveDefaultOrderStatusId(workspaceId);
 
-    const order = this.orderRepo.create({
-      workspaceId,
-      customerId: client.id,
-      conversationId,
-      source,
-      statusId,
-      customerNote: dto.customerNote?.trim() || null,
-      internalNote: dto.internalNote?.trim() || null,
-      currency,
-      subtotalAmount: 0,
-      discountAmount: 0,
-      deliveryAmount: 0,
-      totalAmount: 0,
-      createdById: ownerId,
-      updatedById: null,
-    });
-    const saved = await this.orderRepo.save(order);
-    await this.appendEvent(saved.id, OrderEventType.ORDER_CREATED, ownerId, {
-      customerId: saved.customerId,
-      conversationId: saved.conversationId,
-      source: saved.source,
-      statusId: saved.statusId,
-      currency: saved.currency,
-    });
+    const saved = await this.orderRepo.manager.transaction(async (em) => {
+      const orderId = await this.orderIdAllocation.allocateNextOrderId(
+        workspaceId,
+        em,
+      );
+      const order = em.create(Order, {
+        workspaceId,
+        id: orderId,
+        customerId: client.id,
+        conversationId,
+        source,
+        statusId,
+        customerNote: dto.customerNote?.trim() || null,
+        internalNote: dto.internalNote?.trim() || null,
+        currency,
+        subtotalAmount: 0,
+        discountAmount: 0,
+        deliveryAmount: 0,
+        totalAmount: 0,
+        createdById: ownerId,
+        updatedById: null,
+      });
+      const persisted = await em.save(order);
+      await em.save(
+        em.create(OrderEvent, {
+          workspaceId,
+          orderId: persisted.id,
+          type: OrderEventType.ORDER_CREATED,
+          actorId: ownerId,
+          userId: ownerId,
+          payload: {
+            customerId: persisted.customerId,
+            conversationId: persisted.conversationId,
+            source: persisted.source,
+            statusId: persisted.statusId,
+            currency: persisted.currency,
+          },
+        }),
+      );
 
-    const lineItems = dto.items ?? [];
-    if (lineItems.length > 0) {
+      const lineItems = dto.items ?? [];
       for (const line of lineItems) {
-        await this.insertOrderLineItem(workspaceId, saved, line, ownerId);
+        await this.insertOrderLineItem(workspaceId, persisted, line, ownerId, em);
       }
-      await this.recalculateOrderTotals(saved.id, ownerId);
-    }
+      if (lineItems.length > 0) {
+        await this.recalculateOrderTotals(
+          workspaceId,
+          persisted.id,
+          ownerId,
+          em,
+        );
+      }
 
-    if (dto.delivery) {
-      await this.createDeliveryForOrder(saved.id, dto.delivery, ownerId);
-    }
+      if (dto.delivery) {
+        await this.createDeliveryForOrder(
+          workspaceId,
+          persisted.id,
+          dto.delivery,
+          ownerId,
+          em,
+        );
+      }
+
+      return persisted;
+    });
 
     return this.getOrderById(ownerId, saved.id);
+  }
+
+  async updateOrder(
+    ownerId: number,
+    orderId: number,
+    dto: UpdateOrderDto,
+  ): Promise<Order> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const order = await this.orderRepo.findOne({
+      where: { id: orderId, workspaceId: workspace.id },
+      relations: { status: true },
+    });
+    if (!order?.status) {
+      throw new NotFoundException("Order not found");
+    }
+
+    const hasItems = dto.items !== undefined;
+    const hasNotes =
+      dto.customerNote !== undefined || dto.internalNote !== undefined;
+    if (!hasItems && !hasNotes) {
+      throw new BadRequestException("At least one field must be provided");
+    }
+
+    if (hasItems) {
+      this.assertOrderItemsEditable(order.status);
+      await this.orderItemRepo.delete({
+        workspaceId: workspace.id,
+        orderId: order.id,
+      });
+      for (const line of dto.items ?? []) {
+        await this.insertOrderLineItem(workspace.id, order, line, ownerId);
+      }
+      await this.recalculateOrderTotals(workspace.id, order.id, ownerId);
+      await this.appendEvent(
+        workspace.id,
+        order.id,
+        OrderEventType.ITEMS_UPDATED,
+        ownerId,
+        {
+          itemCount: dto.items?.length ?? 0,
+        },
+      );
+    }
+
+    if (hasNotes) {
+      if (dto.customerNote !== undefined) {
+        order.customerNote =
+          dto.customerNote === null || dto.customerNote.trim() === ""
+            ? null
+            : dto.customerNote.trim();
+      }
+      if (dto.internalNote !== undefined) {
+        order.internalNote =
+          dto.internalNote === null || dto.internalNote.trim() === ""
+            ? null
+            : dto.internalNote.trim();
+      }
+      order.updatedById = ownerId;
+      await this.orderRepo.save(order);
+    }
+
+    return this.getOrderById(ownerId, order.id);
   }
 
   async addOrderItem(
@@ -194,19 +298,24 @@ export class OrdersService {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
-    const order = await this.requireOrderForWorkspace(
-      orderId,
-      workspace.id,
-    );
+    const order = await this.orderRepo.findOne({
+      where: { id: orderId, workspaceId: workspace.id },
+      relations: { status: true },
+    });
+    if (!order?.status) {
+      throw new NotFoundException("Order not found");
+    }
+    this.assertOrderItemsEditable(order.status);
 
     await this.insertOrderLineItem(workspace.id, order, dto, ownerId);
-    await this.recalculateOrderTotals(order.id, ownerId);
+    await this.recalculateOrderTotals(workspace.id, order.id, ownerId);
     const orderWithStatus = await this.orderRepo.findOne({
-      where: { id: order.id },
+      where: { workspaceId: workspace.id, id: order.id },
       relations: { status: true },
     });
     if (orderWithStatus?.status) {
       await this.inventory.handleOrderInventoryForStatus(
+        workspace.id,
         order.id,
         orderWithStatus.status.category,
         ownerId,
@@ -221,6 +330,7 @@ export class OrdersService {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
+    await this.orderStatusDefaults.ensureSystemStatuses(workspace.id);
     const rows = await this.orderStatusRepo.find({
       where: { workspaceId: workspace.id },
       order: { sortOrder: "ASC", id: "ASC" },
@@ -236,6 +346,7 @@ export class OrdersService {
       ownerId,
     );
     const workspaceId = workspace.id;
+    await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
     const uniqueIds = new Set(dto.ids);
     if (uniqueIds.size !== dto.ids.length) {
@@ -284,6 +395,7 @@ export class OrdersService {
       ownerId,
     );
     const workspaceId = workspace.id;
+    await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
     return this.orderStatusRepo.manager.transaction(async (em) => {
       const raw = await em
@@ -337,6 +449,7 @@ export class OrdersService {
       ownerId,
     );
     const workspaceId = workspace.id;
+    await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
     return this.orderStatusRepo.manager.transaction(async (em) => {
       const status = await em.findOne(OrderStatus, {
@@ -346,29 +459,43 @@ export class OrdersService {
         throw new NotFoundException("Order status not found");
       }
 
-      if (dto.category !== undefined) {
-        if (status.isSystem) {
+      if (status.isSystem) {
+        if (dto.category !== undefined) {
           throw new BadRequestException(
-            "Cannot change category on a system status",
+            "System order statuses cannot change category",
           );
         }
-        status.category = dto.category;
-      }
-      if (dto.name !== undefined) {
-        status.name = dto.name.trim();
-      }
-      if (dto.color !== undefined) {
-        status.color = dto.color;
-      }
-      if (dto.isDefault === true) {
-        await em.update(
-          OrderStatus,
-          { workspaceId, isDefault: true },
-          { isDefault: false },
-        );
-        status.isDefault = true;
-      } else if (dto.isDefault === false) {
-        status.isDefault = false;
+        if (dto.isDefault !== undefined) {
+          throw new BadRequestException(
+            "System order statuses cannot change default flag",
+          );
+        }
+        if (dto.name !== undefined) {
+          status.name = dto.name.trim();
+        }
+        if (dto.color !== undefined) {
+          status.color = dto.color;
+        }
+      } else {
+        if (dto.category !== undefined) {
+          status.category = dto.category;
+        }
+        if (dto.name !== undefined) {
+          status.name = dto.name.trim();
+        }
+        if (dto.color !== undefined) {
+          status.color = dto.color;
+        }
+        if (dto.isDefault === true) {
+          await em.update(
+            OrderStatus,
+            { workspaceId, isDefault: true },
+            { isDefault: false },
+          );
+          status.isDefault = true;
+        } else if (dto.isDefault === false) {
+          status.isDefault = false;
+        }
       }
 
       const saved = await em.save(status);
@@ -384,6 +511,7 @@ export class OrdersService {
       ownerId,
     );
     const workspaceId = workspace.id;
+    await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
     const status = await this.orderStatusRepo.findOne({
       where: { id: statusId, workspaceId },
@@ -438,12 +566,19 @@ export class OrdersService {
     order.updatedById = ownerId;
     await this.orderRepo.save(order);
 
-    await this.appendEvent(order.id, OrderEventType.STATUS_CHANGED, ownerId, {
-      previousStatusId,
-      statusId: newStatus.id,
-      statusName: newStatus.name,
-    });
+    await this.appendEvent(
+      workspace.id,
+      order.id,
+      OrderEventType.STATUS_CHANGED,
+      ownerId,
+      {
+        previousStatusId,
+        statusId: newStatus.id,
+        statusName: newStatus.name,
+      },
+    );
     await this.inventory.handleOrderInventoryForStatus(
+      workspace.id,
       order.id,
       newStatus.category,
       ownerId,
@@ -486,13 +621,19 @@ export class OrdersService {
       }
     }
 
-    await this.appendEvent(order.id, OrderEventType.DELIVERY_UPDATED, ownerId, {
-      deliveryInfoId: row.id,
-      provider: row.provider,
-      deliveryStatus: row.deliveryStatus,
-      trackingNumber: row.trackingNumber,
-      providerStatusCode: row.providerStatusCode,
-    });
+    await this.appendEvent(
+      workspace.id,
+      order.id,
+      OrderEventType.DELIVERY_UPDATED,
+      ownerId,
+      {
+        deliveryInfoId: row.id,
+        provider: row.provider,
+        deliveryStatus: row.deliveryStatus,
+        trackingNumber: row.trackingNumber,
+        providerStatusCode: row.providerStatusCode,
+      },
+    );
     return this.getOrderById(ownerId, order.id);
   }
 
@@ -501,17 +642,76 @@ export class OrdersService {
     orderId: number,
     dto: CreateNovaPoshtaWaybillRequestDto = {},
   ): Promise<CreateNovaPoshtaWaybillResponseDto & { order: Order }> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
     const waybill = await this.novaPoshtaWaybill.createForOrder(
       ownerId,
       orderId,
       dto,
     );
-    await this.appendEvent(orderId, OrderEventType.WAYBILL_CREATED, ownerId, {
-      trackingNumber: waybill.trackingNumber,
-      documentRef: waybill.documentRef,
-    });
+    await this.appendEvent(
+      workspace.id,
+      orderId,
+      OrderEventType.WAYBILL_CREATED,
+      ownerId,
+      {
+        trackingNumber: waybill.trackingNumber,
+        documentRef: waybill.documentRef,
+      },
+    );
     const order = await this.getOrderById(ownerId, orderId);
     return { ...waybill, order };
+  }
+
+  async removeNovaPoshtaWaybill(
+    ownerId: number,
+    orderId: number,
+  ): Promise<Order> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const removed = await this.novaPoshtaWaybill.removeWaybillForOrder(
+      ownerId,
+      orderId,
+    );
+    await this.appendEvent(
+      workspace.id,
+      orderId,
+      OrderEventType.WAYBILL_REMOVED,
+      ownerId,
+      {
+        trackingNumber: removed.removedTrackingNumber,
+      },
+    );
+    return this.getOrderById(ownerId, orderId);
+  }
+
+  async listOrderEventsForOwner(
+    ownerId: number,
+    orderId: number,
+  ): Promise<OrderEventsListResponseDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    await this.requireOrderForWorkspace(orderId, workspace.id);
+
+    const rows = await this.orderEventRepo.find({
+      where: { workspaceId: workspace.id, orderId },
+      order: { createdAt: "DESC", id: "DESC" },
+    });
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        orderId: row.orderId,
+        type: row.type,
+        actorId: row.actorId,
+        userId: row.userId,
+        payload: row.payload,
+        createdAt: row.createdAt,
+      })),
+    };
   }
 
   async getOrderById(ownerId: number, orderId: number): Promise<Order> {
@@ -538,6 +738,7 @@ export class OrdersService {
       );
     }
     order.deliveryInfo = await this.findDeliveryForOrder(order);
+    hydrateDeliveryTrackingFlags(order, order.deliveryInfo ?? null);
     this.stripCircularOrderRefs(order);
     return order;
   }
@@ -773,6 +974,7 @@ export class OrdersService {
     order: Order,
     dto: AddOrderItemDto,
     ownerId: number,
+    manager?: EntityManager,
   ): Promise<OrderItem> {
     const variant = await this.variantRepo.findOne({
       where: {
@@ -827,7 +1029,11 @@ export class OrdersService {
       dto.quantity,
     );
 
-    const item = this.orderItemRepo.create({
+    const orderItemRepo =
+      manager?.getRepository(OrderItem) ?? this.orderItemRepo;
+
+    const item = orderItemRepo.create({
+      workspaceId,
       orderId: order.id,
       productId: product.id,
       variantId: variant.id,
@@ -848,42 +1054,66 @@ export class OrdersService {
         variant,
       ),
     });
-    const saved = await this.orderItemRepo.save(item);
+    const saved = await orderItemRepo.save(item);
 
-    await this.appendEvent(order.id, OrderEventType.ITEM_ADDED, ownerId, {
-      orderItemId: saved.id,
-      productId: saved.productId,
-      variantId: saved.variantId,
-      quantity: saved.quantity,
-      unitPriceAmount: saved.unitPriceAmount,
-      totalPriceAmount: saved.totalPriceAmount,
-    });
+    await this.appendEvent(
+      workspaceId,
+      order.id,
+      OrderEventType.ITEM_ADDED,
+      ownerId,
+      {
+        orderItemId: saved.id,
+        productId: saved.productId,
+        variantId: saved.variantId,
+        quantity: saved.quantity,
+        unitPriceAmount: saved.unitPriceAmount,
+        totalPriceAmount: saved.totalPriceAmount,
+      },
+      manager,
+    );
     return saved;
   }
 
   private async createDeliveryForOrder(
+    workspaceId: number,
     orderId: number,
     dto: UpdateOrderDeliveryDto,
     ownerId: number,
+    manager?: EntityManager,
   ): Promise<void> {
-    const order = await this.orderRepo.findOne({ where: { id: orderId } });
+    const orderRepo = manager?.getRepository(Order) ?? this.orderRepo;
+    const deliveryRepo =
+      manager?.getRepository(OrderDeliveryInfo) ?? this.orderDeliveryRepo;
+    const order = await orderRepo.findOne({
+      where: { workspaceId, id: orderId },
+    });
     if (!order) {
       return;
     }
-    const row = await this.orderDeliveryRepo.save(
-      this.orderDeliveryRepo.create({
+    const row = await deliveryRepo.save(
+      deliveryRepo.create({
         provider: dto.provider,
         ...this.mapDeliveryDtoToFields(dto, true),
       }),
     );
-    await this.linkDeliveryToOrder(order, row, dto.provider, ownerId);
-    await this.appendEvent(orderId, OrderEventType.DELIVERY_UPDATED, ownerId, {
-      deliveryInfoId: row.id,
-      deliveryType: dto.provider,
-      provider: row.provider,
-      deliveryStatus: row.deliveryStatus,
-      trackingNumber: row.trackingNumber,
-    });
+    order.deliveryId = row.id;
+    order.deliveryType = dto.provider;
+    order.updatedById = ownerId;
+    await orderRepo.save(order);
+    await this.appendEvent(
+      workspaceId,
+      orderId,
+      OrderEventType.DELIVERY_UPDATED,
+      ownerId,
+      {
+        deliveryInfoId: row.id,
+        deliveryType: dto.provider,
+        provider: row.provider,
+        deliveryStatus: row.deliveryStatus,
+        trackingNumber: row.trackingNumber,
+      },
+      manager,
+    );
   }
 
   private mapDeliveryDtoToFields(
@@ -951,12 +1181,16 @@ export class OrdersService {
   }
 
   private async recalculateOrderTotals(
+    workspaceId: number,
     orderId: number,
     actorId: number,
+    manager?: EntityManager,
   ): Promise<void> {
-    const order = await this.orderRepo.findOne({ where: { id: orderId } });
+    const orderRepo = manager?.getRepository(Order) ?? this.orderRepo;
+    const itemRepo = manager?.getRepository(OrderItem) ?? this.orderItemRepo;
+    const order = await orderRepo.findOne({ where: { workspaceId, id: orderId } });
     if (!order) return;
-    const items = await this.orderItemRepo.find({ where: { orderId } });
+    const items = await itemRepo.find({ where: { workspaceId, orderId } });
     const subtotal = roundMoney(
       items.reduce((sum, i) => sum + Number(i.totalPriceAmount), 0),
     );
@@ -966,23 +1200,34 @@ export class OrdersService {
     order.subtotalAmount = subtotal;
     order.totalAmount = Math.max(0, total);
     order.updatedById = actorId;
-    await this.orderRepo.save(order);
-    await this.appendEvent(orderId, OrderEventType.TOTALS_UPDATED, actorId, {
-      subtotalAmount: order.subtotalAmount,
-      discountAmount: order.discountAmount,
-      deliveryAmount: order.deliveryAmount,
-      totalAmount: order.totalAmount,
-    });
+    await orderRepo.save(order);
+    await this.appendEvent(
+      workspaceId,
+      orderId,
+      OrderEventType.TOTALS_UPDATED,
+      actorId,
+      {
+        subtotalAmount: order.subtotalAmount,
+        discountAmount: order.discountAmount,
+        deliveryAmount: order.deliveryAmount,
+        totalAmount: order.totalAmount,
+      },
+      manager,
+    );
   }
 
   private async appendEvent(
+    workspaceId: number,
     orderId: number,
     type: string,
     actorId: number | null,
     payload: Record<string, unknown> | null,
+    manager?: EntityManager,
   ): Promise<void> {
-    await this.orderEventRepo.save(
-      this.orderEventRepo.create({
+    const repo = manager?.getRepository(OrderEvent) ?? this.orderEventRepo;
+    await repo.save(
+      repo.create({
+        workspaceId,
         orderId,
         type,
         actorId,
@@ -1006,6 +1251,14 @@ export class OrdersService {
   }
 
   /** Workspace row with `is_default = true` (set via PATCH /orders/statuses/:id). */
+  private assertOrderItemsEditable(status: OrderStatus): void {
+    if (status.category !== OrderStatusCategory.new) {
+      throw new ConflictException(
+        'Order line items can only be edited while status category is "new"',
+      );
+    }
+  }
+
   private async resolveDefaultOrderStatusId(
     workspaceId: number,
   ): Promise<number> {

@@ -9,6 +9,7 @@ import { Repository } from "typeorm";
 import {
   NovaPoshtaIntegration,
   NovaPoshtaPayerType,
+  NovaPoshtaPaymentMethod,
   NovaPoshtaSenderType,
   Order,
   OrderDeliveryDestinationType,
@@ -17,6 +18,10 @@ import {
   OrderDeliveryStatus,
   OrderItem,
 } from "../database/entities";
+import { canRemoveDeliveryTracking } from "../delivery/delivery-tracking.util";
+import { NormalizedDeliveryStatus } from "../delivery/normalized-delivery-status.enum";
+import { NovaPoshtaDeliveryTrackingService } from "./nova-poshta-delivery-tracking.service";
+import { buildSimulatedNovaPoshtaTrackingDocument } from "./nova-poshta-status-code.mapping";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { CreateNovaPoshtaWaybillRequestDto } from "./dto/create-novaposhta-waybill.dto";
 import type { CreateNovaPoshtaWaybillResponseDto } from "./dto/create-novaposhta-waybill.dto";
@@ -24,6 +29,7 @@ import { NovaPoshtaApiService } from "./novaposhta-api.service";
 import type {
   NovaPoshtaCreateWaybillInput,
   NovaPoshtaCreateWaybillResult,
+  NovaPoshtaOptionsSeat,
 } from "./novaposhta-api.types";
 
 const DEFAULT_WEIGHT_GRAMS = 1000;
@@ -42,6 +48,7 @@ export class NovaPoshtaWaybillService {
     private readonly integrationRepo: Repository<NovaPoshtaIntegration>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly novaPoshtaApi: NovaPoshtaApiService,
+    private readonly novaPoshtaTracking: NovaPoshtaDeliveryTrackingService,
   ) {}
 
   async createForOrder(
@@ -96,6 +103,11 @@ export class NovaPoshtaWaybillService {
       integration,
       items,
       dto,
+      await this.novaPoshtaApi.resolveRecipientCityRef(
+        integration.apiKey,
+        delivery.cityRef!,
+        delivery.warehouseRef!,
+      ),
     );
     const created = await this.novaPoshtaApi.createInternetDocument(
       integration.apiKey,
@@ -104,14 +116,77 @@ export class NovaPoshtaWaybillService {
 
     delivery.trackingNumber = created.trackingNumber;
     delivery.providerDocumentRef = created.documentRef || null;
-    delivery.deliveryStatus = OrderDeliveryStatus.shipped;
     await this.deliveryRepo.save(delivery);
+
+    try {
+      await this.novaPoshtaTracking.syncFromNovaPoshta(delivery.id, ownerId);
+    } catch {
+      const trackingDoc = buildSimulatedNovaPoshtaTrackingDocument(
+        created.trackingNumber,
+        NormalizedDeliveryStatus.CREATED,
+      );
+      await this.novaPoshtaTracking.applyTrackingDocument(
+        delivery.id,
+        trackingDoc,
+        "NOVA_POSHTA_API",
+        ownerId,
+      );
+    }
 
     return {
       orderId: order.id,
       trackingNumber: created.trackingNumber,
       documentRef: created.documentRef,
     };
+  }
+
+  async removeWaybillForOrder(
+    ownerId: number,
+    orderId: number,
+  ): Promise<{ orderId: number; removedTrackingNumber: string }> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+
+    const order = await this.orderRepo.findOne({
+      where: { id: orderId, workspaceId: workspace.id },
+    });
+    if (!order) {
+      throw new NotFoundException("Order not found");
+    }
+
+    const delivery = await this.loadDeliveryForOrder(order);
+    if (!delivery) {
+      throw new BadRequestException("Order has no delivery info");
+    }
+    if (delivery.provider !== OrderDeliveryProvider.nova_poshta) {
+      throw new BadRequestException(
+        "Order delivery provider is not Nova Poshta",
+      );
+    }
+    if (!canRemoveDeliveryTracking(delivery)) {
+      throw new ConflictException(
+        "Nova Poshta TTN cannot be removed after the parcel has been shipped",
+      );
+    }
+
+    const removedTrackingNumber = delivery.trackingNumber!.trim();
+    const documentRef =
+      delivery.providerDocumentRef?.trim() || removedTrackingNumber;
+    const integration = await this.resolveIntegration(workspace.id, delivery);
+
+    await this.novaPoshtaApi.deleteInternetDocument(
+      integration.apiKey,
+      documentRef,
+    );
+
+    delivery.trackingNumber = null;
+    delivery.providerDocumentRef = null;
+    delivery.providerStatusCode = null;
+    delivery.providerStatusText = null;
+    delivery.deliveryStatus = OrderDeliveryStatus.pending;
+    await this.deliveryRepo.save(delivery);
+
+    return { orderId: order.id, removedTrackingNumber };
   }
 
   private async resolveIntegration(
@@ -224,6 +299,7 @@ export class NovaPoshtaWaybillService {
     integration: NovaPoshtaIntegration,
     items: OrderItem[],
     dto: CreateNovaPoshtaWaybillRequestDto,
+    cityRecipient: string,
   ): NovaPoshtaCreateWaybillInput {
     const senderType = integration.senderType ?? NovaPoshtaSenderType.WAREHOUSE;
     const recipientType =
@@ -249,13 +325,18 @@ export class NovaPoshtaWaybillService {
       "Goods";
 
     const cost = dto.declaredCost ?? Number(order.totalAmount) ?? 0;
+    const seatsAmount = this.resolveSeatsAmount(dto);
+    const optionsSeat = this.buildOptionsSeat(weightKg, seatsAmount);
+    const payerType = this.mapPayerType(integration.payerType);
+    const paymentMethod = this.resolvePaymentMethod(integration, payerType);
 
     return {
-      payerType: this.mapPayerType(integration.payerType),
-      paymentMethod: "NonCash",
+      payerType,
+      paymentMethod,
       serviceType: this.resolveServiceType(senderType, recipientType),
       weight: weightKg.toFixed(3),
-      seatsAmount: String(dto.seatsAmount ?? DEFAULT_SEATS),
+      seatsAmount: String(seatsAmount),
+      optionsSeat,
       description,
       cost: String(Math.max(0, Math.round(cost))),
       citySender: integration.senderCityRef!.trim(),
@@ -263,11 +344,28 @@ export class NovaPoshtaWaybillService {
       senderAddress: this.resolveSenderAddress(integration, senderType),
       contactSender: integration.senderContactRef!.trim(),
       sendersPhone: this.normalizePhone(integration.senderPhone!),
-      cityRecipient: delivery.cityRef!.trim(),
+      cityRecipient,
       recipientAddress: delivery.warehouseRef!.trim(),
       recipientName: delivery.recipientName!.trim(),
       recipientsPhone: this.normalizePhone(delivery.phone!),
     };
+  }
+
+  private resolveSeatsAmount(dto: CreateNovaPoshtaWaybillRequestDto): number {
+    const seats = dto.seatsAmount ?? dto.seatsCount ?? DEFAULT_SEATS;
+    return Math.max(1, Math.floor(seats));
+  }
+
+  private buildOptionsSeat(
+    totalWeightKg: number,
+    seatsAmount: number,
+  ): NovaPoshtaOptionsSeat[] {
+    const perSeatWeight = Math.max(0.1, totalWeightKg / seatsAmount);
+    const weight = perSeatWeight.toFixed(3);
+    return Array.from({ length: seatsAmount }, () => ({
+      weight,
+      volumetricVolume: "0.0004",
+    }));
   }
 
   private resolveSenderAddress(
@@ -304,6 +402,25 @@ export class NovaPoshtaWaybillService {
       default:
         return "Sender";
     }
+  }
+
+  private resolvePaymentMethod(
+    integration: NovaPoshtaIntegration,
+    payerType: NovaPoshtaCreateWaybillInput["payerType"],
+  ): NovaPoshtaCreateWaybillInput["paymentMethod"] {
+    if (payerType === "Recipient") {
+      return "Cash";
+    }
+
+    const stored = integration.paymentMethod?.trim().toLowerCase();
+    if (stored === NovaPoshtaPaymentMethod.NON_CASH || stored === "noncash") {
+      return "NonCash";
+    }
+    if (stored === NovaPoshtaPaymentMethod.CASH) {
+      return "Cash";
+    }
+
+    return "Cash";
   }
 
   private calculateWeightGrams(items: OrderItem[]): number | null {

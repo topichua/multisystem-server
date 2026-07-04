@@ -130,6 +130,9 @@ export class OrderDeliveryInfo {
   })
   cashOnDeliveryAmount: number | null;
 
+  /** Hydrated: true when TTN can be deleted via API (before `shipped`). Not a DB column. */
+  canRemoveTracking?: boolean;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 

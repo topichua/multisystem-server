@@ -6,7 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   UpdateDateColumn,
 } from "typeorm";
 import { Client } from "./client.entity";
@@ -27,11 +27,12 @@ import { OrderEvent } from "./order-event.entity";
 @Index("IDX_orders_conversation_id", ["conversationId"])
 @Index("IDX_orders_status_id", ["statusId"])
 export class Order {
-  @PrimaryGeneratedColumn({ name: "id" })
-  id: number;
-
-  @Column({ name: "workspace_id", type: "int" })
+  @PrimaryColumn({ name: "workspace_id", type: "int" })
   workspaceId: number;
+
+  /** Per-workspace sequential order number (starts at 1001). */
+  @PrimaryColumn({ name: "id", type: "int" })
+  id: number;
 
   @ManyToOne(() => Workspace, { onDelete: "RESTRICT" })
   @JoinColumn({ name: "workspace_id" })
@@ -183,6 +184,9 @@ export class Order {
 
   /** Hydrated in OrdersService when loading a single order (not a DB column). */
   deliveryInfo?: OrderDeliveryInfo | null;
+
+  /** Hydrated: true when Nova Poshta TTN can still be deleted (before `shipped`). */
+  canRemoveTracking?: boolean;
 
   @OneToMany(() => OrderEvent, (e) => e.order)
   events: OrderEvent[];

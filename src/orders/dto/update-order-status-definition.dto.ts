@@ -39,7 +39,8 @@ export class UpdateOrderStatusDefinitionDto {
 
   @ApiPropertyOptional({
     enum: OrderStatusCategory,
-    description: "Only allowed for custom statuses (`isSystem: false`).",
+    description:
+      "Workflow type for the status. Only allowed when updating custom statuses (`isSystem: false`).",
   })
   @IsOptional()
   @IsEnum(OrderStatusCategory)
@@ -47,7 +48,7 @@ export class UpdateOrderStatusDefinitionDto {
 
   @ApiPropertyOptional({
     description:
-      "When true, this status becomes the workspace default and any other default is cleared.",
+      "When true, this status becomes the workspace default and any other default is cleared. Not allowed for system statuses.",
   })
   @IsOptional()
   @IsBoolean()

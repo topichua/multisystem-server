@@ -28,6 +28,10 @@ export { OrderPaymentStatus } from "./order-payment-status.enum";
 export { OrderSource } from "./order-source.enum";
 export { OrderStatus } from "./order-status.entity";
 export { OrderStatusCategory } from "./order-status-category.enum";
+export {
+  ORDER_STATUS_SYSTEM_DEFAULTS,
+  type OrderStatusSystemDefault,
+} from "./order-status-system-defaults";
 export { ProductCategory } from "./product-category.entity";
 export { Product } from "./product.entity";
 export { ProductMedia } from "./product-media.entity";

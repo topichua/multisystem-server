@@ -145,12 +145,21 @@ export type NovaPoshtaWaybillServiceType =
   | "DoorsWarehouse"
   | "DoorsDoors";
 
+export type NovaPoshtaOptionsSeat = {
+  weight: string;
+  volumetricVolume?: string;
+  volumetricWidth?: string;
+  volumetricLength?: string;
+  volumetricHeight?: string;
+};
+
 export type NovaPoshtaCreateWaybillInput = {
   payerType: "Sender" | "Recipient" | "ThirdPerson";
   paymentMethod: "Cash" | "NonCash";
   serviceType: NovaPoshtaWaybillServiceType;
   weight: string;
   seatsAmount: string;
+  optionsSeat: NovaPoshtaOptionsSeat[];
   description: string;
   cost: string;
   citySender: string;

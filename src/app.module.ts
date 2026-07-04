@@ -25,6 +25,7 @@ import { WorkspaceAccessModule } from "./workspace-access/workspace-access.modul
 import { NovaPoshtaIntegrationsModule } from "./novaposhta-integrations/novaposhta-integrations.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { SendgridModule } from "./sendgrid/sendgrid.module";
+import { DeliveryModule } from "./delivery/delivery.module";
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { SendgridModule } from "./sendgrid/sendgrid.module";
     WebhookModule,
     SendgridModule,
     NovaPoshtaIntegrationsModule,
+    DeliveryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -18,6 +18,8 @@ import { InventoryModule } from "../inventory/inventory.module";
 import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
 import { NovaPoshtaIntegrationsModule } from "../novaposhta-integrations/novaposhta-integrations.module";
 import { OrderStatusesController } from "./order-statuses.controller";
+import { OrderStatusDefaultsModule } from "./order-status-defaults.module";
+import { OrderIdAllocationService } from "./order-id-allocation.service";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
@@ -27,6 +29,7 @@ import { OrdersService } from "./orders.service";
     InventoryModule,
     WorkspaceSettingsModule,
     NovaPoshtaIntegrationsModule,
+    OrderStatusDefaultsModule,
     TypeOrmModule.forFeature([
       Client,
       Conversation,
@@ -41,7 +44,7 @@ import { OrdersService } from "./orders.service";
     ]),
   ],
   controllers: [OrdersController, OrderStatusesController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrderIdAllocationService],
   exports: [OrdersService],
 })
 export class OrdersModule {}

@@ -24,6 +24,16 @@ export class CreateNovaPoshtaWaybillRequestDto {
   seatsAmount?: number;
 
   @ApiPropertyOptional({
+    description: "Alias for `seatsAmount` (same meaning).",
+    minimum: 1,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  seatsCount?: number;
+
+  @ApiPropertyOptional({
     description: "Cargo description (defaults to order item titles).",
     maxLength: 512,
   })

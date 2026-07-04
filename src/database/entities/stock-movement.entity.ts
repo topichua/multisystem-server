@@ -81,7 +81,10 @@ export class StockMovement {
   orderId: number | null;
 
   @ManyToOne(() => Order, { onDelete: "SET NULL", nullable: true })
-  @JoinColumn({ name: "order_id" })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "order_id", referencedColumnName: "id" },
+  ])
   order: Order | null;
 
   @Column({ name: "order_item_id", type: "int", nullable: true })

@@ -231,7 +231,13 @@ export class NovaPoshtaIntegrationsService {
       dto.sender_ref !== undefined ||
       dto.sender_contact_ref !== undefined ||
       dto.payment_method !== undefined ||
-      dto.payer_type !== undefined
+      dto.payer_type !== undefined ||
+      dto.on_created_order_status_id !== undefined ||
+      dto.on_in_transit_order_status_id !== undefined ||
+      dto.on_arrived_order_status_id !== undefined ||
+      dto.on_delivered_order_status_id !== undefined ||
+      dto.on_returned_order_status_id !== undefined ||
+      dto.on_delivery_failed_order_status_id !== undefined
     );
   }
 
@@ -292,6 +298,24 @@ export class NovaPoshtaIntegrationsService {
     if (dto.payer_type !== undefined) {
       row.payerType = dto.payer_type;
     }
+    if (dto.on_created_order_status_id !== undefined) {
+      row.onCreatedOrderStatusId = dto.on_created_order_status_id;
+    }
+    if (dto.on_in_transit_order_status_id !== undefined) {
+      row.onInTransitOrderStatusId = dto.on_in_transit_order_status_id;
+    }
+    if (dto.on_arrived_order_status_id !== undefined) {
+      row.onArrivedOrderStatusId = dto.on_arrived_order_status_id;
+    }
+    if (dto.on_delivered_order_status_id !== undefined) {
+      row.onDeliveredOrderStatusId = dto.on_delivered_order_status_id;
+    }
+    if (dto.on_returned_order_status_id !== undefined) {
+      row.onReturnedOrderStatusId = dto.on_returned_order_status_id;
+    }
+    if (dto.on_delivery_failed_order_status_id !== undefined) {
+      row.onDeliveryFailedOrderStatusId = dto.on_delivery_failed_order_status_id;
+    }
   }
 
   private trimOrNull(value: string | null | undefined): string | null {
@@ -319,6 +343,12 @@ export class NovaPoshtaIntegrationsService {
       sender_contact_ref: row.senderContactRef,
       payment_method: row.paymentMethod,
       payer_type: row.payerType,
+      on_created_order_status_id: row.onCreatedOrderStatusId,
+      on_in_transit_order_status_id: row.onInTransitOrderStatusId,
+      on_arrived_order_status_id: row.onArrivedOrderStatusId,
+      on_delivered_order_status_id: row.onDeliveredOrderStatusId,
+      on_returned_order_status_id: row.onReturnedOrderStatusId,
+      on_delivery_failed_order_status_id: row.onDeliveryFailedOrderStatusId,
     };
   }
 

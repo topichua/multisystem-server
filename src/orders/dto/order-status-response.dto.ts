@@ -26,7 +26,8 @@ export class OrderStatusResponseDto {
   isDefault: boolean;
 
   @ApiProperty({
-    description: "Seeded system status; category cannot be changed via API.",
+    description:
+      "Seeded system status (`isSystem: true`). Only `name` and `color` can be changed via API; cannot be deleted.",
   })
   isSystem: boolean;
 

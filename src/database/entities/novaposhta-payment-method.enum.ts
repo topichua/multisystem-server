@@ -1,4 +1,5 @@
+/** Nova Poshta `PaymentMethod`: Cash (готівка) or NonCash (безготівка, потрібен договір). */
 export enum NovaPoshtaPaymentMethod {
-  SENDER = "sender",
-  RECIPIENT = "recipient",
+  CASH = "cash",
+  NON_CASH = "non_cash",
 }

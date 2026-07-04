@@ -18,7 +18,11 @@ export class CreateOrderStatusDefinitionDto {
   @MaxLength(120)
   name: string;
 
-  @ApiProperty({ enum: OrderStatusCategory })
+  @ApiProperty({
+    enum: OrderStatusCategory,
+    description:
+      "Workflow type (e.g. `confirmed`, `packed`). Custom statuses are created with `isSystem: false`.",
+  })
   @IsEnum(OrderStatusCategory)
   category: OrderStatusCategory;
 

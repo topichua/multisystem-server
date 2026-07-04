@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
 } from "@nestjs/common";
 import type {
   NovaPoshtaAccountInfo,
@@ -26,9 +27,11 @@ import type {
   NovaPoshtaWarehouseSearchType,
   NovaPoshtaConnectSenderRefs,
 } from "./novaposhta-api.types";
+import type { NovaPoshtaTrackingDocument } from "./nova-poshta-status-code.mapping";
 import { NovaPoshtaResponseCache } from "./novaposhta-response-cache";
 
 const NOVA_POSHTA_API_URL = "https://api.novaposhta.ua/v2.0/json/";
+const NOVA_POSHTA_REQUEST_TIMEOUT_MS = 60_000;
 const SETTLEMENTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const WAREHOUSES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const STREETS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -43,13 +46,14 @@ const SETTLEMENT_TYPE_LABELS: Record<string, string> = {
 type NovaPoshtaApiResponse<T = unknown> = {
   success?: boolean;
   data?: T;
-  errors?: Array<{ message?: string }>;
+  errors?: Array<string | Record<string, unknown>>;
   warnings?: unknown[];
   info?: unknown[];
 };
 
 @Injectable()
 export class NovaPoshtaApiService {
+  private readonly log = new Logger(NovaPoshtaApiService.name);
   private readonly settlementsCache =
     new NovaPoshtaResponseCache<NovaPoshtaSettlementSearchResult[]>(
       SETTLEMENTS_CACHE_TTL_MS,
@@ -300,6 +304,7 @@ export class NovaPoshtaApiService {
       response = await fetch(NOVA_POSHTA_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(NOVA_POSHTA_REQUEST_TIMEOUT_MS),
         body: JSON.stringify({
           apiKey,
           modelName: params.modelName,
@@ -715,6 +720,71 @@ export class NovaPoshtaApiService {
     return row.Description ?? "";
   }
 
+  /** `CityRecipient` must be a delivery city ref; resolve from warehouse when possible. */
+  async resolveRecipientCityRef(
+    apiKey: string,
+    cityRef: string,
+    warehouseRef: string,
+  ): Promise<string> {
+    const warehouse = await this.getWarehouseByRef(apiKey, warehouseRef.trim());
+    const fromWarehouse = warehouse?.CityRef?.trim();
+    if (
+      fromWarehouse &&
+      fromWarehouse !== "00000000-0000-0000-0000-000000000000"
+    ) {
+      return fromWarehouse;
+    }
+    return cityRef.trim();
+  }
+
+  private formatNovaPoshtaApiMessage(
+    body: NovaPoshtaApiResponse<unknown>,
+    httpStatus: number,
+  ): string {
+    const parts: string[] = [];
+
+    if (body.errors != null) {
+      const items = Array.isArray(body.errors) ? body.errors : [body.errors];
+      for (const item of items) {
+        const text = this.formatNovaPoshtaApiErrorItem(item);
+        if (text) {
+          parts.push(text);
+        }
+      }
+    }
+
+    if (parts.length === 0 && body.warnings != null) {
+      const items = Array.isArray(body.warnings) ? body.warnings : [body.warnings];
+      for (const item of items) {
+        const text = this.formatNovaPoshtaApiErrorItem(item);
+        if (text) {
+          parts.push(text);
+        }
+      }
+    }
+
+    return parts.length > 0 ? parts.join("; ") : `HTTP ${httpStatus}`;
+  }
+
+  private formatNovaPoshtaApiErrorItem(item: unknown): string | null {
+    if (typeof item === "string") {
+      const text = item.trim();
+      return text || null;
+    }
+    if (item && typeof item === "object") {
+      const record = item as Record<string, unknown>;
+      for (const key of ["message", "Message", "Error", "error"]) {
+        const value = record[key];
+        if (typeof value === "string" && value.trim()) {
+          return value.trim();
+        }
+      }
+      const serialized = JSON.stringify(item);
+      return serialized !== "{}" ? serialized : null;
+    }
+    return null;
+  }
+
   private async request<T>(
     apiKey: string,
     params: {
@@ -728,6 +798,7 @@ export class NovaPoshtaApiService {
       response = await fetch(NOVA_POSHTA_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(NOVA_POSHTA_REQUEST_TIMEOUT_MS),
         body: JSON.stringify({
           apiKey,
           modelName: params.modelName,
@@ -748,11 +819,10 @@ export class NovaPoshtaApiService {
     }
 
     if (!response.ok || body.success !== true) {
-      const message =
-        body.errors
-          ?.map((item) => item.message)
-          .filter(Boolean)
-          .join("; ") || `HTTP ${response.status}`;
+      const message = this.formatNovaPoshtaApiMessage(body, response.status);
+      this.log.warn(
+        `Nova Poshta ${params.modelName}.${params.calledMethod} failed: ${message}`,
+      );
       throw new BadRequestException(`Nova Poshta API error: ${message}`);
     }
 
@@ -776,6 +846,8 @@ export class NovaPoshtaApiService {
         Weight: input.weight,
         ServiceType: input.serviceType,
         SeatsAmount: input.seatsAmount,
+        OptionsSeat: input.optionsSeat,
+        VolumeGeneral: this.sumOptionsSeatVolume(input.optionsSeat),
         Description: input.description,
         Cost: input.cost,
         CitySender: input.citySender,
@@ -807,11 +879,88 @@ export class NovaPoshtaApiService {
     };
   }
 
+  async deleteInternetDocument(
+    apiKey: string,
+    documentRefOrTtn: string,
+  ): Promise<void> {
+    const ref = documentRefOrTtn.trim();
+    if (!ref) {
+      throw new BadRequestException("Nova Poshta document ref is required");
+    }
+    await this.request<unknown>(apiKey, {
+      modelName: "InternetDocument",
+      calledMethod: "delete",
+      methodProperties: {
+        DocumentRefs: ref,
+      },
+    });
+  }
+
+  /** Live tracking via `TrackingDocument.getStatusDocuments` (same as production polling). */
+  async getTrackingStatusDocument(
+    apiKey: string,
+    documentNumber: string,
+    phone: string,
+  ): Promise<NovaPoshtaTrackingDocument> {
+    const ttn = documentNumber.trim();
+    if (!ttn) {
+      throw new BadRequestException("Tracking document number is required");
+    }
+
+    const payload = await this.request<NovaPoshtaTrackingDocument[]>(apiKey, {
+      modelName: "TrackingDocument",
+      calledMethod: "getStatusDocuments",
+      methodProperties: {
+        Documents: [
+          {
+            DocumentNumber: ttn,
+            Phone: this.normalizeTrackingPhone(phone),
+          },
+        ],
+      },
+    });
+
+    const doc = Array.isArray(payload) ? payload[0] : undefined;
+    if (!doc?.StatusCode) {
+      throw new BadRequestException(
+        "Nova Poshta tracking returned no status for this TTN",
+      );
+    }
+    return doc;
+  }
+
+  private normalizeTrackingPhone(phone: string): string {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length === 12 && digits.startsWith("380")) {
+      return digits.slice(2);
+    }
+    if (digits.length === 10 && digits.startsWith("0")) {
+      return digits;
+    }
+    if (digits.length === 9) {
+      return `0${digits}`;
+    }
+    return digits;
+  }
+
   private formatNovaPoshtaDateTime(date: Date): string {
     const pad = (n: number) => String(n).padStart(2, "0");
     return (
       `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
       `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
     );
+  }
+
+  private sumOptionsSeatVolume(
+    optionsSeat: NovaPoshtaCreateWaybillInput["optionsSeat"],
+  ): string {
+    let total = 0;
+    for (const seat of optionsSeat) {
+      const volume = Number(seat.volumetricVolume);
+      if (Number.isFinite(volume) && volume > 0) {
+        total += volume;
+      }
+    }
+    return total > 0 ? total.toFixed(4) : "0.0004";
   }
 }

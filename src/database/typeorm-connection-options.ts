@@ -104,6 +104,10 @@ import { WorkspaceRoleIntegrationGrantCanTakeChat1744200000105 } from "./migrati
 import { RemoveConversationManagerId1744200000106 } from "./migrations/1744200000106-RemoveConversationManagerId";
 import { SocialUsersWorkspaceId1744200000107 } from "./migrations/1744200000107-SocialUsersWorkspaceId";
 import { TelegramUsersPhone1744200000109 } from "./migrations/1744200000109-TelegramUsersPhone";
+import { OrderDeliveryStatusWaybillCreated1744200000110 } from "./migrations/1744200000110-OrderDeliveryStatusWaybillCreated";
+import { DeliveryStatusFailedAndNovaPoshtaOrderStatusMapping1744200000111 } from "./migrations/1744200000111-DeliveryStatusFailedAndNovaPoshtaOrderStatusMapping";
+import { SeedOrderStatusesOnWorkspaceCreate1744200000112 } from "./migrations/1744200000112-SeedOrderStatusesOnWorkspaceCreate";
+import { OrderCompositePrimaryKey1744200000113 } from "./migrations/1744200000113-OrderCompositePrimaryKey";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -381,6 +385,10 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       RemoveConversationManagerId1744200000106,
       SocialUsersWorkspaceId1744200000107,
       TelegramUsersPhone1744200000109,
+      OrderDeliveryStatusWaybillCreated1744200000110,
+      DeliveryStatusFailedAndNovaPoshtaOrderStatusMapping1744200000111,
+      SeedOrderStatusesOnWorkspaceCreate1744200000112,
+      OrderCompositePrimaryKey1744200000113,
     ],
   };
 }

@@ -13,15 +13,22 @@ import { User } from "./user.entity";
 /** Append-only audit trail for an order. */
 @Entity("order_events")
 @Index("IDX_order_events_order_id", ["orderId"])
+@Index("IDX_order_events_workspace_order", ["workspaceId", "orderId"])
 export class OrderEvent {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
+
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
 
   @Column({ name: "order_id", type: "int" })
   orderId: number;
 
   @ManyToOne(() => Order, (o) => o.events, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "order_id" })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "order_id", referencedColumnName: "id" },
+  ])
   order: Order;
 
   @Column({ name: "type", type: "varchar", length: 64 })

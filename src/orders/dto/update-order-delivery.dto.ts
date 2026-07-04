@@ -35,7 +35,9 @@ export class UpdateOrderDeliveryDto {
     enum: OrderDeliveryStatus,
     default: OrderDeliveryStatus.pending,
     description:
-      "Delivery lifecycle status. Use providerStatusCode/providerStatusText for Nova Poshta tracking details.",
+      "Delivery lifecycle: `pending` → `waybill_created` (TTN issued) → `shipped` (handed to carrier) → " +
+      "`at_branch` → `delivered` / `delivery_failed` / `returned`. " +
+      "Use `providerStatusCode` / `providerStatusText` for raw Nova Poshta tracking.",
   })
   @IsOptional()
   @IsEnum(OrderDeliveryStatus)

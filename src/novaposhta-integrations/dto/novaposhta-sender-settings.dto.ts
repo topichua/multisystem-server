@@ -5,8 +5,10 @@ import {
   NovaPoshtaPaymentMethod,
   NovaPoshtaSenderType,
 } from "../../database/entities";
+import { NovaPoshtaOrderStatusMappingDto } from "./novaposhta-order-status-mapping.dto";
+import { NovaPoshtaOrderStatusMappingResponseDto } from "./novaposhta-order-status-mapping.dto";
 
-export class NovaPoshtaSenderSettingsDto {
+export class NovaPoshtaSenderSettingsDto extends NovaPoshtaOrderStatusMappingDto {
   @ApiPropertyOptional({ example: "ФОП Залуга А.П." })
   @IsOptional()
   @IsString()
@@ -87,18 +89,26 @@ export class NovaPoshtaSenderSettingsDto {
   @MaxLength(255)
   sender_contact_ref?: string | null;
 
-  @ApiPropertyOptional({ enum: NovaPoshtaPaymentMethod })
+  @ApiPropertyOptional({
+    enum: NovaPoshtaPaymentMethod,
+    description:
+      "Nova Poshta `PaymentMethod`. Use `cash` without a carrier contract; `non_cash` requires an NP contract and EDRPOU (sender pays only).",
+  })
   @IsOptional()
   @IsEnum(NovaPoshtaPaymentMethod)
   payment_method?: NovaPoshtaPaymentMethod | null;
 
-  @ApiPropertyOptional({ enum: NovaPoshtaPayerType })
+  @ApiPropertyOptional({
+    enum: NovaPoshtaPayerType,
+    description:
+      "Who pays delivery: `sender`, `recipient`, or `third_person`. When `recipient`, payment is always cash at the branch.",
+  })
   @IsOptional()
   @IsEnum(NovaPoshtaPayerType)
   payer_type?: NovaPoshtaPayerType | null;
 }
 
-export class NovaPoshtaSenderSettingsResponseDto {
+export class NovaPoshtaSenderSettingsResponseDto extends NovaPoshtaOrderStatusMappingResponseDto {
   @ApiPropertyOptional({ nullable: true })
   sender_name: string | null;
 
