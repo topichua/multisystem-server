@@ -55,7 +55,7 @@ export class TelegramConversationMessagingService {
       );
     }
 
-    const integration = await this.resolveIntegration(ownerId, conv);
+    const integration = await this.resolveIntegration(conv);
     const session = integration.sessionString?.trim();
     if (!session) {
       throw new ServiceUnavailableException(
@@ -109,7 +109,6 @@ export class TelegramConversationMessagingService {
   }
 
   private async resolveIntegration(
-    ownerId: number,
     conv: Conversation,
   ): Promise<TelegramIntegration> {
     const sourceIdRaw = conv.externalSourceId?.trim();
@@ -117,28 +116,26 @@ export class TelegramConversationMessagingService {
       ? Number.parseInt(sourceIdRaw, 10)
       : Number.NaN;
 
-    if (Number.isInteger(integrationId) && integrationId > 0) {
-      const row = await this.telegramRepo.findOne({
-        where: { id: integrationId, ownerId },
-      });
-      if (row?.status === TelegramIntegrationStatus.ACTIVE) {
-        return row;
-      }
-    }
-
-    const fallback = await this.telegramRepo.findOne({
-      where: {
-        ownerId,
-        status: TelegramIntegrationStatus.ACTIVE,
-      },
-      order: { id: "DESC" },
-    });
-    if (!fallback) {
+    if (!Number.isInteger(integrationId) || integrationId <= 0) {
       throw new NotFoundException(
-        "No active Telegram integration found for this conversation",
+        "Conversation has no Telegram integration id (external_source_id)",
       );
     }
-    return fallback;
+
+    const row = await this.telegramRepo.findOne({
+      where: { id: integrationId },
+    });
+    if (!row) {
+      throw new NotFoundException(
+        `Telegram integration id=${integrationId} not found`,
+      );
+    }
+    if (row.status !== TelegramIntegrationStatus.ACTIVE) {
+      throw new ServiceUnavailableException(
+        "Telegram integration for this conversation is not active",
+      );
+    }
+    return row;
   }
 
   private parseReplyToMessageId(
