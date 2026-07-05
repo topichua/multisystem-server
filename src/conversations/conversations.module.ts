@@ -19,6 +19,7 @@ import {
 import { AuthModule } from "../auth/auth.module";
 import { InstagramModule } from "../instagram/instagram.module";
 import { ProductsModule } from "../products/products.module";
+import { StorageModule } from "../storage/storage.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
 import { ConversationGroupDefaultsModule } from "./conversation-group-defaults.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
@@ -27,6 +28,7 @@ import { ConversationEventsService } from "./conversation-events.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
+import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
 import { ConversationsController } from "./conversations.controller";
 import { ConversationsAllocationService } from "./conversations-allocation.service";
 import { ConversationsGateway } from "./conversations.gateway";
@@ -38,6 +40,7 @@ import { ConversationsService } from "./conversations.service";
     AuthModule,
     InstagramModule,
     ProductsModule,
+    StorageModule,
     ConversationGroupDefaultsModule,
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
@@ -65,6 +68,7 @@ import { ConversationsService } from "./conversations.service";
     ConversationEventsService,
     ConversationWorkflowService,
     ConversationMessagePresenterService,
+    ConversationMediaArchiveService,
     ConversationMessageNotifyService,
     ConversationsRealtimeService,
     ConversationsGateway,
@@ -74,6 +78,7 @@ import { ConversationsService } from "./conversations.service";
     ConversationsAllocationService,
     ConversationGroupsService,
     ConversationMessageNotifyService,
+    ConversationMediaArchiveService,
     ConversationWorkflowService,
   ],
 })

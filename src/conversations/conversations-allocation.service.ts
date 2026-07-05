@@ -28,6 +28,7 @@ import type {
   InstagramWebhookPayload,
 } from "../webhook/instagram-webhook-payload.types";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
+import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
@@ -77,6 +78,7 @@ export class ConversationsAllocationService {
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     private readonly instagramUsers: InstagramUsersService,
     private readonly messageNotify: ConversationMessageNotifyService,
+    private readonly mediaArchive: ConversationMediaArchiveService,
     private readonly conversationWorkflow: ConversationWorkflowService,
   ) {
     setInterval(() => this.sweepExpiredCompanyContextCache(), 60_000).unref?.();
@@ -264,6 +266,12 @@ export class ConversationsAllocationService {
       conv,
       ev,
       conv.readAt,
+    );
+
+    await this.archiveInstagramMessageRow(
+      messageRow,
+      ctx.accessToken,
+      conv.id,
     );
 
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
@@ -468,6 +476,13 @@ export class ConversationsAllocationService {
     const createdAt = new Date(msg.created_time);
     if (!Number.isNaN(createdAt.getTime())) {
       row.createdAt = createdAt;
+    }
+
+    const conv = await this.conversationRepo.findOne({
+      where: { id: row.conversationId },
+    });
+    if (conv) {
+      await this.archiveInstagramMessageRow(row, ctx.accessToken, conv.id);
     }
 
     await this.persistAndNotify(row, ctx.companyCtx.ownerId);
@@ -881,6 +896,34 @@ export class ConversationsAllocationService {
     const saved = await this.conversationMessageRepo.save(row);
     await this.messageNotify.notifyPersistedMessage(saved, ownerId);
     return saved;
+  }
+
+  private async archiveInstagramMessageRow(
+    row: ConversationMessage,
+    accessToken: string,
+    conversationId: number,
+  ): Promise<void> {
+    if (!this.mediaArchive.isEnabled()) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(row.instagramJson) as Record<string, unknown>;
+      const archived = await this.mediaArchive.archiveInstagramPayload(
+        payload,
+        accessToken,
+        {
+          conversationId,
+          messageExternalId: row.externalId,
+        },
+      );
+      row.instagramJson = JSON.stringify(archived);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `Instagram media archive skipped mid=${row.externalId.slice(0, 64)}: ${err}`,
+      );
+    }
   }
 
   /** Base object stored in `instagram_json` (Graph message node without top-level `id`). */

@@ -13,6 +13,7 @@ import {
   TelegramIntegration,
 } from "../database/entities";
 import { ConversationMessageNotifyService } from "../conversations/conversation-message-notify.service";
+import { ConversationMediaArchiveService } from "../conversations/conversation-media-archive.service";
 import { ConversationWorkflowService } from "../conversations/conversation-workflow.service";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { TelegramUsersService } from "./telegram-users.service";
@@ -27,6 +28,7 @@ export class TelegramMessagePersistenceService {
     @InjectRepository(ConversationMessage)
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     private readonly messageNotify: ConversationMessageNotifyService,
+    private readonly mediaArchive: ConversationMediaArchiveService,
     private readonly cloudflareImages: CloudflareImagesService,
     @Inject(forwardRef(() => TelegramUsersService))
     private readonly telegramUsers: TelegramUsersService,
@@ -94,6 +96,10 @@ export class TelegramMessagePersistenceService {
         chatId,
         participantId,
         connectedClient,
+        {
+          conversationId: conv.id,
+          messageExternalId: externalMessageId,
+        },
       );
     const editedAt =
       typeof msg.editDate === "number"
@@ -298,13 +304,6 @@ export class TelegramMessagePersistenceService {
       typeof msg.date === "number"
         ? new Date(msg.date * 1000)
         : new Date();
-    const { text, attachments, rawExtras } =
-      await this.resolvePrivateMessageContent(
-        msg,
-        chatId,
-        participantId,
-        connectedClient,
-      );
     const externalMessageId = `tg:${chatId}:${msg.id}`;
     const externalConversationId = `telegram:private:${chatId}`;
 
@@ -322,6 +321,18 @@ export class TelegramMessagePersistenceService {
       conv.instUpdatedAt = messageDate;
       await this.conversationRepo.save(conv);
     }
+
+    const { text, attachments, rawExtras } =
+      await this.resolvePrivateMessageContent(
+        msg,
+        chatId,
+        participantId,
+        connectedClient,
+        {
+          conversationId: conv.id,
+          messageExternalId: externalMessageId,
+        },
+      );
 
     await this.syncParticipantOnPersist(
       integration,
@@ -610,11 +621,31 @@ export class TelegramMessagePersistenceService {
     chatId: string,
     participantId: string,
     connectedClient?: TelegramClient,
+    archiveContext?: {
+      conversationId: number;
+      messageExternalId: string;
+    },
   ): Promise<{
     text: string;
     attachments?: { data: Array<Record<string, unknown>> };
     rawExtras: Record<string, unknown>;
   }> {
+    if (connectedClient && archiveContext) {
+      const archivedMedia = await this.mediaArchive.archiveTelegramMedia(
+        connectedClient,
+        msg,
+        chatId,
+        archiveContext,
+      );
+      if (archivedMedia) {
+        return {
+          text: archivedMedia.displayText,
+          attachments: archivedMedia.attachments,
+          rawExtras: archivedMedia.rawExtras,
+        };
+      }
+    }
+
     let photoContent = this.extractPhotoContent(msg);
     let cdnUrl: string | null = null;
     if (photoContent && connectedClient) {
