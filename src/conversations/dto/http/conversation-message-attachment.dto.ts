@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export type ConversationMessageAttachmentType =
   | "image"
@@ -11,10 +11,15 @@ export class ConversationMessageAttachmentDto {
   type: ConversationMessageAttachmentType;
 
   @ApiProperty({
-    description:
-      "Storage key: Cloudflare Images id for images, R2 object key for video/audio/file",
+    description: "Storage key: Cloudflare Images id for images",
   })
   key: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Cloudflare R2 object key for video/audio/file attachments",
+  })
+  r2_key?: string;
 
   @ApiProperty({ description: "Public URL for the stored object" })
   url: string;

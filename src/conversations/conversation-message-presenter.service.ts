@@ -9,7 +9,7 @@ import {
   mapInstagramStoredReactionsForApi,
   mapReactionsJsonForApi,
 } from "./conversation-message-reactions-json.util";
-import { mapAttachmentsJsonForApi } from "./conversation-message-attachments-json.util";
+import { mapInstagramStoredAttachmentsForApi } from "./conversation-message-attachments-json.util";
 import type { InstagramMessageReactionsDto } from "./dto/http/instagram-messages-response.dto";
 
 @Injectable()
@@ -68,13 +68,15 @@ export class ConversationMessagePresenterService {
         typeof parsed.created_time === "string" &&
         parsed.created_time.length > 0
       ) {
+        const parentAttachments = this.resolveAttachmentsForApi(
+          row,
+          parsed as unknown as Record<string, unknown>,
+        );
         return {
           id: row.externalId,
           created_time: parsed.created_time,
           message: (parsed.message ?? row.message) || undefined,
-          ...(parsed.attachments != null
-            ? { attachments: parsed.attachments }
-            : {}),
+          ...(parentAttachments != null ? { attachments: parentAttachments } : {}),
           ...(parsed.from != null ? { from: parsed.from } : {}),
         };
       }
@@ -111,10 +113,18 @@ export class ConversationMessagePresenterService {
     return undefined;
   }
 
+  private resolveAttachmentsForApi(
+    row: ConversationMessage,
+    parsed?: Record<string, unknown>,
+  ) {
+    const stored = parsed?.attachments as
+      | { data?: Array<Record<string, unknown>> }
+      | undefined;
+    return mapInstagramStoredAttachmentsForApi(row, stored);
+  }
+
   private resolveDbColumnsForApi(row: ConversationMessage) {
-    const messageAttachments = mapAttachmentsJsonForApi(row.attachmentJson);
     return {
-      ...(messageAttachments != null ? { message_attachments: messageAttachments } : {}),
       type: row.messageType,
     };
   }
@@ -155,18 +165,22 @@ export class ConversationMessagePresenterService {
         const {
           webhook_messaging,
           reactions: _storedReactions,
+          attachments: _storedAttachments,
           conversation: _conversation,
           reply_to: _replyTo,
           ...forClient
         } = parsed;
         void webhook_messaging;
         void _storedReactions;
+        void _storedAttachments;
         void _conversation;
         void _replyTo;
         const reactions = this.resolveReactionsForApi(row, parsed);
+        const attachments = this.resolveAttachmentsForApi(row, parsed);
         return addDbMeta({
           ...(forClient as unknown as InstagramMessageDto),
           ...(reactions != null ? { reactions } : {}),
+          ...(attachments != null ? { attachments } : {}),
           id:
             typeof forClient.id === "string" && forClient.id.length > 0
               ? (forClient.id as string)
@@ -178,6 +192,7 @@ export class ConversationMessagePresenterService {
     }
 
     const reactions = this.resolveReactionsForApi(row);
+    const attachments = this.resolveAttachmentsForApi(row);
     return addDbMeta({
       id: row.externalId,
       created_time: row.createdAt.toISOString(),
@@ -189,6 +204,7 @@ export class ConversationMessagePresenterService {
             : [],
       },
       ...(reactions != null ? { reactions } : {}),
+      ...(attachments != null ? { attachments } : {}),
     });
   }
 }

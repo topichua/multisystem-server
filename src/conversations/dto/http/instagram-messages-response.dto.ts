@@ -212,11 +212,11 @@ export class InstagramMessageDto {
   is_unsupported?: boolean;
 
   @ApiPropertyOptional({
-    type: "object",
-    additionalProperties: true,
-    description: "Graph attachments; `data` items are open objects.",
+    type: () => [ConversationMessageAttachmentDto],
+    description:
+      "Structured attachments from `attachment_json` (CDN images, R2 video/audio/files).",
   })
-  attachments?: { data?: Array<Record<string, unknown>> };
+  attachments?: ConversationMessageAttachmentDto[];
 
   @ApiPropertyOptional({
     type: "object",
@@ -238,13 +238,6 @@ export class InstagramMessageDto {
       "Message reactions from `reactions_json` (`{ reaction, at, from }`).",
   })
   reactions?: ConversationMessageReactionDto[];
-
-  @ApiPropertyOptional({
-    type: () => [ConversationMessageAttachmentDto],
-    description:
-      "Structured attachments from `attachment_json` (CDN images, R2 video/audio/files).",
-  })
-  message_attachments?: ConversationMessageAttachmentDto[];
 
   @ApiPropertyOptional({
     enum: ConversationMessageType,

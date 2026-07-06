@@ -150,6 +150,7 @@ export class ConversationMediaArchiveService {
       {
         type: mapMediaFolderToAttachmentType(mediaKind),
         key,
+        r2_key: key,
         url: publicUrl,
         at: context.messageAt.toISOString(),
         name: filename,

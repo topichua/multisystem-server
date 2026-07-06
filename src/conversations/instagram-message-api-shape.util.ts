@@ -13,11 +13,10 @@ export type LegacyInstagramMessageApi = {
   from?: { id: string; name?: string; username?: string; email?: string };
   to?: { data?: Array<{ id: string; name?: string; username?: string }> };
   message?: string;
-  attachments?: { data?: Array<Record<string, unknown>> };
+  attachments?: ConversationMessageAttachmentDto[];
   shares?: { data?: Array<Record<string, unknown>> };
   story?: Record<string, unknown>;
   reactions?: ConversationMessageReactionDto[];
-  message_attachments?: ConversationMessageAttachmentDto[];
   type?: ConversationMessageType;
   tags?: { data?: Array<{ name?: string }> };
   is_unsupported?: boolean;
@@ -85,10 +84,8 @@ export function toLegacyInstagramMessageApiShape(
     out.message = text;
   }
 
-  if (msg.attachments != null) {
-    out.attachments = msg.attachments as {
-      data?: Array<Record<string, unknown>>;
-    };
+  if (msg.attachments != null && msg.attachments.length > 0) {
+    out.attachments = msg.attachments;
   }
   if (msg.shares != null) {
     out.shares = msg.shares as { data?: Array<Record<string, unknown>> };
@@ -98,9 +95,6 @@ export function toLegacyInstagramMessageApiShape(
   }
   if (msg.reactions != null && msg.reactions.length > 0) {
     out.reactions = msg.reactions;
-  }
-  if (msg.message_attachments != null && msg.message_attachments.length > 0) {
-    out.message_attachments = msg.message_attachments;
   }
   if (msg.type != null) {
     out.type = msg.type;

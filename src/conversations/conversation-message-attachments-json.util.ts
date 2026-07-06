@@ -7,6 +7,7 @@ import type {
 export type StoredMessageAttachment = {
   type: ConversationMessageAttachmentType;
   key: string;
+  r2_key?: string;
   url: string;
   at: string;
   name: string;
@@ -41,7 +42,20 @@ function normalizeStoredAttachment(item: unknown): StoredMessageAttachment | nul
     return null;
   }
 
-  return { type, key, url, at: atIso, name };
+  const r2Key =
+    typeof raw.r2_key === "string" && raw.r2_key.trim()
+      ? raw.r2_key.trim()
+      : type === "image"
+        ? undefined
+        : key;
+  return {
+    type,
+    key,
+    ...(r2Key ? { r2_key: r2Key } : {}),
+    url,
+    at: atIso,
+    name,
+  };
 }
 
 export function parseAttachmentsJson(
@@ -79,7 +93,87 @@ export function mapAttachmentsJsonForApi(
   if (attachments.length === 0) {
     return undefined;
   }
-  return attachments;
+  return attachments.map((item) => ({
+    type: item.type,
+    key: item.key,
+    url: item.url,
+    at: item.at,
+    name: item.name,
+    ...(item.r2_key ? { r2_key: item.r2_key } : {}),
+  }));
+}
+
+/** Best-effort legacy `instagram_json.attachments.data` → unified attachments shape. */
+export function mapInstagramStoredAttachmentsForApi(
+  row: { attachmentJson: string | null; createdAt: Date; systemUpdatedAt: Date | null },
+  stored: { data?: Array<Record<string, unknown>> } | undefined,
+): ConversationMessageAttachmentDto[] | undefined {
+  const fromColumn = mapAttachmentsJsonForApi(row.attachmentJson);
+  if (fromColumn != null) {
+    return fromColumn;
+  }
+
+  const data = stored?.data ?? [];
+  if (data.length === 0) {
+    return undefined;
+  }
+
+  const fallbackAt =
+    row.systemUpdatedAt?.toISOString() ?? row.createdAt.toISOString();
+  const out: ConversationMessageAttachmentDto[] = [];
+
+  for (const item of data) {
+    const r2Key =
+      typeof item.r2_key === "string" ? item.r2_key.trim() : "";
+    const url =
+      (typeof item.r2_url === "string" ? item.r2_url.trim() : "") ||
+      (typeof item.file_url === "string" ? item.file_url.trim() : "") ||
+      (typeof item.url === "string" ? item.url.trim() : "");
+    const name =
+      typeof item.name === "string" && item.name.trim()
+        ? item.name.trim()
+        : "attachment";
+    const mime =
+      typeof item.mime_type === "string" ? item.mime_type.toLowerCase() : "";
+    const type = resolveAttachmentTypeFromLegacyItem(item, mime);
+    const key =
+      r2Key ||
+      (typeof item.key === "string" ? item.key.trim() : "") ||
+      url;
+    if (!key || !url) {
+      continue;
+    }
+    out.push({
+      type,
+      key,
+      url,
+      at: fallbackAt,
+      name,
+      ...(r2Key
+        ? { r2_key: r2Key }
+        : type !== "image"
+          ? { r2_key: key }
+          : {}),
+    });
+  }
+
+  return out.length > 0 ? out : undefined;
+}
+
+function resolveAttachmentTypeFromLegacyItem(
+  item: Record<string, unknown>,
+  mime: string,
+): ConversationMessageAttachmentType {
+  if (item.video_data != null || mime.startsWith("video/")) {
+    return "video";
+  }
+  if (mime.startsWith("audio/")) {
+    return "audio";
+  }
+  if (item.image_data != null || mime.startsWith("image/")) {
+    return "image";
+  }
+  return "file";
 }
 
 export function resolveMessageTypeFromAttachments(
