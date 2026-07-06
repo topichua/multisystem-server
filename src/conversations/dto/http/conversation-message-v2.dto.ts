@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ConversationMessageReactionDto } from "./conversation-message-reaction.dto";
-import { ConversationMessageAttachmentDto } from "./conversation-message-attachment.dto";
+import { ConversationMessageAttachmentsDto } from "./conversation-message-attachment.dto";
 
 export class ConversationMessageV2Dto {
   @ApiProperty()
@@ -30,8 +30,8 @@ export class ConversationMessageV2Dto {
   @ApiProperty({ type: () => [ConversationMessageReactionDto] })
   reactions: ConversationMessageReactionDto[];
   
-  @ApiProperty({ type: () => [ConversationMessageAttachmentDto] })
-  attachments: ConversationMessageAttachmentDto[];
+  @ApiProperty({ type: () => ConversationMessageAttachmentsDto })
+  attachments: ConversationMessageAttachmentsDto;
 
   systemUpdatedAt: Date;
 }

@@ -33,3 +33,8 @@ export class ConversationMessageAttachmentDto {
   @ApiProperty()
   name: string;
 }
+
+export class ConversationMessageAttachmentsDto {
+  @ApiProperty({ type: () => [ConversationMessageAttachmentDto] })
+  data: ConversationMessageAttachmentDto[];
+}

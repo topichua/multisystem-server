@@ -2,6 +2,7 @@ import { ConversationMessageType } from "../database/entities/conversation-messa
 import type {
   ConversationMessageAttachmentDto,
   ConversationMessageAttachmentType,
+  ConversationMessageAttachmentsDto,
 } from "./dto/http/conversation-message-attachment.dto";
 
 export type StoredMessageAttachment = {
@@ -86,13 +87,9 @@ export function serializeAttachmentsJson(
   return JSON.stringify(attachments);
 }
 
-export function mapAttachmentsJsonForApi(
-  raw: string | null | undefined,
-): ConversationMessageAttachmentDto[] | undefined {
-  const attachments = parseAttachmentsJson(raw);
-  if (attachments.length === 0) {
-    return undefined;
-  }
+function mapAttachmentItemsForApi(
+  attachments: StoredMessageAttachment[],
+): ConversationMessageAttachmentDto[] {
   return attachments.map((item) => ({
     type: item.type,
     key: item.key,
@@ -103,11 +100,27 @@ export function mapAttachmentsJsonForApi(
   }));
 }
 
+function wrapAttachmentsForApi(
+  items: ConversationMessageAttachmentDto[],
+): ConversationMessageAttachmentsDto | undefined {
+  if (items.length === 0) {
+    return undefined;
+  }
+  return { data: items };
+}
+
+export function mapAttachmentsJsonForApi(
+  raw: string | null | undefined,
+): ConversationMessageAttachmentsDto | undefined {
+  const attachments = parseAttachmentsJson(raw);
+  return wrapAttachmentsForApi(mapAttachmentItemsForApi(attachments));
+}
+
 /** Best-effort legacy `instagram_json.attachments.data` → unified attachments shape. */
 export function mapInstagramStoredAttachmentsForApi(
   row: { attachmentJson: string | null; createdAt: Date; systemUpdatedAt: Date | null },
   stored: { data?: Array<Record<string, unknown>> } | undefined,
-): ConversationMessageAttachmentDto[] | undefined {
+): ConversationMessageAttachmentsDto | undefined {
   const fromColumn = mapAttachmentsJsonForApi(row.attachmentJson);
   if (fromColumn != null) {
     return fromColumn;
@@ -157,7 +170,7 @@ export function mapInstagramStoredAttachmentsForApi(
     });
   }
 
-  return out.length > 0 ? out : undefined;
+  return wrapAttachmentsForApi(out);
 }
 
 function resolveAttachmentTypeFromLegacyItem(

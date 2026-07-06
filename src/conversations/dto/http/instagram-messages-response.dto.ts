@@ -1,5 +1,5 @@
 import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ConversationMessageAttachmentDto } from "./conversation-message-attachment.dto";
+import { ConversationMessageAttachmentsDto } from "./conversation-message-attachment.dto";
 import { ConversationMessageReactionDto } from "./conversation-message-reaction.dto";
 import { ConversationMessageType } from "../../../database/entities/conversation-message-type.enum";
 
@@ -211,12 +211,8 @@ export class InstagramMessageDto {
   })
   is_unsupported?: boolean;
 
-  @ApiPropertyOptional({
-    type: () => [ConversationMessageAttachmentDto],
-    description:
-      "Structured attachments from `attachment_json` (CDN images, R2 video/audio/files).",
-  })
-  attachments?: ConversationMessageAttachmentDto[];
+  @ApiPropertyOptional({ type: () => ConversationMessageAttachmentsDto })
+  attachments?: ConversationMessageAttachmentsDto;
 
   @ApiPropertyOptional({
     type: "object",

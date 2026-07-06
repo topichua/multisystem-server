@@ -1,5 +1,5 @@
 import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
-import type { ConversationMessageAttachmentDto } from "./dto/http/conversation-message-attachment.dto";
+import type { ConversationMessageAttachmentsDto } from "./dto/http/conversation-message-attachment.dto";
 import type { ConversationMessageReactionDto } from "./dto/http/conversation-message-reaction.dto";
 import type { ConversationMessageType } from "../database/entities/conversation-message-type.enum";
 
@@ -13,7 +13,7 @@ export type LegacyInstagramMessageApi = {
   from?: { id: string; name?: string; username?: string; email?: string };
   to?: { data?: Array<{ id: string; name?: string; username?: string }> };
   message?: string;
-  attachments?: ConversationMessageAttachmentDto[];
+  attachments?: ConversationMessageAttachmentsDto;
   shares?: { data?: Array<Record<string, unknown>> };
   story?: Record<string, unknown>;
   reactions?: ConversationMessageReactionDto[];
@@ -84,8 +84,8 @@ export function toLegacyInstagramMessageApiShape(
     out.message = text;
   }
 
-  if (msg.attachments != null && msg.attachments.length > 0) {
-    out.attachments = msg.attachments;
+  if (msg.attachments?.data != null && msg.attachments.data.length > 0) {
+    out.attachments = { data: msg.attachments.data };
   }
   if (msg.shares != null) {
     out.shares = msg.shares as { data?: Array<Record<string, unknown>> };
