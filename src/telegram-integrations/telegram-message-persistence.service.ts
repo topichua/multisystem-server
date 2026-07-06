@@ -202,23 +202,24 @@ export class TelegramMessagePersistenceService {
       return;
     }
 
-    let chatId: string | null = null;
+    let peerUserId: string | null = null;
     try {
-      chatId = utils.getPeerId(update.peer);
+      peerUserId = utils.getPeerId(update.peer);
     } catch {
-      chatId = this.bigIntToId(update.peer.userId);
+      peerUserId = this.bigIntToId(update.peer.userId);
     }
-    if (!chatId) {
+    if (!peerUserId) {
       return;
     }
 
-    const externalMessageId = `tg:${chatId}:${msgId}`;
-    const row = await this.conversationMessageRepo.findOne({
-      where: { externalId: externalMessageId },
-    });
+    const row = await this.findPersistedTelegramMessageForReaction(
+      integration,
+      msgId,
+      peerUserId,
+    );
     if (!row) {
       this.log.debug(
-        `Telegram reaction skipped: message not in DB id=${externalMessageId} integration_id=${integration.id}`,
+        `Telegram reaction skipped: message not in DB msg_id=${msgId} peer=${peerUserId} integration_id=${integration.id}`,
       );
       return;
     }
@@ -238,11 +239,12 @@ export class TelegramMessagePersistenceService {
       update.reactions,
       row.senderId,
       row.receiverId,
+      integration.telegramUserId?.trim() ?? "",
     );
     row.reactionsJson = serializeReactionsJson(reactions);
     const saved = await this.conversationMessageRepo.save(row);
     this.log.debug(
-      `Updated telegram reactions id=${externalMessageId} conversation_id=${conv.id} count=${reactions.length}`,
+      `Updated telegram reactions from update id=${row.externalId} conversation_id=${conv.id} count=${reactions.length}`,
     );
     await this.messageNotify.notifyPersistedMessage(saved, integration.ownerId);
   }
@@ -457,6 +459,7 @@ export class TelegramMessagePersistenceService {
           msg.reactions,
           effectiveSenderId,
           receiverId,
+          myUserId,
         ),
       ),
       attachmentJson: serializeAttachmentsJson(storedAttachments),
@@ -1173,6 +1176,7 @@ export class TelegramMessagePersistenceService {
     reactions: Api.TypeMessageReactions | undefined,
     messageSenderId: string,
     messageReceiverId: string,
+    myUserId: string,
   ): StoredMessageReaction[] {
     if (!(reactions instanceof Api.MessageReactions)) {
       return [];
@@ -1208,7 +1212,120 @@ export class TelegramMessagePersistenceService {
       out.push({ reaction, at, from });
     }
 
-    return out;
+    if (out.length > 0) {
+      return this.dedupeStoredReactions(out);
+    }
+
+    // Telegram frequently sends only aggregate counts. In private chats there
+    // are only two possible reactors, so `chosenOrder` lets us keep useful
+    // sender/receiver semantics even when `recentReactions` is unavailable.
+    return this.buildStoredReactionsFromTelegramCounts(
+      reactions.results ?? [],
+      messageSenderId,
+      messageReceiverId,
+      myUserId,
+    );
+  }
+
+  private async findPersistedTelegramMessageForReaction(
+    integration: TelegramIntegration,
+    telegramMessageId: number,
+    peerUserId: string,
+  ): Promise<ConversationMessage | null> {
+    const exactExternalId = `tg:${peerUserId}:${telegramMessageId}`;
+    const exact = await this.conversationMessageRepo
+      .createQueryBuilder("m")
+      .innerJoin("m.conversation", "c")
+      .where("m.external_id = :externalId", { externalId: exactExternalId })
+      .andWhere("c.workspace_id = :workspaceId", {
+        workspaceId: integration.workspaceId,
+      })
+      .andWhere("c.source = :source", { source: ConversationSource.TELEGRAM })
+      .andWhere("c.external_source_id = :integrationId", {
+        integrationId: String(integration.id),
+      })
+      .getOne();
+    if (exact) {
+      return exact;
+    }
+
+    const qb = this.conversationMessageRepo
+      .createQueryBuilder("m")
+      .innerJoin("m.conversation", "c")
+      .where("c.workspace_id = :workspaceId", {
+        workspaceId: integration.workspaceId,
+      })
+      .andWhere("c.source = :source", { source: ConversationSource.TELEGRAM })
+      .andWhere("c.external_source_id = :integrationId", {
+        integrationId: String(integration.id),
+      })
+      .andWhere(
+        "CAST(SPLIT_PART(m.external_id, ':', 3) AS INTEGER) = :messageId",
+        { messageId: telegramMessageId },
+      )
+      .andWhere(
+        "(c.participant_id = :peerUserId OR SPLIT_PART(m.external_id, ':', 2) = :peerUserId)",
+        { peerUserId },
+      );
+
+    return qb.getOne();
+  }
+
+  private buildStoredReactionsFromTelegramCounts(
+    results: Api.TypeReactionCount[],
+    messageSenderId: string,
+    messageReceiverId: string,
+    myUserId: string,
+  ): StoredMessageReaction[] {
+    const myRole = this.resolveReactionFromParticipant(
+      myUserId,
+      messageSenderId,
+      messageReceiverId,
+    );
+    const otherRole =
+      myRole === "sender" ? "receiver" : myRole === "receiver" ? "sender" : null;
+    const at = new Date().toISOString();
+    const out: StoredMessageReaction[] = [];
+
+    for (const item of results) {
+      if (!(item instanceof Api.ReactionCount)) {
+        continue;
+      }
+      const reaction = this.resolveTelegramReactionEmoticon(item.reaction);
+      if (!reaction) {
+        continue;
+      }
+      const count = Number(item.count ?? 0);
+      if (!Number.isFinite(count) || count <= 0) {
+        continue;
+      }
+
+      const selfReacted = item.chosenOrder != null && myRole != null;
+      if (selfReacted && myRole) {
+        out.push({ reaction, at, from: myRole });
+      }
+
+      const remaining = count - (selfReacted ? 1 : 0);
+      if (remaining > 0 && otherRole) {
+        out.push({ reaction, at, from: otherRole });
+      }
+    }
+
+    return this.dedupeStoredReactions(out);
+  }
+
+  private dedupeStoredReactions(
+    reactions: StoredMessageReaction[],
+  ): StoredMessageReaction[] {
+    const seen = new Set<string>();
+    return reactions.filter((item) => {
+      const key = `${item.from}:${item.reaction}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
   }
 
   private resolveTelegramReactionEmoticon(
