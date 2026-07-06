@@ -27,6 +27,13 @@ import {
 import { ConversationWorkflowService } from "../conversations/conversation-workflow.service";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { TelegramUsersService } from "./telegram-users.service";
+import {
+  extractGramPeerUserId,
+  extractGramReactionEmoticon,
+  isGramMessagePeerReaction,
+  isGramMessageReactions,
+  isGramReactionCount,
+} from "./telegram-gramjs-update.util";
 
 @Injectable()
 export class TelegramMessagePersistenceService {
@@ -198,16 +205,7 @@ export class TelegramMessagePersistenceService {
       return;
     }
 
-    if (!(update.peer instanceof Api.PeerUser)) {
-      return;
-    }
-
-    let peerUserId: string | null = null;
-    try {
-      peerUserId = utils.getPeerId(update.peer);
-    } catch {
-      peerUserId = this.bigIntToId(update.peer.userId);
-    }
+    const peerUserId = extractGramPeerUserId(update.peer);
     if (!peerUserId) {
       return;
     }
@@ -241,6 +239,21 @@ export class TelegramMessagePersistenceService {
       row.receiverId,
       integration.telegramUserId?.trim() ?? "",
     );
+    if (reactions.length === 0) {
+      const payload = update.reactions;
+      const recentCount =
+        payload && typeof payload === "object" && "recentReactions" in payload
+          ? ((payload as { recentReactions?: unknown[] }).recentReactions
+              ?.length ?? 0)
+          : 0;
+      const resultCount =
+        payload && typeof payload === "object" && "results" in payload
+          ? ((payload as { results?: unknown[] }).results?.length ?? 0)
+          : 0;
+      this.log.warn(
+        `Telegram reaction update empty id=${row.externalId} integration_id=${integration.id} recent=${recentCount} results=${resultCount}`,
+      );
+    }
     row.reactionsJson = serializeReactionsJson(reactions);
     const saved = await this.conversationMessageRepo.save(row);
     this.log.debug(
@@ -1178,7 +1191,7 @@ export class TelegramMessagePersistenceService {
     messageReceiverId: string,
     myUserId: string,
   ): StoredMessageReaction[] {
-    if (!(reactions instanceof Api.MessageReactions)) {
+    if (!isGramMessageReactions(reactions)) {
       return [];
     }
 
@@ -1186,22 +1199,29 @@ export class TelegramMessagePersistenceService {
     const out: StoredMessageReaction[] = [];
 
     for (const item of recent) {
-      if (!(item instanceof Api.MessagePeerReaction)) {
+      if (!isGramMessagePeerReaction(item)) {
         continue;
       }
-      const reaction = this.resolveTelegramReactionEmoticon(item.reaction);
+      const reaction = extractGramReactionEmoticon(item.reaction);
       if (!reaction) {
         continue;
       }
-      const reactorUserId = this.resolveUserIdFromPeer(item.peerId);
-      if (!reactorUserId) {
-        continue;
+      const reactorUserId = extractGramPeerUserId(item.peerId);
+      let from = reactorUserId
+        ? this.resolveReactionFromParticipant(
+            reactorUserId,
+            messageSenderId,
+            messageReceiverId,
+          )
+        : null;
+      if (!from) {
+        from = this.resolveReactionFromMyFlag(
+          item,
+          messageSenderId,
+          messageReceiverId,
+          myUserId,
+        );
       }
-      const from = this.resolveReactionFromParticipant(
-        reactorUserId,
-        messageSenderId,
-        messageReceiverId,
-      );
       if (!from) {
         continue;
       }
@@ -1268,7 +1288,32 @@ export class TelegramMessagePersistenceService {
         { peerUserId },
       );
 
-    return qb.getOne();
+    return qb.getOne() ?? this.findPersistedTelegramMessageByTelegramIdOnly(
+      integration,
+      telegramMessageId,
+    );
+  }
+
+  private async findPersistedTelegramMessageByTelegramIdOnly(
+    integration: TelegramIntegration,
+    telegramMessageId: number,
+  ): Promise<ConversationMessage | null> {
+    return this.conversationMessageRepo
+      .createQueryBuilder("m")
+      .innerJoin("m.conversation", "c")
+      .where("c.workspace_id = :workspaceId", {
+        workspaceId: integration.workspaceId,
+      })
+      .andWhere("c.source = :source", { source: ConversationSource.TELEGRAM })
+      .andWhere("c.external_source_id = :integrationId", {
+        integrationId: String(integration.id),
+      })
+      .andWhere(
+        "CAST(SPLIT_PART(m.external_id, ':', 3) AS INTEGER) = :messageId",
+        { messageId: telegramMessageId },
+      )
+      .orderBy("m.created_at", "DESC")
+      .getOne();
   }
 
   private buildStoredReactionsFromTelegramCounts(
@@ -1288,10 +1333,10 @@ export class TelegramMessagePersistenceService {
     const out: StoredMessageReaction[] = [];
 
     for (const item of results) {
-      if (!(item instanceof Api.ReactionCount)) {
+      if (!isGramReactionCount(item)) {
         continue;
       }
-      const reaction = this.resolveTelegramReactionEmoticon(item.reaction);
+      const reaction = extractGramReactionEmoticon(item.reaction);
       if (!reaction) {
         continue;
       }
@@ -1356,6 +1401,30 @@ export class TelegramMessagePersistenceService {
       }
       return null;
     }
+  }
+
+  private resolveReactionFromMyFlag(
+    item: Api.MessagePeerReaction,
+    messageSenderId: string,
+    messageReceiverId: string,
+    myUserId: string,
+  ): "sender" | "receiver" | null {
+    const myRole = this.resolveReactionFromParticipant(
+      myUserId,
+      messageSenderId,
+      messageReceiverId,
+    );
+    if (!myRole) {
+      return null;
+    }
+    const otherRole = myRole === "sender" ? "receiver" : "sender";
+    if (item.my === true) {
+      return myRole;
+    }
+    if (item.my === false) {
+      return otherRole;
+    }
+    return null;
   }
 
   private resolveReactionFromParticipant(

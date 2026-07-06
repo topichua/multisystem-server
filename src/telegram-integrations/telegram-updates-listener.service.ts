@@ -24,6 +24,7 @@ import {
 import { TelegramIntegrationLockService } from "./telegram-integration-lock.service";
 import { TelegramMessagePersistenceService } from "./telegram-message-persistence.service";
 import { TelegramUserApiService } from "./telegram-user-api.service";
+import { isGramUpdateMessageReactions } from "./telegram-gramjs-update.util";
 
 const SYNC_INTERVAL_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 18_000;
@@ -584,7 +585,7 @@ export class TelegramUpdatesListenerService
       };
 
       const reactionsHandler = async (update: Api.TypeUpdate) => {
-        if (!(update instanceof Api.UpdateMessageReactions)) {
+        if (!isGramUpdateMessageReactions(update)) {
           return;
         }
 
