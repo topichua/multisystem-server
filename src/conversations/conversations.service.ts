@@ -16,6 +16,7 @@ import {
   Conversation,
   ConversationGroup,
   ConversationMessage,
+  ConversationMessageType,
   ConversationSource,
   InstagramUser,
   TelegramUser,
@@ -39,12 +40,19 @@ import type {
 } from "./dto/http/instagram-messages-response.dto";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
+import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
+import {
+  resolveMessageTypeFromAttachments,
+  serializeAttachmentsJson,
+  type StoredMessageAttachment,
+} from "./conversation-message-attachments-json.util";
 import { ConversationEventsService } from "./conversation-events.service";
 import { ConversationGroupDefaultsService } from "./conversation-group-defaults.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import type { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
+import type { OutboundConversationMessageMediaType } from "./dto/http/send-instagram-message-request.dto";
 import {
   TELEGRAM_CONVERSATION_MESSAGING,
   type TelegramConversationMessagingPort,
@@ -123,6 +131,7 @@ export class ConversationsService {
     @InjectRepository(ClientLink)
     private readonly clientLinkRepo: Repository<ClientLink>,
     private readonly messagePresenter: ConversationMessagePresenterService,
+    private readonly mediaArchive: ConversationMediaArchiveService,
     @Inject(forwardRef(() => ConversationMessageNotifyService))
     private readonly messageNotify: ConversationMessageNotifyService,
     @Inject(TELEGRAM_CONVERSATION_MESSAGING)
@@ -2864,18 +2873,30 @@ export class ConversationsService {
     conversationIdParam: string,
     message: string,
     replyToId?: string,
+    file?: { buffer: Buffer; mimetype?: string; originalname?: string },
+    mediaType?: OutboundConversationMessageMediaType,
   ): Promise<SendInstagramMessageResponseDto> {
     const conv = await this.requireConversationForOwnerFromParam(
       ownerId,
       conversationIdParam,
     );
     await this.assertCanWriteConversation(ownerId, conv);
+
+    const hasFile = file != null && file.buffer.length > 0;
+    if (hasFile && !mediaType) {
+      throw new BadRequestException(
+        "type is required when sending a file (image, video, or audio)",
+      );
+    }
+
     if (conv.source === ConversationSource.TELEGRAM) {
       return this.telegramMessaging.sendMessageForConversation(
         ownerId,
         conv,
         message,
         replyToId,
+        file,
+        mediaType,
       );
     }
     return this.sendInstagramMessageForConversation(
@@ -2883,6 +2904,8 @@ export class ConversationsService {
       conv,
       message,
       replyToId,
+      file,
+      mediaType,
     );
   }
 
@@ -2894,6 +2917,8 @@ export class ConversationsService {
     convOrParam: Conversation | string,
     message: string,
     replyToMid?: string,
+    file?: { buffer: Buffer; mimetype?: string; originalname?: string },
+    mediaType?: OutboundConversationMessageMediaType,
   ): Promise<SendInstagramMessageResponseDto> {
     const integration =
       await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
@@ -2918,9 +2943,15 @@ export class ConversationsService {
       );
     }
 
-    const text = message.trim();
-    if (!text) {
-      throw new BadRequestException("message must not be empty");
+    const hasFile = file != null && file.buffer.length > 0;
+    const caption = message.trim();
+    if (!hasFile && caption.length === 0) {
+      throw new BadRequestException("message or file is required");
+    }
+    if (hasFile && !mediaType) {
+      throw new BadRequestException(
+        "type is required when sending a file (image, video, or audio)",
+      );
     }
 
     const replyMid = replyToMid?.trim();
@@ -2936,37 +2967,85 @@ export class ConversationsService {
     }
 
     const sendMode = await this.resolveInstagramMessagingSendMode(conv);
+    const senderId =
+      integration.instagramAccountId?.trim() ||
+      conv.externalSourceId?.trim() ||
+      "0";
 
-    /** Instagram Messaging: `reply_to` is a root-level sibling of `message`, not inside it. */
-    const sendBody: Record<string, unknown> = {
-      recipient: { id: recipient },
-      message: { text },
-      messaging_type: sendMode.messagingType,
-    };
-    if (sendMode.messagingType === "MESSAGE_TAG") {
-      sendBody.tag = sendMode.tag;
-    }
-    if (replyMid) {
-      sendBody.reply_to = { mid: replyMid };
-    }
+    if (hasFile && mediaType) {
+      const attachmentId = await this.uploadInstagramMessageAttachment(
+        accessToken,
+        file,
+        mediaType,
+      );
 
-    const url = new URL("https://graph.facebook.com/v25.0/me/messages");
-    url.searchParams.set("access_token", accessToken);
-
-    const result =
-      await this.instagramGraphFetch<SendInstagramMessageResponseDto>(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sendBody),
+      const mediaResult = await this.sendInstagramGraphMessage(accessToken, {
+        recipient,
+        sendMode,
+        replyMid,
+        message: {
+          attachment: {
+            type: mediaType,
+            payload: { attachment_id: attachmentId },
+          },
+        },
       });
 
-    const maybeError = result as unknown as InstagramErrorResponse;
-    if (maybeError.error?.message) {
-      throw new BadGatewayException(maybeError.error.message);
+      const messageId = mediaResult.message_id?.trim();
+      if (messageId) {
+        const messageDate = new Date();
+        const storedAttachments = await this.archiveInstagramOutboundFile(
+          file,
+          mediaType,
+          {
+            conversationId: conv.id,
+            messageExternalId: messageId,
+            messageAt: messageDate,
+          },
+        );
+        const messageType = this.resolveInstagramOutboundMessageType(
+          mediaType,
+          storedAttachments,
+        );
+        const displayText = this.resolveInstagramOutboundDisplayText(
+          caption,
+          mediaType,
+          true,
+        );
+        await this.persistOutboundInstagramMessage({
+          conv,
+          ownerId,
+          messageId,
+          text: displayText,
+          senderId,
+          receiverId: recipient,
+          messageDate,
+          repliedToExternalId: replyMid ?? null,
+          storedAttachments,
+          messageType,
+        });
+      }
+
+      if (caption.length > 0) {
+        await this.sendInstagramGraphMessage(accessToken, {
+          recipient,
+          sendMode,
+          message: { text: caption },
+        });
+      }
+
+      await this.conversationWorkflow.onOutboundAgentReply(conv);
+      return mediaResult;
     }
 
-    await this.conversationWorkflow.onOutboundAgentReply(conv);
+    const result = await this.sendInstagramGraphMessage(accessToken, {
+      recipient,
+      sendMode,
+      replyMid,
+      message: { text: caption },
+    });
 
+    await this.conversationWorkflow.onOutboundAgentReply(conv);
     return result;
   }
 
@@ -3175,6 +3254,214 @@ export class ConversationsService {
       );
     }
     throw new BadGatewayException(msg);
+  }
+
+  private async sendInstagramGraphMessage(
+    accessToken: string,
+    params: {
+      recipient: string;
+      sendMode: InstagramMessagingSendMode;
+      replyMid?: string;
+      message: Record<string, unknown>;
+    },
+  ): Promise<SendInstagramMessageResponseDto> {
+    const sendBody: Record<string, unknown> = {
+      recipient: { id: params.recipient },
+      message: params.message,
+      messaging_type: params.sendMode.messagingType,
+    };
+    if (params.sendMode.messagingType === "MESSAGE_TAG") {
+      sendBody.tag = params.sendMode.tag;
+    }
+    const replyMid = params.replyMid?.trim();
+    if (replyMid) {
+      sendBody.reply_to = { mid: replyMid };
+    }
+
+    const url = new URL("https://graph.facebook.com/v25.0/me/messages");
+    url.searchParams.set("access_token", accessToken);
+
+    return this.instagramGraphFetch<SendInstagramMessageResponseDto>(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sendBody),
+    });
+  }
+
+  private async uploadInstagramMessageAttachment(
+    accessToken: string,
+    file: { buffer: Buffer; mimetype?: string; originalname?: string },
+    mediaType: OutboundConversationMessageMediaType,
+  ): Promise<string> {
+    const url = new URL("https://graph.facebook.com/v25.0/me/message_attachments");
+    url.searchParams.set("access_token", accessToken);
+
+    const form = new FormData();
+    form.append(
+      "message",
+      JSON.stringify({
+        attachment: {
+          type: mediaType,
+          payload: { is_reusable: true },
+        },
+      }),
+    );
+    const filename = file.originalname?.trim() || `${mediaType}-upload`;
+    const mime = file.mimetype?.trim() || "application/octet-stream";
+    form.append(
+      "filedata",
+      new Blob([new Uint8Array(file.buffer)], { type: mime }),
+      filename,
+    );
+
+    const result = await this.instagramGraphFetch<{ attachment_id?: string }>(
+      url,
+      { method: "POST", body: form },
+    );
+    const attachmentId = result.attachment_id?.trim();
+    if (!attachmentId) {
+      throw new BadGatewayException("Instagram did not return attachment_id");
+    }
+    return attachmentId;
+  }
+
+  private async archiveInstagramOutboundFile(
+    file: { buffer: Buffer; mimetype?: string; originalname?: string },
+    mediaType: OutboundConversationMessageMediaType,
+    context: {
+      conversationId: number;
+      messageExternalId: string;
+      messageAt: Date;
+    },
+  ): Promise<StoredMessageAttachment[]> {
+    const archived = await this.mediaArchive.archiveOutboundAttachment({
+      mediaType,
+      buffer: file.buffer,
+      contentType: file.mimetype ?? "application/octet-stream",
+      filename: file.originalname?.trim() || `${mediaType}-upload`,
+      context,
+    });
+    return archived ? [archived] : [];
+  }
+
+  private resolveInstagramOutboundMessageType(
+    mediaType: OutboundConversationMessageMediaType,
+    storedAttachments: StoredMessageAttachment[],
+  ): ConversationMessageType {
+    if (storedAttachments.length > 0) {
+      return resolveMessageTypeFromAttachments(storedAttachments);
+    }
+    if (mediaType === "image") {
+      return ConversationMessageType.image;
+    }
+    if (mediaType === "video") {
+      return ConversationMessageType.video;
+    }
+    if (mediaType === "audio") {
+      return ConversationMessageType.audio;
+    }
+    return ConversationMessageType.text;
+  }
+
+  private resolveInstagramOutboundDisplayText(
+    caption: string,
+    mediaType: OutboundConversationMessageMediaType,
+    captionSentSeparately = false,
+  ): string {
+    if (caption.length > 0 && !captionSentSeparately) {
+      return caption;
+    }
+    if (mediaType === "image") {
+      return "[Photo]";
+    }
+    if (mediaType === "video") {
+      return "[Video]";
+    }
+    return "[Audio]";
+  }
+
+  private buildInstagramLegacyAttachmentsFromStored(
+    stored: StoredMessageAttachment[],
+  ): { data: Array<Record<string, unknown>> } | undefined {
+    if (stored.length === 0) {
+      return undefined;
+    }
+    return {
+      data: stored.map((item) => {
+        const attachment: Record<string, unknown> = {
+          name: item.name,
+          file_url: item.url,
+          r2_url: item.url,
+        };
+        if (item.r2_key) {
+          attachment.r2_key = item.r2_key;
+        }
+        if (item.type === "image") {
+          attachment.image_data = { url: item.url };
+          attachment.mime_type = "image/jpeg";
+        } else if (item.type === "video") {
+          attachment.video_data = { url: item.url, preview_url: item.url };
+          attachment.mime_type = "video/mp4";
+        } else if (item.type === "audio") {
+          attachment.mime_type = "audio/ogg";
+        }
+        return attachment;
+      }),
+    };
+  }
+
+  private async persistOutboundInstagramMessage(params: {
+    conv: Conversation;
+    ownerId: number;
+    messageId: string;
+    text: string;
+    senderId: string;
+    receiverId: string;
+    messageDate: Date;
+    repliedToExternalId: string | null;
+    storedAttachments: StoredMessageAttachment[];
+    messageType: ConversationMessageType;
+  }): Promise<void> {
+    const externalId = params.messageId.trim();
+    if (!externalId) {
+      return;
+    }
+
+    const existing = await this.conversationMessageRepo.findOne({
+      where: { conversationId: params.conv.id, externalId },
+    });
+    if (existing) {
+      return;
+    }
+
+    const legacyAttachments = this.buildInstagramLegacyAttachmentsFromStored(
+      params.storedAttachments,
+    );
+    const instagramJson = JSON.stringify({
+      id: externalId,
+      created_time: params.messageDate.toISOString(),
+      message: params.text,
+      from: { id: params.senderId },
+      to: { data: [{ id: params.receiverId }] },
+      ...(legacyAttachments ? { attachments: legacyAttachments } : {}),
+    });
+
+    const row = this.conversationMessageRepo.create({
+      conversationId: params.conv.id,
+      externalId,
+      message: params.text,
+      instagramJson,
+      createdAt: params.messageDate,
+      senderId: params.senderId,
+      receiverId: params.receiverId,
+      readAt: null,
+      repliedToExternalId: params.repliedToExternalId,
+      attachmentJson: serializeAttachmentsJson(params.storedAttachments),
+      messageType: params.messageType,
+    });
+
+    const saved = await this.conversationMessageRepo.save(row);
+    await this.messageNotify.notifyPersistedMessage(saved, params.ownerId);
   }
 
   private async instagramGraphFetch<T>(

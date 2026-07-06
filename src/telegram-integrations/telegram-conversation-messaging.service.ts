@@ -11,14 +11,23 @@ import { Repository } from "typeorm";
 import {
   Conversation,
   ConversationMessage,
+  ConversationMessageType,
   ConversationSource,
   TelegramIntegration,
   TelegramIntegrationStatus,
 } from "../database/entities";
+import { ConversationMediaArchiveService } from "../conversations/conversation-media-archive.service";
+import type { OutboundConversationMessageMediaType } from "../conversations/dto/http/send-instagram-message-request.dto";
 import type { SendInstagramMessageResponseDto } from "../conversations/dto/http/send-instagram-message-response.dto";
 import { TelegramMessagePersistenceService } from "./telegram-message-persistence.service";
 import { TelegramUpdatesListenerService } from "./telegram-updates-listener.service";
 import { TelegramUserApiService } from "./telegram-user-api.service";
+
+type OutboundMessageFile = {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+};
 
 @Injectable()
 export class TelegramConversationMessagingService {
@@ -31,6 +40,7 @@ export class TelegramConversationMessagingService {
     private readonly updatesListener: TelegramUpdatesListenerService,
     @Inject(forwardRef(() => TelegramMessagePersistenceService))
     private readonly persistence: TelegramMessagePersistenceService,
+    private readonly mediaArchive: ConversationMediaArchiveService,
   ) {}
 
   async sendMessageForConversation(
@@ -38,14 +48,23 @@ export class TelegramConversationMessagingService {
     conv: Conversation,
     message: string,
     replyToExternalId?: string,
+    file?: OutboundMessageFile,
+    mediaType?: OutboundConversationMessageMediaType,
   ): Promise<SendInstagramMessageResponseDto> {
+    void ownerId;
     if (conv.source !== ConversationSource.TELEGRAM) {
       throw new BadRequestException("Conversation is not a Telegram thread");
     }
 
-    const text = message.trim();
-    if (!text) {
-      throw new BadRequestException("message must not be empty");
+    const hasFile = file != null && file.buffer.length > 0;
+    const caption = message.trim();
+    if (!hasFile && caption.length === 0) {
+      throw new BadRequestException("message or file is required");
+    }
+    if (hasFile && !mediaType) {
+      throw new BadRequestException(
+        "type is required when sending a file (image, video, or audio)",
+      );
     }
 
     const recipient = conv.participantId?.trim() ?? "";
@@ -80,32 +99,133 @@ export class TelegramConversationMessagingService {
     }
 
     const connectedClient = this.updatesListener.getActiveClient(integration.id);
-    const sent = await this.telegramApi.sendPrivateMessage(
-      session,
-      recipient,
-      text,
-      {
-        ...(replyToMessageId != null ? { replyToMessageId } : {}),
-        ...(connectedClient ? { connectedClient } : {}),
-      },
-    );
+    const sendOptions = {
+      ...(replyToMessageId != null ? { replyToMessageId } : {}),
+      ...(connectedClient ? { connectedClient } : {}),
+    };
+
+    const sent =
+      hasFile && mediaType
+        ? await this.telegramApi.sendPrivateMedia(
+            session,
+            recipient,
+            file,
+            {
+              mediaType,
+              caption: caption.length > 0 ? caption : undefined,
+              ...sendOptions,
+            },
+          )
+        : await this.telegramApi.sendPrivateMessage(
+            session,
+            recipient,
+            caption,
+            sendOptions,
+          );
 
     const externalMessageId = `tg:${sent.chatId}:${sent.messageId}`;
+    const archiveContext = {
+      conversationId: conv.id,
+      messageExternalId: externalMessageId,
+      messageAt: sent.date,
+    };
+
+    const storedAttachments =
+      hasFile && mediaType
+        ? await this.archiveOutboundFile(file, mediaType, archiveContext)
+        : [];
+
+    const messageType = this.resolveOutboundMessageType(mediaType, storedAttachments);
+    const displayText = this.resolveOutboundDisplayText(
+      caption,
+      hasFile,
+      mediaType,
+    );
+
     await this.persistence.persistOutboundMessage({
       integration,
       conversation: conv,
-      text,
+      text: displayText,
       telegramMessageId: sent.messageId,
       chatId: sent.chatId,
       repliedToExternalId,
       messageDate: sent.date,
       connectedClient,
+      messageType,
+      storedAttachments,
     });
 
     return {
       recipient_id: recipient,
       message_id: externalMessageId,
     };
+  }
+
+  private async archiveOutboundFile(
+    file: OutboundMessageFile,
+    mediaType: OutboundConversationMessageMediaType,
+    archiveContext: {
+      conversationId: number;
+      messageExternalId: string;
+      messageAt: Date;
+    },
+  ) {
+    const archived = await this.mediaArchive.archiveOutboundAttachment({
+      mediaType,
+      buffer: file.buffer,
+      contentType: file.mimetype ?? "application/octet-stream",
+      filename: file.originalname?.trim() || `${mediaType}-upload`,
+      context: archiveContext,
+    });
+    return archived ? [archived] : [];
+  }
+
+  private resolveOutboundMessageType(
+    mediaType: OutboundConversationMessageMediaType | undefined,
+    storedAttachments: { type: string }[],
+  ): ConversationMessageType {
+    if (storedAttachments.length > 0) {
+      const first = storedAttachments[0]?.type;
+      if (first === "image") {
+        return ConversationMessageType.image;
+      }
+      if (first === "video") {
+        return ConversationMessageType.video;
+      }
+      if (first === "audio") {
+        return ConversationMessageType.audio;
+      }
+    }
+    if (mediaType === "image") {
+      return ConversationMessageType.image;
+    }
+    if (mediaType === "video") {
+      return ConversationMessageType.video;
+    }
+    if (mediaType === "audio") {
+      return ConversationMessageType.audio;
+    }
+    return ConversationMessageType.text;
+  }
+
+  private resolveOutboundDisplayText(
+    caption: string,
+    hasFile: boolean,
+    mediaType?: OutboundConversationMessageMediaType,
+  ): string {
+    if (caption.length > 0) {
+      return caption;
+    }
+    if (!hasFile || !mediaType) {
+      return caption;
+    }
+    if (mediaType === "image") {
+      return "[Photo]";
+    }
+    if (mediaType === "video") {
+      return "[Video]";
+    }
+    return "[Audio]";
   }
 
   private async resolveIntegration(

@@ -509,6 +509,8 @@ export class TelegramMessagePersistenceService {
     repliedToExternalId: string | null;
     messageDate: Date;
     connectedClient?: TelegramClient;
+    messageType?: ConversationMessageType;
+    storedAttachments?: StoredMessageAttachment[];
   }): Promise<ConversationMessage> {
     const {
       integration,
@@ -519,6 +521,10 @@ export class TelegramMessagePersistenceService {
       repliedToExternalId,
       messageDate,
       connectedClient,
+      storedAttachments = [],
+      messageType = storedAttachments.length > 0
+        ? resolveMessageTypeFromAttachments(storedAttachments)
+        : ConversationMessageType.text,
     } = params;
     const ownerId = integration.ownerId;
     const myUserId = integration.telegramUserId?.trim();
@@ -562,6 +568,7 @@ export class TelegramMessagePersistenceService {
         chatId,
         messageId: String(telegramMessageId),
         isOutgoing: true,
+        attachments: this.buildLegacyAttachmentsFromStored(storedAttachments),
         raw: { peerId: chatId, out: true, sent: true },
       }),
     );
@@ -576,7 +583,8 @@ export class TelegramMessagePersistenceService {
       receiverId,
       readAt: null,
       repliedToExternalId,
-      messageType: ConversationMessageType.text,
+      attachmentJson: serializeAttachmentsJson(storedAttachments),
+      messageType,
     });
 
     const saved = await this.conversationMessageRepo.save(row);
@@ -900,6 +908,36 @@ export class TelegramMessagePersistenceService {
     }
 
     return saved;
+  }
+
+  private buildLegacyAttachmentsFromStored(
+    stored: StoredMessageAttachment[],
+  ): { data: Array<Record<string, unknown>> } | undefined {
+    if (stored.length === 0) {
+      return undefined;
+    }
+    return {
+      data: stored.map((item) => {
+        const attachment: Record<string, unknown> = {
+          name: item.name,
+          file_url: item.url,
+          r2_url: item.url,
+        };
+        if (item.r2_key) {
+          attachment.r2_key = item.r2_key;
+        }
+        if (item.type === "image") {
+          attachment.image_data = { url: item.url };
+          attachment.mime_type = "image/jpeg";
+        } else if (item.type === "video") {
+          attachment.video_data = { url: item.url, preview_url: item.url };
+          attachment.mime_type = "video/mp4";
+        } else if (item.type === "audio") {
+          attachment.mime_type = "audio/ogg";
+        }
+        return attachment;
+      }),
+    };
   }
 
   private buildStoredPayload(params: {

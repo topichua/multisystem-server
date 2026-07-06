@@ -10,11 +10,15 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -38,6 +42,13 @@ import { ProductSuggestionItemDto } from "./dto/http/conversation-product-sugges
 import { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
 import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
 import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
+
+type UploadedConversationMessageFile = {
+  buffer: Buffer;
+  mimetype?: string;
+  originalname?: string;
+  size?: number;
+};
 import { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
 import { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
 import { ConversationChannelCriteriaResponseDto } from "./dto/http/conversations-channel-criteria-response.dto";
@@ -361,20 +372,48 @@ export class ConversationsController {
   }
 
   @Post(":conversationId/messages")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes("multipart/form-data", "application/json")
   @ApiOperation({
     summary:
       "Send a message in this thread (Instagram or Telegram). `reply_to_id` is optional: omit for a normal message; set to a parent message id from GET .../messages (Instagram Graph `mid` or Telegram `tg:{chatId}:{messageId}`). " +
+      "Telegram and Instagram: optional multipart `file` with `type` (`image`, `video`, or `audio`) and optional `message` caption. " +
       "Instagram: within 24h of the last customer message uses `RESPONSE`; within 7 days uses `MESSAGE_TAG` + `HUMAN_AGENT`; after 7 days returns 400. " +
       "Requires `write` on the conversation integration grant, or owner / conversations.full_access.",
   })
   @ApiBody({
-    type: SendInstagramMessageRequestDto,
+    schema: {
+      type: "object",
+      properties: {
+        message: {
+          type: "string",
+          description: "Text body or media caption. Required when no file is uploaded.",
+        },
+        reply_to_id: {
+          type: "string",
+          nullable: true,
+          description:
+            "Parent message id from GET .../messages (Instagram Graph mid or Telegram tg:{chatId}:{messageId}).",
+        },
+        type: {
+          type: "string",
+          enum: ["image", "video", "audio"],
+          description: "Required when uploading `file`.",
+        },
+        file: { type: "string", format: "binary" },
+      },
+    },
   })
   @ApiOkResponse({ type: SendInstagramMessageResponseDto })
   async sendMessageByConversationId(
     @Req() req: { user?: AuthUser },
     @Param("conversationId") conversationId: string,
     @Body() dto: SendInstagramMessageRequestDto,
+    @UploadedFile() file?: UploadedConversationMessageFile,
   ): Promise<SendInstagramMessageResponseDto> {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
@@ -382,11 +421,25 @@ export class ConversationsController {
         "Current authorized user does not contain numeric owner id",
       );
     }
+
+    const hasFile = file != null && file.buffer.length > 0;
+    const message = dto.message?.trim() ?? "";
+    if (!hasFile && message.length === 0) {
+      throw new BadRequestException("message or file is required");
+    }
+    if (hasFile && !dto.type) {
+      throw new BadRequestException(
+        "type is required when sending a file (image, video, or audio)",
+      );
+    }
+
     return this.conversationsService.sendMessageForConversation(
       ownerId,
       conversationId,
-      dto.message,
+      message,
       dto.reply_to_id,
+      hasFile ? file : undefined,
+      dto.type,
     );
   }
 

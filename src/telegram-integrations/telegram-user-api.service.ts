@@ -431,6 +431,116 @@ export class TelegramUserApiService {
     }
   }
 
+  async sendPrivateMedia(
+    sessionString: string,
+    peerUserId: string,
+    file: { buffer: Buffer; mimetype?: string; originalname?: string },
+    options: {
+      mediaType: "image" | "video" | "audio";
+      caption?: string;
+      replyToMessageId?: number;
+      connectedClient?: TelegramClient;
+    },
+  ): Promise<TelegramSendPrivateMessageResult> {
+    const peer = peerUserId.trim();
+    if (!peer || !/^\d+$/.test(peer)) {
+      throw new BadRequestException(
+        "peer user id must be a numeric Telegram user id",
+      );
+    }
+    if (!file.buffer?.length) {
+      throw new BadRequestException("file must not be empty");
+    }
+
+    const ownsClient = options.connectedClient == null;
+    const client = options.connectedClient ?? this.createClient(sessionString);
+    try {
+      if (ownsClient) {
+        await client.connect();
+        if (!(await client.isUserAuthorized())) {
+          throw new BadRequestException("Telegram session is not authorized");
+        }
+      }
+
+      const target = await this.resolvePrivateMessagePeer(client, peer);
+      const caption = options.caption?.trim() ?? "";
+      const sent = await client.sendFile(target, {
+        file: file.buffer,
+        caption: caption.length > 0 ? caption : undefined,
+        forceDocument: options.mediaType === "audio",
+        voiceNote: options.mediaType === "audio",
+        videoNote: false,
+        ...(options.replyToMessageId != null
+          ? { replyTo: options.replyToMessageId }
+          : {}),
+        ...(file.mimetype?.trim()
+          ? {
+              attributes: this.buildTelegramSendFileAttributes(
+                options.mediaType,
+                file.mimetype,
+                file.originalname,
+              ),
+            }
+          : {}),
+      });
+      const messageId = sent?.id;
+      if (messageId == null) {
+        throw new BadGatewayException("Telegram did not return a message id");
+      }
+      const date =
+        typeof sent.date === "number"
+          ? new Date(sent.date * 1000)
+          : new Date();
+      return {
+        messageId: Number(messageId),
+        chatId: peer,
+        date,
+      };
+    } catch (e) {
+      throw this.toHttpError(e, "Failed to send Telegram media");
+    } finally {
+      if (ownsClient) {
+        await this.safeDestroyClient(client);
+      }
+    }
+  }
+
+  private buildTelegramSendFileAttributes(
+    mediaType: "image" | "video" | "audio",
+    mimeType: string,
+    originalname?: string,
+  ): Api.TypeDocumentAttribute[] {
+    const name = originalname?.trim() || undefined;
+    if (mediaType === "video") {
+      return [
+        new Api.DocumentAttributeVideo({
+          supportsStreaming: true,
+          w: 0,
+          h: 0,
+          duration: 0,
+        }),
+        ...(name
+          ? [new Api.DocumentAttributeFilename({ fileName: name })]
+          : []),
+      ];
+    }
+    if (mediaType === "audio") {
+      return [
+        new Api.DocumentAttributeAudio({
+          voice: true,
+          duration: 0,
+        }),
+        ...(name
+          ? [new Api.DocumentAttributeFilename({ fileName: name })]
+          : []),
+      ];
+    }
+    if (name) {
+      return [new Api.DocumentAttributeFilename({ fileName: name })];
+    }
+    return [];
+  }
+
   /**
    * GramJS needs a resolved InputPeer (access hash). A bare numeric user id is not enough
    * on a cold client — load dialogs / entities first (see Telethon entity docs).

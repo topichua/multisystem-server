@@ -6,6 +6,8 @@ import {
   type StoredMessageAttachment,
 } from "./conversation-message-attachments-json.util";
 import { CloudflareR2Service } from "../storage/cloudflare-r2.service";
+import { CloudflareImagesService } from "../products/cloudflare-images.service";
+import type { OutboundConversationMessageMediaType } from "./dto/http/send-instagram-message-request.dto";
 
 type ArchiveContext = {
   conversationId: number;
@@ -21,7 +23,10 @@ type InstagramAttachment = Record<string, unknown>;
 export class ConversationMediaArchiveService {
   private readonly log = new Logger(ConversationMediaArchiveService.name);
 
-  constructor(private readonly r2: CloudflareR2Service) {}
+  constructor(
+    private readonly r2: CloudflareR2Service,
+    private readonly cloudflareImages: CloudflareImagesService,
+  ) {}
 
   isEnabled(): boolean {
     return this.r2.isConfigured();
@@ -167,6 +172,76 @@ export class ConversationMediaArchiveService {
       },
       storedAttachments,
     };
+  }
+
+  /** Store an outbound upload (CDN image or R2 video/audio) for POST .../messages. */
+  async archiveOutboundAttachment(params: {
+    mediaType: OutboundConversationMessageMediaType;
+    buffer: Buffer;
+    contentType: string;
+    filename: string;
+    context: ArchiveContext;
+  }): Promise<StoredMessageAttachment | null> {
+    const { mediaType, buffer, contentType, filename, context } = params;
+    if (buffer.length === 0) {
+      return null;
+    }
+
+    if (mediaType === "image") {
+      try {
+        const uploaded = await this.cloudflareImages.uploadImage({
+          buffer,
+          mimetype: contentType || "image/jpeg",
+          originalname: filename,
+        });
+        const imageId = uploaded.cloudflareImageId?.trim();
+        if (!imageId) {
+          return null;
+        }
+        return {
+          type: "image",
+          key: imageId,
+          url: uploaded.cdnUrl,
+          at: context.messageAt.toISOString(),
+          name: filename,
+        };
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        this.log.warn(
+          `Outbound image CDN upload failed message=${context.messageExternalId}: ${err}`,
+        );
+        return null;
+      }
+    }
+
+    if (!this.isEnabled()) {
+      return null;
+    }
+
+    const mediaFolder: MediaFolder =
+      mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "files";
+    const key = this.buildObjectKey(context, filename, mediaFolder);
+    try {
+      const uploaded = await this.r2.uploadObject({
+        key,
+        buffer,
+        contentType: contentType || "application/octet-stream",
+      });
+      return {
+        type: mediaType,
+        key,
+        r2_key: key,
+        url: uploaded.publicUrl,
+        at: context.messageAt.toISOString(),
+        name: filename,
+      };
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `Outbound ${mediaType} R2 upload failed message=${context.messageExternalId}: ${err}`,
+      );
+      return null;
+    }
   }
 
   private async archiveInstagramAttachment(

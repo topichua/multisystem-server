@@ -1,13 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsOptional, IsString, MinLength } from "class-validator";
+import { IsIn, IsOptional, IsString, MinLength } from "class-validator";
 
-/** POST /conversations/:conversationId/messages */
+export type OutboundConversationMessageMediaType = "image" | "video" | "audio";
+
+/** POST /conversations/:conversationId/messages (JSON or multipart fields). */
 export class SendInstagramMessageRequestDto {
-  @ApiProperty({ minLength: 1 })
+  @ApiPropertyOptional({
+    minLength: 1,
+    description: "Text body or media caption. Required when no `file` is uploaded.",
+  })
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  message: string;
+  message?: string;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -24,4 +30,12 @@ export class SendInstagramMessageRequestDto {
   @IsString()
   @MinLength(1)
   reply_to_id?: string;
+
+  @ApiPropertyOptional({
+    enum: ["image", "video", "audio"],
+    description: "Required with multipart `file` upload.",
+  })
+  @IsOptional()
+  @IsIn(["image", "video", "audio"])
+  type?: OutboundConversationMessageMediaType;
 }
