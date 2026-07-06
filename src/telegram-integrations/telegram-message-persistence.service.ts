@@ -9,9 +9,15 @@ import { Repository } from "typeorm";
 import {
   Conversation,
   ConversationMessage,
+  ConversationMessageType,
   ConversationSource,
   TelegramIntegration,
 } from "../database/entities";
+import {
+  resolveMessageTypeFromAttachments,
+  serializeAttachmentsJson,
+  type StoredMessageAttachment,
+} from "../conversations/conversation-message-attachments-json.util";
 import { ConversationMessageNotifyService } from "../conversations/conversation-message-notify.service";
 import { ConversationMediaArchiveService } from "../conversations/conversation-media-archive.service";
 import {
@@ -94,7 +100,7 @@ export class TelegramMessagePersistenceService {
       chatId,
       myUserId,
     );
-    const { text, attachments, rawExtras } =
+    const { text, attachments, rawExtras, storedAttachments, messageType } =
       await this.resolvePrivateMessageContent(
         msg,
         chatId,
@@ -103,6 +109,7 @@ export class TelegramMessagePersistenceService {
         {
           conversationId: conv.id,
           messageExternalId: externalMessageId,
+          messageAt: row.createdAt,
         },
       );
     const editedAt =
@@ -132,6 +139,8 @@ export class TelegramMessagePersistenceService {
       this.mergeStoredPayload(row.instagramJson, storedPayload),
     );
     row.editedAt = editedAt;
+    row.attachmentJson = serializeAttachmentsJson(storedAttachments);
+    row.messageType = messageType;
 
     const saved = await this.conversationMessageRepo.save(row);
     await this.messageNotify.notifyPersistedMessage(saved, integration.ownerId);
@@ -379,7 +388,7 @@ export class TelegramMessagePersistenceService {
       await this.conversationRepo.save(conv);
     }
 
-    const { text, attachments, rawExtras } =
+    const { text, attachments, rawExtras, storedAttachments, messageType } =
       await this.resolvePrivateMessageContent(
         msg,
         chatId,
@@ -388,6 +397,7 @@ export class TelegramMessagePersistenceService {
         {
           conversationId: conv.id,
           messageExternalId: externalMessageId,
+          messageAt: messageDate,
         },
       );
 
@@ -449,6 +459,8 @@ export class TelegramMessagePersistenceService {
           receiverId,
         ),
       ),
+      attachmentJson: serializeAttachmentsJson(storedAttachments),
+      messageType,
     });
 
     const saved = await this.conversationMessageRepo.save(row);
@@ -548,6 +560,7 @@ export class TelegramMessagePersistenceService {
       receiverId,
       readAt: null,
       repliedToExternalId,
+      messageType: ConversationMessageType.text,
     });
 
     const saved = await this.conversationMessageRepo.save(row);
@@ -688,11 +701,14 @@ export class TelegramMessagePersistenceService {
     archiveContext?: {
       conversationId: number;
       messageExternalId: string;
+      messageAt: Date;
     },
   ): Promise<{
     text: string;
     attachments?: { data: Array<Record<string, unknown>> };
     rawExtras: Record<string, unknown>;
+    storedAttachments: StoredMessageAttachment[];
+    messageType: ConversationMessageType;
   }> {
     if (connectedClient && archiveContext) {
       const archivedMedia = await this.mediaArchive.archiveTelegramMedia(
@@ -706,19 +722,45 @@ export class TelegramMessagePersistenceService {
           text: archivedMedia.displayText,
           attachments: archivedMedia.attachments,
           rawExtras: archivedMedia.rawExtras,
+          storedAttachments: archivedMedia.storedAttachments,
+          messageType: resolveMessageTypeFromAttachments(
+            archivedMedia.storedAttachments,
+          ),
         };
       }
     }
 
     let photoContent = this.extractPhotoContent(msg);
     let cdnUrl: string | null = null;
+    let storedAttachments: StoredMessageAttachment[] = [];
     if (photoContent && connectedClient) {
-      cdnUrl = await this.uploadTelegramPhotoToCdn(connectedClient, msg, chatId);
-      if (cdnUrl) {
+      const uploaded = await this.uploadTelegramPhotoToCdn(
+        connectedClient,
+        msg,
+        chatId,
+      );
+      if (uploaded) {
+        cdnUrl = uploaded.cdnUrl;
         photoContent = this.extractPhotoContent(msg, cdnUrl);
+        if (uploaded.cloudflareImageId && archiveContext) {
+          storedAttachments = [
+            {
+              type: "image",
+              key: uploaded.cloudflareImageId,
+              url: uploaded.cdnUrl,
+              at: archiveContext.messageAt.toISOString(),
+              name: uploaded.name,
+            },
+          ];
+        }
       }
     }
     const sharedPhone = this.extractParticipantSharedPhone(msg, participantId);
+    const rawExtras: Record<string, unknown> = {
+      ...(photoContent ? { mediaType: "photo" } : {}),
+      ...(sharedPhone ? { mediaType: "contact", phone: sharedPhone } : {}),
+      ...(cdnUrl ? { cdnUrl } : {}),
+    };
     const text =
       sharedPhone != null
         ? sharedPhone
@@ -729,12 +771,41 @@ export class TelegramMessagePersistenceService {
     return {
       text,
       attachments: photoContent?.attachments,
-      rawExtras: {
-        ...(photoContent ? { mediaType: "photo" } : {}),
-        ...(sharedPhone ? { mediaType: "contact", phone: sharedPhone } : {}),
-        ...(cdnUrl ? { cdnUrl } : {}),
-      },
+      rawExtras,
+      storedAttachments,
+      messageType:
+        storedAttachments.length > 0
+          ? resolveMessageTypeFromAttachments(storedAttachments)
+          : this.resolveTelegramMessageTypeFallback({
+              storedAttachments: [],
+              hasPhoto: photoContent != null,
+              rawExtras,
+            }),
     };
+  }
+
+  private resolveTelegramMessageTypeFallback(params: {
+    storedAttachments: StoredMessageAttachment[];
+    hasPhoto: boolean;
+    rawExtras: Record<string, unknown>;
+  }): ConversationMessageType {
+    if (params.storedAttachments.length > 0) {
+      return resolveMessageTypeFromAttachments(params.storedAttachments);
+    }
+    const mediaType = params.rawExtras.mediaType;
+    if (params.hasPhoto || mediaType === "photo" || mediaType === "image") {
+      return ConversationMessageType.image;
+    }
+    if (mediaType === "video") {
+      return ConversationMessageType.video;
+    }
+    if (mediaType === "audio") {
+      return ConversationMessageType.audio;
+    }
+    if (mediaType === "file" || mediaType === "files") {
+      return ConversationMessageType.file;
+    }
+    return ConversationMessageType.text;
   }
 
   private mergeStoredPayload(
@@ -860,7 +931,11 @@ export class TelegramMessagePersistenceService {
     client: TelegramClient,
     msg: NonNullable<NewMessageEvent["message"]>,
     chatId: string,
-  ): Promise<string | null> {
+  ): Promise<{
+    cdnUrl: string;
+    cloudflareImageId: string;
+    name: string;
+  } | null> {
     try {
       const downloaded = await client.downloadMedia(msg, {});
       if (downloaded == null) {
@@ -873,12 +948,21 @@ export class TelegramMessagePersistenceService {
         return null;
       }
 
+      const name = `telegram-${chatId}-${msg.id}.jpg`;
       const uploaded = await this.cloudflareImages.uploadImage({
         buffer,
         mimetype: "image/jpeg",
-        originalname: `telegram-${chatId}-${msg.id}.jpg`,
+        originalname: name,
       });
-      return uploaded.cdnUrl;
+      const cloudflareImageId = uploaded.cloudflareImageId?.trim();
+      if (!cloudflareImageId) {
+        return null;
+      }
+      return {
+        cdnUrl: uploaded.cdnUrl,
+        cloudflareImageId,
+        name,
+      };
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       this.log.warn(`Telegram photo Cloudflare upload failed chat=${chatId}: ${err}`);

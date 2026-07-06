@@ -915,6 +915,7 @@ export class ConversationsAllocationService {
         {
           conversationId,
           messageExternalId: row.externalId,
+          messageAt: row.createdAt,
         },
       );
       row.instagramJson = JSON.stringify(archived);

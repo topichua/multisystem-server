@@ -1,5 +1,7 @@
 import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
+import type { ConversationMessageAttachmentDto } from "./dto/http/conversation-message-attachment.dto";
 import type { ConversationMessageReactionDto } from "./dto/http/conversation-message-reaction.dto";
+import type { ConversationMessageType } from "../database/entities/conversation-message-type.enum";
 
 /**
  * Stable GET `/conversations/:id/messages` item shape (and WebSocket `message`).
@@ -15,6 +17,8 @@ export type LegacyInstagramMessageApi = {
   shares?: { data?: Array<Record<string, unknown>> };
   story?: Record<string, unknown>;
   reactions?: ConversationMessageReactionDto[];
+  message_attachments?: ConversationMessageAttachmentDto[];
+  type?: ConversationMessageType;
   tags?: { data?: Array<{ name?: string }> };
   is_unsupported?: boolean;
   edited_at?: string;
@@ -94,6 +98,12 @@ export function toLegacyInstagramMessageApiShape(
   }
   if (msg.reactions != null && msg.reactions.length > 0) {
     out.reactions = msg.reactions;
+  }
+  if (msg.message_attachments != null && msg.message_attachments.length > 0) {
+    out.message_attachments = msg.message_attachments;
+  }
+  if (msg.type != null) {
+    out.type = msg.type;
   }
   if (msg.tags?.data != null && msg.tags.data.length > 0) {
     out.tags = { data: msg.tags.data };

@@ -9,6 +9,7 @@ import {
   mapInstagramStoredReactionsForApi,
   mapReactionsJsonForApi,
 } from "./conversation-message-reactions-json.util";
+import { mapAttachmentsJsonForApi } from "./conversation-message-attachments-json.util";
 import type { InstagramMessageReactionsDto } from "./dto/http/instagram-messages-response.dto";
 
 @Injectable()
@@ -110,7 +111,16 @@ export class ConversationMessagePresenterService {
     return undefined;
   }
 
+  private resolveDbColumnsForApi(row: ConversationMessage) {
+    const messageAttachments = mapAttachmentsJsonForApi(row.attachmentJson);
+    return {
+      ...(messageAttachments != null ? { message_attachments: messageAttachments } : {}),
+      type: row.messageType,
+    };
+  }
+
   private parseStoredMessage(row: ConversationMessage): InstagramMessageDto {
+    const dbColumns = this.resolveDbColumnsForApi(row);
     const addDbMeta = (
       m: Omit<InstagramMessageDto, "system_updated_at"> &
         Partial<Pick<InstagramMessageDto, "system_updated_at">>,
@@ -123,6 +133,7 @@ export class ConversationMessagePresenterService {
       void system_updated_at;
       return {
         ...fromGraph,
+        ...dbColumns,
         ...(row.editedAt != null
           ? { edited_at: row.editedAt.toISOString() }
           : {}),

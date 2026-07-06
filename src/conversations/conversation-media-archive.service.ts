@@ -1,15 +1,19 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Api } from "telegram";
 import type { TelegramClient } from "telegram";
+import {
+  mapMediaFolderToAttachmentType,
+  type StoredMessageAttachment,
+} from "./conversation-message-attachments-json.util";
 import { CloudflareR2Service } from "../storage/cloudflare-r2.service";
 
 type ArchiveContext = {
   conversationId: number;
   messageExternalId: string;
+  messageAt: Date;
 };
 
 type MediaFolder = "video" | "audio" | "files";
-type TelegramMediaKind = MediaFolder;
 
 type InstagramAttachment = Record<string, unknown>;
 
@@ -72,7 +76,7 @@ export class ConversationMediaArchiveService {
     };
   }
 
-  /** Download Telegram media (video / audio / file) and upload to R2. */
+  /** Download Telegram media (video / audio / file) and upload to R2. Images use CDN elsewhere. */
   async archiveTelegramMedia(
     client: TelegramClient,
     msg: Api.Message,
@@ -82,6 +86,7 @@ export class ConversationMediaArchiveService {
     displayText: string;
     attachments: { data: Array<Record<string, unknown>> };
     rawExtras: Record<string, unknown>;
+    storedAttachments: StoredMessageAttachment[];
   } | null> {
     if (!this.isEnabled() || !msg.id) {
       return null;
@@ -135,20 +140,31 @@ export class ConversationMediaArchiveService {
       attachment.video_data = { url: publicUrl, preview_url: publicUrl };
     }
 
-    const displayByKind: Record<TelegramMediaKind, string> = {
+    const displayByKind: Record<MediaFolder, string> = {
       video: "[Video]",
       audio: "[Audio]",
       files: "[File]",
     };
 
+    const storedAttachments: StoredMessageAttachment[] = [
+      {
+        type: mapMediaFolderToAttachmentType(mediaKind),
+        key,
+        url: publicUrl,
+        at: context.messageAt.toISOString(),
+        name: filename,
+      },
+    ];
+
     return {
       displayText: caption || displayByKind[mediaKind],
       attachments: { data: [attachment] },
       rawExtras: {
-        mediaType: mediaKind,
+        mediaType: mediaKind === "files" ? "file" : mediaKind,
         cdnUrl: publicUrl,
         r2Key: key,
       },
+      storedAttachments,
     };
   }
 
@@ -315,7 +331,7 @@ export class ConversationMediaArchiveService {
     }
   }
 
-  private resolveTelegramMediaKind(msg: Api.Message): TelegramMediaKind | null {
+  private resolveTelegramMediaKind(msg: Api.Message): MediaFolder | null {
     const media = msg.media;
     if (
       media instanceof Api.MessageMediaDocument &&
@@ -373,7 +389,7 @@ export class ConversationMediaArchiveService {
     chatId: string,
     messageId: number,
     contentType: string,
-    kind: TelegramMediaKind,
+    kind: MediaFolder,
     msg: Api.Message,
   ): string {
     const media = msg.media;

@@ -1,5 +1,7 @@
 import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ConversationMessageAttachmentDto } from "./conversation-message-attachment.dto";
 import { ConversationMessageReactionDto } from "./conversation-message-reaction.dto";
+import { ConversationMessageType } from "../../../database/entities/conversation-message-type.enum";
 
 export class InstagramMessageActorDto {
   @ApiProperty()
@@ -236,6 +238,19 @@ export class InstagramMessageDto {
       "Message reactions from `reactions_json` (`{ reaction, at, from }`).",
   })
   reactions?: ConversationMessageReactionDto[];
+
+  @ApiPropertyOptional({
+    type: () => [ConversationMessageAttachmentDto],
+    description:
+      "Structured attachments from `attachment_json` (CDN images, R2 video/audio/files).",
+  })
+  message_attachments?: ConversationMessageAttachmentDto[];
+
+  @ApiPropertyOptional({
+    enum: ConversationMessageType,
+    description: "Message content type from DB `type` column.",
+  })
+  type?: ConversationMessageType;
 
   @ApiPropertyOptional({ type: () => InstagramMessageTagsDto })
   tags?: InstagramMessageTagsDto;
