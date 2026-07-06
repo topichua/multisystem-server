@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { Conversation } from "./conversation.entity";
+import { ConversationMessageType } from "./conversation-message-type.enum";
 
 @Entity("conversation_messages")
 @Index("IDX_conversation_messages_conversation_id", ["conversationId"])
@@ -49,6 +50,30 @@ export class ConversationMessage {
    */
   @Column({ name: "read_at", type: "timestamptz", nullable: true })
   readAt: Date | null;
+
+  @Column({ name: "deleted_at", type: "timestamptz", nullable: true })
+  deletedAt: Date | null;
+
+  @Column({
+    name: "type",
+    type: "enum",
+    enum: ConversationMessageType,
+    enumName: "conversation_message_type_enum",
+    default: ConversationMessageType.text,
+  })
+  messageType: ConversationMessageType;
+
+  /**
+   * Serialized reactions payload (e.g. `[{ reaction, at, from }]`).
+   */
+  @Column({ name: "reactions_json", type: "text", nullable: true })
+  reactionsJson: string | null;
+
+  /**
+   * Serialized attachments payload (R2 URLs, keys, mime types, etc.).
+   */
+  @Column({ name: "attachment_json", type: "text", nullable: true })
+  attachmentJson: string | null;
 
   /**
    * Last time this application wrote/updated the row in the database.

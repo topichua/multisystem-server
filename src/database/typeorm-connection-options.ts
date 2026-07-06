@@ -108,6 +108,7 @@ import { OrderDeliveryStatusWaybillCreated1744200000110 } from "./migrations/174
 import { DeliveryStatusFailedAndNovaPoshtaOrderStatusMapping1744200000111 } from "./migrations/1744200000111-DeliveryStatusFailedAndNovaPoshtaOrderStatusMapping";
 import { SeedOrderStatusesOnWorkspaceCreate1744200000112 } from "./migrations/1744200000112-SeedOrderStatusesOnWorkspaceCreate";
 import { OrderCompositePrimaryKey1744200000113 } from "./migrations/1744200000113-OrderCompositePrimaryKey";
+import { ConversationMessageV2Columns1744200000114 } from "./migrations/1744200000114-ConversationMessageV2Columns";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -389,6 +390,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       DeliveryStatusFailedAndNovaPoshtaOrderStatusMapping1744200000111,
       SeedOrderStatusesOnWorkspaceCreate1744200000112,
       OrderCompositePrimaryKey1744200000113,
+      ConversationMessageV2Columns1744200000114,
     ],
   };
 }

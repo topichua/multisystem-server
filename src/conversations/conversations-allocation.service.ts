@@ -1170,7 +1170,9 @@ export class ConversationsAllocationService {
     for (const u of msg.to?.data ?? []) take(u.id);
     for (const p of participantExtras ?? []) take(p.id);
     take(webhookSenderHintId ?? undefined);
-    for (const item of msg.reactions?.data ?? []) {
+    const graphReactions = (msg as { reactions?: InstagramMessageReactionsDto })
+      .reactions;
+    for (const item of graphReactions?.data ?? []) {
       const users = (item as { users?: Array<{ id?: string }> }).users;
       for (const u of users ?? []) take(u.id);
     }

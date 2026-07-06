@@ -14,6 +14,7 @@ export {
 export { ConversationEvent } from "./conversation-event.entity";
 export { ConversationEventType } from "./conversation-event-type.enum";
 export { ConversationMessage } from "./conversation-message.entity";
+export { ConversationMessageType } from "./conversation-message-type.enum";
 export { ConversationSource } from "./conversation-source.enum";
 export { InstagramUser } from "./instagram-user.entity";
 export { TelegramUser } from "./telegram-user.entity";

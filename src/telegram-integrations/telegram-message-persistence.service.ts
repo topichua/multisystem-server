@@ -14,6 +14,10 @@ import {
 } from "../database/entities";
 import { ConversationMessageNotifyService } from "../conversations/conversation-message-notify.service";
 import { ConversationMediaArchiveService } from "../conversations/conversation-media-archive.service";
+import {
+  serializeReactionsJson,
+  type StoredMessageReaction,
+} from "../conversations/conversation-message-reactions-json.util";
 import { ConversationWorkflowService } from "../conversations/conversation-workflow.service";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { TelegramUsersService } from "./telegram-users.service";
@@ -158,27 +162,80 @@ export class TelegramMessagePersistenceService {
       }
     }
 
-    const notifiedConversationIds = new Set<number>();
     for (const messageId of deletedIds) {
       if (!Number.isInteger(messageId) || messageId <= 0) {
         continue;
       }
-      const removed = await this.deletePersistedTelegramMessage(
+      const deletedRows = await this.deletePersistedTelegramMessage(
         integration,
         messageId,
         chatId,
       );
-      for (const conversationId of removed) {
-        if (notifiedConversationIds.has(conversationId)) {
-          continue;
-        }
-        notifiedConversationIds.add(conversationId);
-        await this.messageNotify.notifyConversationForOwner(
+      for (const row of deletedRows) {
+        await this.messageNotify.notifyPersistedMessage(
+          row,
           integration.ownerId,
-          conversationId,
         );
       }
     }
+  }
+
+  async persistMessageReactionsUpdate(
+    integration: TelegramIntegration,
+    update: Api.UpdateMessageReactions,
+  ): Promise<void> {
+    const msgId = update.msgId;
+    if (msgId == null || !Number.isInteger(msgId) || msgId <= 0) {
+      return;
+    }
+
+    if (!(update.peer instanceof Api.PeerUser)) {
+      return;
+    }
+
+    let chatId: string | null = null;
+    try {
+      chatId = utils.getPeerId(update.peer);
+    } catch {
+      chatId = this.bigIntToId(update.peer.userId);
+    }
+    if (!chatId) {
+      return;
+    }
+
+    const externalMessageId = `tg:${chatId}:${msgId}`;
+    const row = await this.conversationMessageRepo.findOne({
+      where: { externalId: externalMessageId },
+    });
+    if (!row) {
+      this.log.debug(
+        `Telegram reaction skipped: message not in DB id=${externalMessageId} integration_id=${integration.id}`,
+      );
+      return;
+    }
+
+    const conv = await this.conversationRepo.findOne({
+      where: { id: row.conversationId },
+    });
+    if (
+      !conv ||
+      conv.source !== ConversationSource.TELEGRAM ||
+      conv.externalSourceId !== String(integration.id)
+    ) {
+      return;
+    }
+
+    const reactions = this.buildStoredReactionsFromTelegram(
+      update.reactions,
+      row.senderId,
+      row.receiverId,
+    );
+    row.reactionsJson = serializeReactionsJson(reactions);
+    const saved = await this.conversationMessageRepo.save(row);
+    this.log.debug(
+      `Updated telegram reactions id=${externalMessageId} conversation_id=${conv.id} count=${reactions.length}`,
+    );
+    await this.messageNotify.notifyPersistedMessage(saved, integration.ownerId);
   }
 
   async persistNewMessageEvent(
@@ -385,6 +442,13 @@ export class TelegramMessagePersistenceService {
       receiverId,
       readAt: null,
       repliedToExternalId: this.extractReplyToExternalId(msg, chatId),
+      reactionsJson: serializeReactionsJson(
+        this.buildStoredReactionsFromTelegram(
+          msg.reactions,
+          effectiveSenderId,
+          receiverId,
+        ),
+      ),
     });
 
     const saved = await this.conversationMessageRepo.save(row);
@@ -705,7 +769,7 @@ export class TelegramMessagePersistenceService {
     integration: TelegramIntegration,
     telegramMessageId: number,
     chatId: string | null,
-  ): Promise<number[]> {
+  ): Promise<ConversationMessage[]> {
     const qb = this.conversationMessageRepo
       .createQueryBuilder("m")
       .innerJoin("m.conversation", "c")
@@ -735,15 +799,20 @@ export class TelegramMessagePersistenceService {
       return [];
     }
 
-    await this.conversationMessageRepo.remove(rows);
-
+    const deletedAt = new Date();
+    const saved: ConversationMessage[] = [];
     for (const row of rows) {
+      if (row.deletedAt == null) {
+        row.deletedAt = deletedAt;
+      }
+      const savedRow = await this.conversationMessageRepo.save(row);
+      saved.push(savedRow);
       this.log.debug(
-        `Deleted telegram message id=${row.externalId} conversation_id=${row.conversationId} integration_id=${integration.id}`,
+        `Soft-deleted telegram message id=${row.externalId} conversation_id=${row.conversationId} integration_id=${integration.id}`,
       );
     }
 
-    return [...new Set(rows.map((row) => row.conversationId))];
+    return saved;
   }
 
   private buildStoredPayload(params: {
@@ -1014,6 +1083,95 @@ export class TelegramMessagePersistenceService {
       return String((value as { value: bigint }).value);
     }
     return String(value);
+  }
+
+  private buildStoredReactionsFromTelegram(
+    reactions: Api.TypeMessageReactions | undefined,
+    messageSenderId: string,
+    messageReceiverId: string,
+  ): StoredMessageReaction[] {
+    if (!(reactions instanceof Api.MessageReactions)) {
+      return [];
+    }
+
+    const recent = reactions.recentReactions ?? [];
+    const out: StoredMessageReaction[] = [];
+
+    for (const item of recent) {
+      if (!(item instanceof Api.MessagePeerReaction)) {
+        continue;
+      }
+      const reaction = this.resolveTelegramReactionEmoticon(item.reaction);
+      if (!reaction) {
+        continue;
+      }
+      const reactorUserId = this.resolveUserIdFromPeer(item.peerId);
+      if (!reactorUserId) {
+        continue;
+      }
+      const from = this.resolveReactionFromParticipant(
+        reactorUserId,
+        messageSenderId,
+        messageReceiverId,
+      );
+      if (!from) {
+        continue;
+      }
+      const at =
+        typeof item.date === "number"
+          ? new Date(item.date * 1000).toISOString()
+          : new Date().toISOString();
+      out.push({ reaction, at, from });
+    }
+
+    return out;
+  }
+
+  private resolveTelegramReactionEmoticon(
+    reaction: Api.TypeReaction | undefined,
+  ): string | null {
+    if (reaction instanceof Api.ReactionEmoji) {
+      const emoticon = reaction.emoticon?.trim();
+      return emoticon || null;
+    }
+    if (reaction instanceof Api.ReactionCustomEmoji) {
+      return `custom:${this.bigIntToId(reaction.documentId)}`;
+    }
+    if (reaction instanceof Api.ReactionPaid) {
+      return "paid";
+    }
+    return null;
+  }
+
+  private resolveUserIdFromPeer(peer: Api.TypePeer | undefined): string | null {
+    if (!peer) {
+      return null;
+    }
+    try {
+      return utils.getPeerId(peer);
+    } catch {
+      if (peer instanceof Api.PeerUser) {
+        return this.bigIntToId(peer.userId);
+      }
+      return null;
+    }
+  }
+
+  private resolveReactionFromParticipant(
+    reactorUserId: string,
+    messageSenderId: string,
+    messageReceiverId: string,
+  ): "sender" | "receiver" | null {
+    const reactor = reactorUserId.trim();
+    const sender = messageSenderId.trim();
+    const receiver = messageReceiverId.trim();
+    if (reactor && reactor === sender) {
+      return "sender";
+    }
+    if (reactor && reactor === receiver) {
+      return "receiver";
+    }
+    return null;
   }
 
   private async syncParticipantOnPersist(

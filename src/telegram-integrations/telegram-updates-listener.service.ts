@@ -583,6 +583,49 @@ export class TelegramUpdatesListenerService
         }
       };
 
+      const reactionsHandler = async (update: Api.TypeUpdate) => {
+        if (!(update instanceof Api.UpdateMessageReactions)) {
+          return;
+        }
+
+        const active = this.clients.get(integration.id);
+        if (!active) {
+          return;
+        }
+
+        const fenceOk = await this.lockService.verifyFence(
+          integration.id,
+          this.instanceId,
+          active.lockVersion,
+        );
+        if (!fenceOk) {
+          this.log.warn(
+            `Telegram listener stale reaction ignored integration_id=${integration.id}: lost lock (fencing)`,
+          );
+          void this.stopListenerDueToLostLock(integration.id);
+          return;
+        }
+
+        try {
+          await this.persistence.persistMessageReactionsUpdate(
+            integration,
+            update,
+          );
+        } catch (e) {
+          if (this.isAuthKeyDuplicated(e)) {
+            void this.handleAuthKeyDuplicated(integration, {
+              client,
+              hint: "session auth key duplicated during message reaction",
+            });
+            return;
+          }
+          const err = e instanceof Error ? e.message : String(e);
+          this.log.warn(
+            `Telegram reaction handler failed integration_id=${integration.id}: ${err}`,
+          );
+        }
+      };
+
       const readReceiptHandler = async (update: Api.TypeUpdate) => {
         if (!(update instanceof Api.UpdateReadHistoryOutbox)) {
           return;
@@ -626,6 +669,10 @@ export class TelegramUpdatesListenerService
       client.addEventHandler(handler, new NewMessage({}));
       client.addEventHandler(editedHandler, new EditedMessage({}));
       client.addEventHandler(deletedHandler, new DeletedMessage({}));
+      client.addEventHandler(
+        reactionsHandler,
+        new Raw({ types: [Api.UpdateMessageReactions] }),
+      );
       client.addEventHandler(
         readReceiptHandler,
         new Raw({ types: [Api.UpdateReadHistoryOutbox] }),

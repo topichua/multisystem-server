@@ -1,4 +1,5 @@
 import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
+import type { ConversationMessageReactionDto } from "./dto/http/conversation-message-reaction.dto";
 
 /**
  * Stable GET `/conversations/:id/messages` item shape (and WebSocket `message`).
@@ -13,11 +14,12 @@ export type LegacyInstagramMessageApi = {
   attachments?: { data?: Array<Record<string, unknown>> };
   shares?: { data?: Array<Record<string, unknown>> };
   story?: Record<string, unknown>;
-  reactions?: { data?: Array<Record<string, unknown>> };
+  reactions?: ConversationMessageReactionDto[];
   tags?: { data?: Array<{ name?: string }> };
   is_unsupported?: boolean;
   edited_at?: string;
   read_at?: string;
+  deleted_at?: string;
   system_updated_at: string;
   reply_to_id?: string;
   replied_to_message?: {
@@ -90,10 +92,8 @@ export function toLegacyInstagramMessageApiShape(
   if (msg.story != null) {
     out.story = msg.story as Record<string, unknown>;
   }
-  if (msg.reactions?.data != null && msg.reactions.data.length > 0) {
-    out.reactions = {
-      data: msg.reactions.data as Array<Record<string, unknown>>,
-    };
+  if (msg.reactions != null && msg.reactions.length > 0) {
+    out.reactions = msg.reactions;
   }
   if (msg.tags?.data != null && msg.tags.data.length > 0) {
     out.tags = { data: msg.tags.data };
@@ -106,6 +106,9 @@ export function toLegacyInstagramMessageApiShape(
   }
   if (msg.read_at?.trim()) {
     out.read_at = msg.read_at.trim();
+  }
+  if (msg.deleted_at?.trim()) {
+    out.deleted_at = msg.deleted_at.trim();
   }
   if (msg.reply_to_id?.trim()) {
     out.reply_to_id = msg.reply_to_id.trim();

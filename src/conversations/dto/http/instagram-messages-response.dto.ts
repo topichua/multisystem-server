@@ -1,4 +1,5 @@
 import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ConversationMessageReactionDto } from "./conversation-message-reaction.dto";
 
 export class InstagramMessageActorDto {
   @ApiProperty()
@@ -230,11 +231,11 @@ export class InstagramMessageDto {
   story?: Record<string, unknown>;
 
   @ApiPropertyOptional({
-    type: "object",
-    additionalProperties: true,
-    description: "Message reactions; `data` items are open objects.",
+    type: () => [ConversationMessageReactionDto],
+    description:
+      "Message reactions from `reactions_json` (`{ reaction, at, from }`).",
   })
-  reactions?: { data?: Array<Record<string, unknown>> };
+  reactions?: ConversationMessageReactionDto[];
 
   @ApiPropertyOptional({ type: () => InstagramMessageTagsDto })
   tags?: InstagramMessageTagsDto;
@@ -254,6 +255,12 @@ export class InstagramMessageDto {
       "When this message was marked as read in this system, ISO 8601",
   })
   read_at?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "When this message was deleted on the source platform (e.g. Telegram), ISO 8601. Present only for deleted messages.",
+  })
+  deleted_at?: string;
 
   @ApiProperty({
     description:

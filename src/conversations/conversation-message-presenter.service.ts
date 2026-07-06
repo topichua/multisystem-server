@@ -5,7 +5,11 @@ import { ConversationMessage } from "../database/entities";
 import type { InstagramMessageDto } from "./dto/http/instagram-messages-response.dto";
 import type { InstagramRepliedToMessageRefDto } from "./dto/http/instagram-messages-response.dto";
 import { toLegacyInstagramMessageApiShape } from "./instagram-message-api-shape.util";
-import { resolveReactionsForApiFromStoredJson } from "./instagram-message-reactions.util";
+import {
+  mapInstagramStoredReactionsForApi,
+  mapReactionsJsonForApi,
+} from "./conversation-message-reactions-json.util";
+import type { InstagramMessageReactionsDto } from "./dto/http/instagram-messages-response.dto";
 
 @Injectable()
 export class ConversationMessagePresenterService {
@@ -91,14 +95,31 @@ export class ConversationMessagePresenterService {
     return new Date().toISOString();
   }
 
+  private resolveReactionsForApi(
+    row: ConversationMessage,
+    parsed?: Record<string, unknown>,
+  ) {
+    const fromColumn = mapReactionsJsonForApi(row.reactionsJson);
+    if (fromColumn != null) {
+      return fromColumn;
+    }
+    if (parsed) {
+      const stored = parsed.reactions as InstagramMessageReactionsDto | undefined;
+      return mapInstagramStoredReactionsForApi(row, stored);
+    }
+    return undefined;
+  }
+
   private parseStoredMessage(row: ConversationMessage): InstagramMessageDto {
     const addDbMeta = (
       m: Omit<InstagramMessageDto, "system_updated_at"> &
         Partial<Pick<InstagramMessageDto, "system_updated_at">>,
     ): InstagramMessageDto => {
-      const { read_at, edited_at, system_updated_at, ...fromGraph } = m;
+      const { read_at, edited_at, deleted_at, system_updated_at, ...fromGraph } =
+        m;
       void read_at;
       void edited_at;
+      void deleted_at;
       void system_updated_at;
       return {
         ...fromGraph,
@@ -106,6 +127,9 @@ export class ConversationMessagePresenterService {
           ? { edited_at: row.editedAt.toISOString() }
           : {}),
         ...(row.readAt != null ? { read_at: row.readAt.toISOString() } : {}),
+        ...(row.deletedAt != null
+          ? { deleted_at: row.deletedAt.toISOString() }
+          : {}),
         ...(row.repliedToExternalId != null
           ? { reply_to_id: row.repliedToExternalId }
           : {}),
@@ -128,7 +152,7 @@ export class ConversationMessagePresenterService {
         void _storedReactions;
         void _conversation;
         void _replyTo;
-        const reactions = resolveReactionsForApiFromStoredJson(parsed);
+        const reactions = this.resolveReactionsForApi(row, parsed);
         return addDbMeta({
           ...(forClient as unknown as InstagramMessageDto),
           ...(reactions != null ? { reactions } : {}),
@@ -142,6 +166,7 @@ export class ConversationMessagePresenterService {
       /* fallback */
     }
 
+    const reactions = this.resolveReactionsForApi(row);
     return addDbMeta({
       id: row.externalId,
       created_time: row.createdAt.toISOString(),
@@ -152,6 +177,7 @@ export class ConversationMessagePresenterService {
             ? [{ id: row.receiverId }]
             : [],
       },
+      ...(reactions != null ? { reactions } : {}),
     });
   }
 }
