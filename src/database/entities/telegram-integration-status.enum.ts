@@ -3,7 +3,10 @@ export enum TelegramIntegrationStatus {
   PENDING_CODE = "pending_code",
   PENDING_QR = "pending_qr",
   PENDING_PASSWORD = "pending_password",
-  /** GramJS listener is starting on this or another instance. */
+  /**
+   * Transient listener startup — not persisted to DB (rows stay `active`).
+   * Reconcile normalizes legacy stuck `connecting` values.
+   */
   CONNECTING = "connecting",
   /** Connected — session valid; listener runs when lock is held. */
   ACTIVE = "active",

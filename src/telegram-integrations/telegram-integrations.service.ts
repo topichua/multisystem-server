@@ -401,12 +401,14 @@ export class TelegramIntegrationsService {
     name: string;
     connectedAt?: string;
     status: TelegramIntegrationStatus;
+    lastError?: string;
   } {
     return {
       type: "telegram",
       id: row.id,
       name: this.resolveIntegrationListName(row),
       status: row.status,
+      ...(row.lastError?.trim() ? { lastError: row.lastError.trim() } : {}),
       ...(row.connectedAt != null && !Number.isNaN(row.connectedAt.getTime())
         ? { connectedAt: row.connectedAt.toISOString() }
         : {}),

@@ -31,6 +31,12 @@ export class IntegrationListItemDto {
 
   @ApiPropertyOptional({
     description:
+      "Telegram only: transient listener issue (e.g. AUTH_KEY_DUPLICATED). Integration stays connected; server retries automatically.",
+  })
+  lastError?: string;
+
+  @ApiPropertyOptional({
+    description:
       "Instagram only: Business Account id (Graph `instagram_business_account.id`).",
   })
   businessAccountId?: string;

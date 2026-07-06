@@ -28,6 +28,7 @@ import { isGramUpdateMessageReactions } from "./telegram-gramjs-update.util";
 
 const SYNC_INTERVAL_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 18_000;
+const TELEGRAM_CONNECT_TIMEOUT_MS = 45_000;
 const AUTH_KEY_DUPLICATED_ERROR = "AUTH_KEY_DUPLICATED";
 
 type ActiveClient = {
@@ -159,13 +160,58 @@ export class TelegramUpdatesListenerService
   }
 
   private async fetchActiveIntegrations(): Promise<TelegramIntegration[]> {
-    return this.telegramRepo.find({
-      where: {
-        status: TelegramIntegrationStatus.ACTIVE,
-        sessionString: Not(IsNull()),
-      },
+    const rows = await this.telegramRepo.find({
+      where: [
+        {
+          status: TelegramIntegrationStatus.ACTIVE,
+          sessionString: Not(IsNull()),
+        },
+        {
+          status: TelegramIntegrationStatus.CONNECTING,
+          sessionString: Not(IsNull()),
+        },
+        {
+          status: TelegramIntegrationStatus.ERROR,
+          sessionString: Not(IsNull()),
+        },
+      ],
       order: { id: "ASC" },
     });
+
+    const normalized: TelegramIntegration[] = [];
+    for (const row of rows) {
+      const session = row.sessionString?.trim();
+      if (!session) {
+        continue;
+      }
+
+      const isStuckConnecting =
+        row.status === TelegramIntegrationStatus.CONNECTING;
+      const isRecoverableAuthConflict =
+        row.status === TelegramIntegrationStatus.ERROR &&
+        row.lastError?.trim() === AUTH_KEY_DUPLICATED_ERROR;
+
+      if (isStuckConnecting) {
+        this.log.warn(
+          `Telegram integration id=${row.id} was stuck in connecting; normalizing to active`,
+        );
+        await this.patchIntegration(row.id, {
+          status: TelegramIntegrationStatus.ACTIVE,
+          lastError: null,
+        });
+        row.status = TelegramIntegrationStatus.ACTIVE;
+      } else if (isRecoverableAuthConflict) {
+        await this.patchIntegration(row.id, {
+          status: TelegramIntegrationStatus.ACTIVE,
+        });
+        row.status = TelegramIntegrationStatus.ACTIVE;
+      } else if (row.status === TelegramIntegrationStatus.ERROR) {
+        continue;
+      }
+
+      normalized.push(row);
+    }
+    return normalized;
   }
 
   private async reconcileIntegrations(options?: {
@@ -426,16 +472,9 @@ export class TelegramUpdatesListenerService
     const isReconnect = existing != null;
     await this.detachIntegration(integration.id, { releaseLock: true });
 
-    await this.patchIntegration(integration.id, {
-      status: TelegramIntegrationStatus.CONNECTING,
-      listenerInstanceId: this.instanceId,
-      lastError: null,
-    });
-
     const lock = await this.lockService.acquire(integration.id, this.instanceId);
     if (!lock.acquired) {
       await this.patchIntegration(integration.id, {
-        status: TelegramIntegrationStatus.ACTIVE,
         listenerInstanceId: lock.ownerInstanceId ?? null,
         listenerHeartbeatAt: null,
       });
@@ -446,7 +485,7 @@ export class TelegramUpdatesListenerService
     let lockVersion = lock.lockVersion;
 
     try {
-      await client.connect();
+      await this.connectClientWithTimeout(client, integration.id);
       if (!(await client.isUserAuthorized())) {
         this.log.warn(
           `Telegram integration id=${integration.id} session not authorized; skip listener`,
@@ -458,7 +497,6 @@ export class TelegramUpdatesListenerService
           lockVersion,
         );
         await this.patchIntegration(integration.id, {
-          status: TelegramIntegrationStatus.ACTIVE,
           listenerInstanceId: null,
           listenerHeartbeatAt: null,
         });
@@ -737,11 +775,42 @@ export class TelegramUpdatesListenerService
         lockVersion,
       );
       await this.patchIntegration(integration.id, {
-        status: TelegramIntegrationStatus.ACTIVE,
         listenerInstanceId: null,
         listenerHeartbeatAt: null,
+        ...(err.includes("TELEGRAM_CONNECT_TIMEOUT")
+          ? { lastError: "Listener connect timed out; will retry" }
+          : {}),
       });
       return "failed";
+    }
+  }
+
+  private async connectClientWithTimeout(
+    client: TelegramClient,
+    integrationId: number,
+  ): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        client.connect(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error("TELEGRAM_CONNECT_TIMEOUT"));
+          }, TELEGRAM_CONNECT_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      if (err.includes("TELEGRAM_CONNECT_TIMEOUT")) {
+        this.log.warn(
+          `Telegram connect timed out integration_id=${integrationId} after ${TELEGRAM_CONNECT_TIMEOUT_MS}ms`,
+        );
+      }
+      throw e;
+    } finally {
+      if (timer != null) {
+        clearTimeout(timer);
+      }
     }
   }
 
@@ -865,14 +934,14 @@ export class TelegramUpdatesListenerService
     }
 
     await this.patchIntegration(integration.id, {
-      status: TelegramIntegrationStatus.ERROR,
+      status: TelegramIntegrationStatus.ACTIVE,
       lastError: AUTH_KEY_DUPLICATED_ERROR,
       listenerInstanceId: null,
       listenerHeartbeatAt: null,
     });
 
     this.log.warn(
-      `Telegram integration_id=${integration.id} set to error; re-login required (no auto-retry)`,
+      `Telegram integration_id=${integration.id} listener paused (${AUTH_KEY_DUPLICATED_ERROR}); session kept, reconcile will retry`,
     );
   }
 
@@ -962,13 +1031,29 @@ export class TelegramUpdatesListenerService
       await this.detachIntegration(integrationId, { releaseLock: true });
       return;
     }
-    if (
-      row.status === TelegramIntegrationStatus.ACTIVE &&
-      row.sessionString?.trim()
-    ) {
-      await this.attachIntegration(row);
-    } else {
+
+    const session = row.sessionString?.trim();
+    if (!session) {
       await this.detachIntegration(integrationId, { releaseLock: true });
+      return;
     }
+
+    if (
+      row.status === TelegramIntegrationStatus.CONNECTING ||
+      (row.status === TelegramIntegrationStatus.ERROR &&
+        row.lastError?.trim() === AUTH_KEY_DUPLICATED_ERROR)
+    ) {
+      await this.patchIntegration(integrationId, {
+        status: TelegramIntegrationStatus.ACTIVE,
+      });
+      row.status = TelegramIntegrationStatus.ACTIVE;
+    }
+
+    if (row.status === TelegramIntegrationStatus.ACTIVE) {
+      await this.attachIntegration(row);
+      return;
+    }
+
+    await this.detachIntegration(integrationId, { releaseLock: true });
   }
 }

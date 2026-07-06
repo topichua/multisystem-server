@@ -199,6 +199,7 @@ export class IntegrationsService {
       ...(mapped.status !== TelegramIntegrationStatus.ACTIVE
         ? { status: mapped.status }
         : {}),
+      ...(mapped.lastError ? { lastError: mapped.lastError } : {}),
     };
   }
 
