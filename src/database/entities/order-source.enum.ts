@@ -3,4 +3,5 @@ export enum OrderSource {
   instagram = "instagram",
   telegram = "telegram",
   manual = "manual",
+  mobile = "mobile",
 }

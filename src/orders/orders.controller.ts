@@ -53,7 +53,8 @@ export class OrdersController {
   @ApiOperation({
     summary: "Create order",
     description:
-      "Single request to create an order. Only `customerId` is required. Status is always the workspace default (`order_statuses.is_default`); use PATCH /orders/:orderId/status to change it later. " +
+      "Single request to create an order. Provide exactly one of `customerId` (existing client) or `customerNew` (creates a client without social links). " +
+      "Status is always the workspace default (`order_statuses.is_default`); use PATCH /orders/:orderId/status to change it later. " +
       "Order `id` is per-workspace and starts at 1001 (1002, 1003, …). " +
       "Other optional fields: `conversationId`, `source`, `currency`, notes, `items`, `delivery`.",
   })
@@ -271,6 +272,11 @@ export class OrdersController {
   }
 
   @Get(":orderId")
+  @ApiOperation({
+    summary: "Get order by id",
+    description:
+      "Includes `canEditItems` (true when status category is `new`) and `canRemoveTracking` on delivery when applicable.",
+  })
   async getById(
     @Req() req: { user?: AuthUser },
     @Param("orderId", ParseIntPipe) orderId: number,

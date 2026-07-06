@@ -36,6 +36,7 @@ import type { UpdateOrderDto } from "./dto/update-order.dto";
 import type { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import type { OrderEventsListResponseDto } from "./dto/order-events-list-response.dto";
 import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-stats-response.dto";
+import type { ClientLastOrderResponseDto } from "../clients/dto/client-last-order-response.dto";
 import type { ClientOrderStatDto } from "../clients/dto/client-order-stat.dto";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
@@ -117,12 +118,11 @@ export class OrdersService {
       "UAH"
     ).slice(0, 8);
 
-    const client = await this.clientRepo.findOne({
-      where: { id: dto.customerId, workspaceId },
-    });
-    if (!client) {
+    const hasCustomerId = dto.customerId != null;
+    const hasCustomerNew = dto.customerNew != null;
+    if (hasCustomerId === hasCustomerNew) {
       throw new BadRequestException(
-        "Customer not found or not in your workspace",
+        "Provide exactly one of customerId or customerNew",
       );
     }
 
@@ -158,6 +158,12 @@ export class OrdersService {
     const statusId = await this.resolveDefaultOrderStatusId(workspaceId);
 
     const saved = await this.orderRepo.manager.transaction(async (em) => {
+      const customerId = await this.resolveCreateOrderCustomerId(
+        workspaceId,
+        dto,
+        em,
+      );
+
       const orderId = await this.orderIdAllocation.allocateNextOrderId(
         workspaceId,
         em,
@@ -165,7 +171,7 @@ export class OrdersService {
       const order = em.create(Order, {
         workspaceId,
         id: orderId,
-        customerId: client.id,
+        customerId,
         conversationId,
         source,
         statusId,
@@ -739,6 +745,7 @@ export class OrdersService {
     }
     order.deliveryInfo = await this.findDeliveryForOrder(order);
     hydrateDeliveryTrackingFlags(order, order.deliveryInfo ?? null);
+    order.canEditItems = order.status?.category === OrderStatusCategory.new;
     this.stripCircularOrderRefs(order);
     return order;
   }
@@ -905,6 +912,46 @@ export class OrdersService {
     return {
       clientId,
       ...stats,
+    };
+  }
+
+  async getLastOrderForClient(
+    ownerId: number,
+    clientId: number,
+  ): Promise<ClientLastOrderResponseDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const workspaceId = workspace.id;
+
+    const client = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!client) {
+      throw new NotFoundException("Client not found");
+    }
+
+    const order = await this.orderRepo.findOne({
+      where: { workspaceId, customerId: clientId },
+      order: { createdAt: "DESC", id: "DESC" },
+      relations: { status: true },
+    });
+    if (!order) {
+      throw new NotFoundException("No orders found for this client");
+    }
+
+    if (!order.status) {
+      throw new NotFoundException("Order status not found");
+    }
+
+    return {
+      id: order.id,
+      total_price: order.totalAmount,
+      status: {
+        id: order.status.id,
+        name: order.status.name,
+        category: order.status.category,
+      },
     };
   }
 
@@ -1257,6 +1304,34 @@ export class OrdersService {
         'Order line items can only be edited while status category is "new"',
       );
     }
+  }
+
+  private async resolveCreateOrderCustomerId(
+    workspaceId: number,
+    dto: CreateOrderDto,
+    em: EntityManager,
+  ): Promise<number> {
+    if (dto.customerId != null) {
+      const client = await em.findOne(Client, {
+        where: { id: dto.customerId, workspaceId },
+      });
+      if (!client) {
+        throw new BadRequestException(
+          "Customer not found or not in your workspace",
+        );
+      }
+      return client.id;
+    }
+
+    const row = dto.customerNew!;
+    const client = em.create(Client, {
+      firstName: row.firstName.trim(),
+      lastName: row.lastName.trim(),
+      phone: (row.phone?.trim() ?? "") || "",
+      workspaceId,
+    });
+    const saved = await em.save(client);
+    return saved.id;
   }
 
   private async resolveDefaultOrderStatusId(

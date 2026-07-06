@@ -188,6 +188,9 @@ export class Order {
   /** Hydrated: true when Nova Poshta TTN can still be deleted (before `shipped`). */
   canRemoveTracking?: boolean;
 
+  /** Hydrated: true when line items can be edited (status category is `new`). */
+  canEditItems?: boolean;
+
   @OneToMany(() => OrderEvent, (e) => e.order)
   events: OrderEvent[];
 }

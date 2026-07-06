@@ -56,6 +56,7 @@ export { RegistrationToken } from "./registration-token.entity";
 export { User } from "./user.entity";
 export { UserStatus, UserStatusLabels } from "./user-status.enum";
 export { Workspace } from "./workspace.entity";
+export { WorkspaceLanguage } from "./workspace-language.enum";
 export { WorkspaceRole } from "./workspace-role.entity";
 export {
   WorkspaceRoleIntegrationGrant,

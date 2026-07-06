@@ -37,6 +37,7 @@ import { CreateClientRequestDto } from "./dto/create-client-request.dto";
 import { GetClientQueryDto } from "./dto/get-client-query.dto";
 import { ListClientsQueryDto } from "./dto/list-clients-query.dto";
 import { ClientOrderStatsResponseDto } from "./dto/client-order-stats-response.dto";
+import { ClientLastOrderResponseDto } from "./dto/client-last-order-response.dto";
 import { ClientWriteResponseDto } from "./dto/client-write-response.dto";
 import { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
@@ -132,6 +133,23 @@ export class ClientsController {
   ): Promise<ClientWriteResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.clients.createForOwner(ownerId, dto);
+  }
+
+  @Get(":id/last-order")
+  @ApiOperation({
+    summary: "Last created order for client",
+    description:
+      "Returns the most recently created order for this client (`customer_id`), ordered by `created_at` desc.",
+  })
+  @ApiParam({ name: "id", type: Number, description: "Client primary key" })
+  @ApiOkResponse({ type: ClientLastOrderResponseDto })
+  async getLastOrderForClient(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ClientLastOrderResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    const clientId = this.parsePositiveInt(id, "id");
+    return this.orders.getLastOrderForClient(ownerId, clientId);
   }
 
   @Get(":id/orders/stats")

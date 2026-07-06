@@ -4,7 +4,12 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { InventoryMode, VariantStock, Workspace } from "../database/entities";
+import {
+  InventoryMode,
+  VariantStock,
+  Workspace,
+  WorkspaceLanguage,
+} from "../database/entities";
 import { resetAdvancedStockOnModeSwitch } from "../inventory/stock.logic";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { UpdateWorkspaceSettingsDto } from "./dto/update-workspace-settings.dto";
@@ -29,9 +34,13 @@ export class WorkspaceSettingsService {
     ownerId: number,
     dto: UpdateWorkspaceSettingsDto,
   ): Promise<WorkspaceSettingsResponseDto> {
-    if (dto.currency === undefined && dto.inventoryMode === undefined) {
+    if (
+      dto.currency === undefined &&
+      dto.inventoryMode === undefined &&
+      dto.language === undefined
+    ) {
       throw new BadRequestException(
-        "At least one of currency or inventoryMode (inventory_mode) must be provided",
+        "At least one of currency, inventoryMode (inventory_mode), or language must be provided",
       );
     }
     const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
@@ -53,6 +62,10 @@ export class WorkspaceSettingsService {
       ) {
         await this.resetStocksForAdvancedSwitch(ws.id);
       }
+    }
+
+    if (dto.language !== undefined) {
+      ws.language = dto.language;
     }
 
     await this.workspaceRepo.save(ws);
@@ -92,6 +105,7 @@ export class WorkspaceSettingsService {
       workspaceId: ws.id,
       currency: (ws.defaultCurrency?.trim() || "UAH").slice(0, 8),
       inventoryMode: ws.inventoryMode ?? InventoryMode.simple,
+      language: ws.language ?? WorkspaceLanguage.ua,
     };
   }
 }

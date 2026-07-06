@@ -30,6 +30,7 @@ const SYNC_INTERVAL_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 18_000;
 const TELEGRAM_CONNECT_TIMEOUT_MS = 45_000;
 const AUTH_KEY_DUPLICATED_ERROR = "AUTH_KEY_DUPLICATED";
+const SESSION_NOT_AUTHORIZED_ERROR = "SESSION_NOT_AUTHORIZED";
 
 type ActiveClient = {
   client: TelegramClient;
@@ -488,7 +489,10 @@ export class TelegramUpdatesListenerService
       await this.connectClientWithTimeout(client, integration.id);
       if (!(await client.isUserAuthorized())) {
         this.log.warn(
-          `Telegram integration id=${integration.id} session not authorized; skip listener`,
+          `Telegram integration id=${integration.id} session not authorized; skip listener ` +
+            `(session=${this.describeSession(session)}). ` +
+            "Integration row and session_string are kept. " +
+            "Common causes: Telegram revoked the session, TELEGRAM_API_ID/HASH changed since login, or login was started again for this phone.",
         );
         await this.telegramApi.destroyClient(client);
         await this.lockService.release(
@@ -499,6 +503,7 @@ export class TelegramUpdatesListenerService
         await this.patchIntegration(integration.id, {
           listenerInstanceId: null,
           listenerHeartbeatAt: null,
+          lastError: SESSION_NOT_AUTHORIZED_ERROR,
         });
         return "skipped";
       }

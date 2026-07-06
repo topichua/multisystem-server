@@ -9,6 +9,7 @@ import {
   MinLength,
 } from "class-validator";
 import { InventoryMode } from "../../database/entities/inventory-mode.enum";
+import { WorkspaceLanguage } from "../../database/entities/workspace-language.enum";
 
 function pickInventoryMode(
   obj: Record<string, unknown>,
@@ -55,4 +56,15 @@ export class UpdateWorkspaceSettingsDto {
   @IsOptional()
   @IsEnum(InventoryMode)
   inventory_mode?: InventoryMode;
+
+  @ApiPropertyOptional({
+    enum: WorkspaceLanguage,
+    description: "Workspace language: ua (Ukrainian) or en (English).",
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  )
+  @IsEnum(WorkspaceLanguage)
+  language?: WorkspaceLanguage;
 }

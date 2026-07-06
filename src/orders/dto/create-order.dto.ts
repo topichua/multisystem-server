@@ -12,14 +12,29 @@ import {
 } from "class-validator";
 import { OrderSource } from "../../database/entities/order-source.enum";
 import { AddOrderItemDto } from "./add-order-item.dto";
+import { CreateOrderCustomerNewDto } from "./create-order-customer-new.dto";
 import { UpdateOrderDeliveryDto } from "./update-order-delivery.dto";
 
 export class CreateOrderDto {
-  @ApiProperty({ description: "Client id in your workspace" })
+  @ApiPropertyOptional({
+    description:
+      "Existing client id in your workspace. Provide either `customerId` or `customerNew`, not both.",
+  })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  customerId: number;
+  customerId?: number;
+
+  @ApiPropertyOptional({
+    type: () => CreateOrderCustomerNewDto,
+    description:
+      "Create a new client without social links (no Instagram/Telegram). Provide either `customerId` or `customerNew`, not both.",
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateOrderCustomerNewDto)
+  customerNew?: CreateOrderCustomerNewDto;
 
   @ApiPropertyOptional({
     description:

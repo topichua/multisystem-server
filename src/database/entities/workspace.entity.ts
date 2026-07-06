@@ -9,6 +9,7 @@ import {
 } from "typeorm";
 import { User } from "./user.entity";
 import { InventoryMode } from "./inventory-mode.enum";
+import { WorkspaceLanguage } from "./workspace-language.enum";
 
 @Entity("workspace")
 @Index("IDX_workspace_owner_id", ["ownerId"])
@@ -39,6 +40,16 @@ export class Workspace {
     default: InventoryMode.simple,
   })
   inventoryMode: InventoryMode;
+
+  /** UI / content language for this workspace. */
+  @Column({
+    name: "language",
+    type: "enum",
+    enum: WorkspaceLanguage,
+    enumName: "workspace_language_enum",
+    default: WorkspaceLanguage.ua,
+  })
+  language: WorkspaceLanguage;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

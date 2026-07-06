@@ -1,5 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { InventoryMode } from "../../database/entities/inventory-mode.enum";
+import { WorkspaceLanguage } from "../../database/entities/workspace-language.enum";
 
 export class WorkspaceSettingsResponseDto {
   @ApiProperty()
@@ -18,4 +19,10 @@ export class WorkspaceSettingsResponseDto {
       "simple — editable quantity, no cost tracking; advanced — inventory movements and profit calculation.",
   })
   inventoryMode: InventoryMode;
+
+  @ApiProperty({
+    enum: WorkspaceLanguage,
+    description: "Workspace language: ua (Ukrainian) or en (English).",
+  })
+  language: WorkspaceLanguage;
 }

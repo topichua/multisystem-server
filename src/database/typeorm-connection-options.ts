@@ -109,6 +109,8 @@ import { DeliveryStatusFailedAndNovaPoshtaOrderStatusMapping1744200000111 } from
 import { SeedOrderStatusesOnWorkspaceCreate1744200000112 } from "./migrations/1744200000112-SeedOrderStatusesOnWorkspaceCreate";
 import { OrderCompositePrimaryKey1744200000113 } from "./migrations/1744200000113-OrderCompositePrimaryKey";
 import { ConversationMessageV2Columns1744200000114 } from "./migrations/1744200000114-ConversationMessageV2Columns";
+import { WorkspaceLanguage1744200000115 } from "./migrations/1744200000115-WorkspaceLanguage";
+import { OrderSourceMobile1744200000116 } from "./migrations/1744200000116-OrderSourceMobile";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -391,6 +393,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       SeedOrderStatusesOnWorkspaceCreate1744200000112,
       OrderCompositePrimaryKey1744200000113,
       ConversationMessageV2Columns1744200000114,
+      WorkspaceLanguage1744200000115,
+      OrderSourceMobile1744200000116,
     ],
   };
 }
