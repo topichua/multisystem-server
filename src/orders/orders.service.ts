@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import type { EntityManager } from "typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import {
   Client,
   Conversation,
@@ -23,6 +23,7 @@ import {
   OrderStatusCategory,
   Product,
   ProductVariant,
+  User,
 } from "../database/entities";
 import type { AddOrderItemDto } from "./dto/add-order-item.dto";
 import type { CreateOrderDto } from "./dto/create-order.dto";
@@ -54,6 +55,7 @@ import {
 import { pickMainMediaUrl } from "../products/product-media.util";
 import { OrderStatusDefaultsService } from "./order-status-defaults.service";
 import { OrderIdAllocationService } from "./order-id-allocation.service";
+import { buildOrdersKeywordClause } from "./order-search.util";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -75,6 +77,20 @@ type OrderStatsRawRow = {
   totalSpent: string;
   averageOrderPrice: string;
   lastOrderAt: Date | null;
+};
+
+type OrderCreatedBySummary = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  avatar?: string | null;
+};
+
+type OrderDeliverySummary = {
+  deliveryStatus: OrderDeliveryStatus;
+  trackingNumber: string | null;
+  deliveryStatusCode: string | null;
+  deliveryStatusText: string | null;
 };
 
 @Injectable()
@@ -100,6 +116,8 @@ export class OrdersService {
     private readonly productRepo: Repository<Product>,
     @InjectRepository(ProductVariant)
     private readonly variantRepo: Repository<ProductVariant>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly inventory: InventoryService,
     private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly novaPoshtaWaybill: NovaPoshtaWaybillService,
@@ -746,6 +764,8 @@ export class OrdersService {
     order.deliveryInfo = await this.findDeliveryForOrder(order);
     hydrateDeliveryTrackingFlags(order, order.deliveryInfo ?? null);
     order.canEditItems = order.status?.category === OrderStatusCategory.new;
+    this.hydrateOrdersDelivery([order]);
+    await this.hydrateOrdersCreatedBy([order]);
     this.stripCircularOrderRefs(order);
     return order;
   }
@@ -813,6 +833,10 @@ export class OrdersService {
       { workspaceId },
     );
 
+    qb.leftJoinAndSelect("o.status", "status")
+      .leftJoinAndSelect("o.customer", "customer")
+      .leftJoin(OrderDeliveryInfo, "delivery", "delivery.id = o.deliveryId");
+
     if (query.clientId != null) {
       const client = await this.clientRepo.findOne({
         where: { id: query.clientId, workspaceId },
@@ -856,14 +880,17 @@ export class OrdersService {
       }
     }
 
+    const keywordClause = buildOrdersKeywordClause(query.keyword);
+    if (keywordClause) {
+      qb.andWhere(keywordClause.whereClause, keywordClause.params);
+    }
+
     qb.orderBy("o.createdAt", "DESC").addOrderBy("o.id", "DESC");
 
-    const [items, total] = await qb
-      .take(pageSize)
-      .skip(skip)
-      .leftJoinAndSelect("o.status", "status")
-      .leftJoinAndSelect("o.customer", "customer")
-      .getManyAndCount();
+    const [items, total] = await qb.take(pageSize).skip(skip).getManyAndCount();
+
+    this.hydrateOrdersDelivery(items);
+    await this.hydrateOrdersCreatedBy(items);
 
     return { items, total, page, pageSize };
   }
@@ -1332,6 +1359,64 @@ export class OrdersService {
     });
     const saved = await em.save(client);
     return saved.id;
+  }
+
+  private async hydrateOrdersCreatedBy(orders: Order[]): Promise<void> {
+    if (orders.length === 0) {
+      return;
+    }
+
+    const createdByIds = [
+      ...new Set(
+        orders
+          .map((order) => order.createdById)
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+    if (createdByIds.length === 0) {
+      return;
+    }
+
+    const users = await this.userRepo.find({
+      where: { id: In(createdByIds) },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const usersById = new Map(users.map((user) => [user.id, user]));
+
+    for (const order of orders) {
+      const user = usersById.get(order.createdById);
+      if (!user) {
+        continue;
+      }
+      (order as unknown as { createdBy: OrderCreatedBySummary }).createdBy =
+        this.toOrderCreatedBySummary(user);
+    }
+  }
+
+  private toOrderCreatedBySummary(user: User): OrderCreatedBySummary {
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName?.trim() ?? "",
+      avatar: user.avatarSrc?.trim() || null,
+    };
+  }
+
+  private hydrateOrdersDelivery(orders: Order[]): void {
+    for (const order of orders) {
+      const info = order.deliveryInfo;
+      if (!info) {
+        (order as unknown as { delivery?: OrderDeliverySummary | null }).delivery =
+          null;
+        continue;
+      }
+      (order as unknown as { delivery: OrderDeliverySummary }).delivery = {
+        deliveryStatus: info.deliveryStatus,
+        trackingNumber: info.trackingNumber?.trim() || null,
+        deliveryStatusCode: info.providerStatusCode?.trim() || null,
+        deliveryStatusText: info.providerStatusText?.trim() || null,
+      };
+    }
   }
 
   private async resolveDefaultOrderStatusId(

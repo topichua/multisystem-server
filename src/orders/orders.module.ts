@@ -11,6 +11,7 @@ import {
   Product,
   ProductMedia,
   ProductVariant,
+  User,
   Workspace,
 } from "../database/entities";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
@@ -41,6 +42,7 @@ import { OrdersService } from "./orders.service";
       Product,
       ProductMedia,
       ProductVariant,
+      User,
     ]),
   ],
   controllers: [OrdersController, OrderStatusesController],

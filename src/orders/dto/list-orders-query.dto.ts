@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   IsArray,
   IsDateString,
@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from "class-validator";
 
@@ -54,6 +55,20 @@ export class ListOrdersQueryDto {
   @Type(() => Number)
   @IsInt({ each: true })
   statuses?: number[];
+
+  @ApiPropertyOptional({
+    description:
+      "Case-insensitive keyword search across customer first/last name, phone, tracking number, and order number.",
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value == null || typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed === "" ? undefined : trimmed;
+  })
+  @IsString()
+  @MaxLength(256)
+  keyword?: string;
 
   @ApiPropertyOptional({ description: "Created at >= ISO date" })
   @IsOptional()

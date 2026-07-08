@@ -158,7 +158,7 @@ export class OrdersController {
   @ApiOperation({
     summary: "List orders",
     description:
-      "Paginated orders for the workspace. Optional `clientId` limits to that customer; `statusId` filters by status.",
+      "Paginated orders for the workspace. Each item includes `createdBy` with creator id and name. Optional `clientId` limits to that customer; `statusId` filters by status.",
   })
   async list(
     @Req() req: { user?: AuthUser },
@@ -275,7 +275,7 @@ export class OrdersController {
   @ApiOperation({
     summary: "Get order by id",
     description:
-      "Includes `canEditItems` (true when status category is `new`) and `canRemoveTracking` on delivery when applicable.",
+      "Includes `createdBy` (creator id and name), `canEditItems` (true when status category is `new`), and `canRemoveTracking` on delivery when applicable.",
   })
   async getById(
     @Req() req: { user?: AuthUser },
