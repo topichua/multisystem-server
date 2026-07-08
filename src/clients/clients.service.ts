@@ -19,7 +19,10 @@ import type { ClientSocialIds } from "./dto/client-link-input.util";
 import type { ClientOrderStatDto } from "./dto/client-order-stat.dto";
 import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
 import type { ClientLookupResponseDto } from "./dto/client-lookup-response.dto";
-import type { ClientResponseDto } from "./dto/client-response.dto";
+import type {
+  ClientResponseDto,
+  ClientSocialUserDto,
+} from "./dto/client-response.dto";
 import type { CreateClientRequestDto } from "./dto/create-client-request.dto";
 import type { ClientWriteResponseDto } from "./dto/client-write-response.dto";
 import type { UpdateClientRequestDto } from "./dto/update-client-request.dto";
@@ -30,6 +33,11 @@ type ClientReadOptions = {
 
 type ClientSerializeOptions = ClientReadOptions & {
   includeAvatarSrc?: boolean;
+};
+
+type ClientSocialProfileMaps = {
+  telegram: Map<string, ClientSocialUserDto>;
+  instagram: Map<string, ClientSocialUserDto>;
 };
 
 const EMPTY_SOCIAL_IDS: ClientSocialIds = {
@@ -534,9 +542,9 @@ export class ClientsService {
       );
     }
 
-    const avatarMaps =
+    const socialProfileMaps =
       options.includeAvatarSrc === true
-        ? await this.loadAvatarSrcMaps(workspaceId, socialIdsByClientId)
+        ? await this.loadSocialProfileMaps(workspaceId, socialIdsByClientId)
         : undefined;
 
     return rows.map((row) => {
@@ -544,8 +552,12 @@ export class ClientsService {
       return this.toClientDto(row, socialIds, {
         orderStats: statsByClientId?.get(row.id),
         avatarSrc:
-          avatarMaps != null
-            ? this.resolveAvatarSrc(socialIds, avatarMaps)
+          socialProfileMaps != null
+            ? this.resolveAvatarSrc(socialIds, socialProfileMaps)
+            : undefined,
+        socialProfiles:
+          socialProfileMaps != null
+            ? this.resolveSocialProfiles(socialIds, socialProfileMaps)
             : undefined,
         includeAvatarSrc: options.includeAvatarSrc === true,
       });
@@ -579,13 +591,10 @@ export class ClientsService {
     };
   }
 
-  private async loadAvatarSrcMaps(
+  private async loadSocialProfileMaps(
     workspaceId: number,
     socialIdsByClientId: Map<number, ClientSocialIds>,
-  ): Promise<{
-    telegram: Map<string, string>;
-    instagram: Map<string, string>;
-  }> {
+  ): Promise<ClientSocialProfileMaps> {
     const telegramIds = new Set<string>();
     const instagramIds = new Set<string>();
     for (const socialIds of socialIdsByClientId.values()) {
@@ -597,44 +606,102 @@ export class ClientsService {
       telegramIds.size > 0
         ? this.telegramUserRepo.find({
             where: { workspaceId, id: In([...telegramIds]) },
-            select: { id: true, profilePic: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              username: true,
+              profilePic: true,
+            },
           })
         : Promise.resolve([]),
       instagramIds.size > 0
         ? this.instagramUserRepo.find({
             where: { workspaceId, id: In([...instagramIds]) },
-            select: { id: true, profilePic: true },
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              profilePic: true,
+            },
           })
         : Promise.resolve([]),
     ]);
 
     return {
       telegram: new Map(
-        telegramUsers.map((user) => [user.id, user.profilePic?.trim() ?? ""]),
+        telegramUsers.map((user) => [
+          user.id,
+          {
+            id: user.id,
+            username: user.username?.trim() || null,
+            fullName: [user.firstName?.trim(), user.lastName?.trim()]
+              .filter(Boolean)
+              .join(" "),
+            avatar: user.profilePic?.trim() || null,
+          },
+        ]),
       ),
       instagram: new Map(
-        instagramUsers.map((user) => [user.id, user.profilePic?.trim() ?? ""]),
+        instagramUsers.map((user) => [
+          user.id,
+          {
+            id: user.id,
+            username: user.username?.trim() || null,
+            fullName: user.name?.trim() || "",
+            avatar: user.profilePic?.trim() || null,
+          },
+        ]),
       ),
     };
   }
 
   private resolveAvatarSrc(
     socialIds: ClientSocialIds,
-    maps: { telegram: Map<string, string>; instagram: Map<string, string> },
+    maps: ClientSocialProfileMaps,
   ): string | null {
     for (const telegramUserId of socialIds.telegramUserIds) {
-      const profilePic = maps.telegram.get(telegramUserId);
+      const profilePic = maps.telegram.get(telegramUserId)?.avatar;
       if (profilePic && profilePic.length > 0) {
         return profilePic;
       }
     }
     for (const instagramUserId of socialIds.instagramUserIds) {
-      const profilePic = maps.instagram.get(instagramUserId);
+      const profilePic = maps.instagram.get(instagramUserId)?.avatar;
       if (profilePic && profilePic.length > 0) {
         return profilePic;
       }
     }
     return null;
+  }
+
+  private resolveSocialProfiles(
+    socialIds: ClientSocialIds,
+    maps: ClientSocialProfileMaps,
+  ): {
+    instagramUsers: ClientSocialUserDto[];
+    telegramUsers: ClientSocialUserDto[];
+  } {
+    return {
+      instagramUsers: socialIds.instagramUserIds.map(
+        (id) =>
+          maps.instagram.get(id) ?? {
+            id,
+            username: null,
+            fullName: "",
+            avatar: null,
+          },
+      ),
+      telegramUsers: socialIds.telegramUserIds.map(
+        (id) =>
+          maps.telegram.get(id) ?? {
+            id,
+            username: null,
+            fullName: "",
+            avatar: null,
+          },
+      ),
+    };
   }
 
   private toClientDto(
@@ -643,6 +710,10 @@ export class ClientsService {
     options?: {
       orderStats?: ClientOrderStatDto;
       avatarSrc?: string | null;
+      socialProfiles?: {
+        instagramUsers: ClientSocialUserDto[];
+        telegramUsers: ClientSocialUserDto[];
+      };
       includeAvatarSrc?: boolean;
     },
   ): ClientResponseDto {
@@ -654,6 +725,8 @@ export class ClientsService {
       phone: row.phone,
       instagramUserIds: socialIds.instagramUserIds,
       telegramUserIds: socialIds.telegramUserIds,
+      instagramUsers: options?.socialProfiles?.instagramUsers ?? [],
+      telegramUsers: options?.socialProfiles?.telegramUsers ?? [],
       workspaceId: row.workspaceId,
       ...(options?.includeAvatarSrc === true
         ? { avatar_src: options.avatarSrc ?? null }

@@ -1,6 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ClientOrderStatDto } from "./client-order-stat.dto";
 
+export class ClientSocialUserDto {
+  @ApiProperty({ example: "374956780" })
+  id: string;
+
+  @ApiPropertyOptional({ nullable: true, example: "andrijzaluga" })
+  username: string | null;
+
+  @ApiProperty({ example: "Andrij Zaluga" })
+  fullName: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "https://cdn.example.com/avatars/user.jpg",
+  })
+  avatar: string | null;
+}
+
 /** GET /clients response item — includes read-only computed fields. */
 export class ClientResponseDto {
   @ApiProperty({ example: 42 })
@@ -32,6 +49,20 @@ export class ClientResponseDto {
     description: "Telegram ids from `client_links` (provider `telegram`).",
   })
   telegramUserIds: string[];
+
+  @ApiProperty({
+    type: [ClientSocialUserDto],
+    description:
+      "Instagram profiles joined from `instagram_users` for linked `instagramUserIds`.",
+  })
+  instagramUsers: ClientSocialUserDto[];
+
+  @ApiProperty({
+    type: [ClientSocialUserDto],
+    description:
+      "Telegram profiles joined from `telegram_users` for linked `telegramUserIds`.",
+  })
+  telegramUsers: ClientSocialUserDto[];
 
   @ApiProperty({ example: 1 })
   workspaceId: number;
