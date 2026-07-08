@@ -2399,6 +2399,7 @@ export class ConversationsService {
         name: TelegramUsersService.buildDisplayName(participant),
         username: participant.username?.trim() || "",
         profilePic: participant.profilePic,
+        phone: participant.phone?.trim() || "",
       };
     }
 
@@ -2409,6 +2410,7 @@ export class ConversationsService {
       name: participant.name,
       username: participant.username,
       profilePic: participant.profilePic,
+      phone: "",
     };
   }
 

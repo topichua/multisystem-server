@@ -13,6 +13,13 @@ export class ConversationParticipantDto {
 
   @ApiProperty()
   profilePic: string;
+
+   @ApiProperty({
+     description:
+       "E.164 phone when known (Telegram participant only). Empty string when not available.",
+     example: "+380501234567",
+   })
+   phone: string;
 }
 
 export class ConversationRowDto {
