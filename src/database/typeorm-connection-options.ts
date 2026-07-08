@@ -112,6 +112,7 @@ import { ConversationMessageV2Columns1744200000114 } from "./migrations/17442000
 import { WorkspaceLanguage1744200000115 } from "./migrations/1744200000115-WorkspaceLanguage";
 import { OrderSourceMobile1744200000116 } from "./migrations/1744200000116-OrderSourceMobile";
 import { OrderDiscounts1744200000117 } from "./migrations/1744200000117-OrderDiscounts";
+import { WorkspaceRoleMaxOrderDiscountPercentage1744200000118 } from "./migrations/1744200000118-WorkspaceRoleMaxOrderDiscountPercentage";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -397,6 +398,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceLanguage1744200000115,
       OrderSourceMobile1744200000116,
       OrderDiscounts1744200000117,
+      WorkspaceRoleMaxOrderDiscountPercentage1744200000118,
     ],
   };
 }

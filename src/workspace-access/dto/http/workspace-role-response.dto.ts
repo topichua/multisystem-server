@@ -34,6 +34,11 @@ export class WorkspaceRoleResponseDto {
   })
   permissionOptionLists: Record<string, string[]>;
 
+  @ApiPropertyOptional({
+    description: "Maximum percentage discount members with this role are allowed to apply to an order.",
+  })
+  maxOrderDiscountPercentage?: number;
+
   @ApiProperty({
     type: ResolvedUserPermissionsResponseDto,
     description: "Typed resolved permissions for this role.",

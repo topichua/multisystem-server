@@ -9,7 +9,7 @@ export class OrderEventResponseDto {
 
   @ApiProperty({
     description:
-      "Event type, e.g. order.created, order.status_changed, order.waybill_created",
+      "Event type, e.g. order.created, order.status_changed, order.waybill_created, order.discount_applied",
   })
   type: string;
 

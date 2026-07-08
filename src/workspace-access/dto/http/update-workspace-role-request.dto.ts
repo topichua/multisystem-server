@@ -2,10 +2,13 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
   ArrayNotEmpty,
   IsArray,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from "class-validator";
 
@@ -46,6 +49,16 @@ export class UpdateWorkspaceRoleRequestDto {
   @IsOptional()
   @IsObject()
   permissionOptions?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    example: 20,
+    description: "Maximum percentage discount that members with this role may apply to an order.",
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  maxOrderDiscountPercentage?: number;
 
   @ApiPropertyOptional({
     example: { "conversations.sources": ["instagram", "telegram"] },

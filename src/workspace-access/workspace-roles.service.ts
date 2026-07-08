@@ -151,6 +151,8 @@ export class WorkspaceRolesService {
       permissions,
       permissionOptions,
       permissionOptionLists,
+      maxOrderDiscountPercentage:
+        dto.maxOrderDiscountPercentage ?? null,
     });
     const saved = await this.roleRepo.save(row);
     return this.toDto(saved);
@@ -187,6 +189,9 @@ export class WorkspaceRolesService {
     }
     if (dto.permissionOptions != null) {
       row.permissionOptions = validatePermissionOptions(dto.permissionOptions);
+    }
+    if (dto.maxOrderDiscountPercentage !== undefined) {
+      row.maxOrderDiscountPercentage = dto.maxOrderDiscountPercentage;
     }
     if (dto.permissionOptionLists != null || dto.permissionOptions != null) {
       row.permissionOptionLists = validatePermissionOptionLists(
@@ -278,6 +283,7 @@ export class WorkspaceRolesService {
       permissions: row.permissions ?? [],
       permissionOptions,
       permissionOptionLists,
+      maxOrderDiscountPercentage: row.maxOrderDiscountPercentage ?? undefined,
       resolved: resolveRolePermissions({
         permissions: row.permissions,
         permissionOptions,

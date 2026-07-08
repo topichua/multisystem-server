@@ -57,6 +57,15 @@ export class WorkspaceRole {
   })
   permissionOptionLists: Record<string, string[]>;
 
+  @Column({
+    name: "max_order_discount_percentage",
+    type: "numeric",
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
+  maxOrderDiscountPercentage: number | null;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 

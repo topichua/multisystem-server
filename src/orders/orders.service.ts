@@ -66,6 +66,7 @@ export const OrderEventType = {
   WAYBILL_CREATED: "order.waybill_created",
   WAYBILL_REMOVED: "order.waybill_removed",
   TOTALS_UPDATED: "order.totals_updated",
+  DISCOUNT_APPLIED: "order.discount_applied",
 } as const;
 
 function roundMoney(n: number): number {
@@ -222,6 +223,26 @@ export class OrdersService {
         }),
       );
 
+      if (
+        dto.discountAmount != null ||
+        dto.discountPercent != null
+      ) {
+        await em.save(
+          em.create(OrderEvent, {
+            workspaceId,
+            orderId: persisted.id,
+            type: OrderEventType.DISCOUNT_APPLIED,
+            actorId: ownerId,
+            userId: ownerId,
+            payload: {
+              scope: "order",
+              discountAmount: persisted.discountAmount,
+              discountPercent: persisted.discountPercent,
+            },
+          }),
+        );
+      }
+
       const lineItems = dto.items ?? [];
       for (const line of lineItems) {
         await this.insertOrderLineItem(workspaceId, persisted, line, ownerId, em);
@@ -315,6 +336,8 @@ export class OrdersService {
     }
 
     if (hasDiscounts) {
+      const previousDiscountAmount = order.discountAmount;
+      const previousDiscountPercent = order.discountPercent;
       const nextDiscountAmount =
         dto.discountAmount === undefined
           ? undefined
@@ -340,6 +363,25 @@ export class OrdersService {
       }
       order.updatedById = ownerId;
       await this.orderRepo.save(order);
+
+      const discountChanged =
+        previousDiscountAmount !== order.discountAmount ||
+        previousDiscountPercent !== order.discountPercent;
+      if (discountChanged) {
+        await this.appendEvent(
+          workspace.id,
+          order.id,
+          OrderEventType.DISCOUNT_APPLIED,
+          ownerId,
+          {
+            scope: "order",
+            previousDiscountAmount,
+            previousDiscountPercent,
+            discountAmount: order.discountAmount,
+            discountPercent: order.discountPercent,
+          },
+        );
+      }
     }
 
     if (hasItems || hasNotes || hasDiscounts) {
@@ -1171,6 +1213,25 @@ export class OrdersService {
       ),
     });
     const saved = await orderItemRepo.save(item);
+
+    if (dto.discountAmount != null || dto.discountPercent != null) {
+      await this.appendEvent(
+        workspaceId,
+        order.id,
+        OrderEventType.DISCOUNT_APPLIED,
+        ownerId,
+        {
+          scope: "item",
+          orderItemId: saved.id,
+          productId: saved.productId,
+          variantId: saved.variantId,
+          quantity: saved.quantity,
+          discountAmount: saved.discountAmount,
+          discountPercent: saved.discountPercent,
+        },
+        manager,
+      );
+    }
 
     await this.appendEvent(
       workspaceId,
