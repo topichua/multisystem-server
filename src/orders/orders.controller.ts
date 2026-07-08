@@ -158,7 +158,7 @@ export class OrdersController {
   @ApiOperation({
     summary: "List orders",
     description:
-      "Paginated orders for the workspace. Each item includes `createdBy` with creator id and name. Optional `clientId` limits to that customer; `statusId` filters by status.",
+      "Paginated orders for the workspace. Each item includes `createdBy` with creator id and name. Optional `clientId` limits to that customer; `statusId` filters by status. `keyword` searches customer first/last name, phone, tracking number, and order number.",
   })
   async list(
     @Req() req: { user?: AuthUser },

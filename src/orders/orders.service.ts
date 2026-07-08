@@ -1487,8 +1487,8 @@ export class OrdersService {
     percentDiscount: number | null | undefined,
     context: string,
   ): void {
-    const fixedValue = fixedDiscountAmount == null ? null : Number(fixedDiscountAmount);
-    const percentValue = percentDiscount == null ? null : Number(percentDiscount);
+    const fixedValue = this.normalizeDiscountAmount(fixedDiscountAmount);
+    const percentValue = this.normalizeDiscountPercent(percentDiscount);
 
     if (fixedValue != null && percentValue != null) {
       throw new BadRequestException(
@@ -1503,14 +1503,34 @@ export class OrdersService {
     }
   }
 
+  private normalizeDiscountAmount(
+    amount: number | null | undefined,
+  ): number | null {
+    if (amount == null) {
+      return null;
+    }
+    const value = Number(amount);
+    return value === 0 ? null : value;
+  }
+
+  private normalizeDiscountPercent(
+    percent: number | null | undefined,
+  ): number | null {
+    if (percent == null) {
+      return null;
+    }
+    const value = Number(percent);
+    return value === 0 ? null : value;
+  }
+
   private calculateDiscountAmountCents(
     baseAmountCents: number,
     percentDiscount: number | null | undefined,
     fixedDiscountAmount: number | null | undefined,
   ): number {
     this.assertDiscountValues(fixedDiscountAmount, percentDiscount, "discount");
-    const fixedValue = fixedDiscountAmount == null ? null : Number(fixedDiscountAmount);
-    const percentValue = percentDiscount == null ? null : Number(percentDiscount);
+    const fixedValue = this.normalizeDiscountAmount(fixedDiscountAmount);
+    const percentValue = this.normalizeDiscountPercent(percentDiscount);
 
     if (percentValue != null) {
       return Math.round(baseAmountCents * (percentValue / 100));
