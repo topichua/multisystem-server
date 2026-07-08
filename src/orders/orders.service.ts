@@ -197,7 +197,8 @@ export class OrdersService {
         internalNote: dto.internalNote?.trim() || null,
         currency,
         subtotalAmount: 0,
-        discountAmount: 0,
+        discountAmount: dto.discountAmount ?? 0,
+        discountPercent: dto.discountPercent ?? null,
         deliveryAmount: 0,
         totalAmount: 0,
         createdById: ownerId,
@@ -269,7 +270,9 @@ export class OrdersService {
     const hasItems = dto.items !== undefined;
     const hasNotes =
       dto.customerNote !== undefined || dto.internalNote !== undefined;
-    if (!hasItems && !hasNotes) {
+    const hasDiscounts =
+      dto.discountAmount !== undefined || dto.discountPercent !== undefined;
+    if (!hasItems && !hasNotes && !hasDiscounts) {
       throw new BadRequestException("At least one field must be provided");
     }
 
@@ -309,6 +312,38 @@ export class OrdersService {
       }
       order.updatedById = ownerId;
       await this.orderRepo.save(order);
+    }
+
+    if (hasDiscounts) {
+      const nextDiscountAmount =
+        dto.discountAmount === undefined
+          ? undefined
+          : dto.discountAmount === null
+            ? 0
+            : dto.discountAmount;
+      const nextDiscountPercent =
+        dto.discountPercent === undefined
+          ? undefined
+          : dto.discountPercent === null
+            ? null
+            : dto.discountPercent;
+      this.assertDiscountValues(
+        nextDiscountAmount,
+        nextDiscountPercent,
+        "order",
+      );
+      if (nextDiscountAmount !== undefined) {
+        order.discountAmount = nextDiscountAmount;
+      }
+      if (nextDiscountPercent !== undefined) {
+        order.discountPercent = nextDiscountPercent;
+      }
+      order.updatedById = ownerId;
+      await this.orderRepo.save(order);
+    }
+
+    if (hasItems || hasNotes || hasDiscounts) {
+      await this.recalculateOrderTotals(workspace.id, order.id, ownerId);
     }
 
     return this.getOrderById(ownerId, order.id);
@@ -1050,6 +1085,11 @@ export class OrdersService {
     ownerId: number,
     manager?: EntityManager,
   ): Promise<OrderItem> {
+    this.assertDiscountValues(
+      dto.discountAmount,
+      dto.discountPercent,
+      "line item",
+    );
     const variant = await this.variantRepo.findOne({
       where: {
         id: dto.variantId,
@@ -1114,6 +1154,8 @@ export class OrdersService {
       quantity: dto.quantity,
       unitPriceAmount: unitPrice,
       totalPriceAmount: totalLine,
+      discountAmount: dto.discountAmount ?? 0,
+      discountPercent: dto.discountPercent ?? null,
       unitPriceSnapshot: costSnapshots.unitPriceSnapshot,
       unitCostSnapshot: costSnapshots.unitCostSnapshot,
       totalSaleAmount: costSnapshots.totalSaleAmount,
@@ -1264,16 +1306,105 @@ export class OrdersService {
     const itemRepo = manager?.getRepository(OrderItem) ?? this.orderItemRepo;
     const order = await orderRepo.findOne({ where: { workspaceId, id: orderId } });
     if (!order) return;
-    const items = await itemRepo.find({ where: { workspaceId, orderId } });
-    const subtotal = roundMoney(
-      items.reduce((sum, i) => sum + Number(i.totalPriceAmount), 0),
+
+    const items = await itemRepo.find({
+      where: { workspaceId, orderId },
+      order: { id: "ASC" },
+    });
+
+    const itemEntries = items.map((item) => {
+      const baseAmountCents = this.toCents(Number(item.unitPriceAmount) * item.quantity);
+      const itemDiscountCents = this.calculateDiscountAmountCents(
+        baseAmountCents,
+        item.discountPercent,
+        Number(item.discountAmount ?? 0),
+      );
+      const afterItemDiscountCents = Math.max(
+        0,
+        baseAmountCents - itemDiscountCents,
+      );
+      return {
+        item,
+        afterItemDiscountCents,
+      };
+    });
+
+    const subtotalAfterItemDiscountsCents = itemEntries.reduce(
+      (sum, entry) => sum + entry.afterItemDiscountCents,
+      0,
     );
-    const total = roundMoney(
-      subtotal - Number(order.discountAmount) + Number(order.deliveryAmount),
+    const orderDiscountAmountCents = this.calculateDiscountAmountCents(
+      subtotalAfterItemDiscountsCents,
+      order.discountPercent,
+      Number(order.discountAmount ?? 0),
     );
-    order.subtotalAmount = subtotal;
-    order.totalAmount = Math.max(0, total);
+
+    if (orderDiscountAmountCents > subtotalAfterItemDiscountsCents) {
+      throw new BadRequestException(
+        "Order discount cannot exceed the subtotal after item discounts",
+      );
+    }
+
+    const eligibleEntries = itemEntries.filter(
+      (entry) => entry.afterItemDiscountCents > 0,
+    );
+    let remainingOrderDiscountCents = orderDiscountAmountCents;
+
+    for (const [index, entry] of eligibleEntries.entries()) {
+      let distributedDiscountCents = 0;
+      if (remainingOrderDiscountCents > 0) {
+        distributedDiscountCents =
+          index === eligibleEntries.length - 1
+            ? remainingOrderDiscountCents
+            : Math.floor(
+                (entry.afterItemDiscountCents * orderDiscountAmountCents) /
+                  subtotalAfterItemDiscountsCents,
+              );
+        remainingOrderDiscountCents = Math.max(
+          0,
+          remainingOrderDiscountCents - distributedDiscountCents,
+        );
+      }
+
+      const finalItemTotalCents = Math.max(
+        0,
+        entry.afterItemDiscountCents - distributedDiscountCents,
+      );
+      entry.item.totalPriceAmount = this.centsToMoney(finalItemTotalCents);
+      entry.item.totalSaleAmount = this.centsToMoney(finalItemTotalCents);
+
+      const totalCostAmount =
+        entry.item.unitCostSnapshot == null
+          ? null
+          : roundMoney(entry.item.unitCostSnapshot * entry.item.quantity);
+      entry.item.totalCostAmount = totalCostAmount;
+      entry.item.profitAmount =
+        totalCostAmount == null
+          ? null
+          : roundMoney(this.centsToMoney(finalItemTotalCents) - totalCostAmount);
+    }
+
+    for (const entry of itemEntries) {
+      if (!eligibleEntries.some((eligible) => eligible.item.id === entry.item.id)) {
+        entry.item.totalPriceAmount = 0;
+        entry.item.totalSaleAmount = 0;
+        entry.item.totalCostAmount = null;
+        entry.item.profitAmount = null;
+      }
+    }
+
+    order.subtotalAmount = this.centsToMoney(subtotalAfterItemDiscountsCents);
+    order.discountAmount = this.centsToMoney(orderDiscountAmountCents);
+    order.totalAmount = Math.max(
+      0,
+      this.centsToMoney(
+        subtotalAfterItemDiscountsCents - orderDiscountAmountCents +
+          this.toCents(Number(order.deliveryAmount ?? 0)),
+      ),
+    );
     order.updatedById = actorId;
+
+    await Promise.all(items.map((item) => itemRepo.save(item)));
     await orderRepo.save(order);
     await this.appendEvent(
       workspaceId,
@@ -1288,6 +1419,53 @@ export class OrdersService {
       },
       manager,
     );
+  }
+
+  private assertDiscountValues(
+    fixedDiscountAmount: number | null | undefined,
+    percentDiscount: number | null | undefined,
+    context: string,
+  ): void {
+    const fixedValue = fixedDiscountAmount == null ? null : Number(fixedDiscountAmount);
+    const percentValue = percentDiscount == null ? null : Number(percentDiscount);
+
+    if (fixedValue != null && percentValue != null) {
+      throw new BadRequestException(
+        `${context} discounts cannot use both fixed amount and percent at the same time`,
+      );
+    }
+    if (fixedValue != null && fixedValue < 0) {
+      throw new BadRequestException(`${context} discount amount cannot be negative`);
+    }
+    if (percentValue != null && (percentValue < 0 || percentValue > 100)) {
+      throw new BadRequestException(`${context} discount percent must be between 0 and 100`);
+    }
+  }
+
+  private calculateDiscountAmountCents(
+    baseAmountCents: number,
+    percentDiscount: number | null | undefined,
+    fixedDiscountAmount: number | null | undefined,
+  ): number {
+    this.assertDiscountValues(fixedDiscountAmount, percentDiscount, "discount");
+    const fixedValue = fixedDiscountAmount == null ? null : Number(fixedDiscountAmount);
+    const percentValue = percentDiscount == null ? null : Number(percentDiscount);
+
+    if (percentValue != null) {
+      return Math.round(baseAmountCents * (percentValue / 100));
+    }
+    if (fixedValue != null) {
+      return this.toCents(fixedValue);
+    }
+    return 0;
+  }
+
+  private toCents(value: number): number {
+    return Math.round(Number(value) * 100);
+  }
+
+  private centsToMoney(value: number): number {
+    return Number(value) / 100;
   }
 
   private async appendEvent(

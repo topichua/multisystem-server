@@ -74,6 +74,32 @@ export class OrderItem {
   totalPriceAmount: number;
 
   @Column({
+    name: "discount_amount",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (v: number) => v,
+      from: (v: string | null) => (v == null ? 0 : Number(v)),
+    },
+  })
+  discountAmount: number;
+
+  @Column({
+    name: "discount_percent",
+    type: "decimal",
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  discountPercent: number | null;
+
+  @Column({
     name: "unit_price_snapshot",
     type: "decimal",
     precision: 14,

@@ -4,8 +4,10 @@ import {
   IsArray,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -80,6 +82,21 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   internalNote?: string;
+
+  @ApiPropertyOptional({ minimum: 0, description: "Fixed discount amount applied to the whole order." })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discountAmount?: number;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, description: "Percent discount applied to the whole order." })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  discountPercent?: number;
 
   @ApiPropertyOptional({
     type: () => [AddOrderItemDto],

@@ -111,6 +111,7 @@ import { OrderCompositePrimaryKey1744200000113 } from "./migrations/174420000011
 import { ConversationMessageV2Columns1744200000114 } from "./migrations/1744200000114-ConversationMessageV2Columns";
 import { WorkspaceLanguage1744200000115 } from "./migrations/1744200000115-WorkspaceLanguage";
 import { OrderSourceMobile1744200000116 } from "./migrations/1744200000116-OrderSourceMobile";
+import { OrderDiscounts1744200000117 } from "./migrations/1744200000117-OrderDiscounts";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -395,6 +396,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationMessageV2Columns1744200000114,
       WorkspaceLanguage1744200000115,
       OrderSourceMobile1744200000116,
+      OrderDiscounts1744200000117,
     ],
   };
 }
