@@ -22,7 +22,7 @@ type TopProductRow = {
   variantTitleSnapshot: string | null;
   imageUrlSnapshot: string | null;
   revenue: string | number;
-  soldQuantity: string | number;
+  sold_quantity: string | number;
 };
 
 @Injectable()
@@ -59,13 +59,16 @@ export class TopProductsCalculator
         "COALESCE(SUM(COALESCE(oi.totalSaleAmount, oi.totalPriceAmount)), 0)",
         "revenue",
       )
-      .addSelect("COALESCE(SUM(oi.quantity), 0)", "soldQuantity")
+      .addSelect("COALESCE(SUM(oi.quantity), 0)", "sold_quantity")
       .groupBy("oi.productId")
       .addGroupBy("oi.variantId")
       .addGroupBy("oi.productTitleSnapshot")
       .addGroupBy("oi.variantTitleSnapshot")
-      .orderBy("revenue", "DESC")
-      .addOrderBy("soldQuantity", "DESC")
+      .orderBy(
+        "COALESCE(SUM(COALESCE(oi.totalSaleAmount, oi.totalPriceAmount)), 0)",
+        "DESC",
+      )
+      .addOrderBy("COALESCE(SUM(oi.quantity), 0)", "DESC")
       .addOrderBy("oi.productId", "ASC")
       .addOrderBy("oi.variantId", "ASC")
       .limit(TOP_PRODUCTS_LIMIT)
@@ -81,7 +84,7 @@ export class TopProductsCalculator
         ),
         image: row.imageUrlSnapshot?.trim() || null,
         revenue: roundAnalyticsMoney(Number(row.revenue ?? 0)),
-        soldQuantity: Number(row.soldQuantity ?? 0),
+        soldQuantity: Number(row.sold_quantity ?? 0),
       })),
     };
   }
