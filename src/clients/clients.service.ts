@@ -37,6 +37,7 @@ import type { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
 type ClientReadOptions = {
   includeOrderStat?: boolean;
+  keyword?: string;
 };
 
 type ClientSerializeOptions = ClientReadOptions & {
@@ -185,12 +186,29 @@ export class ClientsService {
   ): Promise<ClientsListResponseDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-    const [rows, total] = await this.clientRepo.findAndCount({
-      where: { workspaceId },
-      order: { createdAt: "DESC" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    });
+
+    const qb = this.clientRepo
+      .createQueryBuilder("c")
+      .where("c.workspaceId = :workspaceId", { workspaceId });
+
+    const keyword = options?.keyword?.trim();
+    if (keyword) {
+      const pattern = `%${this.escapePgIlikePattern(keyword)}%`;
+      qb.andWhere(
+        `(c.firstName ILIKE :pattern ESCAPE '\\'
+          OR c.lastName ILIKE :pattern ESCAPE '\\'
+          OR c.phone ILIKE :pattern ESCAPE '\\'
+          OR (c.firstName || ' ' || c.lastName) ILIKE :pattern ESCAPE '\\')`,
+        { pattern },
+      );
+    }
+
+    const [rows, total] = await qb
+      .orderBy("c.createdAt", "DESC")
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
+      .getManyAndCount();
+
     const items = await this.toClientDtos(rows, workspaceId, {
       includeOrderStat: options?.includeOrderStat === true,
       includeAvatarSrc: true,
@@ -874,5 +892,12 @@ export class ClientsService {
       createdBy: row.createdById,
       conversationId: row.conversationId,
     };
+  }
+
+  private escapePgIlikePattern(value: string): string {
+    return value
+      .replace(/\\/g, "\\\\")
+      .replace(/%/g, "\\%")
+      .replace(/_/g, "\\_");
   }
 }

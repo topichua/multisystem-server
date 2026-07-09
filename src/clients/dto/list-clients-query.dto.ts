@@ -100,4 +100,15 @@ export class ListClientsQueryDto {
   @Transform(({ value }: { value: unknown }) => parseOptionalBoolean(value))
   @IsBoolean()
   include_order_stat?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Search by first name, last name, phone, or full name (case-insensitive). Only applies to paginated list.",
+    example: "Іван",
+  })
+  @IsOptional()
+  @Transform(({ value }) => trimOptionalString(value))
+  @IsString()
+  @MinLength(1)
+  keyword?: string;
 }

@@ -11,7 +11,7 @@ export class ClientsListResponseDto {
 
   @ApiProperty({
     description:
-      "Total clients in the workspace matching the list (no other filters).",
+      "Total clients in the workspace matching the list (including `keyword` when set).",
   })
   total: number;
 

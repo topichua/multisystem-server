@@ -58,6 +58,7 @@ export class ClientsController {
     description:
       "**Lookup** (at most one of): `id`, `instagramUserId` / `instagramId`, `telegramUserId` — returns `ClientLookupResponseDto` (HTTP 200, `associated: false` if none). " +
       "**List:** omit all lookup params — paginated workspace clients (`page` / `pageSize`, defaults 1 / 50). " +
+      "Optional `keyword` filters by first name, last name, phone, or full name. " +
       "Every client in GET responses includes read-only `avatar_src` (from linked `telegram_users` or `instagram_users`). " +
       "Pass `include_order_stat=true` to also embed `orderStats` (order count, total spent, average order price, last order date).",
   })
@@ -110,12 +111,10 @@ export class ClientsController {
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
-    return this.clients.listPagedForOwner(
-      ownerId,
-      page,
-      pageSize,
-      statOptions,
-    );
+    return this.clients.listPagedForOwner(ownerId, page, pageSize, {
+      ...statOptions,
+      keyword: query.keyword,
+    });
   }
 
   @Post()
