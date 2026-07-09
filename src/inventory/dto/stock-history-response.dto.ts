@@ -33,6 +33,12 @@ export class StockHistorySupplyItemDto {
 
   @ApiPropertyOptional({ nullable: true })
   purchasePrice: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  stockBefore: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  stockAfter: number | null;
 }
 
 export class StockHistorySupplyEntryDto {

@@ -450,7 +450,7 @@ export class InventoryService {
       .filter((row) => row.kind === "movement")
       .map((row) => row.entry_id);
 
-    const [supplies, movements, stockLevels] = await Promise.all([
+    const [supplies, movements] = await Promise.all([
       supplyIds.length === 0
         ? Promise.resolve([])
         : this.stockSupplyRepo.find({
@@ -463,9 +463,6 @@ export class InventoryService {
             where: { id: In(movementIds), workspaceId: ctx.workspaceId },
             relations: { user: true },
           }),
-      movementIds.length === 0
-        ? Promise.resolve(new Map<number, { stockAfter: number }>())
-        : this.loadStockLevelsForMovementIds(ctx.workspaceId, movementIds),
     ]);
 
     const supplyMovements =
@@ -478,6 +475,18 @@ export class InventoryService {
             },
             order: { id: "ASC" },
           });
+
+    const stockLevelMovementIds = [
+      ...movementIds,
+      ...supplyMovements.map((row) => row.id),
+    ];
+    const stockLevels =
+      stockLevelMovementIds.length === 0
+        ? new Map<number, { stockAfter: number }>()
+        : await this.loadStockLevelsForMovementIds(
+            ctx.workspaceId,
+            stockLevelMovementIds,
+          );
 
     const variantIds = [
       ...new Set([
@@ -512,6 +521,7 @@ export class InventoryService {
             supply,
             supplyMovementsBySupplyId.get(ref.entry_id) ?? [],
             variantDisplay,
+            stockLevels,
           ),
         );
         continue;
@@ -1336,9 +1346,13 @@ export class InventoryService {
     supply: StockSupply,
     movements: StockMovement[],
     variantDisplay: Map<number, VariantDisplayInfo>,
+    stockLevels: Map<number, { stockAfter: number }>,
   ): StockHistorySupplyEntryDto {
     const items = movements.map((movement) => {
       const display = variantDisplay.get(movement.variantId);
+      const stockAfter = stockLevels.get(movement.id)?.stockAfter ?? null;
+      const stockBefore =
+        stockAfter == null ? null : stockAfter - movement.quantityChange;
       return {
         movementId: movement.id,
         productId: display?.productId ?? 0,
@@ -1348,6 +1362,8 @@ export class InventoryService {
         sku: display?.sku ?? null,
         quantityChange: movement.quantityChange,
         purchasePrice: movement.purchasePrice,
+        stockBefore,
+        stockAfter,
       };
     });
 
