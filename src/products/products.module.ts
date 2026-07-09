@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  ClientWishlistItem,
   Product,
   ProductCategory,
   ProductMedia,
@@ -29,6 +30,7 @@ import { ProductsService } from "./products.service";
       ProductCategory,
       UploadMedia,
       OrderItem,
+      ClientWishlistItem,
     ]),
   ],
   controllers: [ProductsController],

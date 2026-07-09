@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, IsNull, Repository, type EntityManager, type SelectQueryBuilder } from "typeorm";
 import {
+  ClientWishlistItem,
   Product,
   ProductCategory,
   ProductMedia,
@@ -112,6 +113,7 @@ export type ProductListItemBaseDto = {
   currency: string;
   inStock: boolean | null;
   quantity: number | null;
+  wishlistCount: number;
   mainImageUrl: string | null;
   categoryId: number | null;
   weightGrams: number | null;
@@ -242,6 +244,8 @@ export class ProductsService {
     private readonly categoryRepo: Repository<ProductCategory>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepo: Repository<OrderItem>,
+    @InjectRepository(ClientWishlistItem)
+    private readonly clientWishlistRepo: Repository<ClientWishlistItem>,
     private readonly productMedia: ProductMediaService,
     private readonly uploadMedia: UploadMediaService,
     private readonly variantCustomFields: VariantCustomFieldsService,
@@ -330,12 +334,21 @@ export class ProductsService {
       workspace.id,
       variantIds,
     );
+    const wishlistCountByProductId = await this.loadWishlistCountByProductId(
+      workspace.id,
+      productIds,
+    );
 
     return {
       items: rows.map((row) => {
         const p = byId.get(row.id) ?? row;
         return {
-          ...this.toListItem(p, mainImageByProductId, stockMap),
+          ...this.toListItem(
+            p,
+            mainImageByProductId,
+            stockMap,
+            wishlistCountByProductId,
+          ),
           variants: this.buildVariantDtos(p, fieldDefs, stockMap),
         };
       }),
@@ -499,7 +512,11 @@ export class ProductsService {
       workspace.id,
       (product.variants ?? []).map((v) => v.id),
     );
-    return this.toDetail(product, fieldDefs, stockMap);
+    const wishlistCountByProductId = await this.loadWishlistCountByProductId(
+      workspace.id,
+      [product.id],
+    );
+    return this.toDetail(product, fieldDefs, stockMap, wishlistCountByProductId);
   }
 
   async createForOwner(ownerId: number, dto: CreateProductDto): Promise<void> {
@@ -1613,6 +1630,7 @@ export class ProductsService {
     p: Product,
     mainImageByProductId?: Map<number, string>,
     stockMap?: Map<number, VariantStockDto>,
+    wishlistCountByProductId?: Map<number, number>,
   ): ProductListItemBaseDto {
     const variantIds = (p.variants ?? []).map((v) => v.id);
     const quantity =
@@ -1631,6 +1649,7 @@ export class ProductsService {
       currency: p.currency,
       inStock: p.inStock,
       quantity,
+      wishlistCount: wishlistCountByProductId?.get(p.id) ?? 0,
       mainImageUrl: this.resolveMainImageUrl(p, mainImageByProductId),
       categoryId: p.categoryId,
       weightGrams: p.weightGrams,
@@ -1640,6 +1659,28 @@ export class ProductsService {
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     };
+  }
+
+  private async loadWishlistCountByProductId(
+    workspaceId: number,
+    productIds: number[],
+  ): Promise<Map<number, number>> {
+    if (productIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.clientWishlistRepo
+      .createQueryBuilder("w")
+      .select("w.product_id", "productId")
+      .addSelect("COUNT(DISTINCT w.client_id)", "wishlistCount")
+      .where("w.workspace_id = :workspaceId", { workspaceId })
+      .andWhere("w.product_id IN (:...productIds)", { productIds })
+      .groupBy("w.product_id")
+      .getRawMany<{ productId: string; wishlistCount: string }>();
+
+    return new Map(
+      rows.map((row) => [Number(row.productId), Number(row.wishlistCount)]),
+    );
   }
 
   private toProductParentSummary(
@@ -1717,6 +1758,10 @@ export class ProductsService {
       workspace.id,
       allVariantIds,
     );
+    const wishlistCountByProductId = await this.loadWishlistCountByProductId(
+      workspace.id,
+      productIds,
+    );
 
     const items: InstagramReferencedProductListItemDto[] = [];
     for (const productId of [...refsByProductId.keys()].sort((a, b) => a - b)) {
@@ -1762,7 +1807,12 @@ export class ProductsService {
       }
 
       items.push({
-        ...this.toListItem(p, mainImageByProductId, stockMap),
+        ...this.toListItem(
+          p,
+          mainImageByProductId,
+          stockMap,
+          wishlistCountByProductId,
+        ),
         variants: [...variantById.values()].sort((a, b) => a.id - b.id),
       });
     }
@@ -1948,6 +1998,7 @@ export class ProductsService {
     p: Product,
     fieldDefs: WorkspaceVariantCustomField[],
     stockMap: Map<number, VariantStockDto>,
+    wishlistCountByProductId?: Map<number, number>,
   ): ProductDetailDto {
     const allMedia = [...(p.media ?? [])];
     const productLevelMedia = allMedia
@@ -1963,7 +2014,7 @@ export class ProductsService {
       : null;
 
     return {
-      ...this.toListItem(p, undefined, stockMap),
+      ...this.toListItem(p, undefined, stockMap, wishlistCountByProductId),
       description: p.description,
       sourceType: p.sourceType,
       createdByUserId: p.createdByUserId,

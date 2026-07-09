@@ -109,6 +109,11 @@ export class ProductListItemDto {
   @ApiPropertyOptional({ nullable: true })
   quantity: number | null;
 
+  @ApiProperty({
+    description: "Number of unique clients who wishlisted this product.",
+  })
+  wishlistCount: number;
+
   @ApiPropertyOptional({ nullable: true })
   mainImageUrl: string | null;
 
