@@ -15,6 +15,7 @@ import {
   ProductVariant,
   StockMovement,
   StockMovementType,
+  StockSupply,
   VariantStock,
   Workspace,
 } from "../database/entities";
@@ -27,7 +28,12 @@ import type { CreateInitialStockDto } from "./dto/create-initial-stock.dto";
 import type { CreateInventoryCountDto } from "./dto/create-inventory-count.dto";
 import type { CreatePurchaseDto } from "./dto/create-purchase.dto";
 import type { CreateReturnDto } from "./dto/create-return.dto";
+import type { CreateStockSupplyDto } from "./dto/create-stock-supply.dto";
 import type { SetSimpleQuantityDto } from "./dto/set-simple-quantity.dto";
+import type {
+  CreateStockSupplyResponseDto,
+  StockSupplyLineResultDto,
+} from "./dto/stock-supply-response.dto";
 import type {
   ProductStockListResponseDto,
   StockMovementItemDto,
@@ -148,6 +154,98 @@ export class InventoryService {
         totalCostChange: result.totalCostChange,
         comment: dto.comment ?? null,
         after: result.after,
+      };
+    });
+  }
+
+  async createStockSupply(
+    userId: number,
+    dto: CreateStockSupplyDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<CreateStockSupplyResponseDto> {
+    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    assertAdvancedMode(ctx.mode);
+
+    return this.dataSource.transaction(async (em) => {
+      const supply = await em.save(
+        em.create(StockSupply, {
+          workspaceId: ctx.workspaceId,
+          userId: ctx.userId,
+          comment: dto.comment?.trim() || null,
+        }),
+      );
+
+      const lines: StockSupplyLineResultDto[] = [];
+
+      for (const item of dto.items) {
+        const variant = await em.findOne(ProductVariant, {
+          where: { id: item.productVariantId },
+          relations: { product: true },
+        });
+        if (
+          !variant?.product ||
+          variant.product.workspaceId !== ctx.workspaceId
+        ) {
+          throw new NotFoundException(
+            `Variant ${item.productVariantId} not found`,
+          );
+        }
+        if (variant.productId !== item.productId) {
+          throw new BadRequestException(
+            `productVariantId ${item.productVariantId} does not belong to productId ${item.productId}`,
+          );
+        }
+
+        const stock = await this.lockVariantStock(
+          em,
+          ctx.workspaceId,
+          item.productVariantId,
+        );
+        const result = applyPurchase(
+          this.toSnapshot(stock),
+          item.quantity,
+          item.buyPrice,
+        );
+        await this.persistStock(em, stock, result.after);
+
+        const movement = await em.save(
+          em.create(StockMovement, {
+            workspaceId: ctx.workspaceId,
+            variantId: item.productVariantId,
+            type: StockMovementType.supply,
+            quantityChange: result.quantityChange,
+            purchasePrice: item.buyPrice,
+            totalCostChange: result.totalCostChange,
+            reason: null,
+            comment: dto.comment?.trim() || null,
+            orderId: null,
+            orderItemId: null,
+            supplyId: supply.id,
+            userId: ctx.userId,
+          }),
+        );
+
+        lines.push({
+          item: {
+            productId: item.productId,
+            productVariantId: item.productVariantId,
+            quantity: movement.quantityChange,
+            buyPrice: movement.purchasePrice ?? item.buyPrice,
+          },
+          movement: this.toMovementDto(movement, null),
+          stock: this.toStockDto(stock, ctx.mode),
+        });
+      }
+
+      return {
+        supply: {
+          id: supply.id,
+          comment: supply.comment,
+          createdAt: supply.createdAt,
+          items: lines.map((line) => line.item),
+        },
+        lines,
       };
     });
   }
@@ -815,6 +913,7 @@ export class InventoryService {
       comment: row.comment,
       orderId: row.orderId,
       orderItemId: row.orderItemId,
+      supplyId: row.supplyId,
       user:
         user == null
           ? null

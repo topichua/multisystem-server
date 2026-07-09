@@ -10,11 +10,17 @@ import {
   Client,
   ClientLink,
   ClientLinkProvider,
+  ClientWishlistItem,
   InstagramUser,
+  Product,
+  ProductVariant,
   TelegramUser,
 } from "../database/entities";
 import { OrdersService } from "../orders/orders.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import type { AddClientWishlistRequestDto } from "./dto/add-client-wishlist-request.dto";
+import type { ClientWishlistItemResponseDto } from "./dto/client-wishlist-item-response.dto";
+import type { RemoveClientWishlistRequestDto } from "./dto/remove-client-wishlist-request.dto";
 import type { ClientSocialIds } from "./dto/client-link-input.util";
 import type { ClientOrderStatDto } from "./dto/client-order-stat.dto";
 import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
@@ -52,6 +58,12 @@ export class ClientsService {
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(ClientLink)
     private readonly clientLinkRepo: Repository<ClientLink>,
+    @InjectRepository(ClientWishlistItem)
+    private readonly clientWishlistRepo: Repository<ClientWishlistItem>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
+    @InjectRepository(ProductVariant)
+    private readonly productVariantRepo: Repository<ProductVariant>,
     @InjectRepository(InstagramUser)
     private readonly instagramUserRepo: Repository<InstagramUser>,
     @InjectRepository(TelegramUser)
@@ -324,6 +336,89 @@ export class ClientsService {
     });
 
     return this.writeClientDtoWithLinks(row, clientId);
+  }
+
+  async addWishlistItemForOwner(
+    ownerId: number,
+    clientId: number,
+    dto: AddClientWishlistRequestDto,
+  ): Promise<ClientWishlistItemResponseDto> {
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const client = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!client) {
+      throw new NotFoundException("Client not found");
+    }
+
+    const product = await this.productRepo.findOne({
+      where: { id: dto.productId, workspaceId },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const variant = await this.productVariantRepo.findOne({
+      where: { id: dto.variantId, productId: product.id },
+    });
+    if (!variant) {
+      throw new BadRequestException(
+        "variantId does not belong to productId",
+      );
+    }
+
+    const at = dto.at ? new Date(dto.at) : new Date();
+    if (Number.isNaN(at.getTime())) {
+      throw new BadRequestException("at must be a valid ISO date string");
+    }
+
+    const existing = await this.clientWishlistRepo.findOne({
+      where: {
+        clientId,
+        productId: dto.productId,
+        variantId: dto.variantId,
+      },
+    });
+    if (existing) {
+      return this.toWishlistItemDto(existing);
+    }
+
+    const row = await this.clientWishlistRepo.save(
+      this.clientWishlistRepo.create({
+        clientId,
+        workspaceId,
+        productId: dto.productId,
+        variantId: dto.variantId,
+        at,
+        createdById: ownerId,
+        conversationId: dto.conversationId ?? null,
+      }),
+    );
+
+    return this.toWishlistItemDto(row);
+  }
+
+  async removeWishlistItemForOwner(
+    ownerId: number,
+    clientId: number,
+    dto: RemoveClientWishlistRequestDto,
+  ): Promise<void> {
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const client = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!client) {
+      throw new NotFoundException("Client not found");
+    }
+
+    await this.clientWishlistRepo.delete({
+      clientId,
+      workspaceId,
+      productId: dto.productId,
+      variantId: dto.variantId,
+    });
   }
 
   async getByIdForOwner(
@@ -732,6 +827,19 @@ export class ClientsService {
         ? { avatar_src: options.avatarSrc ?? null }
         : {}),
       ...(options?.orderStats != null ? { orderStats: options.orderStats } : {}),
+    };
+  }
+
+  private toWishlistItemDto(
+    row: ClientWishlistItem,
+  ): ClientWishlistItemResponseDto {
+    return {
+      id: row.id,
+      productId: row.productId,
+      variantId: row.variantId,
+      at: row.at,
+      createdBy: row.createdById,
+      conversationId: row.conversationId,
     };
   }
 }

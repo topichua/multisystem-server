@@ -23,6 +23,7 @@ import { CreateInitialStockDto } from "./dto/create-initial-stock.dto";
 import { CreateInventoryCountDto } from "./dto/create-inventory-count.dto";
 import { CreatePurchaseDto } from "./dto/create-purchase.dto";
 import { CreateReturnDto } from "./dto/create-return.dto";
+import { CreateStockSupplyDto } from "./dto/create-stock-supply.dto";
 import { SetSimpleQuantityDto } from "./dto/set-simple-quantity.dto";
 import {
   ProductStockListResponseDto,
@@ -30,6 +31,7 @@ import {
   StockOperationResponseDto,
   VariantStockDto,
 } from "./dto/stock-response.dto";
+import { CreateStockSupplyResponseDto } from "./dto/stock-supply-response.dto";
 import { ListInventoryMovementsQueryDto } from "./dto/list-inventory-movements-query.dto";
 import { InventoryService } from "./inventory.service";
 
@@ -78,6 +80,25 @@ export class InventoryController {
     @Body() dto: CreatePurchaseDto,
   ): Promise<StockOperationResponseDto> {
     return this.inventory.createPurchase(
+      this.requireUserId(req),
+      dto,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Post("stock/supplies")
+  @ApiOperation({
+    summary: "Record stock supply / delivery batch (advanced mode)",
+    description:
+      "Creates one supply record and stock movements of type `supply` for each line item.",
+  })
+  @ApiCreatedResponse({ type: CreateStockSupplyResponseDto })
+  createStockSupply(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: CreateStockSupplyDto,
+  ): Promise<CreateStockSupplyResponseDto> {
+    return this.inventory.createStockSupply(
       this.requireUserId(req),
       dto,
       req.user?.role,

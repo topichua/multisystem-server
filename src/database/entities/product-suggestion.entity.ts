@@ -10,6 +10,7 @@ import {
 import { Conversation } from "./conversation.entity";
 import { ProductVariant } from "./product-variant.entity";
 import { Product } from "./product.entity";
+import { ProductSuggestionReasonType } from "./product-suggestion-reason-type.enum";
 
 @Entity({ name: "product_suggestions" })
 @Index("IDX_product_suggestions_conversation_id", ["conversationId"])
@@ -43,6 +44,15 @@ export class ProductSuggestion {
 
   @Column({ name: "post_id", type: "varchar", length: 255, nullable: true })
   postId: string | null;
+
+  @Column({
+    name: "reason_type",
+    type: "enum",
+    enum: ProductSuggestionReasonType,
+    enumName: "product_suggestions_reason_type_enum",
+    nullable: true,
+  })
+  reasonType: ProductSuggestionReasonType | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

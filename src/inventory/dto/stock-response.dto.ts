@@ -37,6 +37,9 @@ export class StockMovementItemDto {
   @ApiPropertyOptional({ nullable: true })
   orderItemId: number | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  supplyId: number | null;
+
   @ApiPropertyOptional({ type: StockMovementUserDto, nullable: true })
   user: StockMovementUserDto | null;
 

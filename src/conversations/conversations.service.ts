@@ -932,6 +932,7 @@ export class ConversationsService {
         productId: dto.productId,
         productVariantId: variantId,
         postId: dto.postId ?? null,
+        reasonType: dto.reasonType ?? null,
       }),
     );
 
@@ -945,6 +946,7 @@ export class ConversationsService {
       productVariantId: row.productVariantId,
       conversationId: row.conversationId,
       postId: row.postId,
+      reasonType: row.reasonType,
       createdAt: row.createdAt,
     };
   }

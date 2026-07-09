@@ -1,12 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
   MaxLength,
   Min,
 } from "class-validator";
+import { ProductSuggestionReasonType } from "../../../database/entities/product-suggestion-reason-type.enum";
 
 export class CreateProductSuggestionRequestDto {
   @ApiProperty({ description: "Conversation database id" })
@@ -44,4 +46,13 @@ export class CreateProductSuggestionRequestDto {
   @IsString()
   @MaxLength(255)
   postId?: string | null;
+
+  @ApiPropertyOptional({
+    enum: ProductSuggestionReasonType,
+    nullable: true,
+    description: "Why this product was suggested.",
+  })
+  @IsOptional()
+  @IsEnum(ProductSuggestionReasonType)
+  reasonType?: ProductSuggestionReasonType | null;
 }

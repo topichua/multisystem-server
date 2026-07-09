@@ -11,6 +11,7 @@ import { Order } from "./order.entity";
 import { OrderItem } from "./order-item.entity";
 import { ProductVariant } from "./product-variant.entity";
 import { StockMovementType } from "./stock-movement-type.enum";
+import { StockSupply } from "./stock-supply.entity";
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 
@@ -100,6 +101,16 @@ export class StockMovement {
   @ManyToOne(() => User, { onDelete: "SET NULL", nullable: true })
   @JoinColumn({ name: "user_id" })
   user: User | null;
+
+  @Column({ name: "supply_id", type: "int", nullable: true })
+  supplyId: number | null;
+
+  @ManyToOne(() => StockSupply, (supply) => supply.movements, {
+    onDelete: "SET NULL",
+    nullable: true,
+  })
+  @JoinColumn({ name: "supply_id" })
+  supply: StockSupply | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

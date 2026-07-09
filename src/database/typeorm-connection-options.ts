@@ -113,10 +113,15 @@ import { WorkspaceLanguage1744200000115 } from "./migrations/1744200000115-Works
 import { OrderSourceMobile1744200000116 } from "./migrations/1744200000116-OrderSourceMobile";
 import { OrderDiscounts1744200000117 } from "./migrations/1744200000117-OrderDiscounts";
 import { WorkspaceRoleMaxOrderDiscountPercentage1744200000118 } from "./migrations/1744200000118-WorkspaceRoleMaxOrderDiscountPercentage";
+import { ProductSuggestionReasonType1744200000119 } from "./migrations/1744200000119-ProductSuggestionReasonType";
+import { StockSupplies1744200000120 } from "./migrations/1744200000120-StockSupplies";
+import { DropStockSupplyItems1744200000121 } from "./migrations/1744200000121-DropStockSupplyItems";
+import { ClientWishlistItems1744200000122 } from "./migrations/1744200000122-ClientWishlistItems";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
   ClientLink,
+  ClientWishlistItem,
   InstagramIntegration,
   Conversation,
   ConversationEvent,
@@ -152,6 +157,7 @@ import {
   RegistrationToken,
   VariantStock,
   StockMovement,
+  StockSupply,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -218,6 +224,7 @@ const entities = [
   TelegramUser,
   Client,
   ClientLink,
+  ClientWishlistItem,
   ConversationGroup,
   Conversation,
   ConversationEvent,
@@ -242,6 +249,7 @@ const entities = [
   RegistrationToken,
   VariantStock,
   StockMovement,
+  StockSupply,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -399,6 +407,10 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderSourceMobile1744200000116,
       OrderDiscounts1744200000117,
       WorkspaceRoleMaxOrderDiscountPercentage1744200000118,
+      ProductSuggestionReasonType1744200000119,
+      StockSupplies1744200000120,
+      DropStockSupplyItems1744200000121,
+      ClientWishlistItems1744200000122,
     ],
   };
 }

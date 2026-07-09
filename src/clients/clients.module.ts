@@ -3,20 +3,36 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Client,
   ClientLink,
+  ClientWishlistItem,
   InstagramUser,
+  Product,
+  ProductVariant,
   TelegramUser,
 } from "../database/entities";
 import { OrdersModule } from "../orders/orders.module";
 import { ClientsController } from "./clients.controller";
 import { ClientLinksController } from "./client-links.controller";
+import { ClientWishlistController } from "./client-wishlist.controller";
 import { ClientsService } from "./clients.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Client, ClientLink, InstagramUser, TelegramUser]),
+    TypeOrmModule.forFeature([
+      Client,
+      ClientLink,
+      ClientWishlistItem,
+      Product,
+      ProductVariant,
+      InstagramUser,
+      TelegramUser,
+    ]),
     OrdersModule,
   ],
-  controllers: [ClientLinksController, ClientsController],
+  controllers: [
+    ClientWishlistController,
+    ClientLinksController,
+    ClientsController,
+  ],
   providers: [ClientsService],
   exports: [ClientsService],
 })

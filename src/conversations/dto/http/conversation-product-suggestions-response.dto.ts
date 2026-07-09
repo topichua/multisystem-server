@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { InstagramPostProductItemDto } from "../../../instagram/dto/instagram-post-product-variants-response.dto";
+import { ProductSuggestionReasonType } from "../../../database/entities/product-suggestion-reason-type.enum";
 
 export class ProductSuggestionItemDto {
   @ApiProperty()
@@ -16,6 +17,9 @@ export class ProductSuggestionItemDto {
 
   @ApiPropertyOptional({ nullable: true })
   postId: string | null;
+
+  @ApiPropertyOptional({ enum: ProductSuggestionReasonType, nullable: true })
+  reasonType: ProductSuggestionReasonType | null;
 
   @ApiProperty({ type: String, format: "date-time" })
   createdAt: Date;
