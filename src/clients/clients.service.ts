@@ -17,9 +17,11 @@ import {
   TelegramUser,
 } from "../database/entities";
 import { OrdersService } from "../orders/orders.service";
+import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { AddClientWishlistRequestDto } from "./dto/add-client-wishlist-request.dto";
 import type { ClientWishlistItemResponseDto } from "./dto/client-wishlist-item-response.dto";
+import type { ClientWishlistProductsResponseDto } from "./dto/client-wishlist-products-response.dto";
 import type { RemoveClientWishlistRequestDto } from "./dto/remove-client-wishlist-request.dto";
 import type { ClientSocialIds } from "./dto/client-link-input.util";
 import type { ClientOrderStatDto } from "./dto/client-order-stat.dto";
@@ -70,6 +72,7 @@ export class ClientsService {
     private readonly telegramUserRepo: Repository<TelegramUser>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly orders: OrdersService,
+    private readonly products: ProductsService,
   ) {}
 
   async createForOwner(
@@ -419,6 +422,36 @@ export class ClientsService {
       productId: dto.productId,
       variantId: dto.variantId,
     });
+  }
+
+  async listWishlistProductsForOwner(
+    ownerId: number,
+    clientId: number,
+  ): Promise<ClientWishlistProductsResponseDto> {
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const client = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!client) {
+      throw new NotFoundException("Client not found");
+    }
+
+    const rows = await this.clientWishlistRepo.find({
+      where: { clientId, workspaceId },
+      order: { at: "DESC", id: "DESC" },
+    });
+
+    const items = await this.products.listListItemsForInstagramReferences(
+      ownerId,
+      rows.map((row) => ({
+        referenceId: row.id,
+        productId: row.productId,
+        productVariantId: row.variantId,
+      })),
+    );
+
+    return { clientId, items };
   }
 
   async getByIdForOwner(

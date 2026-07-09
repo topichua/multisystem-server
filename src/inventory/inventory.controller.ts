@@ -33,6 +33,8 @@ import {
 } from "./dto/stock-response.dto";
 import { CreateStockSupplyResponseDto } from "./dto/stock-supply-response.dto";
 import { ListInventoryMovementsQueryDto } from "./dto/list-inventory-movements-query.dto";
+import { ListStockHistoryQueryDto } from "./dto/list-stock-history-query.dto";
+import { StockHistoryListResponseDto } from "./dto/stock-history-response.dto";
 import { InventoryService } from "./inventory.service";
 
 @ApiTags("inventory")
@@ -150,6 +152,25 @@ export class InventoryController {
     return this.inventory.createReturn(
       this.requireUserId(req),
       dto,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Get("history-movements")
+  @ApiOperation({
+    summary: "List stock movement history",
+    description:
+      "Returns merged supply batches and single stock movements with filters and pagination.",
+  })
+  @ApiOkResponse({ type: StockHistoryListResponseDto })
+  listStockHistory(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListStockHistoryQueryDto,
+  ): Promise<StockHistoryListResponseDto> {
+    return this.inventory.listStockHistory(
+      this.requireUserId(req),
+      query,
       req.user?.role,
       req.user?.workspaceId,
     );

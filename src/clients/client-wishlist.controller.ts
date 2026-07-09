@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   Param,
   Post,
@@ -14,6 +15,7 @@ import {
   ApiBody,
   ApiCreatedResponse,
   ApiNoContentResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -23,6 +25,7 @@ import type { AuthUser } from "../auth/types/auth-user.type";
 import { ClientsService } from "./clients.service";
 import { AddClientWishlistRequestDto } from "./dto/add-client-wishlist-request.dto";
 import { ClientWishlistItemResponseDto } from "./dto/client-wishlist-item-response.dto";
+import { ClientWishlistProductsResponseDto } from "./dto/client-wishlist-products-response.dto";
 import { RemoveClientWishlistRequestDto } from "./dto/remove-client-wishlist-request.dto";
 
 @ApiTags("clients")
@@ -31,6 +34,24 @@ import { RemoveClientWishlistRequestDto } from "./dto/remove-client-wishlist-req
 @Controller("clients/:id/wishlist")
 export class ClientWishlistController {
   constructor(private readonly clients: ClientsService) {}
+
+  @Get("products")
+  @ApiOperation({
+    summary: "List wishlisted products for a client",
+    description:
+      "Returns products grouped by id (same shape as GET /conversations/:id/suggestions). " +
+      "Each variant includes `referenceId` = client_wishlist_items.id.",
+  })
+  @ApiParam({ name: "id", type: Number, description: "Client primary key" })
+  @ApiOkResponse({ type: ClientWishlistProductsResponseDto })
+  listWishlistProducts(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ClientWishlistProductsResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    const clientId = this.parsePositiveInt(id, "id");
+    return this.clients.listWishlistProductsForOwner(ownerId, clientId);
+  }
 
   @Post()
   @ApiOperation({ summary: "Add product variant to client wishlist" })

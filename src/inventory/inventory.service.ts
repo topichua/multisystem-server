@@ -19,6 +19,7 @@ import {
   VariantStock,
   Workspace,
 } from "../database/entities";
+import { readPostgresQueryRows } from "../database/postgres-query-rows.util";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
 import { buildVariantTitleFromFields } from "../variant-custom-fields/variant-custom-fields.util";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
@@ -34,6 +35,13 @@ import type {
   CreateStockSupplyResponseDto,
   StockSupplyLineResultDto,
 } from "./dto/stock-supply-response.dto";
+import type { ListStockHistoryQueryDto } from "./dto/list-stock-history-query.dto";
+import type {
+  StockHistoryListResponseDto,
+  StockHistoryMovementEntryDto,
+  StockHistorySupplyEntryDto,
+  StockHistoryUserDto,
+} from "./dto/stock-history-response.dto";
 import type {
   ProductStockListResponseDto,
   StockMovementItemDto,
@@ -61,6 +69,27 @@ type StockContext = {
   userId: number;
 };
 
+type StockHistoryEntryRef = {
+  kind: "supply" | "movement";
+  entry_id: number;
+  created_at: Date;
+};
+
+type StockHistoryFilterSql = {
+  supplyWhere: string;
+  movementWhere: string;
+  params: unknown[];
+  includeSupplies: boolean;
+  includeMovements: boolean;
+};
+
+type VariantDisplayInfo = {
+  productId: number;
+  productName: string;
+  variantName: string | null;
+  sku: string | null;
+};
+
 @Injectable()
 export class InventoryService {
   constructor(
@@ -79,6 +108,8 @@ export class InventoryService {
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepo: Repository<OrderItem>,
+    @InjectRepository(StockSupply)
+    private readonly stockSupplyRepo: Repository<StockSupply>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
     private readonly variantCustomFields: VariantCustomFieldsService,
@@ -380,6 +411,123 @@ export class InventoryService {
       items: rows.map((row) => this.toMovementDto(row, row.user)),
       total,
     };
+  }
+
+  async listStockHistory(
+    userId: number,
+    query: ListStockHistoryQueryDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockHistoryListResponseDto> {
+    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
+    const limit = query.limit ?? 20;
+    const offset = query.offset ?? 0;
+    const filters = this.buildStockHistoryFilters(ctx.workspaceId, query);
+
+    if (!filters.includeSupplies && !filters.includeMovements) {
+      return { items: [], total: 0 };
+    }
+
+    const countSql = this.buildStockHistoryCountSql(filters);
+    const listSql = this.buildStockHistoryListSql(filters);
+    const listParams = [...filters.params, limit, offset];
+
+    const [countRows, entryRows] = await Promise.all([
+      this.dataSource.query(countSql, filters.params),
+      this.dataSource.query(listSql, listParams),
+    ]);
+
+    const total = Number(readPostgresQueryRows<{ cnt: string }>(countRows)[0]?.cnt ?? 0);
+    const refs = readPostgresQueryRows<StockHistoryEntryRef>(entryRows);
+    if (refs.length === 0) {
+      return { items: [], total };
+    }
+
+    const supplyIds = refs
+      .filter((row) => row.kind === "supply")
+      .map((row) => row.entry_id);
+    const movementIds = refs
+      .filter((row) => row.kind === "movement")
+      .map((row) => row.entry_id);
+
+    const [supplies, movements, stockLevels] = await Promise.all([
+      supplyIds.length === 0
+        ? Promise.resolve([])
+        : this.stockSupplyRepo.find({
+            where: { id: In(supplyIds), workspaceId: ctx.workspaceId },
+            relations: { user: true },
+          }),
+      movementIds.length === 0
+        ? Promise.resolve([])
+        : this.movementRepo.find({
+            where: { id: In(movementIds), workspaceId: ctx.workspaceId },
+            relations: { user: true },
+          }),
+      movementIds.length === 0
+        ? Promise.resolve(new Map<number, { stockAfter: number }>())
+        : this.loadStockLevelsForMovementIds(ctx.workspaceId, movementIds),
+    ]);
+
+    const supplyMovements =
+      supplyIds.length === 0
+        ? []
+        : await this.movementRepo.find({
+            where: {
+              workspaceId: ctx.workspaceId,
+              supplyId: In(supplyIds),
+            },
+            order: { id: "ASC" },
+          });
+
+    const variantIds = [
+      ...new Set([
+        ...movements.map((row) => row.variantId),
+        ...supplyMovements.map((row) => row.variantId),
+      ]),
+    ];
+    const variantDisplay = await this.loadVariantDisplayMap(
+      ctx.workspaceId,
+      variantIds,
+    );
+
+    const supplyById = new Map(supplies.map((row) => [row.id, row]));
+    const supplyMovementsBySupplyId = new Map<number, StockMovement[]>();
+    for (const row of supplyMovements) {
+      if (row.supplyId == null) continue;
+      const bucket = supplyMovementsBySupplyId.get(row.supplyId) ?? [];
+      bucket.push(row);
+      supplyMovementsBySupplyId.set(row.supplyId, bucket);
+    }
+    const movementById = new Map(movements.map((row) => [row.id, row]));
+
+    const items: Array<
+      StockHistorySupplyEntryDto | StockHistoryMovementEntryDto
+    > = [];
+    for (const ref of refs) {
+      if (ref.kind === "supply") {
+        const supply = supplyById.get(ref.entry_id);
+        if (!supply) continue;
+        items.push(
+          this.toStockHistorySupplyEntry(
+            supply,
+            supplyMovementsBySupplyId.get(ref.entry_id) ?? [],
+            variantDisplay,
+          ),
+        );
+        continue;
+      }
+      const movement = movementById.get(ref.entry_id);
+      if (!movement) continue;
+      items.push(
+        this.toStockHistoryMovementEntry(
+          movement,
+          variantDisplay,
+          stockLevels.get(ref.entry_id),
+        ),
+      );
+    }
+
+    return { items, total };
   }
 
   async getProductStock(
@@ -922,6 +1070,331 @@ export class InventoryService {
               name: user.name?.trim() || `User #${user.id}`,
             },
       createdAt: row.createdAt,
+    };
+  }
+
+  private buildStockHistoryFilters(
+    workspaceId: number,
+    query: ListStockHistoryQueryDto,
+  ): StockHistoryFilterSql {
+    const params: unknown[] = [workspaceId];
+    let idx = 2;
+    const supplyParts = ["ss.workspace_id = $1"];
+    const movementParts = ["sm.workspace_id = $1", "sm.supply_id IS NULL"];
+
+    if (query.from) {
+      const from = this.parseHistoryDateBoundary(query.from, "start");
+      supplyParts.push(`ss.created_at >= $${idx}`);
+      movementParts.push(`sm.created_at >= $${idx}`);
+      params.push(from);
+      idx++;
+    }
+    if (query.to) {
+      const to = this.parseHistoryDateBoundary(query.to, "end");
+      supplyParts.push(`ss.created_at <= $${idx}`);
+      movementParts.push(`sm.created_at <= $${idx}`);
+      params.push(to);
+      idx++;
+    }
+    if (query.userId) {
+      supplyParts.push(`ss.user_id = $${idx}`);
+      movementParts.push(`sm.user_id = $${idx}`);
+      params.push(query.userId);
+      idx++;
+    }
+
+    const includeSupplies =
+      !query.type || query.type === StockMovementType.supply;
+    const includeMovements =
+      !query.type || query.type !== StockMovementType.supply;
+
+    if (query.type && query.type !== StockMovementType.supply) {
+      movementParts.push(`sm.type = $${idx}::stock_movement_type_enum`);
+      params.push(query.type);
+      idx++;
+    }
+
+    const keyword = query.keyword?.trim();
+    if (keyword) {
+      const keywordIdx = idx;
+      params.push(`%${this.escapePgIlikePattern(keyword)}%`);
+      idx++;
+
+      const productMatch = `(
+        p_kw.name ILIKE $${keywordIdx} ESCAPE '\\'
+        OR COALESCE(pv_kw.sku, '') ILIKE $${keywordIdx} ESCAPE '\\'
+      )`;
+      const managerMatch = `(
+        u_kw.first_name ILIKE $${keywordIdx} ESCAPE '\\'
+        OR COALESCE(u_kw.last_name, '') ILIKE $${keywordIdx} ESCAPE '\\'
+        OR (u_kw.first_name || ' ' || COALESCE(u_kw.last_name, '')) ILIKE $${keywordIdx} ESCAPE '\\'
+      )`;
+
+      supplyParts.push(`(
+        EXISTS (
+          SELECT 1
+          FROM stock_movements sm_kw
+          INNER JOIN product_variants pv_kw ON pv_kw.id = sm_kw.variant_id
+          INNER JOIN products p_kw ON p_kw.id = pv_kw.product_id
+          WHERE sm_kw.supply_id = ss.id
+            AND sm_kw.workspace_id = $1
+            AND ${productMatch}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM users u_kw
+          WHERE u_kw.id = ss.user_id
+            AND ${managerMatch}
+        )
+      )`);
+
+      movementParts.push(`(
+        EXISTS (
+          SELECT 1
+          FROM product_variants pv_kw
+          INNER JOIN products p_kw ON p_kw.id = pv_kw.product_id
+          WHERE pv_kw.id = sm.variant_id
+            AND ${productMatch}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM users u_kw
+          WHERE u_kw.id = sm.user_id
+            AND ${managerMatch}
+        )
+      )`);
+    }
+
+    return {
+      supplyWhere: supplyParts.join(" AND "),
+      movementWhere: movementParts.join(" AND "),
+      params,
+      includeSupplies,
+      includeMovements,
+    };
+  }
+
+  private buildStockHistoryCountSql(filters: StockHistoryFilterSql): string {
+    const branches: string[] = [];
+    if (filters.includeSupplies) {
+      branches.push(
+        `SELECT ss.id FROM stock_supplies ss WHERE ${filters.supplyWhere}`,
+      );
+    }
+    if (filters.includeMovements) {
+      branches.push(
+        `SELECT sm.id FROM stock_movements sm WHERE ${filters.movementWhere}`,
+      );
+    }
+    return `SELECT COUNT(*)::text AS cnt FROM (${branches.join(" UNION ALL ")}) history`;
+  }
+
+  private buildStockHistoryListSql(filters: StockHistoryFilterSql): string {
+    const branches: string[] = [];
+    if (filters.includeSupplies) {
+      branches.push(`
+        SELECT
+          'supply'::text AS kind,
+          ss.id AS entry_id,
+          ss.created_at AS created_at
+        FROM stock_supplies ss
+        WHERE ${filters.supplyWhere}
+      `);
+    }
+    if (filters.includeMovements) {
+      branches.push(`
+        SELECT
+          'movement'::text AS kind,
+          sm.id AS entry_id,
+          sm.created_at AS created_at
+        FROM stock_movements sm
+        WHERE ${filters.movementWhere}
+      `);
+    }
+    const limitIdx = filters.params.length + 1;
+    const offsetIdx = filters.params.length + 2;
+    return `
+      SELECT kind, entry_id, created_at
+      FROM (${branches.join(" UNION ALL ")}) history
+      ORDER BY created_at DESC, entry_id DESC
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
+    `;
+  }
+
+  private parseHistoryDateBoundary(
+    value: string,
+    boundary: "start" | "end",
+  ): Date {
+    const trimmed = value.trim();
+    const date = new Date(trimmed);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`Invalid date: ${value}`);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      if (boundary === "start") {
+        date.setUTCHours(0, 0, 0, 0);
+      } else {
+        date.setUTCHours(23, 59, 59, 999);
+      }
+    }
+    return date;
+  }
+
+  private escapePgIlikePattern(value: string): string {
+    return value
+      .replace(/\\/g, "\\\\")
+      .replace(/%/g, "\\%")
+      .replace(/_/g, "\\_");
+  }
+
+  private async loadStockLevelsForMovementIds(
+    workspaceId: number,
+    movementIds: number[],
+  ): Promise<Map<number, { stockAfter: number }>> {
+    const rows = readPostgresQueryRows<{
+      id: string;
+      stock_after: string;
+    }>(
+      await this.dataSource.query(
+        `
+          WITH stock_levels AS (
+            SELECT
+              sm.id,
+              SUM(sm.quantity_change) OVER (
+                PARTITION BY sm.variant_id
+                ORDER BY sm.created_at ASC, sm.id ASC
+              ) AS stock_after
+            FROM stock_movements sm
+            WHERE sm.workspace_id = $1
+          )
+          SELECT id, stock_after
+          FROM stock_levels
+          WHERE id = ANY($2::int[])
+        `,
+        [workspaceId, movementIds],
+      ),
+    );
+
+    return new Map(
+      rows.map((row) => [
+        Number(row.id),
+        { stockAfter: Number(row.stock_after) },
+      ]),
+    );
+  }
+
+  private async loadVariantDisplayMap(
+    workspaceId: number,
+    variantIds: number[],
+  ): Promise<Map<number, VariantDisplayInfo>> {
+    if (variantIds.length === 0) {
+      return new Map();
+    }
+
+    const variants = await this.variantRepo.find({
+      where: { id: In(variantIds) },
+      relations: { product: true, customFieldValues: true },
+      order: { id: "ASC" },
+    });
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspaceId);
+
+    const result = new Map<number, VariantDisplayInfo>();
+    for (const variant of variants) {
+      if (!variant.product) continue;
+      result.set(variant.id, {
+        productId: variant.productId,
+        productName: variant.product.name,
+        variantName: buildVariantTitleFromFields(fieldDefs, variant),
+        sku: variant.sku,
+      });
+    }
+    return result;
+  }
+
+  private toHistoryUser(
+    user:
+      | {
+          id: number;
+          firstName?: string | null;
+          lastName?: string | null;
+          name?: string | null;
+        }
+      | null
+      | undefined,
+  ): StockHistoryUserDto | null {
+    if (!user) return null;
+    const fromParts = [user.firstName?.trim(), user.lastName?.trim()]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    const name = fromParts || user.name?.trim() || `User #${user.id}`;
+    return { id: user.id, name };
+  }
+
+  private toStockHistorySupplyEntry(
+    supply: StockSupply,
+    movements: StockMovement[],
+    variantDisplay: Map<number, VariantDisplayInfo>,
+  ): StockHistorySupplyEntryDto {
+    const items = movements.map((movement) => {
+      const display = variantDisplay.get(movement.variantId);
+      return {
+        movementId: movement.id,
+        productId: display?.productId ?? 0,
+        productName: display?.productName ?? "",
+        variantId: movement.variantId,
+        variantName: display?.variantName ?? null,
+        sku: display?.sku ?? null,
+        quantityChange: movement.quantityChange,
+        purchasePrice: movement.purchasePrice,
+      };
+    });
+
+    return {
+      kind: "supply",
+      id: supply.id,
+      type: StockMovementType.supply,
+      createdAt: supply.createdAt,
+      comment: supply.comment,
+      user: this.toHistoryUser(supply.user),
+      totalQuantityChange: movements.reduce(
+        (sum, row) => sum + row.quantityChange,
+        0,
+      ),
+      itemCount: movements.length,
+      items,
+    };
+  }
+
+  private toStockHistoryMovementEntry(
+    movement: StockMovement,
+    variantDisplay: Map<number, VariantDisplayInfo>,
+    stockLevel?: { stockAfter: number },
+  ): StockHistoryMovementEntryDto {
+    const display = variantDisplay.get(movement.variantId);
+    const stockAfter = stockLevel?.stockAfter ?? null;
+    const stockBefore =
+      stockAfter == null ? null : stockAfter - movement.quantityChange;
+
+    return {
+      kind: "movement",
+      id: movement.id,
+      type: movement.type,
+      createdAt: movement.createdAt,
+      reason: movement.reason,
+      comment: movement.comment,
+      user: this.toHistoryUser(movement.user),
+      productId: display?.productId ?? 0,
+      productName: display?.productName ?? "",
+      variantId: movement.variantId,
+      variantName: display?.variantName ?? null,
+      sku: display?.sku ?? null,
+      quantityChange: movement.quantityChange,
+      purchasePrice: movement.purchasePrice,
+      totalCostChange: movement.totalCostChange,
+      stockBefore,
+      stockAfter,
     };
   }
 
