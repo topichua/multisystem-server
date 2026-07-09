@@ -16,6 +16,7 @@ import { InstagramModule } from "./instagram/instagram.module";
 import { ProductInstagramReferencesModule } from "./product-instagram-references/product-instagram-references.module";
 import { ProductsModule } from "./products/products.module";
 import { OrdersModule } from "./orders/orders.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 import { WorkspaceSettingsModule } from "./workspace-settings/workspace-settings.module";
 import { WorkspaceTemplatesModule } from "./workspace-templates/workspace-templates.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
@@ -57,6 +58,7 @@ import { StorageModule } from "./storage/storage.module";
     InventoryModule,
     ProductInstagramReferencesModule,
     OrdersModule,
+    AnalyticsModule,
     WorkspaceSettingsModule,
     WorkspaceTemplatesModule,
     IntegrationsModule,
