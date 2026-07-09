@@ -41,7 +41,12 @@ import { StartRegistrationRequestDto } from "./dto/start-registration-request.dt
 import { StartRegistrationResponseDto } from "./dto/start-registration-response.dto";
 import { ConfirmRegistrationRequestDto } from "./dto/confirm-registration-request.dto";
 import { ConfirmRegistrationResponseDto } from "./dto/confirm-registration-response.dto";
+import { ForgotPasswordRequestDto } from "./dto/forgot-password-request.dto";
+import { ForgotPasswordResponseDto } from "./dto/forgot-password-response.dto";
+import { ResetPasswordRequestDto } from "./dto/reset-password-request.dto";
+import { ResetPasswordResponseDto } from "./dto/reset-password-response.dto";
 import { RegistrationService } from "./registration.service";
+import { PasswordResetService } from "./password-reset.service";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import type { AuthUser } from "./types/auth-user.type";
 
@@ -58,6 +63,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly facebookOAuth: FacebookOAuthService,
     private readonly registration: RegistrationService,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   @Post("register/start")
@@ -89,6 +95,37 @@ export class AuthController {
     @Body() dto: ConfirmRegistrationRequestDto,
   ): Promise<ConfirmRegistrationResponseDto> {
     return this.registration.confirmRegistration(dto.token);
+  }
+
+  @Post("forgot-password")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Request password reset email",
+    description:
+      "Sends a SendGrid reset email when an active user exists for the email. " +
+      "Always returns success to avoid email enumeration.",
+  })
+  @ApiBody({ type: ForgotPasswordRequestDto })
+  @ApiOkResponse({ type: ForgotPasswordResponseDto })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordRequestDto,
+  ): Promise<ForgotPasswordResponseDto> {
+    return this.passwordReset.requestPasswordReset(dto.email);
+  }
+
+  @Post("reset-password")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Reset password with email token",
+    description:
+      "Consumes the raw token from the reset email link and sets a new password.",
+  })
+  @ApiBody({ type: ResetPasswordRequestDto })
+  @ApiOkResponse({ type: ResetPasswordResponseDto })
+  async resetPassword(
+    @Body() dto: ResetPasswordRequestDto,
+  ): Promise<ResetPasswordResponseDto> {
+    return this.passwordReset.resetPassword(dto.token, dto.password);
   }
 
   @Post("login")

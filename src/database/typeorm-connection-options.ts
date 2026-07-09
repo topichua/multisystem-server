@@ -117,6 +117,7 @@ import { ProductSuggestionReasonType1744200000119 } from "./migrations/174420000
 import { StockSupplies1744200000120 } from "./migrations/1744200000120-StockSupplies";
 import { DropStockSupplyItems1744200000121 } from "./migrations/1744200000121-DropStockSupplyItems";
 import { ClientWishlistItems1744200000122 } from "./migrations/1744200000122-ClientWishlistItems";
+import { PasswordResetTokens1744200000123 } from "./migrations/1744200000123-PasswordResetTokens";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -155,6 +156,7 @@ import {
   WebhookEvent,
   NovaPoshtaIntegration,
   RegistrationToken,
+  PasswordResetToken,
   VariantStock,
   StockMovement,
   StockSupply,
@@ -247,6 +249,7 @@ const entities = [
   OrderEvent,
   WebhookEvent,
   RegistrationToken,
+  PasswordResetToken,
   VariantStock,
   StockMovement,
   StockSupply,
@@ -411,6 +414,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       StockSupplies1744200000120,
       DropStockSupplyItems1744200000121,
       ClientWishlistItems1744200000122,
+      PasswordResetTokens1744200000123,
     ],
   };
 }

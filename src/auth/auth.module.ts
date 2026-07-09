@@ -5,6 +5,7 @@ import { PassportModule } from "@nestjs/passport";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   InstagramIntegration,
+  PasswordResetToken,
   RegistrationToken,
   User,
   Workspace,
@@ -23,6 +24,7 @@ import { FacebookOAuthService } from "./facebook-oauth.service";
 import { JwtStrategy } from "./jwt.strategy";
 import { RegistrationTokenCryptoService } from "./registration-token-crypto.service";
 import { RegistrationService } from "./registration.service";
+import { PasswordResetService } from "./password-reset.service";
 
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { RegistrationService } from "./registration.service";
       WorkspaceMember,
       WorkspaceRole,
       RegistrationToken,
+      PasswordResetToken,
     ]),
     PassportModule.register({ defaultStrategy: "jwt" }),
     JwtModule.registerAsync({
@@ -55,6 +58,7 @@ import { RegistrationService } from "./registration.service";
   providers: [
     AuthService,
     RegistrationService,
+    PasswordResetService,
     RegistrationTokenCryptoService,
     FacebookOAuthService,
     JwtStrategy,

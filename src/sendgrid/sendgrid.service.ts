@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import sgMail from "@sendgrid/mail";
-import { SENDGRID_PRICE_TEMPLATE_ID, SENDGRID_REGISTRATION_TEMPLATE_ID } from "./sendgrid.constants";
+import { SENDGRID_PRICE_TEMPLATE_ID, SENDGRID_REGISTRATION_TEMPLATE_ID, SENDGRID_PASSWORD_RESET_TEMPLATE_ID } from "./sendgrid.constants";
 
 type SendDynamicTemplateParams = {
   to: string;
@@ -69,6 +69,33 @@ export class SendgridService {
         first_name: params.firstName.trim(),
         company_name: params.companyName.trim(),
         confirm_url: params.confirmUrl.trim(),
+      },
+    });
+  }
+
+  async sendPasswordResetEmail(params: {
+    to: string;
+    firstName: string;
+    resetUrl: string;
+    expiresIn: string;
+    logoUrl: string;
+    supportEmail: string;
+  }): Promise<void> {
+    const templateId =
+      this.config
+        .get<string>("SENDGRID_PASSWORD_RESET_TEMPLATE_ID")
+        ?.trim() ||
+      SENDGRID_PASSWORD_RESET_TEMPLATE_ID;
+    await this.sendDynamicTemplate({
+      to: params.to,
+      templateId,
+      dynamicTemplateData: {
+        first_name: params.firstName.trim(),
+        email: params.to.trim(),
+        reset_url: params.resetUrl.trim(),
+        expires_in: params.expiresIn.trim(),
+        logo_url: params.logoUrl.trim(),
+        support_email: params.supportEmail.trim(),
       },
     });
   }

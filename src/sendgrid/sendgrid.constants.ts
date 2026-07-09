@@ -3,3 +3,8 @@ export const SENDGRID_PRICE_TEMPLATE_ID =
 
 export const SENDGRID_REGISTRATION_TEMPLATE_ID =
   "d-36d55043ba0e4a3494b7aa4d5cd41028";
+
+export const SENDGRID_PASSWORD_RESET_TEMPLATE_ID =
+  "d-514787b4c93243d98b5cbfcd97e5cbb6";
+
+export const DEFAULT_SUPPORT_EMAIL = "support@multisale.com";
