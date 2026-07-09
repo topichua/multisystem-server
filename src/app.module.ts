@@ -28,6 +28,7 @@ import { InventoryModule } from "./inventory/inventory.module";
 import { SendgridModule } from "./sendgrid/sendgrid.module";
 import { DeliveryModule } from "./delivery/delivery.module";
 import { StorageModule } from "./storage/storage.module";
+import { BillingModule } from "./billing/billing.module";
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { StorageModule } from "./storage/storage.module";
     NovaPoshtaIntegrationsModule,
     DeliveryModule,
     StorageModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

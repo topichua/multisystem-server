@@ -1,5 +1,6 @@
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { LocationLogger } from "./location-logger";
@@ -29,8 +30,9 @@ function assertStartupEnv(): void {
 async function bootstrap() {
   assertStartupEnv();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: new LocationLogger(),
+    rawBody: true,
   });
   app.enableShutdownHooks();
   app.enableCors({ origin: true, credentials: true });

@@ -118,6 +118,9 @@ import { StockSupplies1744200000120 } from "./migrations/1744200000120-StockSupp
 import { DropStockSupplyItems1744200000121 } from "./migrations/1744200000121-DropStockSupplyItems";
 import { ClientWishlistItems1744200000122 } from "./migrations/1744200000122-ClientWishlistItems";
 import { PasswordResetTokens1744200000123 } from "./migrations/1744200000123-PasswordResetTokens";
+import { BillingInfrastructure1744200000124 } from "./migrations/1744200000124-BillingInfrastructure";
+import { InvoiceMonopayFields1744200000125 } from "./migrations/1744200000125-InvoiceMonopayFields";
+import { PlanTemplatesTestPricing1744200000126 } from "./migrations/1744200000126-PlanTemplatesTestPricing";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -160,6 +163,11 @@ import {
   VariantStock,
   StockMovement,
   StockSupply,
+  WorkspaceEntitlements,
+  PlanTemplate,
+  WorkspaceSubscription,
+  SubscriptionChange,
+  Invoice,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -253,6 +261,11 @@ const entities = [
   VariantStock,
   StockMovement,
   StockSupply,
+  WorkspaceEntitlements,
+  PlanTemplate,
+  WorkspaceSubscription,
+  SubscriptionChange,
+  Invoice,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -415,6 +428,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       DropStockSupplyItems1744200000121,
       ClientWishlistItems1744200000122,
       PasswordResetTokens1744200000123,
+      BillingInfrastructure1744200000124,
+      InvoiceMonopayFields1744200000125,
+      PlanTemplatesTestPricing1744200000126,
     ],
   };
 }

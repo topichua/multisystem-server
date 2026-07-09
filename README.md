@@ -23,6 +23,93 @@
 
 ## Description
 
+NestJS backend for MultiSale.
+
+## MonoPay / Monobank acquiring (billing)
+
+This project integrates **Mono Acquiring API** (legacy merchant API), **not** OAuth Checkout API.
+
+| Credential | Where to get it | Works for billing? |
+|------------|-----------------|-------------------|
+| **Personal API token** | [api.monobank.ua/index.html](https://api.monobank.ua/index.html) | **No** — personal banking API only |
+| **Merchant X-Token** | [web.monobank.ua](https://web.monobank.ua/) → Інтернет → Еквайринг → Токен | **Yes** |
+| **OAuth client_id/secret** | Mono Business Checkout | **Not implemented** in this server |
+
+### API used
+
+- Base URL: `https://api.monobank.ua`
+- Auth header: `X-Token: <merchant_token>`
+- `POST /api/merchant/invoice/create` — create payment page
+- `GET /api/merchant/invoice/status?invoiceId=...` — poll status
+- `GET /api/merchant/pubkey` — webhook signature verification
+- Webhook: `POST /webhooks/monopay` with `X-Sign` (ECDSA)
+
+### Environment variables
+
+```env
+MONOPAY_MERCHANT_TOKEN=...   # from web.monobank.ua acquiring
+PUBLIC_API_URL=https://your-api.example.com
+APP_URL=https://your-app.example.com
+MONOPAY_WEBHOOK_URL=https://your-api.example.com/webhooks/monopay  # optional
+MONOPAY_REDIRECT_URL=https://your-app.example.com/billing/payment/result  # optional
+```
+
+Aliases: `MONOPAY_TOKEN`, `MONOBANK_MERCHANT_TOKEN`, `MONOBANK_TOKEN` (lower priority).
+
+**Do not use** Personal API token from api.monobank.ua — you will get HTTP 401/403 on `/api/merchant/*`.
+
+### Test real 1 UAH payment
+
+1. Configure env and run server with public HTTPS webhook (Railway/ngrok).
+
+2. Check config:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "$API/billing/monopay/config-check"
+```
+
+Expect `ok: true`, `integration.api: "acquiring"`, `apiTest.ok: true`.
+
+3. Create 1 UAH test invoice (dev only):
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  "$API/billing/monopay/test-invoice"
+```
+
+Open `paymentUrl`, pay with card.
+
+4. Poll status if webhook missed:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "$API/billing/monopay/test-invoice/p2_xxx/status"
+```
+
+### Full subscription flow
+
+```
+POST /workspace/billing/subscription/change
+POST /workspace/billing/invoices/:id/pay     → paymentUrl
+[pay on MonoPay]
+POST /webhooks/monopay                       → auto (or sync-payment manually)
+GET  /workspace/billing/entitlements
+```
+
+### Debug logging
+
+Server logs (without full tokens):
+
+- MonoPay base URL, endpoint, masked token (`abcd…wxyz`)
+- Request/response for create/status
+- Webhook payload: invoiceId, status, amount, reference
+- Clear hint on 401/403 if wrong token type
+
+Dev endpoints require `NODE_ENV !== production` or `ENABLE_DEV_BILLING_SIMULATOR=true`.
+
+---
+
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
 ## Project setup

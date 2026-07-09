@@ -57,6 +57,15 @@ export { WorkspaceVariantCustomField } from "./workspace-variant-custom-field.en
 export { WorkspaceVariantCustomFieldOption } from "./workspace-variant-custom-field-option.entity";
 export { RegistrationToken } from "./registration-token.entity";
 export { PasswordResetToken } from "./password-reset-token.entity";
+export { BillingCycle } from "./billing-cycle.enum";
+export { SubscriptionStatus } from "./subscription-status.enum";
+export { InvoiceStatus } from "./invoice-status.enum";
+export { SubscriptionChangeType } from "./subscription-change-type.enum";
+export { WorkspaceEntitlements } from "./workspace-entitlements.entity";
+export { PlanTemplate } from "./plan-template.entity";
+export { WorkspaceSubscription } from "./workspace-subscription.entity";
+export { SubscriptionChange } from "./subscription-change.entity";
+export { Invoice, type InvoiceLineItem } from "./invoice.entity";
 export { User } from "./user.entity";
 export { UserStatus, UserStatusLabels } from "./user-status.enum";
 export { Workspace } from "./workspace.entity";
