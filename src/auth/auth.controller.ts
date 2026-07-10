@@ -145,7 +145,9 @@ export class AuthController {
   @ApiOperation({
     summary: "Current user profile and company",
     description:
-      "Returns JWT claims plus full user row (without secrets) and the latest company for this owner when applicable. Env super-admin login has no user/company rows.",
+      "Returns JWT claims plus full user row (without secrets), the latest company for this owner when applicable, " +
+      "billing plan/subscription/entitlements, and resolved workspace permissions with role for the JWT workspace session. " +
+      "Env super-admin login has no user/company rows.",
   })
   @ApiOkResponse({ type: MeResponseDto })
   async getAuth(

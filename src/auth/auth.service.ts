@@ -1,7 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -21,6 +23,7 @@ import type {
   CompanyMeDto,
   MeResponseDto,
   UserMeDto,
+  WorkspaceRoleMeDto,
 } from "./dto/me-response.dto";
 import type { UpdateAuthProfileRequestDto } from "./dto/update-auth-profile-request.dto";
 import {
@@ -32,6 +35,9 @@ import {
 } from "./dto/update-auth-profile-request.dto";
 import type { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
 import type { SetEmailRequestDto } from "./dto/set-email-request.dto";
+import { EntitlementsService } from "../billing/entitlements.service";
+import { SubscriptionsService } from "../billing/subscriptions.service";
+import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
 
 /** Default access token lifetime when `JWT_EXPIRES_SECONDS` is unset (30 days). */
 const DEFAULT_JWT_EXPIRES_SECONDS = 30 * 24 * 60 * 60;
@@ -58,6 +64,9 @@ export class AuthService {
     private readonly workspaceMemberRepo: Repository<WorkspaceMember>,
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
+    private readonly subscriptions: SubscriptionsService,
+    private readonly entitlements: EntitlementsService,
+    private readonly workspacePermissions: WorkspacePermissionsService,
   ) {}
 
   async getMe(authUser: AuthUser): Promise<MeResponseDto> {
@@ -68,6 +77,11 @@ export class AuthService {
         user: null,
         company: null,
         companyName: null,
+        plan: null,
+        entitlements: null,
+        subscription: null,
+        permissions: null,
+        workspaceRole: null,
       };
     }
 
@@ -277,12 +291,161 @@ export class AuthService {
         }
       : null;
 
+    const workspaceId = await this.resolveWorkspaceIdForMe(
+      authUser,
+      user,
+      company,
+    );
+    const [billing, access] = await Promise.all([
+      this.loadWorkspaceBilling(workspaceId),
+      this.loadWorkspaceAccess(authUser, user, workspaceId),
+    ]);
+
     return {
       email: user.email,
       role: authUser.role,
       user: this.toUserMeDto(user),
       company: companyDto,
       companyName: companyDto?.name ?? null,
+      plan: billing.plan,
+      entitlements: billing.entitlements,
+      subscription: billing.subscription,
+      permissions: access.permissions,
+      workspaceRole: access.workspaceRole,
+    };
+  }
+
+  private async resolveWorkspaceIdForMe(
+    authUser: AuthUser,
+    user: User,
+    company: InstagramIntegration | null,
+  ): Promise<number | null> {
+    if (authUser.workspaceId != null) {
+      return authUser.workspaceId;
+    }
+    if (company?.workspaceId != null) {
+      return company.workspaceId;
+    }
+    return (await this.resolveSessionWorkspaceId(user.id)) ?? null;
+  }
+
+  private async loadWorkspaceBilling(workspaceId: number | null): Promise<{
+    plan: MeResponseDto["plan"];
+    entitlements: MeResponseDto["entitlements"];
+    subscription: MeResponseDto["subscription"];
+  }> {
+    if (workspaceId == null) {
+      return { plan: null, entitlements: null, subscription: null };
+    }
+
+    try {
+      const [subscription, entitlements] = await Promise.all([
+        this.subscriptions.getActiveForWorkspace(workspaceId),
+        this.entitlements.getForWorkspace(workspaceId),
+      ]);
+      return {
+        plan: subscription.plan,
+        entitlements,
+        subscription: {
+          periodStart: subscription.periodStart,
+          periodEnd: subscription.periodEnd,
+          status: subscription.status,
+          billingCycle: subscription.billingCycle,
+          isExpired: subscription.isExpired,
+          canRenew: subscription.canRenew,
+          pendingInvoice: subscription.pendingInvoice,
+        },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return { plan: null, entitlements: null, subscription: null };
+      }
+      throw error;
+    }
+  }
+
+  private async loadWorkspaceAccess(
+    authUser: AuthUser,
+    user: User,
+    workspaceId: number | null,
+  ): Promise<{
+    permissions: MeResponseDto["permissions"];
+    workspaceRole: MeResponseDto["workspaceRole"];
+  }> {
+    if (workspaceId == null) {
+      return { permissions: null, workspaceRole: null };
+    }
+
+    try {
+      const [permissions, workspace] = await Promise.all([
+        this.workspacePermissions.getResolvedForUser(
+          user.id,
+          authUser.role,
+          workspaceId,
+        ),
+        this.workspaceRepo.findOne({ where: { id: workspaceId } }),
+      ]);
+      if (!workspace) {
+        return { permissions: null, workspaceRole: null };
+      }
+
+      if (workspace.ownerId === user.id) {
+        return {
+          permissions,
+          workspaceRole: this.toOwnerWorkspaceRole(),
+        };
+      }
+
+      const member = await this.workspaceMemberRepo.findOne({
+        where: {
+          workspaceId,
+          userId: user.id,
+          status: WorkspaceMemberStatus.ACTIVE,
+        },
+        relations: { role: true },
+      });
+      if (!member?.role) {
+        return { permissions, workspaceRole: null };
+      }
+
+      return {
+        permissions,
+        workspaceRole: this.toMemberWorkspaceRole(member),
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        return { permissions: null, workspaceRole: null };
+      }
+      throw error;
+    }
+  }
+
+  private toOwnerWorkspaceRole(): WorkspaceRoleMeDto {
+    return {
+      id: null,
+      slug: "owner",
+      name: "Owner",
+      description: null,
+      color: null,
+      isOwner: true,
+      memberId: null,
+    };
+  }
+
+  private toMemberWorkspaceRole(
+    member: WorkspaceMember & { role: NonNullable<WorkspaceMember["role"]> },
+  ): WorkspaceRoleMeDto {
+    return {
+      id: member.role.id,
+      slug: member.role.slug,
+      name: member.role.name,
+      description: member.role.description,
+      color: member.role.color,
+      isOwner: false,
+      memberId: member.id,
     };
   }
 
