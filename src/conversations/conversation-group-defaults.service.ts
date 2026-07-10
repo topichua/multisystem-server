@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import {
   CONVERSATION_GROUP_SYSTEM_DEFAULTS,
   ConversationGroup,
@@ -61,5 +61,20 @@ export class ConversationGroupDefaultsService {
   ): Promise<ConversationGroup | null> {
     await this.ensureSystemGroups(workspaceId);
     return this.groupRepo.findOne({ where: { workspaceId, systemKey: key } });
+  }
+
+  async resolveSystemGroupIds(
+    workspaceId: number,
+    keys: ConversationGroupSystemKey[],
+  ): Promise<number[]> {
+    if (keys.length === 0) {
+      return [];
+    }
+    await this.ensureSystemGroups(workspaceId);
+    const rows = await this.groupRepo.find({
+      where: { workspaceId, systemKey: In(keys) },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
   }
 }

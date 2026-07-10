@@ -41,8 +41,16 @@ export class ConversationWorkflowService {
     });
   }
 
+  async shouldDropInboundMessage(conversation: Conversation): Promise<boolean> {
+    const current = await this.describeGroup(conversation.groupId);
+    return current?.systemKey === ConversationGroupSystemKey.SPAM;
+  }
+
   async onInboundCustomerMessage(conversation: Conversation): Promise<void> {
     const current = await this.describeGroup(conversation.groupId);
+    if (current?.systemKey === ConversationGroupSystemKey.SPAM) {
+      return;
+    }
     if (current?.systemKey !== ConversationGroupSystemKey.ARCHIVED) {
       return;
     }

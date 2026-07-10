@@ -11,6 +11,7 @@ export { ConversationGroup } from "./conversation-group.entity";
 export {
   ConversationGroupSystemKey,
   CONVERSATION_GROUP_SYSTEM_DEFAULTS,
+  CONVERSATION_GROUP_SYSTEM_KEYS_HIDDEN_FROM_DEFAULT_LIST,
 } from "./conversation-group-system-key.enum";
 export { ConversationEvent } from "./conversation-event.entity";
 export { ConversationEventType } from "./conversation-event-type.enum";

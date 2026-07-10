@@ -42,7 +42,8 @@ export class ConversationGroupsController {
     summary: "List conversation groups for the current user workspace",
     description:
       "Uses `workspaceId` from the JWT session. With `include_distribution=true`, each group includes " +
-      "`conversationCount` (respecting full access or integration grants) and the response includes `totalConversations`.",
+      "`conversationCount` (respecting full access or integration grants) and the response includes `totalConversations` " +
+      "(active groups only — excludes archived and spam).",
   })
   @ApiQuery({
     name: "include_distribution",

@@ -121,6 +121,7 @@ import { PasswordResetTokens1744200000123 } from "./migrations/1744200000123-Pas
 import { BillingInfrastructure1744200000124 } from "./migrations/1744200000124-BillingInfrastructure";
 import { InvoiceMonopayFields1744200000125 } from "./migrations/1744200000125-InvoiceMonopayFields";
 import { PlanTemplatesTestPricing1744200000126 } from "./migrations/1744200000126-PlanTemplatesTestPricing";
+import { ConversationGroupSpam1744200000127 } from "./migrations/1744200000127-ConversationGroupSpam";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -431,6 +432,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       BillingInfrastructure1744200000124,
       InvoiceMonopayFields1744200000125,
       PlanTemplatesTestPricing1744200000126,
+      ConversationGroupSpam1744200000127,
     ],
   };
 }

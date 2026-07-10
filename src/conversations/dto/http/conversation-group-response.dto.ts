@@ -27,7 +27,7 @@ export class ConversationGroupResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "Built-in status key: new, processing, archived",
+    description: "Built-in status key: new, processing, archived, spam",
     example: "new",
   })
   systemKey?: string | null;

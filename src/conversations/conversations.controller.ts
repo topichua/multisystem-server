@@ -68,6 +68,7 @@ export class ConversationsController {
       "Owners and roles with `conversations.full_access` see all chats. " +
       "Otherwise, results are built from the role's integration grants: each grant matches conversations by integration source and `external_source_id`; `read=all` returns all chats on that integration, `read=mine` only chats where you are responsible. " +
       "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace. " +
+      "Omit `groupIds` to list all active groups (excludes archived and spam). " +
       "Optional `show_without_responsible_only=true`: only unassigned chats (`responsible_member_id` null) you can access (takeable queue / unassigned inbox). " +
       "Optional `channel_ids`: comma-separated integration ids from GET /conversations/criteria (e.g. `1,2`). " +
       "Optional `responsible_user_ids`: comma-separated workspace member ids from GET /conversations/criteria `responsibleUsers` (e.g. `5,7`). " +
@@ -79,7 +80,7 @@ export class ConversationsController {
     name: "groupIds",
     required: false,
     description:
-      "Comma-separated conversation group ids, e.g. `1,2`. Omit for all conversations.",
+      "Comma-separated conversation group ids, e.g. `1,2`. Omit for all active groups (excludes archived and spam).",
     example: "1,2",
   })
   @ApiQuery({

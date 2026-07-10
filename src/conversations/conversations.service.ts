@@ -18,6 +18,7 @@ import {
   ConversationMessage,
   ConversationMessageType,
   ConversationSource,
+  CONVERSATION_GROUP_SYSTEM_KEYS_HIDDEN_FROM_DEFAULT_LIST,
   InstagramUser,
   TelegramUser,
   TelegramIntegration,
@@ -197,7 +198,8 @@ export class ConversationsService {
 
     if (permissions.isOwner || permissions.conversations.fullAccess) {
       const rows = await this.countConversationsByGroupQuery(workspaceId);
-      return this.mapConversationDistributionRows(rows);
+      const hiddenGroupIds = await this.resolveHiddenSystemGroupIds(workspaceId);
+      return this.mapConversationDistributionRows(rows, hiddenGroupIds);
     }
 
     const grantContext = await this.prepareIntegrationGrantListContext(
@@ -228,7 +230,8 @@ export class ConversationsService {
       .groupBy("c.group_id");
 
     const rows = await qb.getRawMany<{ groupId: string | null; count: string }>();
-    return this.mapConversationDistributionRows(rows);
+    const hiddenGroupIds = await this.resolveHiddenSystemGroupIds(workspaceId);
+    return this.mapConversationDistributionRows(rows, hiddenGroupIds);
   }
 
   async listConversationsForOwner(
@@ -263,7 +266,7 @@ export class ConversationsService {
       workspaceId,
     );
 
-    const groupIds = await this.validateOptionalGroupIds(
+    const groupFilter = await this.resolveListGroupFilter(
       workspaceId,
       filters.groupIds,
     );
@@ -310,7 +313,7 @@ export class ConversationsService {
       permissions.isOwner || permissions.conversations.fullAccess
         ? await this.findConversationsForWorkspace(
             workspaceId,
-            groupIds,
+            groupFilter,
             undefined,
             channelFilter,
             undefined,
@@ -320,7 +323,7 @@ export class ConversationsService {
             workspaceId,
             ownerId,
             permissions.integrationGrants,
-            groupIds,
+            groupFilter,
             undefined,
             channelFilter,
             undefined,
@@ -1274,6 +1277,58 @@ export class ConversationsService {
     );
   }
 
+  private async resolveHiddenSystemGroupIds(
+    workspaceId: number,
+  ): Promise<Set<number>> {
+    const ids = await this.conversationGroupDefaults.resolveSystemGroupIds(
+      workspaceId,
+      CONVERSATION_GROUP_SYSTEM_KEYS_HIDDEN_FROM_DEFAULT_LIST,
+    );
+    return new Set(ids);
+  }
+
+  private async resolveListGroupFilter(
+    workspaceId: number,
+    groupIdsRaw?: number[],
+  ): Promise<{
+    includeGroupIds?: number[];
+    excludeGroupIds?: number[];
+  }> {
+    const explicit = await this.validateOptionalGroupIds(workspaceId, groupIdsRaw);
+    if (explicit != null) {
+      return { includeGroupIds: explicit };
+    }
+    const excludeGroupIds =
+      await this.conversationGroupDefaults.resolveSystemGroupIds(
+        workspaceId,
+        CONVERSATION_GROUP_SYSTEM_KEYS_HIDDEN_FROM_DEFAULT_LIST,
+      );
+    return { excludeGroupIds };
+  }
+
+  private applyConversationGroupListFilter(
+    qb: SelectQueryBuilder<Conversation>,
+    filter: { includeGroupIds?: number[]; excludeGroupIds?: number[] },
+  ): void {
+    if (filter.includeGroupIds != null && filter.includeGroupIds.length > 0) {
+      qb.andWhere("c.group_id IN (:...includeGroupIds)", {
+        includeGroupIds: filter.includeGroupIds,
+      });
+      return;
+    }
+    if (filter.excludeGroupIds != null && filter.excludeGroupIds.length > 0) {
+      qb.andWhere(
+        new Brackets((sub) => {
+          sub
+            .where("c.group_id IS NULL")
+            .orWhere("c.group_id NOT IN (:...excludeGroupIds)", {
+              excludeGroupIds: filter.excludeGroupIds,
+            });
+        }),
+      );
+    }
+  }
+
   private async validateOptionalGroupIds(
     workspaceId: number,
     groupIdsRaw?: number[],
@@ -2002,6 +2057,7 @@ export class ConversationsService {
 
   private mapConversationDistributionRows(
     rows: Array<{ groupId: string | null; count: string }>,
+    hiddenGroupIds: Set<number> = new Set(),
   ): { byGroupId: Map<number, number>; total: number } {
     let total = 0;
     const byGroupId = new Map<number, number>();
@@ -2010,9 +2066,14 @@ export class ConversationsService {
       if (!Number.isFinite(count) || count < 0) {
         continue;
       }
-      total += count;
       if (row.groupId != null && row.groupId !== "") {
-        byGroupId.set(Number(row.groupId), count);
+        const groupId = Number(row.groupId);
+        byGroupId.set(groupId, count);
+        if (!hiddenGroupIds.has(groupId)) {
+          total += count;
+        }
+      } else {
+        total += count;
       }
     }
     return { byGroupId, total };
@@ -2032,7 +2093,7 @@ export class ConversationsService {
 
   private async findConversationsForWorkspace(
     workspaceId: number,
-    groupIds?: number[],
+    groupFilter: { includeGroupIds?: number[]; excludeGroupIds?: number[] } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {
       instagram: InstagramIntegration[];
@@ -2044,12 +2105,15 @@ export class ConversationsService {
     const useQueryBuilder =
       channelFilter != null ||
       (responsibleMemberIds != null && responsibleMemberIds.length > 0) ||
-      (participantIds != null && participantIds.length > 0);
+      (participantIds != null && participantIds.length > 0) ||
+      (groupFilter.excludeGroupIds != null &&
+        groupFilter.excludeGroupIds.length > 0);
 
     if (!useQueryBuilder) {
       const where: FindOptionsWhere<Conversation> =
-        groupIds != null && groupIds.length > 0
-          ? { workspaceId, groupId: In(groupIds) }
+        groupFilter.includeGroupIds != null &&
+        groupFilter.includeGroupIds.length > 0
+          ? { workspaceId, groupId: In(groupFilter.includeGroupIds) }
           : { workspaceId };
       if (showWithoutResponsibleOnly) {
         where.responsibleMemberId = IsNull();
@@ -2063,9 +2127,7 @@ export class ConversationsService {
     const qb = this.conversationRepo
       .createQueryBuilder("c")
       .where("c.workspace_id = :workspaceId", { workspaceId });
-    if (groupIds != null && groupIds.length > 0) {
-      qb.andWhere("c.group_id IN (:...groupIds)", { groupIds });
-    }
+    this.applyConversationGroupListFilter(qb, groupFilter);
     if (showWithoutResponsibleOnly) {
       qb.andWhere("c.responsible_member_id IS NULL");
     }
@@ -2267,7 +2329,7 @@ export class ConversationsService {
     workspaceId: number,
     userId: number,
     grants: ResolvedIntegrationGrant[],
-    groupIds?: number[],
+    groupFilter: { includeGroupIds?: number[]; excludeGroupIds?: number[] } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {
       instagram: InstagramIntegration[];
@@ -2290,9 +2352,7 @@ export class ConversationsService {
       .createQueryBuilder("c")
       .where("c.workspace_id = :workspaceId", { workspaceId });
 
-    if (groupIds != null && groupIds.length > 0) {
-      qb.andWhere("c.group_id IN (:...groupIds)", { groupIds });
-    }
+    this.applyConversationGroupListFilter(qb, groupFilter);
 
     if (showWithoutResponsibleOnly) {
       qb.andWhere("c.responsible_member_id IS NULL");

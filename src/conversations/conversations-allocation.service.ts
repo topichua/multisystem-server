@@ -257,6 +257,18 @@ export class ConversationsAllocationService {
       );
     }
 
+    const senderId = msg.from?.id?.trim() ?? "";
+    const isInboundCustomer = Boolean(senderId && senderId === customerUserId);
+    if (
+      isInboundCustomer &&
+      (await this.conversationWorkflow.shouldDropInboundMessage(conv))
+    ) {
+      this.log.log(
+        `${t} dropped inbound message for spam conversation id=${conv.id} mid=${mid}`,
+      );
+      return;
+    }
+
     const existingMessage = await this.conversationMessageRepo.findOne({
       where: { externalId: mid, conversationId: conv.id },
     });
@@ -276,8 +288,7 @@ export class ConversationsAllocationService {
 
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
 
-    const senderId = msg.from?.id?.trim() ?? "";
-    if (senderId && senderId === customerUserId) {
+    if (isInboundCustomer) {
       await this.conversationWorkflow.onInboundCustomerMessage(conv);
     }
 

@@ -398,6 +398,14 @@ export class TelegramMessagePersistenceService {
     if (convSaved) {
       await this.conversationRepo.save(conv);
       await this.conversationWorkflow.onConversationCreated(conv, ownerId);
+    } else if (
+      !isOutgoing &&
+      (await this.conversationWorkflow.shouldDropInboundMessage(conv))
+    ) {
+      this.log.debug(
+        `Dropped inbound telegram message for spam conversation id=${conv.id} external_id=${externalMessageId}`,
+      );
+      return false;
     } else if (conv.instUpdatedAt.getTime() < messageDate.getTime()) {
       conv.instUpdatedAt = messageDate;
       await this.conversationRepo.save(conv);
