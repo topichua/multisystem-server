@@ -22,7 +22,8 @@ export type InvoiceLinePurpose =
   | "upgrade"
   | "downgrade"
   | "renewal"
-  | "custom";
+  | "custom"
+  | "credit_purchase";
 
 export type InvoiceLineItem = {
   type: string;
@@ -33,6 +34,7 @@ export type InvoiceLineItem = {
   planSlug?: string;
   billingCycle?: string;
   purpose?: InvoiceLinePurpose;
+  creditsAmount?: number;
 };
 
 @Entity({ name: "invoices" })

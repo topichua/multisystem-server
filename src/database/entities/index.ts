@@ -62,6 +62,7 @@ export { BillingCycle } from "./billing-cycle.enum";
 export { SubscriptionStatus } from "./subscription-status.enum";
 export { InvoiceStatus } from "./invoice-status.enum";
 export { SubscriptionChangeType } from "./subscription-change-type.enum";
+export { BillingCreditPricing } from "./billing-credit-pricing.entity";
 export { WorkspaceEntitlements } from "./workspace-entitlements.entity";
 export { PlanTemplate } from "./plan-template.entity";
 export { WorkspaceSubscription } from "./workspace-subscription.entity";

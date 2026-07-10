@@ -13,6 +13,7 @@ import { WorkspaceSubscription } from "../database/entities/workspace-subscripti
 import { BillingProvisioningModule } from "./billing-provisioning.module";
 import {
   BillingAdminController,
+  BillingGlobalAdminController,
   BillingPlansController,
   WorkspaceBillingController,
 } from "./billing.controller";
@@ -31,6 +32,10 @@ import { MonopayConfigService } from "./monopay/monopay-config.service";
 import { MonopayTestService } from "./monopay/monopay-test.service";
 import { MonopayWebhookController } from "./monopay/monopay-webhook.controller";
 import { InvoicePaymentService } from "./invoice-payment.service";
+import { CreditPricingService } from "./credit-pricing.service";
+import { CreditPurchaseService } from "./credit-purchase.service";
+import { CreditFulfillmentService } from "./credit-fulfillment.service";
+import { BillingCreditPricing } from "../database/entities/billing-credit-pricing.entity";
 
 @Module({
   imports: [
@@ -42,6 +47,7 @@ import { InvoicePaymentService } from "./invoice-payment.service";
       PlanTemplate,
       SubscriptionChange,
       Invoice,
+      BillingCreditPricing,
       InstagramIntegration,
       TelegramIntegration,
     ]),
@@ -50,6 +56,7 @@ import { InvoicePaymentService } from "./invoice-payment.service";
     BillingPlansController,
     WorkspaceBillingController,
     BillingAdminController,
+    BillingGlobalAdminController,
     MonopayWebhookController,
   ],
   providers: [
@@ -66,6 +73,9 @@ import { InvoicePaymentService } from "./invoice-payment.service";
     MonopayTestService,
     MonopayPaymentService,
     InvoicesService,
+    CreditPricingService,
+    CreditPurchaseService,
+    CreditFulfillmentService,
     BillingDevGuard,
   ],
   exports: [

@@ -122,6 +122,7 @@ import { BillingInfrastructure1744200000124 } from "./migrations/1744200000124-B
 import { InvoiceMonopayFields1744200000125 } from "./migrations/1744200000125-InvoiceMonopayFields";
 import { PlanTemplatesTestPricing1744200000126 } from "./migrations/1744200000126-PlanTemplatesTestPricing";
 import { ConversationGroupSpam1744200000127 } from "./migrations/1744200000127-ConversationGroupSpam";
+import { BillingCreditPurchases1744200000128 } from "./migrations/1744200000128-BillingCreditPurchases";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -169,6 +170,7 @@ import {
   WorkspaceSubscription,
   SubscriptionChange,
   Invoice,
+  BillingCreditPricing,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -267,6 +269,7 @@ const entities = [
   WorkspaceSubscription,
   SubscriptionChange,
   Invoice,
+  BillingCreditPricing,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -433,6 +436,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       InvoiceMonopayFields1744200000125,
       PlanTemplatesTestPricing1744200000126,
       ConversationGroupSpam1744200000127,
+      BillingCreditPurchases1744200000128,
     ],
   };
 }

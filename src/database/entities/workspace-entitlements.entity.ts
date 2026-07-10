@@ -38,6 +38,9 @@ export class WorkspaceEntitlements {
   @Column({ name: "ai_credits_used", type: "int", default: 0 })
   aiCreditsUsed: number;
 
+  @Column({ name: "ai_credits_purchased", type: "int", default: 0 })
+  aiCreditsPurchased: number;
+
   @Column({ name: "credits_reset_at", type: "timestamptz", nullable: true })
   creditsResetAt: Date | null;
 

@@ -4,6 +4,7 @@ import { Repository } from "typeorm";
 import { InvoiceStatus } from "../database/entities/invoice-status.enum";
 import { Invoice } from "../database/entities/invoice.entity";
 import { SubscriptionActivationService } from "./subscription-activation.service";
+import { CreditFulfillmentService } from "./credit-fulfillment.service";
 
 export type CompleteInvoicePaymentInput = {
   invoiceId: number;
@@ -20,6 +21,7 @@ export class InvoicePaymentService {
     @InjectRepository(Invoice)
     private readonly invoiceRepo: Repository<Invoice>,
     private readonly activation: SubscriptionActivationService,
+    private readonly creditFulfillment: CreditFulfillmentService,
   ) {}
 
   async completePayment(input: CompleteInvoicePaymentInput): Promise<void> {
@@ -46,7 +48,15 @@ export class InvoicePaymentService {
       invoice.paymentPageUrl = input.paymentPageUrl;
     }
     await this.invoiceRepo.save(invoice);
+    if (this.isCreditPurchaseInvoice(invoice)) {
+      await this.creditFulfillment.fulfillPaidInvoice(invoice.id);
+      return;
+    }
     await this.activation.activatePaidInvoice(invoice.id, input.paidAt);
+  }
+
+  private isCreditPurchaseInvoice(invoice: Invoice): boolean {
+    return invoice.lineItems.some((item) => item.type === "credit_pack");
   }
 
   async markPaymentFailed(invoiceId: number): Promise<void> {

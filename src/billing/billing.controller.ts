@@ -52,6 +52,12 @@ import { MonopayTestService } from "./monopay/monopay-test.service";
 import { MonopayConfigCheckResponseDto } from "./dto/monopay-config-check-response.dto";
 import { MonopayTestInvoiceResponseDto } from "./dto/monopay-test-invoice-response.dto";
 import { MonopayTestInvoiceStatusResponseDto } from "./dto/monopay-test-invoice-status-response.dto";
+import { CreditPricingService } from "./credit-pricing.service";
+import { CreditPurchaseService } from "./credit-purchase.service";
+import { CreditPricingResponseDto } from "./dto/credit-pricing-response.dto";
+import { UpdateCreditPricingRequestDto } from "./dto/update-credit-pricing-request.dto";
+import { PurchaseCreditsRequestDto } from "./dto/purchase-credits-request.dto";
+import { PurchaseCreditsResponseDto } from "./dto/purchase-credits-response.dto";
 
 @ApiTags("billing")
 @Controller("billing")
@@ -60,6 +66,7 @@ export class BillingPlansController {
     private readonly plans: PlansService,
     private readonly monopayConfig: MonopayConfigService,
     private readonly monopayTest: MonopayTestService,
+    private readonly creditPricing: CreditPricingService,
   ) {}
 
   @Get("plans")
@@ -67,6 +74,13 @@ export class BillingPlansController {
   @ApiOkResponse({ type: [PlanTemplateResponseDto] })
   listPlans(): Promise<PlanTemplateResponseDto[]> {
     return this.plans.listPublicPlans();
+  }
+
+  @Get("credit-pricing")
+  @ApiOperation({ summary: "Current AI credit purchase pricing" })
+  @ApiOkResponse({ type: CreditPricingResponseDto })
+  getCreditPricing(): Promise<CreditPricingResponseDto> {
+    return this.creditPricing.getPublicPricing();
   }
 
   @Get("monopay/config-check")
@@ -126,6 +140,7 @@ export class WorkspaceBillingController {
     private readonly subscriptionRenewal: SubscriptionRenewalService,
     private readonly monopayPayment: MonopayPaymentService,
     private readonly invoices: InvoicesService,
+    private readonly creditPurchase: CreditPurchaseService,
   ) {}
 
   @Get("entitlements")
@@ -174,6 +189,26 @@ export class WorkspaceBillingController {
     const userId = this.requireUserId(req);
     const workspaceId = await this.resolveWorkspaceId(req);
     return this.subscriptionRenewal.createRenewalInvoice(workspaceId, userId);
+  }
+
+  @Post("credits/purchase")
+  @ApiOperation({
+    summary: "Create invoice to buy additional AI credits",
+    description:
+      "Creates an open invoice for the requested credit amount using the global credit price. " +
+      "Pay it via POST /workspace/billing/invoices/:id/pay to add credits to the workspace.",
+  })
+  @ApiBody({ type: PurchaseCreditsRequestDto })
+  @ApiOkResponse({ type: PurchaseCreditsResponseDto })
+  async purchaseCredits(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: PurchaseCreditsRequestDto,
+  ): Promise<PurchaseCreditsResponseDto> {
+    const workspaceId = await this.resolveWorkspaceId(req);
+    return this.creditPurchase.createPurchaseInvoice(
+      workspaceId,
+      dto.creditsAmount,
+    );
   }
 
   @Post("invoices/:id/pay")
@@ -297,5 +332,23 @@ export class BillingAdminController {
       dto.entitlements,
       dto.customLabel,
     );
+  }
+}
+
+@ApiTags("admin — billing")
+@ApiBearerAuth("bearer")
+@UseGuards(JwtAuthGuard, SuperAdminGuard)
+@Controller("admin/billing")
+export class BillingGlobalAdminController {
+  constructor(private readonly creditPricing: CreditPricingService) {}
+
+  @Patch("credit-pricing")
+  @ApiOperation({ summary: "Update global AI credit purchase pricing" })
+  @ApiBody({ type: UpdateCreditPricingRequestDto })
+  @ApiOkResponse({ type: CreditPricingResponseDto })
+  updateCreditPricing(
+    @Body() dto: UpdateCreditPricingRequestDto,
+  ): Promise<CreditPricingResponseDto> {
+    return this.creditPricing.updatePricing(dto);
   }
 }

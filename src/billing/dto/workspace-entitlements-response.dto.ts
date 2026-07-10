@@ -39,6 +39,12 @@ export class WorkspaceEntitlementsResponseDto
   @ApiProperty({ example: 240 })
   aiCreditsUsed: number;
 
+  @ApiProperty({
+    example: 500,
+    description: "Additional purchased credits that do not reset monthly",
+  })
+  aiCreditsPurchased: number;
+
   @ApiPropertyOptional({ nullable: true })
   creditsResetAt: string | null;
 

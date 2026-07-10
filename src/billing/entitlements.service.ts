@@ -32,6 +32,7 @@ export class EntitlementsService {
     return {
       ...snapshot,
       aiCreditsUsed: row.aiCreditsUsed,
+      aiCreditsPurchased: row.aiCreditsPurchased,
       creditsResetAt: row.creditsResetAt?.toISOString() ?? null,
       usage,
     };
