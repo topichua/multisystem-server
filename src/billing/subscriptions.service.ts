@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
+import { BillingCycle } from "../database/entities/billing-cycle.enum";
 import { InvoiceStatus } from "../database/entities/invoice-status.enum";
 import { Invoice } from "../database/entities/invoice.entity";
 import { SubscriptionStatus } from "../database/entities/subscription-status.enum";
@@ -32,7 +33,34 @@ export class SubscriptionsService {
   ): Promise<WorkspaceSubscriptionResponseDto> {
     await this.lifecycle.syncExpiredSubscription(workspaceId);
     const row = await this.requireActiveSubscription(workspaceId);
-    return this.toDto(row);
+    return this.toDto(row, { includePendingInvoice: true });
+  }
+
+  async getActiveSummaryForWorkspace(workspaceId: number): Promise<{
+    plan: ReturnType<PlansService["toDto"]> | null;
+    periodStart: string;
+    periodEnd: string;
+    status: SubscriptionStatus;
+    billingCycle: BillingCycle;
+    isExpired: boolean;
+    canRenew: boolean;
+  }> {
+    await this.lifecycle.syncExpiredSubscription(workspaceId);
+    const row = await this.requireActiveSubscription(workspaceId);
+    const isExpired = this.lifecycle.isSubscriptionExpired(row);
+    const isPaidPlan =
+      row.planTemplate != null &&
+      row.planTemplate.slug !== DEFAULT_FREE_PLAN_SLUG;
+
+    return {
+      plan: row.planTemplate ? this.plans.toDto(row.planTemplate) : null,
+      periodStart: row.periodStart.toISOString(),
+      periodEnd: row.periodEnd.toISOString(),
+      status: row.status,
+      billingCycle: row.billingCycle,
+      isExpired,
+      canRenew: isPaidPlan,
+    };
   }
 
   async requireActiveSubscription(
@@ -52,19 +80,25 @@ export class SubscriptionsService {
     return row;
   }
 
-  async toDto(row: WorkspaceSubscription): Promise<WorkspaceSubscriptionResponseDto> {
+  async toDto(
+    row: WorkspaceSubscription,
+    options: { includePendingInvoice?: boolean } = {},
+  ): Promise<WorkspaceSubscriptionResponseDto> {
     const isExpired = this.lifecycle.isSubscriptionExpired(row);
     const isPaidPlan =
       row.planTemplate != null &&
       row.planTemplate.slug !== DEFAULT_FREE_PLAN_SLUG;
-    const pendingInvoice = await this.invoiceRepo.findOne({
-      where: {
-        workspaceId: row.workspaceId,
-        subscriptionId: row.id,
-        status: InvoiceStatus.open,
-      },
-      order: { id: "DESC" },
-    });
+    const pendingInvoice =
+      options.includePendingInvoice === false
+        ? null
+        : await this.invoiceRepo.findOne({
+            where: {
+              workspaceId: row.workspaceId,
+              subscriptionId: row.id,
+              status: InvoiceStatus.open,
+            },
+            order: { id: "DESC" },
+          });
 
     return {
       id: row.id,

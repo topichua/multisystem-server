@@ -340,7 +340,7 @@ export class AuthService {
 
     try {
       const [subscription, entitlements] = await Promise.all([
-        this.subscriptions.getActiveForWorkspace(workspaceId),
+        this.subscriptions.getActiveSummaryForWorkspace(workspaceId),
         this.entitlements.getForWorkspace(workspaceId),
       ]);
       return {
@@ -353,7 +353,6 @@ export class AuthService {
           billingCycle: subscription.billingCycle,
           isExpired: subscription.isExpired,
           canRenew: subscription.canRenew,
-          pendingInvoice: subscription.pendingInvoice,
         },
       };
     } catch (error) {

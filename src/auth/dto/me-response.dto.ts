@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { UserStatus } from "../../database/entities";
 import { BillingCycle } from "../../database/entities/billing-cycle.enum";
 import { SubscriptionStatus } from "../../database/entities/subscription-status.enum";
-import { InvoiceListItemResponseDto } from "../../billing/dto/invoice-detail-response.dto";
 import { PlanTemplateResponseDto } from "../../billing/dto/plan-template-response.dto";
 import { WorkspaceEntitlementsResponseDto } from "../../billing/dto/workspace-entitlements-response.dto";
 import { ResolvedUserPermissionsResponseDto } from "../../workspace-access/dto/http/resolved-user-permissions-response.dto";
@@ -136,13 +135,6 @@ export class WorkspaceSubscriptionMeDto {
     description: "True when the workspace can request a renewal invoice.",
   })
   canRenew: boolean;
-
-  @ApiPropertyOptional({
-    type: InvoiceListItemResponseDto,
-    nullable: true,
-    description: "Open renewal invoice waiting for payment, if any.",
-  })
-  pendingInvoice: InvoiceListItemResponseDto | null;
 }
 
 export class WorkspaceRoleMeDto {
