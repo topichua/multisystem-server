@@ -40,6 +40,9 @@ export class VariantStock {
   @Column({ type: "int", default: 0 })
   quantity: number;
 
+  @Column({ name: "reserved_quantity", type: "int", default: 0 })
+  reservedQuantity: number;
+
   @Column({
     name: "avg_purchase_price",
     type: "decimal",

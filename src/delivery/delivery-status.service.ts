@@ -110,6 +110,9 @@ export class DeliveryStatusService {
           );
         }
         const previousStatusId = order.statusId;
+        const previousStatus = await this.orderStatusRepo.findOne({
+          where: { id: previousStatusId, workspaceId: order.workspaceId },
+        });
         order.statusId = newStatus.id;
         order.updatedById = input.actorUserId ?? null;
         await this.orderRepo.save(order);
@@ -137,6 +140,7 @@ export class DeliveryStatusService {
           order.id,
           newStatus.category,
           input.actorUserId ?? 0,
+          previousStatus?.category ?? null,
         );
       }
     }

@@ -14,8 +14,8 @@ export function presentProductStockFields(
 ): ProductStockFields {
   return {
     quantity: stock.quantity,
-    reservedQuantity: 0,
-    availableQuantity: stock.quantity,
+    reservedQuantity: stock.reservedQuantity,
+    availableQuantity: stock.availableQuantity,
   };
 }
 

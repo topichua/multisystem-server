@@ -123,6 +123,7 @@ import { InvoiceMonopayFields1744200000125 } from "./migrations/1744200000125-In
 import { PlanTemplatesTestPricing1744200000126 } from "./migrations/1744200000126-PlanTemplatesTestPricing";
 import { ConversationGroupSpam1744200000127 } from "./migrations/1744200000127-ConversationGroupSpam";
 import { BillingCreditPurchases1744200000128 } from "./migrations/1744200000128-BillingCreditPurchases";
+import { VariantStockReservations1744200000129 } from "./migrations/1744200000129-VariantStockReservations";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -437,6 +438,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       PlanTemplatesTestPricing1744200000126,
       ConversationGroupSpam1744200000127,
       BillingCreditPurchases1744200000128,
+      VariantStockReservations1744200000129,
     ],
   };
 }

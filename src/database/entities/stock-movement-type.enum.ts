@@ -10,4 +10,6 @@ export enum StockMovementType {
   simpleOrderSale = "simple_order_sale",
   simpleOrderCancel = "simple_order_cancel",
   supply = "supply",
+  orderReserve = "order_reserve",
+  orderRelease = "order_release",
 }

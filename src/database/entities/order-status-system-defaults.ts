@@ -60,4 +60,11 @@ export const ORDER_STATUS_SYSTEM_DEFAULTS: readonly OrderStatusSystemDefault[] =
       sortOrder: 6,
       isDefault: false,
     },
+    {
+      name: "Returned",
+      category: OrderStatusCategory.returned,
+      color: "#f97316",
+      sortOrder: 7,
+      isDefault: false,
+    },
   ] as const;

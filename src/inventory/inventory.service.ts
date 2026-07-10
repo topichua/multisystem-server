@@ -54,12 +54,16 @@ import {
   applyAdvancedSale,
   applyInitialStock,
   applyPurchase,
+  applyRelease,
+  applyReserve,
   applyReturn,
+  applyShipFromReservation,
   applySimpleQuantitySet,
   applySimpleSale,
   assertAdvancedMode,
   assertSimpleMode,
   assertStockInitialized,
+  availableQuantity,
   type StockSnapshot,
 } from "./stock.logic";
 
@@ -619,8 +623,9 @@ export class InventoryService {
   async handleOrderInventoryForStatus(
     workspaceId: number,
     orderId: number,
-    statusCategory: OrderStatusCategory,
+    newStatusCategory: OrderStatusCategory,
     actorUserId: number | null,
+    previousStatusCategory?: OrderStatusCategory | null,
   ): Promise<void> {
     const order = await this.orderRepo.findOne({
       where: { workspaceId, id: orderId },
@@ -630,12 +635,30 @@ export class InventoryService {
       return;
     }
 
-    switch (statusCategory) {
+    if (
+      previousStatusCategory != null &&
+      this.isReservationHoldingCategory(previousStatusCategory) &&
+      !this.isReservationHoldingCategory(newStatusCategory) &&
+      newStatusCategory !== OrderStatusCategory.shipped &&
+      newStatusCategory !== OrderStatusCategory.canceled
+    ) {
+      await this.releaseStockForOrder(order, actorUserId);
+    }
+
+    switch (newStatusCategory) {
+      case OrderStatusCategory.confirmed:
+      case OrderStatusCategory.packed:
+        await this.reserveStockForOrder(order, actorUserId);
+        break;
       case OrderStatusCategory.shipped:
         await this.shipStockForOrder(order, actorUserId);
         break;
       case OrderStatusCategory.canceled:
+        await this.releaseStockForOrder(order, actorUserId);
         await this.restoreStockForOrder(order, actorUserId);
+        break;
+      case OrderStatusCategory.returned:
+        await this.returnStockForOrder(order, actorUserId);
         break;
       default:
         break;
@@ -690,6 +713,53 @@ export class InventoryService {
         `Insufficient stock for variant ${variantId}`,
       );
     }
+    if (availableQuantity(snapshot) < quantity) {
+      throw new BadRequestException(
+        `Insufficient available stock for variant ${variantId}`,
+      );
+    }
+  }
+
+  private isReservationHoldingCategory(
+    category: OrderStatusCategory,
+  ): boolean {
+    return (
+      category === OrderStatusCategory.confirmed ||
+      category === OrderStatusCategory.packed
+    );
+  }
+
+  private async reserveStockForOrder(
+    order: Order,
+    actorUserId: number | null,
+  ): Promise<void> {
+    for (const item of order.items ?? []) {
+      await this.dataSource.transaction(async (em) => {
+        await this.reserveOrderItem(em, order, item.id, actorUserId);
+      });
+    }
+  }
+
+  private async releaseStockForOrder(
+    order: Order,
+    actorUserId: number | null,
+  ): Promise<void> {
+    for (const item of order.items ?? []) {
+      await this.dataSource.transaction(async (em) => {
+        await this.releaseOrderItem(em, order, item.id, actorUserId);
+      });
+    }
+  }
+
+  private async returnStockForOrder(
+    order: Order,
+    actorUserId: number | null,
+  ): Promise<void> {
+    for (const item of order.items ?? []) {
+      await this.dataSource.transaction(async (em) => {
+        await this.returnOrderItem(em, order, item.id, actorUserId);
+      });
+    }
   }
 
   private async shipStockForOrder(
@@ -737,7 +807,19 @@ export class InventoryService {
       order.workspaceId,
       lockedItem.variantId,
     );
-    const before = this.toSnapshot(stock);
+    const wasReserved =
+      lockedItem.stockReservedAt != null && lockedItem.stockReleasedAt == null;
+    let before = this.toSnapshot(stock);
+
+    if (!wasReserved) {
+      if (availableQuantity(before) < lockedItem.quantity) {
+        throw new BadRequestException(
+          `Insufficient available stock for variant ${lockedItem.variantId}`,
+        );
+      }
+    }
+
+    before = applyShipFromReservation(before, lockedItem.quantity, wasReserved);
 
     if (mode === InventoryMode.advanced) {
       assertStockInitialized(before);
@@ -779,6 +861,9 @@ export class InventoryService {
     }
 
     lockedItem.stockDeductedAt = new Date();
+    if (wasReserved) {
+      lockedItem.stockReleasedAt = new Date();
+    }
     await em.save(OrderItem, lockedItem);
   }
 
@@ -792,7 +877,11 @@ export class InventoryService {
       where: { id: orderItemId },
       lock: { mode: "pessimistic_write" },
     });
-    if (!lockedItem || lockedItem.stockDeductedAt == null) {
+    if (
+      !lockedItem ||
+      lockedItem.stockDeductedAt == null ||
+      lockedItem.stockReturnedAt != null
+    ) {
       return;
     }
 
@@ -828,6 +917,7 @@ export class InventoryService {
     } else {
       const after = {
         quantity: before.quantity + lockedItem.quantity,
+        reservedQuantity: before.reservedQuantity,
         avgPurchasePrice: null,
         totalCost: null,
         stockInitialized: false,
@@ -851,6 +941,187 @@ export class InventoryService {
     }
 
     lockedItem.stockDeductedAt = null;
+    await em.save(OrderItem, lockedItem);
+  }
+
+  private async reserveOrderItem(
+    em: EntityManager,
+    order: Order,
+    orderItemId: number,
+    actorUserId: number | null,
+  ): Promise<void> {
+    const lockedItem = await em.findOne(OrderItem, {
+      where: { id: orderItemId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (
+      !lockedItem ||
+      lockedItem.stockReservedAt != null ||
+      lockedItem.stockDeductedAt != null
+    ) {
+      return;
+    }
+
+    const workspace = await em.findOne(Workspace, {
+      where: { id: order.workspaceId },
+    });
+    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+    const stock = await this.lockVariantStock(
+      em,
+      order.workspaceId,
+      lockedItem.variantId,
+    );
+    const before = this.toSnapshot(stock);
+    if (mode === InventoryMode.advanced && !before.stockInitialized) {
+      throw new BadRequestException(
+        "Variant stock requires initialization before reservation",
+      );
+    }
+
+    const reserved = applyReserve(before, lockedItem.quantity);
+    await this.persistStock(em, stock, reserved.after);
+    await em.save(
+      em.create(StockMovement, {
+        workspaceId: order.workspaceId,
+        variantId: lockedItem.variantId,
+        type: StockMovementType.orderReserve,
+        quantityChange: reserved.quantityChange,
+        purchasePrice: null,
+        totalCostChange: null,
+        reason: null,
+        comment: null,
+        orderId: order.id,
+        orderItemId: lockedItem.id,
+        userId: actorUserId,
+      }),
+    );
+
+    lockedItem.stockReservedAt = new Date();
+    lockedItem.stockReleasedAt = null;
+    await em.save(OrderItem, lockedItem);
+  }
+
+  private async releaseOrderItem(
+    em: EntityManager,
+    order: Order,
+    orderItemId: number,
+    actorUserId: number | null,
+  ): Promise<void> {
+    const lockedItem = await em.findOne(OrderItem, {
+      where: { id: orderItemId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (
+      !lockedItem ||
+      lockedItem.stockReservedAt == null ||
+      lockedItem.stockReleasedAt != null ||
+      lockedItem.stockDeductedAt != null
+    ) {
+      return;
+    }
+
+    const stock = await this.lockVariantStock(
+      em,
+      order.workspaceId,
+      lockedItem.variantId,
+    );
+    const before = this.toSnapshot(stock);
+    const released = applyRelease(before, lockedItem.quantity);
+    await this.persistStock(em, stock, released.after);
+    await em.save(
+      em.create(StockMovement, {
+        workspaceId: order.workspaceId,
+        variantId: lockedItem.variantId,
+        type: StockMovementType.orderRelease,
+        quantityChange: released.quantityChange,
+        purchasePrice: null,
+        totalCostChange: null,
+        reason: null,
+        comment: null,
+        orderId: order.id,
+        orderItemId: lockedItem.id,
+        userId: actorUserId,
+      }),
+    );
+
+    lockedItem.stockReleasedAt = new Date();
+    await em.save(OrderItem, lockedItem);
+  }
+
+  private async returnOrderItem(
+    em: EntityManager,
+    order: Order,
+    orderItemId: number,
+    actorUserId: number | null,
+  ): Promise<void> {
+    const lockedItem = await em.findOne(OrderItem, {
+      where: { id: orderItemId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (
+      !lockedItem ||
+      lockedItem.stockDeductedAt == null ||
+      lockedItem.stockReturnedAt != null
+    ) {
+      return;
+    }
+
+    const workspace = await em.findOne(Workspace, {
+      where: { id: order.workspaceId },
+    });
+    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+    const stock = await this.lockVariantStock(
+      em,
+      order.workspaceId,
+      lockedItem.variantId,
+    );
+    const before = this.toSnapshot(stock);
+
+    if (mode === InventoryMode.advanced) {
+      const restored = applyReturn(before, lockedItem.quantity);
+      await this.persistStock(em, stock, restored.after);
+      await em.save(
+        em.create(StockMovement, {
+          workspaceId: order.workspaceId,
+          variantId: lockedItem.variantId,
+          type: StockMovementType.return,
+          quantityChange: lockedItem.quantity,
+          purchasePrice: before.avgPurchasePrice,
+          totalCostChange: restored.totalCostChange,
+          reason: null,
+          comment: null,
+          orderId: order.id,
+          orderItemId: lockedItem.id,
+          userId: actorUserId,
+        }),
+      );
+    } else {
+      const after = {
+        quantity: before.quantity + lockedItem.quantity,
+        reservedQuantity: before.reservedQuantity,
+        avgPurchasePrice: null,
+        totalCost: null,
+        stockInitialized: false,
+      };
+      await this.persistStock(em, stock, after);
+      await em.save(
+        em.create(StockMovement, {
+          workspaceId: order.workspaceId,
+          variantId: lockedItem.variantId,
+          type: StockMovementType.return,
+          quantityChange: lockedItem.quantity,
+          purchasePrice: null,
+          totalCostChange: null,
+          reason: null,
+          comment: null,
+          orderId: order.id,
+          orderItemId: lockedItem.id,
+          userId: actorUserId,
+        }),
+      );
+    }
+
+    lockedItem.stockReturnedAt = new Date();
     await em.save(OrderItem, lockedItem);
   }
 
@@ -1016,6 +1287,7 @@ export class InventoryService {
     after: StockSnapshot,
   ): Promise<VariantStock> {
     stock.quantity = after.quantity;
+    stock.reservedQuantity = after.reservedQuantity;
     stock.avgPurchasePrice = after.avgPurchasePrice;
     stock.totalCost = after.totalCost;
     stock.stockInitialized = after.stockInitialized;
@@ -1025,6 +1297,7 @@ export class InventoryService {
   private toSnapshot(stock: VariantStock): StockSnapshot {
     return {
       quantity: stock.quantity,
+      reservedQuantity: stock.reservedQuantity,
       avgPurchasePrice: stock.avgPurchasePrice,
       totalCost: stock.totalCost,
       stockInitialized: stock.stockInitialized,
@@ -1039,6 +1312,7 @@ export class InventoryService {
       workspaceId,
       variantId,
       quantity: 0,
+      reservedQuantity: 0,
       avgPurchasePrice: null,
       totalCost: null,
       stockInitialized: false,
@@ -1049,6 +1323,8 @@ export class InventoryService {
     return {
       variantId: stock.variantId,
       quantity: stock.quantity,
+      reservedQuantity: stock.reservedQuantity,
+      availableQuantity: stock.quantity - stock.reservedQuantity,
       avgPurchasePrice: stock.avgPurchasePrice,
       totalCost: stock.totalCost,
       stockInitialized: stock.stockInitialized,

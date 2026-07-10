@@ -663,6 +663,9 @@ export class OrdersService {
       );
     }
     const previousStatusId = order.statusId;
+    const previousStatus = await this.orderStatusRepo.findOne({
+      where: { id: previousStatusId, workspaceId: workspace.id },
+    });
     order.statusId = newStatus.id;
     order.updatedById = ownerId;
     await this.orderRepo.save(order);
@@ -683,6 +686,7 @@ export class OrdersService {
       order.id,
       newStatus.category,
       ownerId,
+      previousStatus?.category ?? null,
     );
     return this.getOrderById(ownerId, order.id);
   }

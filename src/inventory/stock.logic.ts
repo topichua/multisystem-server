@@ -3,10 +3,15 @@ import { InventoryMode } from "../database/entities/inventory-mode.enum";
 
 export type StockSnapshot = {
   quantity: number;
+  reservedQuantity: number;
   avgPurchasePrice: number | null;
   totalCost: number | null;
   stockInitialized: boolean;
 };
+
+export function availableQuantity(stock: StockSnapshot): number {
+  return stock.quantity - stock.reservedQuantity;
+}
 
 export function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -63,6 +68,7 @@ export function applySimpleQuantitySet(
     quantityChange: newQuantity - before.quantity,
     after: {
       quantity: newQuantity,
+      reservedQuantity: before.reservedQuantity,
       avgPurchasePrice: null,
       totalCost: null,
       stockInitialized: false,
@@ -90,6 +96,7 @@ export function applyInitialStock(
     totalCostChange: totalCost,
     after: {
       quantity,
+      reservedQuantity: 0,
       avgPurchasePrice: purchasePrice,
       totalCost,
       stockInitialized: true,
@@ -122,6 +129,7 @@ export function applyPurchase(
     totalCostChange: purchaseCost,
     after: {
       quantity: newQuantity,
+      reservedQuantity: before.reservedQuantity,
       totalCost: newTotalCost,
       avgPurchasePrice: deriveAvgPurchasePrice(newTotalCost, newQuantity),
       stockInitialized: true,
@@ -160,6 +168,7 @@ export function applyAdvancedQuantityDelta(
     totalCostChange,
     after: {
       quantity: newQuantity,
+      reservedQuantity: before.reservedQuantity,
       totalCost: newQuantity > 0 ? newTotalCost : null,
       avgPurchasePrice:
         newQuantity > 0 ? deriveAvgPurchasePrice(newTotalCost, newQuantity) : null,
@@ -201,6 +210,7 @@ export function applySimpleSale(
     quantityChange: -soldQty,
     after: {
       quantity: newQuantity,
+      reservedQuantity: before.reservedQuantity,
       avgPurchasePrice: null,
       totalCost: null,
       stockInitialized: false,
@@ -223,11 +233,67 @@ export function applyReturn(
   };
 }
 
+export function applyReserve(
+  before: StockSnapshot,
+  quantity: number,
+): { after: StockSnapshot; quantityChange: number } {
+  if (quantity <= 0) {
+    throw new BadRequestException("quantity must be greater than 0");
+  }
+  if (availableQuantity(before) < quantity) {
+    throw new BadRequestException("Insufficient available stock to reserve");
+  }
+  return {
+    quantityChange: quantity,
+    after: {
+      ...before,
+      reservedQuantity: before.reservedQuantity + quantity,
+    },
+  };
+}
+
+export function applyRelease(
+  before: StockSnapshot,
+  quantity: number,
+): { after: StockSnapshot; quantityChange: number } {
+  if (quantity <= 0) {
+    throw new BadRequestException("quantity must be greater than 0");
+  }
+  if (before.reservedQuantity < quantity) {
+    throw new BadRequestException("Cannot release more than reserved quantity");
+  }
+  return {
+    quantityChange: -quantity,
+    after: {
+      ...before,
+      reservedQuantity: before.reservedQuantity - quantity,
+    },
+  };
+}
+
+export function applyShipFromReservation(
+  before: StockSnapshot,
+  quantity: number,
+  wasReserved: boolean,
+): StockSnapshot {
+  const reservedQuantity = wasReserved
+    ? before.reservedQuantity - quantity
+    : before.reservedQuantity;
+  if (reservedQuantity < 0) {
+    throw new BadRequestException("Reserved quantity cannot become negative");
+  }
+  return {
+    ...before,
+    reservedQuantity,
+  };
+}
+
 export function resetAdvancedStockOnModeSwitch(
   before: StockSnapshot,
 ): StockSnapshot {
   return {
     quantity: before.quantity,
+    reservedQuantity: before.reservedQuantity,
     avgPurchasePrice: null,
     totalCost: null,
     stockInitialized: false,

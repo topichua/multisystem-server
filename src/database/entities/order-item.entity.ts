@@ -167,6 +167,15 @@ export class OrderItem {
   @Column({ name: "stock_deducted_at", type: "timestamptz", nullable: true })
   stockDeductedAt: Date | null;
 
+  @Column({ name: "stock_reserved_at", type: "timestamptz", nullable: true })
+  stockReservedAt: Date | null;
+
+  @Column({ name: "stock_released_at", type: "timestamptz", nullable: true })
+  stockReleasedAt: Date | null;
+
+  @Column({ name: "stock_returned_at", type: "timestamptz", nullable: true })
+  stockReturnedAt: Date | null;
+
   @Column({ name: "product_title_snapshot", type: "varchar", length: 512 })
   productTitleSnapshot: string;
 

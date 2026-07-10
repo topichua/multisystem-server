@@ -10,4 +10,5 @@ export enum OrderStatusCategory {
   delivery = "delivery",
   completed = "completed",
   canceled = "canceled",
+  returned = "returned",
 }

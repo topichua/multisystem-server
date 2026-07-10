@@ -51,8 +51,14 @@ export class VariantStockDto {
   @ApiProperty()
   variantId: number;
 
-  @ApiProperty()
+  @ApiProperty({ description: "Physical quantity on hand." })
   quantity: number;
+
+  @ApiProperty({ description: "Quantity blocked by confirmed orders." })
+  reservedQuantity: number;
+
+  @ApiProperty({ description: "quantity - reservedQuantity" })
+  availableQuantity: number;
 
   @ApiPropertyOptional({ nullable: true })
   avgPurchasePrice: number | null;

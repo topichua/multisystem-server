@@ -87,6 +87,7 @@ export class WorkspaceSettingsService {
     for (const row of rows) {
       const after = resetAdvancedStockOnModeSwitch({
         quantity: row.quantity,
+        reservedQuantity: row.reservedQuantity,
         avgPurchasePrice: row.avgPurchasePrice,
         totalCost: row.totalCost,
         stockInitialized: row.stockInitialized,
