@@ -15,6 +15,7 @@ import { PaymentTransactionStatus } from "./payment-transaction-status.enum";
 import { PaymentTransactionType } from "./payment-transaction-type.enum";
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
+import { ManualPaymentMethod } from "./manual-payment-method.entity";
 
 @Entity("payment_transactions")
 @Index("IDX_payment_transactions_workspace_id", ["workspaceId"])
@@ -62,6 +63,13 @@ export class PaymentTransaction {
 
   @Column({ type: "text", nullable: true })
   note: string | null;
+
+  @Column({ name: "manual_payment_method_id", type: "int", nullable: true })
+  manualPaymentMethodId: number | null;
+
+  @ManyToOne(() => ManualPaymentMethod, { onDelete: "SET NULL", nullable: true })
+  @JoinColumn({ name: "manual_payment_method_id" })
+  manualPaymentMethod: ManualPaymentMethod | null;
 
   @Column({
     type: "enum",

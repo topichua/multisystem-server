@@ -125,6 +125,7 @@ export class PaymentDomainService {
     note?: string | null;
     reference?: string | null;
     occurredAt?: Date;
+    manualPaymentMethodId?: number | null;
   }): Promise<{
     transaction: PaymentTransaction;
     paymentStatus: OrderPaymentStatus;
@@ -183,6 +184,7 @@ export class PaymentDomainService {
         note,
         confirmedById: input.confirmedById,
         occurredAt,
+        manualPaymentMethodId: input.manualPaymentMethodId ?? null,
       });
       const saved = await manager.getRepository(PaymentTransaction).save(tx);
 

@@ -58,6 +58,8 @@ export type ResolvedUserPermissions = {
     linksCancel: boolean;
     view: boolean;
     manualCreate: boolean;
+    manualMethodsView: boolean;
+    manualMethodsManage: boolean;
   };
   /**
    * Per-integration grants with conversation permissions.

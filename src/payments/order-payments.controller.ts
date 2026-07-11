@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -23,6 +24,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { CreateOrderPaymentLinkDto } from "./dto/create-order-payment-link.dto";
 import { CreateManualPaymentDto } from "./dto/create-manual-payment.dto";
+import { SetOrderManualPaymentMethodDto } from "./dto/set-order-manual-payment-method.dto";
 import { ManualPaymentResponseDto } from "./dto/manual-payment-response.dto";
 import {
   OrderPaymentRequestResponseDto,
@@ -86,12 +88,33 @@ export class OrderPaymentsController {
     );
   }
 
+  @Patch("manual-method")
+  @ApiOperation({
+    summary: "Set or clear selected manual payment method for order",
+    description:
+      "Stores which IBAN/card details should be sent to the client. Pass null for cash.",
+  })
+  @ApiParam({ name: "orderId", type: Number })
+  @ApiOkResponse({ type: OrderPaymentRequestsListResponseDto })
+  setManualMethod(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+    @Body() dto: SetOrderManualPaymentMethodDto,
+  ): Promise<OrderPaymentRequestsListResponseDto> {
+    return this.payments.setOrderManualPaymentMethod(
+      this.requireUserId(req),
+      orderId,
+      dto,
+      req.user?.role,
+    );
+  }
+
   @Post("manual")
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: "Record manual payment (card transfer, FOP, cash, etc.)",
     description:
-      "Creates a charge transaction with source=manual and recalculates order payment status.",
+      "Creates a charge transaction with source=manual. Omit manualPaymentMethodId for cash; pass method id for IBAN/card transfer.",
   })
   @ApiParam({ name: "orderId", type: Number })
   @ApiCreatedResponse({ type: ManualPaymentResponseDto })

@@ -30,6 +30,8 @@ export const PERMISSION_KEYS = [
   "payments.links.cancel",
   "payments.view",
   "payments.manual.create",
+  "payments.manual_methods.view",
+  "payments.manual_methods.manage",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];

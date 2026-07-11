@@ -97,3 +97,5 @@ export { PaymentTransactionSource } from "./payment-transaction-source.enum";
 export { PaymentIntegration } from "./payment-integration.entity";
 export { PaymentRequest } from "./payment-request.entity";
 export { PaymentTransaction } from "./payment-transaction.entity";
+export { ManualPaymentMethodType } from "./manual-payment-method-type.enum";
+export { ManualPaymentMethod } from "./manual-payment-method.entity";

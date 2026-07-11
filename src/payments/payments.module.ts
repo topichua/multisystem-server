@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  ManualPaymentMethod,
   Order,
   PaymentIntegration,
   PaymentRequest,
@@ -8,6 +9,8 @@ import {
 } from "../database/entities";
 import { WorkspaceAccessModule } from "../workspace-access/workspace-access.module";
 import { CredentialsEncryptionService } from "./encryption/credentials-encryption.service";
+import { ManualPaymentMethodsController } from "./manual-payment-methods.controller";
+import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
 import { MonobankOrderPaymentWebhookController } from "./monobank-order-payment-webhook.controller";
 import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { OrderPaymentsController } from "./order-payments.controller";
@@ -23,12 +26,14 @@ import { PaymentProviderFactory } from "./providers/payment-provider.factory";
       PaymentIntegration,
       PaymentRequest,
       PaymentTransaction,
+      ManualPaymentMethod,
       Order,
     ]),
     WorkspaceAccessModule,
   ],
   controllers: [
     PaymentIntegrationsController,
+    ManualPaymentMethodsController,
     OrderPaymentsController,
     MonobankOrderPaymentWebhookController,
   ],
@@ -38,8 +43,14 @@ import { PaymentProviderFactory } from "./providers/payment-provider.factory";
     PaymentProviderFactory,
     PaymentDomainService,
     PaymentIntegrationsService,
+    ManualPaymentMethodsService,
     OrderPaymentsService,
   ],
-  exports: [PaymentIntegrationsService, OrderPaymentsService, PaymentDomainService],
+  exports: [
+    PaymentIntegrationsService,
+    ManualPaymentMethodsService,
+    OrderPaymentsService,
+    PaymentDomainService,
+  ],
 })
 export class PaymentsModule {}

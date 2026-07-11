@@ -20,6 +20,7 @@ import { OrderItem } from "./order-item.entity";
 import { OrderDeliveryInfo } from "./order-delivery-info.entity";
 import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 import { OrderEvent } from "./order-event.entity";
+import { ManualPaymentMethod } from "./manual-payment-method.entity";
 
 @Entity("orders")
 @Index("IDX_orders_workspace_id", ["workspaceId"])
@@ -159,6 +160,13 @@ export class Order {
     nullable: true,
   })
   paymentReference: string | null;
+
+  @Column({ name: "manual_payment_method_id", type: "int", nullable: true })
+  manualPaymentMethodId: number | null;
+
+  @ManyToOne(() => ManualPaymentMethod, { onDelete: "SET NULL", nullable: true })
+  @JoinColumn({ name: "manual_payment_method_id" })
+  manualPaymentMethod: ManualPaymentMethod | null;
 
   @Column({ name: "created_by_id", type: "int" })
   createdById: number;

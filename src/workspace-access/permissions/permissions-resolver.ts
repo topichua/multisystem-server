@@ -75,6 +75,8 @@ export function resolveOwnerPermissions(
       linksCancel: true,
       view: true,
       manualCreate: true,
+      manualMethodsView: true,
+      manualMethodsManage: true,
     },
     integrationGrants,
   };
@@ -132,6 +134,10 @@ export function resolveRolePermissions(
       linksCancel: hasKey(keys, "payments.links.cancel"),
       view: hasKey(keys, "payments.view"),
       manualCreate: hasKey(keys, "payments.manual.create"),
+      manualMethodsView:
+        hasKey(keys, "payments.manual_methods.view") ||
+        hasKey(keys, "payments.manual_methods.manage"),
+      manualMethodsManage: hasKey(keys, "payments.manual_methods.manage"),
     },
     integrationGrants: raw.integrationGrants ?? [],
   };
@@ -247,6 +253,10 @@ export function hasBooleanPermission(
       return resolved.payments.view;
     case "payments.manual.create":
       return resolved.payments.manualCreate;
+    case "payments.manual_methods.view":
+      return resolved.payments.manualMethodsView;
+    case "payments.manual_methods.manage":
+      return resolved.payments.manualMethodsManage;
     default:
       return false;
   }

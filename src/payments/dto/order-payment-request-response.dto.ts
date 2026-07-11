@@ -5,6 +5,7 @@ import {
   PaymentProvider,
   PaymentRequestStatus,
 } from "../../database/entities";
+import { ManualPaymentMethodResponseDto } from "./manual-payment-method.dto";
 
 export class OrderPaymentRequestResponseDto {
   @ApiProperty()
@@ -74,6 +75,19 @@ export class OrderPaymentRequestsListResponseDto {
 
   @ApiProperty({ type: [OrderPaymentRequestResponseDto] })
   payments!: OrderPaymentRequestResponseDto[];
+
+  @ApiPropertyOptional({
+    type: ManualPaymentMethodResponseDto,
+    nullable: true,
+    description: "Selected transfer method for this order. Null means cash.",
+  })
+  selectedManualPaymentMethod!: ManualPaymentMethodResponseDto | null;
+
+  @ApiProperty({
+    enum: ["cash", "transfer"],
+    description: "cash when no transfer method is selected on the order",
+  })
+  selectedManualPaymentKind!: "cash" | "transfer";
 }
 
 export class OrderPaymentTransactionResponseDto {
@@ -85,6 +99,9 @@ export class OrderPaymentTransactionResponseDto {
 
   @ApiPropertyOptional({ enum: PaymentProvider, nullable: true })
   provider!: PaymentProvider | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  manualPaymentMethodId!: number | null;
 
   @ApiProperty()
   type!: string;
@@ -106,6 +123,12 @@ export class OrderPaymentTransactionResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   note!: string | null;
+
+  @ApiProperty({
+    enum: ["cash", "transfer"],
+    description: "cash when no manual payment method is linked",
+  })
+  manualPaymentKind!: "cash" | "transfer";
 
   @ApiProperty()
   occurredAt!: string;

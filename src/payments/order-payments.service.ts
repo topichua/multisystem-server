@@ -18,12 +18,15 @@ import { hasBooleanPermission } from "../workspace-access/permissions/permission
 import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
+import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
 import {
   calculateRemainingAmount,
 } from "./logic/order-payment-status.logic";
+import { resolveManualPaymentKind } from "./logic/manual-payment-kind";
 import type { CreateOrderPaymentLinkDto } from "./dto/create-order-payment-link.dto";
 import type { CreateManualPaymentDto } from "./dto/create-manual-payment.dto";
 import type { ManualPaymentResponseDto } from "./dto/manual-payment-response.dto";
+import type { SetOrderManualPaymentMethodDto } from "./dto/set-order-manual-payment-method.dto";
 import type { OrderPaymentRequestResponseDto } from "./dto/order-payment-request-response.dto";
 import type { OrderPaymentTransactionsListResponseDto } from "./dto/order-payment-transactions-list-response.dto";
 import type { OrderPaymentRequestsListResponseDto } from "./dto/order-payment-requests-list-response.dto";
@@ -40,6 +43,7 @@ export class OrderPaymentsService {
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
     private readonly integrations: PaymentIntegrationsService,
+    private readonly manualPaymentMethods: ManualPaymentMethodsService,
     private readonly domain: PaymentDomainService,
     private readonly monobankApi: MonobankApiClient,
   ) {}
@@ -59,6 +63,17 @@ export class OrderPaymentsService {
       order.workspaceId,
       order.id,
     );
+    let selectedManualPaymentMethod = null;
+    const selectedManualPaymentKind = resolveManualPaymentKind(
+      order.manualPaymentMethodId,
+    );
+    if (order.manualPaymentMethodId) {
+      const method = await this.manualPaymentMethods.requireOwnedMethodForWorkspace(
+        order.workspaceId,
+        order.manualPaymentMethodId,
+      );
+      selectedManualPaymentMethod = this.manualPaymentMethods.toDto(method);
+    }
     return {
       orderId: order.id,
       totalAmount: order.totalAmount,
@@ -66,7 +81,32 @@ export class OrderPaymentsService {
       remainingAmount: calculateRemainingAmount(order.totalAmount, paidAmount),
       paymentStatus: order.paymentStatus,
       payments: payments.map((p) => this.toPaymentDto(p)),
+      selectedManualPaymentMethod,
+      selectedManualPaymentKind,
     };
+  }
+
+  async setOrderManualPaymentMethod(
+    userId: number,
+    orderId: number,
+    dto: SetOrderManualPaymentMethodDto,
+    appRole?: string,
+  ) {
+    await this.requireViewPayments(userId, appRole);
+    const order = await this.requireOrder(userId, orderId, appRole);
+
+    if (dto.manualPaymentMethodId == null) {
+      order.manualPaymentMethodId = null;
+    } else {
+      await this.manualPaymentMethods.requireOwnedMethodForWorkspace(
+        order.workspaceId,
+        dto.manualPaymentMethodId,
+      );
+      order.manualPaymentMethodId = dto.manualPaymentMethodId;
+    }
+
+    await this.orderRepo.save(order);
+    return this.listPaymentRequestsForOrder(userId, orderId, appRole);
   }
 
   async listTransactionsForOrder(
@@ -93,6 +133,8 @@ export class OrderPaymentsService {
         source: t.source,
         externalTransactionId: t.externalTransactionId,
         note: t.note,
+        manualPaymentMethodId: t.manualPaymentMethodId,
+        manualPaymentKind: resolveManualPaymentKind(t.manualPaymentMethodId),
         occurredAt: t.occurredAt.toISOString(),
         createdAt: t.createdAt.toISOString(),
       })),
@@ -230,6 +272,15 @@ export class OrderPaymentsService {
       throw new BadRequestException("occurredAt is invalid");
     }
 
+    let manualPaymentMethodId: number | null = null;
+    if (dto.manualPaymentMethodId != null) {
+      await this.manualPaymentMethods.requireOwnedMethodForWorkspace(
+        order.workspaceId,
+        dto.manualPaymentMethodId,
+      );
+      manualPaymentMethodId = dto.manualPaymentMethodId;
+    }
+
     const result = await this.domain.recordManualPayment({
       workspaceId: order.workspaceId,
       orderId: order.id,
@@ -239,6 +290,7 @@ export class OrderPaymentsService {
       note: dto.note,
       reference: dto.reference,
       occurredAt,
+      manualPaymentMethodId,
     });
 
     return {
@@ -258,6 +310,10 @@ export class OrderPaymentsService {
         source: result.transaction.source,
         externalTransactionId: result.transaction.externalTransactionId,
         note: result.transaction.note,
+        manualPaymentMethodId: result.transaction.manualPaymentMethodId,
+        manualPaymentKind: resolveManualPaymentKind(
+          result.transaction.manualPaymentMethodId,
+        ),
         occurredAt: result.transaction.occurredAt.toISOString(),
         createdAt: result.transaction.createdAt.toISOString(),
       },

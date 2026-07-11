@@ -212,6 +212,14 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
         "payments.manual.create",
         "Record manual/offline payments",
       ),
+      booleanPermission(
+        "payments.manual_methods.view",
+        "View manual payment methods (IBAN / card)",
+      ),
+      booleanPermission(
+        "payments.manual_methods.manage",
+        "Manage manual payment methods",
+      ),
     ],
   },
   {

@@ -32,6 +32,15 @@ export class ManualPaymentTransactionDto {
   @ApiPropertyOptional({ nullable: true })
   note!: string | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  manualPaymentMethodId!: number | null;
+
+  @ApiProperty({
+    enum: ["cash", "transfer"],
+    description: "cash when no manual payment method is linked",
+  })
+  manualPaymentKind!: "cash" | "transfer";
+
   @ApiProperty()
   occurredAt!: string;
 
