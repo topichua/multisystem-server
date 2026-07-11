@@ -124,6 +124,8 @@ import { PlanTemplatesTestPricing1744200000126 } from "./migrations/174420000012
 import { ConversationGroupSpam1744200000127 } from "./migrations/1744200000127-ConversationGroupSpam";
 import { BillingCreditPurchases1744200000128 } from "./migrations/1744200000128-BillingCreditPurchases";
 import { VariantStockReservations1744200000129 } from "./migrations/1744200000129-VariantStockReservations";
+import { PaymentIntegrations1744200000130 } from "./migrations/1744200000130-PaymentIntegrations";
+import { ManualPaymentTransactions1744200000131 } from "./migrations/1744200000131-ManualPaymentTransactions";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -172,6 +174,9 @@ import {
   SubscriptionChange,
   Invoice,
   BillingCreditPricing,
+  PaymentIntegration,
+  PaymentRequest,
+  PaymentTransaction,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -271,6 +276,9 @@ const entities = [
   SubscriptionChange,
   Invoice,
   BillingCreditPricing,
+  PaymentIntegration,
+  PaymentRequest,
+  PaymentTransaction,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -439,6 +447,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationGroupSpam1744200000127,
       BillingCreditPurchases1744200000128,
       VariantStockReservations1744200000129,
+      PaymentIntegrations1744200000130,
+      ManualPaymentTransactions1744200000131,
     ],
   };
 }

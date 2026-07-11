@@ -68,6 +68,14 @@ export function resolveOwnerPermissions(
       members: { view: true, invite: true, delete: true },
     },
     analytics: { view: true },
+    payments: {
+      integrationsView: true,
+      integrationsManage: true,
+      linksCreate: true,
+      linksCancel: true,
+      view: true,
+      manualCreate: true,
+    },
     integrationGrants,
   };
 }
@@ -114,6 +122,16 @@ export function resolveRolePermissions(
     },
     analytics: {
       view: hasKey(keys, "analytics.read"),
+    },
+    payments: {
+      integrationsView:
+        hasKey(keys, "payments.integrations.view") ||
+        hasKey(keys, "payments.integrations.manage"),
+      integrationsManage: hasKey(keys, "payments.integrations.manage"),
+      linksCreate: hasKey(keys, "payments.links.create"),
+      linksCancel: hasKey(keys, "payments.links.cancel"),
+      view: hasKey(keys, "payments.view"),
+      manualCreate: hasKey(keys, "payments.manual.create"),
     },
     integrationGrants: raw.integrationGrants ?? [],
   };
@@ -217,6 +235,18 @@ export function hasBooleanPermission(
       return resolved.workspace.members.delete;
     case "analytics.read":
       return resolved.analytics.view;
+    case "payments.integrations.view":
+      return resolved.payments.integrationsView;
+    case "payments.integrations.manage":
+      return resolved.payments.integrationsManage;
+    case "payments.links.create":
+      return resolved.payments.linksCreate;
+    case "payments.links.cancel":
+      return resolved.payments.linksCancel;
+    case "payments.view":
+      return resolved.payments.view;
+    case "payments.manual.create":
+      return resolved.payments.manualCreate;
     default:
       return false;
   }

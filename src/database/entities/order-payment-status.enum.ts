@@ -3,5 +3,6 @@ export enum OrderPaymentStatus {
   unpaid = "unpaid",
   partial = "partial",
   paid = "paid",
+  overpaid = "overpaid",
   refunded = "refunded",
 }

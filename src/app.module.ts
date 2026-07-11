@@ -29,6 +29,7 @@ import { SendgridModule } from "./sendgrid/sendgrid.module";
 import { DeliveryModule } from "./delivery/delivery.module";
 import { StorageModule } from "./storage/storage.module";
 import { BillingModule } from "./billing/billing.module";
+import { PaymentsModule } from "./payments/payments.module";
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { BillingModule } from "./billing/billing.module";
     DeliveryModule,
     StorageModule,
     BillingModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

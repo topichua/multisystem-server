@@ -194,6 +194,27 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
     ],
   },
   {
+    module: "payments",
+    label: "Payments",
+    items: [
+      booleanPermission(
+        "payments.integrations.view",
+        "View payment integrations",
+      ),
+      booleanPermission(
+        "payments.integrations.manage",
+        "Manage payment integrations and credentials",
+      ),
+      booleanPermission("payments.links.create", "Create payment links"),
+      booleanPermission("payments.links.cancel", "Cancel payment links"),
+      booleanPermission("payments.view", "View payments and transactions"),
+      booleanPermission(
+        "payments.manual.create",
+        "Record manual/offline payments",
+      ),
+    ],
+  },
+  {
     module: "analytics",
     label: "Analytics",
     items: [booleanPermission("analytics.read", "View analytics")],

@@ -51,6 +51,14 @@ export type ResolvedUserPermissions = {
   analytics: {
     view: boolean;
   };
+  payments: {
+    integrationsView: boolean;
+    integrationsManage: boolean;
+    linksCreate: boolean;
+    linksCancel: boolean;
+    view: boolean;
+    manualCreate: boolean;
+  };
   /**
    * Per-integration grants with conversation permissions.
    * Missing integration = no access. New integrations are denied until granted.
