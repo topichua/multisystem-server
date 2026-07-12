@@ -11,6 +11,7 @@ import type { NovaPoshtaSenderSettingsDto } from "./dto/novaposhta-sender-settin
 import type { UpdateNovaPoshtaIntegrationRequestDto } from "./dto/update-novaposhta-integration.dto";
 import type { DiscoverNovaPoshtaSendersResponseDto } from "./dto/discover-novaposhta-senders.dto";
 import type { IntegrationListItemDto } from "../integrations/dto/http/integration-list-item.dto";
+import type { GetNovaPoshtaDocumentStatusesQueryDto } from "./dto/get-novaposhta-document-statuses-query.dto";
 import type { NovaPoshtaCredentialsQueryDto } from "./dto/novaposhta-credentials-query.dto";
 
 @Injectable()
@@ -68,6 +69,18 @@ export class NovaPoshtaIntegrationsService {
       this.normalizeApiKey(apiKey),
       settlementRef,
       query,
+    );
+  }
+
+  async getDocumentStatusesForOwner(
+    ownerId: number,
+    query: GetNovaPoshtaDocumentStatusesQueryDto,
+  ) {
+    const apiKey = await this.resolveSearchApiKeyForOwner(ownerId, query);
+    return this.novaPoshtaApi.getDocumentStatuses(
+      apiKey,
+      query.document_number,
+      query.phone,
     );
   }
 

@@ -78,14 +78,23 @@ export class DeliveryStatusService {
 
     const mappedDeliveryStatus =
       NORMALIZED_TO_ORDER_DELIVERY_STATUS[input.normalizedStatus];
+    const previousDeliveryStatus = delivery.deliveryStatus;
+    const previousProviderStatusCode = delivery.providerStatusCode;
+
     delivery.deliveryStatus = mappedDeliveryStatus;
     delivery.providerStatusCode = input.rawStatusCode?.trim() || null;
     delivery.providerStatusText =
       this.resolveProviderStatusText(input) || null;
+    if (
+      delivery.deliveryStatus !== previousDeliveryStatus ||
+      delivery.providerStatusCode !== previousProviderStatusCode
+    ) {
+      delivery.deliveryStatusCodeAt = new Date();
+    }
     await this.deliveryRepo.save(delivery);
 
     let appliedOrderStatusId: number | null = null;
-    if (order) {
+    if (order && input.actorUserId != null) {
       await this.appendDeliveryEvent(
         order.workspaceId,
         order.id,
@@ -93,7 +102,9 @@ export class DeliveryStatusService {
         delivery,
         order.statusId,
       );
+    }
 
+    if (order) {
       const mappedOrderStatusId = await this.resolveMappedOrderStatusId(
         delivery,
         order.workspaceId,
@@ -294,13 +305,16 @@ export class DeliveryStatusService {
     delivery: OrderDeliveryInfo,
     previousOrderStatusId: number,
   ): Promise<void> {
+    if (input.actorUserId == null) {
+      return;
+    }
     await this.orderEventRepo.save(
       this.orderEventRepo.create({
         workspaceId,
         orderId,
         type: OrderEventType.DELIVERY_UPDATED,
-        actorId: input.actorUserId ?? null,
-        userId: input.actorUserId ?? null,
+        actorId: input.actorUserId,
+        userId: input.actorUserId,
         payload: {
           deliveryInfoId: delivery.id,
           deliveryStatus: delivery.deliveryStatus,

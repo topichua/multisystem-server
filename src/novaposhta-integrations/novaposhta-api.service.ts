@@ -929,6 +929,14 @@ export class NovaPoshtaApiService {
     return doc;
   }
 
+  async getDocumentStatuses(
+    apiKey: string,
+    documentNumber: string,
+    phone: string,
+  ): Promise<NovaPoshtaTrackingDocument> {
+    return this.getTrackingStatusDocument(apiKey, documentNumber, phone);
+  }
+
   private normalizeTrackingPhone(phone: string): string {
     const digits = phone.replace(/\D/g, "");
     if (digits.length === 12 && digits.startsWith("380")) {

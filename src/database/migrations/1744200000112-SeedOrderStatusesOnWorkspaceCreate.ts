@@ -1,7 +1,7 @@
 import type { MigrationInterface, QueryRunner } from "typeorm";
 
 /**
- * Ensures every workspace has all 7 system order statuses and keeps the
+ * Ensures every workspace has all 6 system order statuses and keeps the
  * workspace INSERT trigger aligned with `ORDER_STATUS_SYSTEM_DEFAULTS`.
  */
 export class SeedOrderStatusesOnWorkspaceCreate1744200000112
@@ -20,11 +20,10 @@ export class SeedOrderStatusesOnWorkspaceCreate1744200000112
         ) VALUES
           (NEW.id, 'New', 'new'::order_statuses_category_enum, '#6366f1', 0, true, true, now(), now()),
           (NEW.id, 'Confirmed', 'confirmed'::order_statuses_category_enum, '#22c55e', 1, false, true, now(), now()),
-          (NEW.id, 'Packed', 'packed'::order_statuses_category_enum, '#eab308', 2, false, true, now(), now()),
-          (NEW.id, 'Shipped', 'shipped'::order_statuses_category_enum, '#3b82f6', 3, false, true, now(), now()),
-          (NEW.id, 'Delivery', 'delivery'::order_statuses_category_enum, '#a855f7', 4, false, true, now(), now()),
-          (NEW.id, 'Completed', 'completed'::order_statuses_category_enum, '#10b981', 5, false, true, now(), now()),
-          (NEW.id, 'Canceled', 'canceled'::order_statuses_category_enum, '#ef4444', 6, false, true, now(), now());
+          (NEW.id, 'Delivery', 'delivery'::order_statuses_category_enum, '#a855f7', 2, false, true, now(), now()),
+          (NEW.id, 'Completed', 'completed'::order_statuses_category_enum, '#10b981', 3, false, true, now(), now()),
+          (NEW.id, 'Canceled', 'canceled'::order_statuses_category_enum, '#ef4444', 4, false, true, now(), now()),
+          (NEW.id, 'Returned', 'returned'::order_statuses_category_enum, '#f97316', 5, false, true, now(), now());
         RETURN NEW;
       END;
       $$ LANGUAGE plpgsql
@@ -33,11 +32,10 @@ export class SeedOrderStatusesOnWorkspaceCreate1744200000112
     const categories = [
       { name: "New", category: "new", color: "#6366f1", sortOrder: 0, isDefault: true },
       { name: "Confirmed", category: "confirmed", color: "#22c55e", sortOrder: 1, isDefault: false },
-      { name: "Packed", category: "packed", color: "#eab308", sortOrder: 2, isDefault: false },
-      { name: "Shipped", category: "shipped", color: "#3b82f6", sortOrder: 3, isDefault: false },
-      { name: "Delivery", category: "delivery", color: "#a855f7", sortOrder: 4, isDefault: false },
-      { name: "Completed", category: "completed", color: "#10b981", sortOrder: 5, isDefault: false },
-      { name: "Canceled", category: "canceled", color: "#ef4444", sortOrder: 6, isDefault: false },
+      { name: "Delivery", category: "delivery", color: "#a855f7", sortOrder: 2, isDefault: false },
+      { name: "Completed", category: "completed", color: "#10b981", sortOrder: 3, isDefault: false },
+      { name: "Canceled", category: "canceled", color: "#ef4444", sortOrder: 4, isDefault: false },
+      { name: "Returned", category: "returned", color: "#f97316", sortOrder: 5, isDefault: false },
     ] as const;
 
     for (const def of categories) {

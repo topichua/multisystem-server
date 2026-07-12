@@ -45,7 +45,9 @@ import { InventoryService } from "../inventory/inventory.service";
 import { InventoryMode } from "../database/entities/inventory-mode.enum";
 import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
 import { NovaPoshtaWaybillService } from "../novaposhta-integrations/nova-poshta-waybill.service";
+import { NovaPoshtaDeliveryTrackingService } from "../novaposhta-integrations/nova-poshta-delivery-tracking.service";
 import { hydrateDeliveryTrackingFlags } from "../delivery/delivery-tracking.util";
+import type { DeliveryStatusUpdateResultDto } from "../delivery/dto/delivery-status-update-result.dto";
 import type { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import type { CreateNovaPoshtaWaybillResponseDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import {
@@ -122,6 +124,7 @@ export class OrdersService {
     private readonly inventory: InventoryService,
     private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly novaPoshtaWaybill: NovaPoshtaWaybillService,
+    private readonly novaPoshtaTracking: NovaPoshtaDeliveryTrackingService,
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
     private readonly orderIdAllocation: OrderIdAllocationService,
   ) {}
@@ -621,7 +624,12 @@ export class OrdersService {
       throw new NotFoundException("Order status not found");
     }
     if (status.isSystem) {
-      throw new BadRequestException("System order statuses cannot be deleted");
+      if (
+        status.category !== OrderStatusCategory.packed &&
+        status.category !== OrderStatusCategory.shipped
+      ) {
+        throw new BadRequestException("System order statuses cannot be deleted");
+      }
     }
     if (status.isDefault) {
       throw new BadRequestException(
@@ -709,6 +717,7 @@ export class OrdersService {
       row = this.orderDeliveryRepo.create({
         provider: dto.provider,
         ...this.mapDeliveryDtoToFields(dto, true),
+        deliveryStatusCodeAt: new Date(),
       });
       row = await this.orderDeliveryRepo.save(row);
       order.deliveryId = row.id;
@@ -716,8 +725,16 @@ export class OrdersService {
       order.updatedById = ownerId;
       await this.orderRepo.save(order);
     } else {
+      const previousDeliveryStatus = row.deliveryStatus;
+      const previousProviderStatusCode = row.providerStatusCode;
       Object.assign(row, this.mapDeliveryDtoToFields(dto, false));
       row.provider = dto.provider;
+      if (
+        (dto.deliveryStatus !== undefined && dto.deliveryStatus !== previousDeliveryStatus) ||
+        (dto.providerStatusCode !== undefined && dto.providerStatusCode !== previousProviderStatusCode)
+      ) {
+        row.deliveryStatusCodeAt = new Date();
+      }
       await this.orderDeliveryRepo.save(row);
       if (order.deliveryType !== dto.provider) {
         order.deliveryType = dto.provider;
@@ -740,6 +757,29 @@ export class OrdersService {
       },
     );
     return this.getOrderById(ownerId, order.id);
+  }
+
+  async syncDeliveryInfo(
+    ownerId: number,
+    orderId: number,
+  ): Promise<DeliveryStatusUpdateResultDto> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    const order = await this.requireOrderForWorkspace(orderId, workspace.id);
+    const delivery = await this.findDeliveryForOrder(order);
+    if (!delivery) {
+      throw new BadRequestException("Order has no delivery info");
+    }
+
+    switch (delivery.provider) {
+      case OrderDeliveryProvider.nova_poshta:
+        return this.novaPoshtaTracking.syncFromNovaPoshta(delivery.id, ownerId);
+      default:
+        throw new BadRequestException(
+          `Delivery sync not supported for provider ${delivery.provider}`,
+        );
+    }
   }
 
   async createNovaPoshtaWaybill(
@@ -1275,6 +1315,7 @@ export class OrdersService {
       deliveryRepo.create({
         provider: dto.provider,
         ...this.mapDeliveryDtoToFields(dto, true),
+        deliveryStatusCodeAt: new Date(),
       }),
     );
     order.deliveryId = row.id;

@@ -22,6 +22,8 @@ import {
 import { SearchNovaPoshtaSettlementsQueryDto } from "./dto/search-novaposhta-settlements-query.dto";
 import { SearchNovaPoshtaStreetsQueryDto } from "./dto/search-novaposhta-streets-query.dto";
 import { SearchNovaPoshtaWarehousesQueryDto } from "./dto/search-novaposhta-warehouses-query.dto";
+import { GetNovaPoshtaDocumentStatusesQueryDto } from "./dto/get-novaposhta-document-statuses-query.dto";
+import { NovaPoshtaTrackingDocumentDto } from "./dto/nova-poshta-tracking-document.dto";
 import { NovaPoshtaIntegrationsService } from "./novaposhta-integrations.service";
 
 const SEARCH_CREDENTIALS_HINT =
@@ -97,6 +99,21 @@ export class NovaPoshtaSearchController {
       query.settlementRef,
       query.query,
     );
+  }
+
+  @Get("documents/statuses")
+  @ApiOperation({
+    summary: "Fetch Nova Poshta document status by TTN and recipient phone.",
+    description:
+      "Provide exactly one of `api_key` or `nova_poshta_integration_id` to authorize the request.",
+  })
+  @ApiOkResponse({ type: NovaPoshtaTrackingDocumentDto })
+  async getDocumentStatuses(
+    @Req() req: { user?: AuthUser },
+    @Query() query: GetNovaPoshtaDocumentStatusesQueryDto,
+  ): Promise<import("./nova-poshta-status-code.mapping").NovaPoshtaTrackingDocument> {
+    const ownerId = this.requireOwnerId(req);
+    return this.novaPoshta.getDocumentStatusesForOwner(ownerId, query);
   }
 
   private requireOwnerId(req: { user?: AuthUser }): number {

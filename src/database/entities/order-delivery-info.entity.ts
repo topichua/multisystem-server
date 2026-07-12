@@ -99,6 +99,13 @@ export class OrderDeliveryInfo {
   providerStatusCode: string | null;
 
   @Column({
+    name: "delivery_status_code_at",
+    type: "timestamptz",
+    nullable: true,
+  })
+  deliveryStatusCodeAt: Date | null;
+
+  @Column({
     name: "provider_status_text",
     type: "varchar",
     length: 512,

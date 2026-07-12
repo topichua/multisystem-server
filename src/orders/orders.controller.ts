@@ -40,6 +40,7 @@ import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import { OrderEventsListResponseDto } from "./dto/order-events-list-response.dto";
 import { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import { CreateNovaPoshtaWaybillResponseDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
+import { DeliveryStatusUpdateResultDto } from "../delivery/dto/delivery-status-update-result.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("orders")
@@ -154,6 +155,23 @@ export class OrdersController {
     return this.orders.removeNovaPoshtaWaybill(ownerId, orderId);
   }
 
+  @Post(":orderId/sync-delivery")
+  @Post(":orderId/sync-delivry")
+  @ApiOperation({
+    summary: "Sync delivery status from provider",
+    description:
+      "Fetches the latest provider delivery status by tracking number and updates the order delivery info.",
+  })
+  @ApiOkResponse({ type: DeliveryStatusUpdateResultDto })
+  @ApiParam({ name: "orderId", type: Number })
+  async syncDelivery(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+  ): Promise<DeliveryStatusUpdateResultDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.syncDeliveryInfo(ownerId, orderId);
+  }
+
   @Get()
   @ApiOperation({
     summary: "List orders",
@@ -241,9 +259,9 @@ export class OrdersController {
   @Delete("statuses/:statusId")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: "Delete custom order status",
+    summary: "Delete custom or legacy Packed/Shipped order status",
     description:
-      "Only non-system statuses (`isSystem: false`). Fails if default or referenced by orders.",
+      "Deletes custom statuses and legacy built-in `Packed`/`Shipped` if present. Fails if default or referenced by orders.",
   })
   @ApiParam({ name: "statusId", type: Number })
   @ApiNoContentResponse()
