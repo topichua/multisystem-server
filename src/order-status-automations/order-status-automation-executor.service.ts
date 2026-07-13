@@ -69,6 +69,10 @@ export class OrderStatusAutomationExecutorService {
       })
       .getMany();
 
+    this.log.log(
+      `Immediate automations matched=${rules.length} workspace=${input.workspaceId} order=${input.orderId} source=${input.sourceType}:${input.sourceStatus}`,
+    );
+
     for (const rule of rules) {
       const matchingCondition = (rule.conditions ?? []).find(
         (condition) =>
@@ -324,7 +328,7 @@ export class OrderStatusAutomationExecutorService {
 
     if (
       !currentStatusChangedAt ||
-      currentStatusChangedAt.getTime() !== expectedStatusChangedAt.getTime()
+      !isSameStatusChangedAt(currentStatusChangedAt, expectedStatusChangedAt)
     ) {
       await this.logSkippedExecution({
         automation,
@@ -464,6 +468,9 @@ export class OrderStatusAutomationExecutorService {
           executedAt: new Date(),
         }),
       );
+      this.log.log(
+        `Automation applied id=${automation.id} name="${automation.name}" workspace=${workspaceId} order=${orderId} ${result.previousStatusId}→${result.newStatusId} via ${sourceType}:${sourceStatus}`,
+      );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown automation error";
@@ -551,6 +558,9 @@ export class OrderStatusAutomationExecutorService {
     if (!input.automation) {
       return;
     }
+    this.log.warn(
+      `Automation skipped id=${input.automation.id} name="${input.automationName}" workspace=${input.workspaceId} order=${input.orderId} reason=${input.reason} source=${input.sourceType}:${input.sourceStatus}`,
+    );
     const idempotencyKey =
       input.idempotencyKey ??
       buildIdempotencyKey({
@@ -588,4 +598,9 @@ export class OrderStatusAutomationExecutorService {
       throw error;
     }
   }
+}
+
+/** Tolerate DB timestamp round-trip precision differences. */
+function isSameStatusChangedAt(left: Date, right: Date): boolean {
+  return Math.abs(left.getTime() - right.getTime()) <= 1000;
 }

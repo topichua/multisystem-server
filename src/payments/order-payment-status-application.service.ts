@@ -1,8 +1,8 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
-  Optional,
   forwardRef,
 } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
@@ -29,10 +29,11 @@ export type UpdateOrderPaymentStatusResult = {
 
 @Injectable()
 export class OrderPaymentStatusApplicationService {
+  private readonly log = new Logger(OrderPaymentStatusApplicationService.name);
+
   constructor(
-    @Optional()
     @Inject(forwardRef(() => OrderStatusAutomationTriggerService))
-    private readonly automationTrigger?: OrderStatusAutomationTriggerService,
+    private readonly automationTrigger: OrderStatusAutomationTriggerService,
   ) {}
 
   async updateOrderPaymentStatus(
@@ -97,9 +98,12 @@ export class OrderPaymentStatusApplicationService {
     orderId: number,
     result: UpdateOrderPaymentStatusResult,
   ): Promise<void> {
-    if (!result.changed || !this.automationTrigger || !result.paymentStatusAt) {
+    if (!result.changed || !result.paymentStatusAt) {
       return;
     }
+    this.log.log(
+      `Notifying automations paymentStatus=${result.paymentStatus} workspace=${workspaceId} order=${orderId}`,
+    );
     await this.automationTrigger.onSourceStatusChanged({
       workspaceId,
       orderId,

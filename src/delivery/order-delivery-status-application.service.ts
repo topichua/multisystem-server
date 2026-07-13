@@ -1,8 +1,8 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
-  Optional,
   forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -40,14 +40,15 @@ export type ChangeDeliveryStatusInput = {
 
 @Injectable()
 export class OrderDeliveryStatusApplicationService {
+  private readonly log = new Logger(OrderDeliveryStatusApplicationService.name);
+
   constructor(
     @InjectRepository(OrderDeliveryInfo)
     private readonly deliveryRepo: Repository<OrderDeliveryInfo>,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
-    @Optional()
     @Inject(forwardRef(() => OrderStatusAutomationTriggerService))
-    private readonly automationTrigger?: OrderStatusAutomationTriggerService,
+    private readonly automationTrigger: OrderStatusAutomationTriggerService,
   ) {}
 
   /** Central entry point: updates delivery status and triggers order automations. */
@@ -97,12 +98,15 @@ export class OrderDeliveryStatusApplicationService {
 
     await this.deliveryRepo.save(delivery);
 
-    if ((changed || input.forceNotify) && this.automationTrigger) {
+    if (changed || input.forceNotify) {
       const order = await this.orderRepo.findOne({
         where: { deliveryId: delivery.id },
       });
       if (order) {
         const automationChangedAt = delivery.deliveryStatusAt ?? new Date();
+        this.log.log(
+          `Notifying automations deliveryStatus=${delivery.deliveryStatus} workspace=${order.workspaceId} order=${order.id} changed=${changed}`,
+        );
         await this.automationTrigger.onSourceStatusChanged({
           workspaceId: order.workspaceId,
           orderId: order.id,

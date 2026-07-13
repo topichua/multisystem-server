@@ -17,6 +17,7 @@ import {
 } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
+import { OrderStatusDefaultsService } from "../orders/order-status-defaults.service";
 import { hasBooleanPermission } from "../workspace-access/permissions";
 import type {
   CreateOrderStatusAutomationDto,
@@ -44,6 +45,7 @@ export class OrderStatusAutomationsService {
     private readonly orderStatusRepo: Repository<OrderStatus>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
+    private readonly orderStatusDefaults: OrderStatusDefaultsService,
   ) {}
 
   async getCriteriaForUser(
@@ -51,7 +53,24 @@ export class OrderStatusAutomationsService {
     appRole?: string,
   ): Promise<OrderStatusAutomationCriteriaResponseDto> {
     await this.requireView(userId, appRole);
-    return buildAutomationRuleCriteria();
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
+    await this.orderStatusDefaults.ensureSystemStatuses(workspace.id);
+    const statuses = await this.orderStatusRepo.find({
+      where: { workspaceId: workspace.id },
+      order: { sortOrder: "ASC", id: "ASC" },
+      select: { id: true, name: true },
+    });
+
+    return {
+      ...buildAutomationRuleCriteria(),
+      statuses: statuses.map((row) => ({
+        id: row.id,
+        name: row.name,
+      })),
+    };
   }
 
   async listForUser(

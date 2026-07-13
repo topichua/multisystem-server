@@ -3,6 +3,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import {
   OrderStatusAutomationCriteriaItemDto,
   OrderStatusAutomationCriteriaResponseDto,
+  OrderStatusAutomationTargetCriteriaItemDto,
 } from "./order-status-automations/dto/order-status-automation-criteria-response.dto";
 
 const SWAGGER_UI_CDN = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14";
@@ -28,9 +29,9 @@ export function setupSwagger(app: INestApplication, path = "api"): void {
     .addTag("admin — users", "User management (super_admin only)")
     .addTag("clients", "CRM clients and social account links (`client_links`)")
     .addTag(
-      "order-status-automations",
+      "automation_rule",
       "Order status automation rules (OR conditions → change order status). " +
-        "Includes GET /order-status-automations/criteria for delivery/payment status options used in `conditions[].sourceStatus`.",
+        "Includes GET /automation_rule/criteria for delivery/payment condition options and workspace order statuses (`targetOrderStatusId`).",
     )
     .build();
 
@@ -39,6 +40,7 @@ export function setupSwagger(app: INestApplication, path = "api"): void {
     extraModels: [
       OrderStatusAutomationCriteriaResponseDto,
       OrderStatusAutomationCriteriaItemDto,
+      OrderStatusAutomationTargetCriteriaItemDto,
     ],
   });
   SwaggerModule.setup(path, app, document, {

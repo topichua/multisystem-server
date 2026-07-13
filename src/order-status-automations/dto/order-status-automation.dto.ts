@@ -32,7 +32,7 @@ export class OrderStatusAutomationConditionDto {
     description:
       "Delivery: pending, waybill_created, shipped, at_branch, delivered, delivery_failed, returned. " +
       "Payment: unpaid, partial, paid, overpaid, refunded. " +
-      "See GET /order-status-automations/criteria for labels.",
+      "See GET /automation_rule/criteria for labels.",
   })
   @IsString()
   @MinLength(1)

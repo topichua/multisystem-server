@@ -1,10 +1,11 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { DataSource, Repository } from "typeorm";
 import {
   Order,
   OrderEvent,
@@ -49,14 +50,15 @@ export type ChangeOrderStatusResult = {
 
 @Injectable()
 export class OrderStatusTransitionService {
+  private readonly log = new Logger(OrderStatusTransitionService.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(OrderStatus)
     private readonly orderStatusRepo: Repository<OrderStatus>,
-    @InjectRepository(OrderEvent)
-    private readonly orderEventRepo: Repository<OrderEvent>,
     private readonly inventory: InventoryService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async changeOrderStatus(
@@ -92,12 +94,6 @@ export class OrderStatusTransitionService {
       where: { id: previousStatusId, workspaceId: input.workspaceId },
     });
 
-    order.statusId = newStatus.id;
-    if (input.actorId != null) {
-      order.updatedById = input.actorId;
-    }
-    await this.orderRepo.save(order);
-
     const payload: Record<string, unknown> = {
       previousStatusId,
       statusId: newStatus.id,
@@ -115,22 +111,33 @@ export class OrderStatusTransitionService {
       }
     }
 
-    await this.orderEventRepo.save(
-      this.orderEventRepo.create({
-        workspaceId: input.workspaceId,
-        orderId: input.orderId,
-        type: "order.status_changed",
-        actorId: input.actorId,
-        userId: input.actorId,
-        payload,
-      }),
+    await this.dataSource.transaction(async (manager) => {
+      order.statusId = newStatus.id;
+      if (input.actorId != null) {
+        order.updatedById = input.actorId;
+      }
+      await manager.getRepository(Order).save(order);
+      await manager.getRepository(OrderEvent).save(
+        manager.getRepository(OrderEvent).create({
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          type: "order.status_changed",
+          actorId: input.actorId,
+          userId: input.actorId,
+          payload,
+        }),
+      );
+    });
+
+    this.log.log(
+      `Order status changed workspace=${input.workspaceId} order=${input.orderId} ${previousStatusId}→${newStatus.id} source=${input.changeSource}`,
     );
 
     await this.inventory.handleOrderInventoryForStatus(
       input.workspaceId,
       input.orderId,
       newStatus.category,
-      input.actorId ?? 0,
+      input.actorId,
       previousStatus?.category ?? null,
     );
 

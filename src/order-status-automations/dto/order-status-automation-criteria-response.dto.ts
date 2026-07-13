@@ -12,6 +12,17 @@ export class OrderStatusAutomationCriteriaItemDto {
   name!: string;
 }
 
+export class OrderStatusAutomationTargetCriteriaItemDto {
+  @ApiProperty({
+    example: 12,
+    description: "Workspace order status id. Use as `targetOrderStatusId` when creating an automation.",
+  })
+  id!: number;
+
+  @ApiProperty({ example: "Завершено" })
+  name!: string;
+}
+
 export class OrderStatusAutomationCriteriaResponseDto {
   @ApiProperty({
     type: [OrderStatusAutomationCriteriaItemDto],
@@ -26,4 +37,11 @@ export class OrderStatusAutomationCriteriaResponseDto {
       "Payment statuses. Use `id` as `conditions[].sourceStatus` with `sourceType: PAYMENT_STATUS`.",
   })
   payment!: OrderStatusAutomationCriteriaItemDto[];
+
+  @ApiProperty({
+    type: [OrderStatusAutomationTargetCriteriaItemDto],
+    description:
+      "Workspace order statuses. Use `id` as `targetOrderStatusId` (automation action target).",
+  })
+  statuses!: OrderStatusAutomationTargetCriteriaItemDto[];
 }

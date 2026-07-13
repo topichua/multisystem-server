@@ -36,7 +36,7 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     WorkspaceSettingsModule,
     forwardRef(() => NovaPoshtaIntegrationsModule),
     OrderStatusDefaultsModule,
-    DeliveryModule,
+    forwardRef(() => DeliveryModule),
     TypeOrmModule.forFeature([
       Client,
       Conversation,

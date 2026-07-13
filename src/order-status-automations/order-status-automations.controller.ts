@@ -40,17 +40,19 @@ import {
 import {
   OrderStatusAutomationCriteriaItemDto,
   OrderStatusAutomationCriteriaResponseDto,
+  OrderStatusAutomationTargetCriteriaItemDto,
 } from "./dto/order-status-automation-criteria-response.dto";
 import { OrderStatusAutomationsService } from "./order-status-automations.service";
 
-@ApiTags("order-status-automations")
+@ApiTags("automation_rule")
 @ApiBearerAuth("bearer")
 @ApiExtraModels(
   OrderStatusAutomationCriteriaResponseDto,
   OrderStatusAutomationCriteriaItemDto,
+  OrderStatusAutomationTargetCriteriaItemDto,
 )
 @UseGuards(JwtAuthGuard)
-@Controller("order-status-automations")
+@Controller("automation_rule")
 export class OrderStatusAutomationsController {
   constructor(private readonly automations: OrderStatusAutomationsService) {}
 
@@ -58,8 +60,8 @@ export class OrderStatusAutomationsController {
   @ApiOperation({
     summary: "List automation rule builder criteria",
     description:
-      "Returns delivery and payment status options for `conditions[].sourceStatus`. " +
-      "Use delivery/payment `id` values when creating or updating automations.",
+      "Returns delivery and payment status options for `conditions[].sourceStatus`, " +
+      "and workspace order statuses for `targetOrderStatusId`.",
   })
   @ApiOkResponse({ type: OrderStatusAutomationCriteriaResponseDto })
   getCriteria(

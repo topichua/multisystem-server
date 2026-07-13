@@ -25,6 +25,10 @@ export class OrderStatusAutomationTriggerService {
       return;
     }
 
+    this.log.log(
+      `Automation trigger workspace=${input.workspaceId} order=${input.orderId} ${input.previousSourceStatus}→${input.sourceStatus} (${input.sourceType})`,
+    );
+
     try {
       await this.executor.evaluateImmediateRules({
         workspaceId: input.workspaceId,

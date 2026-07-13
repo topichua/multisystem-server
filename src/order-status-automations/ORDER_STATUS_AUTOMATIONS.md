@@ -9,8 +9,9 @@
 
 ## Rule builder criteria
 
-`GET /order-status-automations/criteria` returns `delivery` and `payment` arrays of `{ id, name }`.
-Use `id` as `conditions[].sourceStatus` with the matching `sourceType` (`DELIVERY_STATUS` or `PAYMENT_STATUS`).
+`GET /automation_rule/criteria` returns `delivery`, `payment`, and `statuses` arrays of `{ id, name }`.
+- Use delivery/payment `id` as `conditions[].sourceStatus` with the matching `sourceType` (`DELIVERY_STATUS` or `PAYMENT_STATUS`).
+- Use `statuses[].id` as `targetOrderStatusId` (automation action).
 
 ## Rule shape
 
