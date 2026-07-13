@@ -9,19 +9,35 @@
 
 ## Rule shape
 
-- `conditions[]` — OR trigger conditions (`sourceType` + `sourceStatus`)
-- `durationValue` / `durationUnit` — optional delay applied to the matched condition
+- `conditions[]` — OR trigger conditions (`sourceType` + `sourceStatus`, optional `durationValue` + `durationUnit` per condition)
 - `targetOrderStatusId` — single action: change order status
 
-Example: when delivery is `at_branch` **OR** `delivered` → move order to `completed`.
+Example: when delivery is `at_branch` for more than 3 days → move order to `completed`:
+
+```json
+{
+  "name": "At branch more than 3 days",
+  "conditions": [
+    {
+      "sourceType": "DELIVERY_STATUS",
+      "sourceStatus": "at_branch",
+      "durationValue": 3,
+      "durationUnit": "DAYS"
+    }
+  ],
+  "targetOrderStatusId": 12
+}
+```
+
+Example: when delivery is `at_branch` **OR** `delivered` (immediate) → move order to `completed`.
 
 ## Lifecycle: immediate rule
 
 1. Delivery or payment status changes through a centralized application service
 2. If value actually changed, timestamp is updated (`*StatusAt`)
 3. `OrderStatusAutomationTriggerService` loads active rules whose **conditions** include the changed source type + status
-4. Rules with `duration_value IS NULL` are evaluated immediately via `OrderStatusAutomationExecutorService`
-5. Rules with duration are not executed immediately
+4. Conditions with `duration_value IS NULL` are evaluated immediately via `OrderStatusAutomationExecutorService`
+5. Conditions with duration are not executed immediately
 6. Executor re-validates conditions and applies `OrderStatusTransitionService.changeOrderStatus` with `source: AUTOMATION`
 
 ## Lifecycle: timed rule

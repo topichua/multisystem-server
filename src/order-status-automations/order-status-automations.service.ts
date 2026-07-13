@@ -122,17 +122,11 @@ export class OrderStatusAutomationsService {
       appRole,
     );
     const conditions = normalizeAutomationConditions(dto.conditions);
-    this.validateDurationPair(
-      dto.durationValue ?? null,
-      dto.durationUnit ?? null,
-    );
     this.validateActionType(dto.actionType);
     await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
     await this.assertNoDuplicate({
       workspaceId: workspace.id,
       conditions,
-      durationValue: dto.durationValue ?? null,
-      durationUnit: dto.durationUnit ?? null,
       targetOrderStatusId: dto.targetOrderStatusId,
     });
 
@@ -141,8 +135,6 @@ export class OrderStatusAutomationsService {
         workspaceId: workspace.id,
         name: dto.name.trim(),
         isActive: dto.isActive ?? true,
-        durationValue: dto.durationValue ?? null,
-        durationUnit: dto.durationUnit ?? null,
         actionType: AutomationActionType.change_order_status,
         targetOrderStatusId: dto.targetOrderStatusId,
         origin: AutomationOrigin.user,
@@ -173,14 +165,9 @@ export class OrderStatusAutomationsService {
       dto.conditions != null
         ? normalizeAutomationConditions(dto.conditions)
         : this.normalizePersistedConditions(row.conditions ?? []);
-    const nextDurationValue =
-      dto.durationValue !== undefined ? dto.durationValue : row.durationValue;
-    const nextDurationUnit =
-      dto.durationUnit !== undefined ? dto.durationUnit : row.durationUnit;
     const nextTargetStatusId =
       dto.targetOrderStatusId ?? row.targetOrderStatusId;
 
-    this.validateDurationPair(nextDurationValue, nextDurationUnit);
     if (dto.actionType != null) {
       this.validateActionType(dto.actionType);
     }
@@ -192,8 +179,6 @@ export class OrderStatusAutomationsService {
       {
         workspaceId: workspace.id,
         conditions: nextConditions,
-        durationValue: nextDurationValue,
-        durationUnit: nextDurationUnit,
         targetOrderStatusId: nextTargetStatusId,
       },
       row.id,
@@ -201,8 +186,6 @@ export class OrderStatusAutomationsService {
 
     if (dto.name != null) row.name = dto.name.trim();
     if (dto.isActive != null) row.isActive = dto.isActive;
-    if (dto.durationValue !== undefined) row.durationValue = dto.durationValue;
-    if (dto.durationUnit !== undefined) row.durationUnit = dto.durationUnit;
     if (dto.targetOrderStatusId != null) {
       row.targetOrderStatusId = dto.targetOrderStatusId;
     }
@@ -277,6 +260,8 @@ export class OrderStatusAutomationsService {
       this.conditionRepo.create({
         sourceType: condition.sourceType,
         sourceStatus: condition.sourceStatus,
+        durationValue: condition.durationValue,
+        durationUnit: condition.durationUnit,
         sortOrder: index,
       }),
     );
@@ -290,6 +275,8 @@ export class OrderStatusAutomationsService {
       .map((condition) => ({
         sourceType: condition.sourceType,
         sourceStatus: condition.sourceStatus,
+        durationValue: condition.durationValue,
+        durationUnit: condition.durationUnit,
       }));
   }
 
@@ -307,24 +294,6 @@ export class OrderStatusAutomationsService {
     }
   }
 
-  private validateDurationPair(
-    durationValue: number | null,
-    durationUnit:
-      | import("../database/entities/automation-duration-unit.enum").AutomationDurationUnit
-      | null,
-  ): void {
-    const hasValue = durationValue != null;
-    const hasUnit = durationUnit != null;
-    if (hasValue !== hasUnit) {
-      throw new BadRequestException(
-        "durationValue and durationUnit must be provided together or both omitted",
-      );
-    }
-    if (durationValue != null && durationValue <= 0) {
-      throw new BadRequestException("durationValue must be greater than zero");
-    }
-  }
-
   private validateActionType(actionType: AutomationActionType): void {
     if (actionType !== AutomationActionType.change_order_status) {
       throw new BadRequestException(
@@ -337,10 +306,6 @@ export class OrderStatusAutomationsService {
     input: {
       workspaceId: number;
       conditions: NormalizedAutomationCondition[];
-      durationValue: number | null;
-      durationUnit:
-        | import("../database/entities/automation-duration-unit.enum").AutomationDurationUnit
-        | null;
       targetOrderStatusId: number;
     },
     excludeId?: number,
@@ -352,9 +317,6 @@ export class OrderStatusAutomationsService {
         isActive: true,
         deletedAt: IsNull(),
         targetOrderStatusId: input.targetOrderStatusId,
-        durationValue:
-          input.durationValue == null ? IsNull() : input.durationValue,
-        durationUnit: input.durationUnit == null ? IsNull() : input.durationUnit,
       },
       relations: { conditions: true },
     });
@@ -393,14 +355,14 @@ export class OrderStatusAutomationsService {
         id: condition.id,
         sourceType: condition.sourceType,
         sourceStatus: condition.sourceStatus,
+        durationValue: condition.durationValue,
+        durationUnit: condition.durationUnit,
+        durationLabel: formatAutomationDuration(
+          condition.durationValue,
+          condition.durationUnit,
+        ),
         sortOrder: condition.sortOrder,
       })),
-      durationValue: row.durationValue,
-      durationUnit: row.durationUnit,
-      durationLabel: formatAutomationDuration(
-        row.durationValue,
-        row.durationUnit,
-      ),
       actionType: row.actionType,
       targetOrderStatusId: row.targetOrderStatusId,
       targetOrderStatus: {

@@ -23,6 +23,10 @@ export function setupSwagger(app: INestApplication, path = "api"): void {
     .addTag("auth", "Authentication")
     .addTag("admin — users", "User management (super_admin only)")
     .addTag("clients", "CRM clients and social account links (`client_links`)")
+    .addTag(
+      "order-status-automations",
+      "Order status automation rules (OR conditions → change order status)",
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

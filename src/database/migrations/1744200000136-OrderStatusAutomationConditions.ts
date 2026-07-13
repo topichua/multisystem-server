@@ -31,7 +31,6 @@ export class OrderStatusAutomationConditions1744200000136
       )
       SELECT "id", "source_type", "source_status", 0
       FROM "order_status_automations"
-      WHERE "deleted_at" IS NULL
     `);
 
     await queryRunner.query(`

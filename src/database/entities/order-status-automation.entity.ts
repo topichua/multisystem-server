@@ -12,7 +12,6 @@ import {
   VersionColumn,
 } from "typeorm";
 import { AutomationActionType } from "./automation-action-type.enum";
-import { AutomationDurationUnit } from "./automation-duration-unit.enum";
 import { AutomationOrigin } from "./automation-origin.enum";
 import { OrderStatus } from "./order-status.entity";
 import { OrderStatusAutomationCondition } from "./order-status-automation-condition.entity";
@@ -47,18 +46,6 @@ export class OrderStatusAutomation {
     { cascade: true },
   )
   conditions: OrderStatusAutomationCondition[];
-
-  @Column({ name: "duration_value", type: "int", nullable: true })
-  durationValue: number | null;
-
-  @Column({
-    name: "duration_unit",
-    type: "enum",
-    enum: AutomationDurationUnit,
-    enumName: "automation_duration_unit_enum",
-    nullable: true,
-  })
-  durationUnit: AutomationDurationUnit | null;
 
   @Column({
     name: "action_type",

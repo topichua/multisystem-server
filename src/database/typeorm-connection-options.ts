@@ -131,6 +131,7 @@ import { OrderDeliveryInfoStatusCodeAt1744200000133 } from "./migrations/1744200
 import { OrderStatusAutomations1744200000134 } from "./migrations/1744200000134-OrderStatusAutomations";
 import { OrderStatusSystemStatusesOnly1744200000135 } from "./migrations/1744200000135-OrderStatusSystemStatusesOnly";
 import { OrderStatusAutomationConditions1744200000136 } from "./migrations/1744200000136-OrderStatusAutomationConditions";
+import { OrderStatusAutomationConditionDuration1744200000137 } from "./migrations/1744200000137-OrderStatusAutomationConditionDuration";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -184,6 +185,7 @@ import {
   PaymentTransaction,
   ManualPaymentMethod,
   OrderStatusAutomation,
+  OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
@@ -289,6 +291,7 @@ const entities = [
   PaymentTransaction,
   ManualPaymentMethod,
   OrderStatusAutomation,
+  OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
 ];
 
@@ -465,6 +468,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderStatusAutomations1744200000134,
       OrderStatusSystemStatusesOnly1744200000135,
       OrderStatusAutomationConditions1744200000136,
+      OrderStatusAutomationConditionDuration1744200000137,
     ],
   };
 }

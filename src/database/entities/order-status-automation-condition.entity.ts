@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { AutomationSourceType } from "./automation-source-type.enum";
+import { AutomationDurationUnit } from "./automation-duration-unit.enum";
 import { OrderStatusAutomation } from "./order-status-automation.entity";
 
 @Entity("order_status_automation_conditions")
@@ -46,4 +47,16 @@ export class OrderStatusAutomationCondition {
 
   @Column({ name: "sort_order", type: "int", default: 0 })
   sortOrder: number;
+
+  @Column({ name: "duration_value", type: "int", nullable: true })
+  durationValue: number | null;
+
+  @Column({
+    name: "duration_unit",
+    type: "enum",
+    enum: AutomationDurationUnit,
+    enumName: "automation_duration_unit_enum",
+    nullable: true,
+  })
+  durationUnit: AutomationDurationUnit | null;
 }

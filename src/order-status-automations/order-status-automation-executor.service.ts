@@ -3,12 +3,15 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
   AutomationExecutionStatus,
+  AutomationDurationUnit,
   AutomationSourceType,
   Order,
   OrderDeliveryInfo,
   OrderStatusAutomation,
+  OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
 } from "../database/entities";
+import { isTimedCondition } from "./logic/automation-conditions.logic";
 import {
   addDuration,
   buildIdempotencyKey,
@@ -56,8 +59,8 @@ export class OrderStatusAutomationExecutorService {
       })
       .andWhere("a.is_active = true")
       .andWhere("a.deleted_at IS NULL")
-      .andWhere("a.duration_value IS NULL")
-      .andWhere("a.duration_unit IS NULL")
+      .andWhere("c.duration_value IS NULL")
+      .andWhere("c.duration_unit IS NULL")
       .andWhere("c.source_type = :sourceType", {
         sourceType: input.sourceType,
       })
@@ -67,12 +70,24 @@ export class OrderStatusAutomationExecutorService {
       .getMany();
 
     for (const rule of rules) {
+      const matchingCondition = (rule.conditions ?? []).find(
+        (condition) =>
+          condition.sourceType === input.sourceType &&
+          condition.sourceStatus === input.sourceStatus &&
+          !isTimedCondition(condition),
+      );
+      if (!matchingCondition) {
+        continue;
+      }
+
       await this.applyAutomation({
         automation: rule,
         workspaceId: input.workspaceId,
         orderId: input.orderId,
-        sourceType: input.sourceType,
-        sourceStatus: input.sourceStatus,
+        sourceType: matchingCondition.sourceType,
+        sourceStatus: matchingCondition.sourceStatus,
+        durationValue: matchingCondition.durationValue,
+        durationUnit: matchingCondition.durationUnit,
         expectedStatusChangedAt: input.statusChangedAt,
         timed: false,
       });
@@ -89,8 +104,8 @@ export class OrderStatusAutomationExecutorService {
       .innerJoinAndSelect("a.conditions", "c")
       .where("a.is_active = true")
       .andWhere("a.deleted_at IS NULL")
-      .andWhere("a.duration_value IS NOT NULL")
-      .andWhere("a.duration_unit IS NOT NULL")
+      .andWhere("c.duration_value IS NOT NULL")
+      .andWhere("c.duration_unit IS NOT NULL")
       .andWhere("c.source_type = :sourceType", {
         sourceType: input.sourceType,
       });
@@ -106,7 +121,9 @@ export class OrderStatusAutomationExecutorService {
     let evaluated = 0;
     for (const rule of rules) {
       const matchingConditions = (rule.conditions ?? []).filter(
-        (condition) => condition.sourceType === input.sourceType,
+        (condition) =>
+          condition.sourceType === input.sourceType &&
+          isTimedCondition(condition),
       );
 
       for (const condition of matchingConditions) {
@@ -127,8 +144,8 @@ export class OrderStatusAutomationExecutorService {
 
           const dueAt = addDuration(
             statusChangedAt,
-            rule.durationValue!,
-            rule.durationUnit!,
+            condition.durationValue!,
+            condition.durationUnit!,
           );
           if (dueAt.getTime() > Date.now()) {
             continue;
@@ -140,6 +157,8 @@ export class OrderStatusAutomationExecutorService {
             orderId: candidate.id,
             sourceType: condition.sourceType,
             sourceStatus: condition.sourceStatus,
+            durationValue: condition.durationValue,
+            durationUnit: condition.durationUnit,
             expectedStatusChangedAt: statusChangedAt,
             timed: true,
           });
@@ -153,10 +172,7 @@ export class OrderStatusAutomationExecutorService {
 
   private async findTimedRuleCandidates(
     rule: OrderStatusAutomation,
-    condition: {
-      sourceType: AutomationSourceType;
-      sourceStatus: string;
-    },
+    condition: OrderStatusAutomationCondition,
     limit: number,
   ): Promise<
     Array<
@@ -207,6 +223,8 @@ export class OrderStatusAutomationExecutorService {
     orderId: number;
     sourceType: AutomationSourceType;
     sourceStatus: string;
+    durationValue: number | null;
+    durationUnit: AutomationDurationUnit | null;
     expectedStatusChangedAt: Date;
     timed: boolean;
   }): Promise<void> {
@@ -216,6 +234,8 @@ export class OrderStatusAutomationExecutorService {
       orderId,
       sourceType,
       sourceStatus,
+      durationValue,
+      durationUnit,
       expectedStatusChangedAt,
       timed,
     } = input;
@@ -232,8 +252,8 @@ export class OrderStatusAutomationExecutorService {
         reason: AutomationSkipReason.AUTOMATION_DISABLED,
         targetOrderStatusId: automation.targetOrderStatusId,
         automationName: automation.name,
-        durationValue: automation.durationValue,
-        durationUnit: automation.durationUnit,
+        durationValue,
+        durationUnit,
       });
       return;
     }
@@ -267,8 +287,8 @@ export class OrderStatusAutomationExecutorService {
         reason: AutomationSkipReason.ORDER_NOT_FOUND,
         targetOrderStatusId: automation.targetOrderStatusId,
         automationName: automation.name,
-        durationValue: automation.durationValue,
-        durationUnit: automation.durationUnit,
+        durationValue,
+        durationUnit,
         idempotencyKey,
       });
       return;
@@ -295,8 +315,8 @@ export class OrderStatusAutomationExecutorService {
         reason: AutomationSkipReason.SOURCE_STATUS_CHANGED,
         targetOrderStatusId: automation.targetOrderStatusId,
         automationName: automation.name,
-        durationValue: automation.durationValue,
-        durationUnit: automation.durationUnit,
+        durationValue,
+        durationUnit,
         idempotencyKey,
       });
       return;
@@ -317,15 +337,15 @@ export class OrderStatusAutomationExecutorService {
         reason: AutomationSkipReason.STALE_STATUS_TIMESTAMP,
         targetOrderStatusId: automation.targetOrderStatusId,
         automationName: automation.name,
-        durationValue: automation.durationValue,
-        durationUnit: automation.durationUnit,
+        durationValue,
+        durationUnit,
         idempotencyKey,
       });
       return;
     }
 
     if (timed) {
-      if (automation.durationValue == null || automation.durationUnit == null) {
+      if (durationValue == null || durationUnit == null) {
         await this.logSkippedExecution({
           automation,
           workspaceId,
@@ -337,16 +357,16 @@ export class OrderStatusAutomationExecutorService {
           reason: AutomationSkipReason.CONDITIONS_NOT_MATCHED,
           targetOrderStatusId: automation.targetOrderStatusId,
           automationName: automation.name,
-          durationValue: automation.durationValue,
-          durationUnit: automation.durationUnit,
+          durationValue,
+          durationUnit,
           idempotencyKey,
         });
         return;
       }
       const dueAt = addDuration(
         expectedStatusChangedAt,
-        automation.durationValue,
-        automation.durationUnit,
+        durationValue,
+        durationUnit,
       );
       if (Date.now() < dueAt.getTime()) {
         await this.logSkippedExecution({
@@ -360,8 +380,8 @@ export class OrderStatusAutomationExecutorService {
           reason: AutomationSkipReason.TIME_NOT_ELAPSED,
           targetOrderStatusId: automation.targetOrderStatusId,
           automationName: automation.name,
-          durationValue: automation.durationValue,
-          durationUnit: automation.durationUnit,
+          durationValue,
+          durationUnit,
           idempotencyKey,
         });
         return;
@@ -380,8 +400,8 @@ export class OrderStatusAutomationExecutorService {
         reason: AutomationSkipReason.ORDER_ALREADY_IN_TARGET_STATUS,
         targetOrderStatusId: automation.targetOrderStatusId,
         automationName: automation.name,
-        durationValue: automation.durationValue,
-        durationUnit: automation.durationUnit,
+        durationValue,
+        durationUnit,
         idempotencyKey,
       });
       return;
@@ -399,8 +419,8 @@ export class OrderStatusAutomationExecutorService {
           automationName: automation.name,
           sourceType,
           sourceStatus,
-          durationValue: automation.durationValue,
-          durationUnit: automation.durationUnit,
+          durationValue,
+          durationUnit,
         },
       });
 
@@ -418,8 +438,8 @@ export class OrderStatusAutomationExecutorService {
             AutomationSkipReason.ORDER_ALREADY_IN_TARGET_STATUS,
           targetOrderStatusId: automation.targetOrderStatusId,
           automationName: automation.name,
-          durationValue: automation.durationValue,
-          durationUnit: automation.durationUnit,
+          durationValue,
+          durationUnit,
           idempotencyKey,
         });
         return;
@@ -439,8 +459,8 @@ export class OrderStatusAutomationExecutorService {
           expectedStatusChangedAt,
           idempotencyKey,
           automationNameSnapshot: automation.name,
-          durationValue: automation.durationValue,
-          durationUnit: automation.durationUnit,
+          durationValue,
+          durationUnit,
           executedAt: new Date(),
         }),
       );
@@ -465,8 +485,8 @@ export class OrderStatusAutomationExecutorService {
             expectedStatusChangedAt,
             idempotencyKey,
             automationNameSnapshot: automation.name,
-            durationValue: automation.durationValue,
-            durationUnit: automation.durationUnit,
+            durationValue,
+            durationUnit,
             errorCode: "APPLY_FAILED",
             errorMessage: message,
             executedAt: new Date(),

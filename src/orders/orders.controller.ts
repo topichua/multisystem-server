@@ -143,6 +143,7 @@ export class OrdersController {
     description:
       "Updates `deliveryStatus` for the order delivery record and triggers order status automations when the value changes.",
   })
+  @ApiBody({ type: ChangeDeliveryStatusDto })
   @ApiParam({ name: "orderId", type: Number })
   @ApiOkResponse({ type: ChangeDeliveryStatusResultDto })
   changeDeliveryStatus(

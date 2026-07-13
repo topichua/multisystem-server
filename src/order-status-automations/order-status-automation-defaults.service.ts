@@ -117,8 +117,6 @@ export class OrderStatusAutomationDefaultsService {
         workspaceId: input.workspaceId,
         name: input.name,
         isActive: input.isActive,
-        durationValue: null,
-        durationUnit: null,
         actionType: AutomationActionType.change_order_status,
         targetOrderStatusId: input.targetOrderStatusId,
         origin: AutomationOrigin.multisale_template,
@@ -133,6 +131,8 @@ export class OrderStatusAutomationDefaultsService {
           sourceType: condition.sourceType,
           sourceStatus: condition.sourceStatus,
           sortOrder: index,
+          durationValue: null,
+          durationUnit: null,
         }),
       ),
     );

@@ -19,19 +19,49 @@ import { AutomationDurationUnit } from "../../database/entities/automation-durat
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
 
 export class OrderStatusAutomationConditionDto {
-  @ApiProperty({ enum: AutomationSourceType })
+  @ApiProperty({
+    enum: AutomationSourceType,
+    example: AutomationSourceType.delivery_status,
+    description: "DELIVERY_STATUS or PAYMENT_STATUS.",
+  })
   @IsEnum(AutomationSourceType)
   sourceType!: AutomationSourceType;
 
-  @ApiProperty({ example: "at_branch" })
+  @ApiProperty({
+    example: "at_branch",
+    description:
+      "Delivery: pending, waybill_created, shipped, at_branch, delivered, delivery_failed, returned. " +
+      "Payment: pending, paid, failed, refunded, canceled.",
+  })
   @IsString()
   @MinLength(1)
   @MaxLength(64)
   sourceStatus!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 3,
+    description:
+      "Optional delay for this condition. Required together with durationUnit. Omit both for immediate rules.",
+  })
+  @ValidateIf((o) => o.durationUnit != null)
+  @IsInt()
+  @IsPositive()
+  durationValue?: number | null;
+
+  @ApiPropertyOptional({
+    enum: AutomationDurationUnit,
+    nullable: true,
+    example: AutomationDurationUnit.days,
+    description: "MINUTES, HOURS, or DAYS. Required together with durationValue.",
+  })
+  @ValidateIf((o) => o.durationValue != null)
+  @IsEnum(AutomationDurationUnit)
+  durationUnit?: AutomationDurationUnit | null;
 }
 
 export class CreateOrderStatusAutomationDto {
-  @ApiProperty({ example: "Довго на відділенні" })
+  @ApiProperty({ example: "At branch more than 3 days" })
   @IsString()
   @MinLength(1)
   @MaxLength(255)
@@ -45,7 +75,15 @@ export class CreateOrderStatusAutomationDto {
   @ApiProperty({
     type: [OrderStatusAutomationConditionDto],
     description:
-      "Trigger conditions combined with OR. When any condition matches, the automation may run.",
+      "OR trigger conditions. Each condition may have its own optional delay.",
+    example: [
+      {
+        sourceType: "DELIVERY_STATUS",
+        sourceStatus: "at_branch",
+        durationValue: 3,
+        durationUnit: "DAYS",
+      },
+    ],
   })
   @IsArray()
   @ArrayMinSize(1)
@@ -53,33 +91,23 @@ export class CreateOrderStatusAutomationDto {
   @Type(() => OrderStatusAutomationConditionDto)
   conditions!: OrderStatusAutomationConditionDto[];
 
-  @ApiPropertyOptional({ nullable: true })
-  @ValidateIf((o) => o.durationUnit != null)
-  @IsInt()
-  @IsPositive()
-  durationValue?: number | null;
-
-  @ApiPropertyOptional({ enum: AutomationDurationUnit, nullable: true })
-  @ValidateIf((o) => o.durationValue != null)
-  @IsEnum(AutomationDurationUnit)
-  durationUnit?: AutomationDurationUnit | null;
-
   @ApiProperty({
     enum: AutomationActionType,
     default: AutomationActionType.change_order_status,
+    example: AutomationActionType.change_order_status,
     description: "V1 supports only CHANGE_ORDER_STATUS.",
   })
   @IsEnum(AutomationActionType)
   actionType: AutomationActionType = AutomationActionType.change_order_status;
 
-  @ApiProperty()
+  @ApiProperty({ example: 12, description: "Workspace order status id to apply." })
   @IsInt()
   @IsPositive()
   targetOrderStatusId!: number;
 }
 
 export class UpdateOrderStatusAutomationDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: "At branch more than 3 days" })
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -91,26 +119,16 @@ export class UpdateOrderStatusAutomationDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ type: [OrderStatusAutomationConditionDto] })
+  @ApiPropertyOptional({
+    type: [OrderStatusAutomationConditionDto],
+    description: "Replaces all existing conditions when provided.",
+  })
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => OrderStatusAutomationConditionDto)
   conditions?: OrderStatusAutomationConditionDto[];
-
-  @ApiPropertyOptional({ nullable: true })
-  @IsOptional()
-  @ValidateIf((o) => o.durationUnit != null)
-  @IsInt()
-  @IsPositive()
-  durationValue?: number | null;
-
-  @ApiPropertyOptional({ enum: AutomationDurationUnit, nullable: true })
-  @IsOptional()
-  @ValidateIf((o) => o.durationValue != null)
-  @IsEnum(AutomationDurationUnit)
-  durationUnit?: AutomationDurationUnit | null;
 
   @ApiPropertyOptional({ enum: AutomationActionType })
   @IsOptional()
@@ -125,7 +143,7 @@ export class UpdateOrderStatusAutomationDto {
 }
 
 export class SetOrderStatusAutomationActiveDto {
-  @ApiProperty()
+  @ApiProperty({ example: true })
   @IsBoolean()
   isActive!: boolean;
 }

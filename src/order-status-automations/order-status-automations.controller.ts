@@ -16,6 +16,7 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -75,7 +76,12 @@ export class OrderStatusAutomationsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: "Create order status automation" })
+  @ApiOperation({
+    summary: "Create order status automation",
+    description:
+      "Creates a rule with OR conditions (`conditions[]`) and a single action: change order status.",
+  })
+  @ApiBody({ type: CreateOrderStatusAutomationDto })
   @ApiCreatedResponse({ type: OrderStatusAutomationResponseDto })
   create(
     @Req() req: { user?: AuthUser },
@@ -89,7 +95,12 @@ export class OrderStatusAutomationsController {
   }
 
   @Patch(":id")
-  @ApiOperation({ summary: "Update order status automation" })
+  @ApiOperation({
+    summary: "Update order status automation",
+    description:
+      "Partial update. Sending `conditions` replaces the full OR condition list.",
+  })
+  @ApiBody({ type: UpdateOrderStatusAutomationDto })
   @ApiParam({ name: "id", type: Number })
   @ApiOkResponse({ type: OrderStatusAutomationResponseDto })
   update(
@@ -107,6 +118,7 @@ export class OrderStatusAutomationsController {
 
   @Patch(":id/active")
   @ApiOperation({ summary: "Enable or disable order status automation" })
+  @ApiBody({ type: SetOrderStatusAutomationActiveDto })
   @ApiParam({ name: "id", type: Number })
   @ApiOkResponse({ type: OrderStatusAutomationResponseDto })
   setActive(

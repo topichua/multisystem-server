@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
 import {
   isValidAutomationSourceStatus,
@@ -8,12 +9,36 @@ import {
 export type AutomationConditionInput = {
   sourceType: AutomationSourceType;
   sourceStatus: string;
+  durationValue?: number | null;
+  durationUnit?: AutomationDurationUnit | null;
 };
 
 export type NormalizedAutomationCondition = {
   sourceType: AutomationSourceType;
   sourceStatus: string;
+  durationValue: number | null;
+  durationUnit: AutomationDurationUnit | null;
 };
+
+function validateDurationPair(
+  durationValue: number | null | undefined,
+  durationUnit: AutomationDurationUnit | null | undefined,
+): { durationValue: number | null; durationUnit: AutomationDurationUnit | null } {
+  const hasValue = durationValue != null;
+  const hasUnit = durationUnit != null;
+  if (hasValue !== hasUnit) {
+    throw new BadRequestException(
+      "durationValue and durationUnit must be provided together or both omitted",
+    );
+  }
+  if (durationValue != null && durationValue <= 0) {
+    throw new BadRequestException("durationValue must be greater than zero");
+  }
+  return {
+    durationValue: durationValue ?? null,
+    durationUnit: durationUnit ?? null,
+  };
+}
 
 export function normalizeAutomationConditions(
   conditions: AutomationConditionInput[],
@@ -32,7 +57,11 @@ export function normalizeAutomationConditions(
     if (!isValidAutomationSourceStatus(condition.sourceType, sourceStatus)) {
       throw new BadRequestException("Invalid sourceStatus for sourceType");
     }
-    const key = `${condition.sourceType}:${sourceStatus}`;
+    const duration = validateDurationPair(
+      condition.durationValue,
+      condition.durationUnit,
+    );
+    const key = `${condition.sourceType}:${sourceStatus}:${duration.durationValue ?? ""}:${duration.durationUnit ?? ""}`;
     if (seen.has(key)) {
       continue;
     }
@@ -40,6 +69,8 @@ export function normalizeAutomationConditions(
     normalized.push({
       sourceType: condition.sourceType,
       sourceStatus,
+      durationValue: duration.durationValue,
+      durationUnit: duration.durationUnit,
     });
   }
 
@@ -57,10 +88,20 @@ export function buildConditionSignature(
 ): string {
   return [...conditions]
     .sort((a, b) => {
-      const left = `${a.sourceType}:${a.sourceStatus}`;
-      const right = `${b.sourceType}:${b.sourceStatus}`;
+      const left = `${a.sourceType}:${a.sourceStatus}:${a.durationValue ?? ""}:${a.durationUnit ?? ""}`;
+      const right = `${b.sourceType}:${b.sourceStatus}:${b.durationValue ?? ""}:${b.durationUnit ?? ""}`;
       return left.localeCompare(right);
     })
-    .map((condition) => `${condition.sourceType}:${condition.sourceStatus}`)
+    .map(
+      (condition) =>
+        `${condition.sourceType}:${condition.sourceStatus}:${condition.durationValue ?? ""}:${condition.durationUnit ?? ""}`,
+    )
     .join("|");
+}
+
+export function isTimedCondition(condition: {
+  durationValue: number | null;
+  durationUnit: AutomationDurationUnit | null;
+}): boolean {
+  return condition.durationValue != null && condition.durationUnit != null;
 }

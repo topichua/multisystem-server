@@ -3,7 +3,12 @@ import { IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
 import { OrderDeliveryStatus } from "../../database/entities/order-delivery-status.enum";
 
 export class ChangeDeliveryStatusDto {
-  @ApiProperty({ enum: OrderDeliveryStatus })
+  @ApiProperty({
+    enum: OrderDeliveryStatus,
+    example: OrderDeliveryStatus.delivered,
+    description:
+      "pending, waybill_created, shipped, at_branch, delivered, delivery_failed, returned",
+  })
   @IsEnum(OrderDeliveryStatus)
   deliveryStatus!: OrderDeliveryStatus;
 

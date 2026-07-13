@@ -26,10 +26,30 @@ export class OrderStatusAutomationConditionResponseDto {
   @ApiProperty({ enum: AutomationSourceType })
   sourceType!: AutomationSourceType;
 
-  @ApiProperty()
+  @ApiProperty({ example: "at_branch" })
   sourceStatus!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Null for immediate conditions.",
+  })
+  durationValue!: number | null;
+
+  @ApiPropertyOptional({
+    enum: AutomationDurationUnit,
+    nullable: true,
+    description: "Null for immediate conditions.",
+  })
+  durationUnit!: AutomationDurationUnit | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "3 дн",
+    description: "Human-readable delay for this condition.",
+  })
+  durationLabel!: string | null;
+
+  @ApiProperty({ description: "Display order of the condition within the rule." })
   sortOrder!: number;
 }
 
@@ -46,19 +66,16 @@ export class OrderStatusAutomationResponseDto {
   @ApiProperty()
   isActive!: boolean;
 
-  @ApiProperty({ type: [OrderStatusAutomationConditionResponseDto] })
+  @ApiProperty({
+    type: [OrderStatusAutomationConditionResponseDto],
+    description: "OR trigger conditions. Each may have its own delay.",
+  })
   conditions!: OrderStatusAutomationConditionResponseDto[];
 
-  @ApiPropertyOptional({ nullable: true })
-  durationValue!: number | null;
-
-  @ApiPropertyOptional({ enum: AutomationDurationUnit, nullable: true })
-  durationUnit!: AutomationDurationUnit | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  durationLabel!: string | null;
-
-  @ApiProperty({ enum: AutomationActionType })
+  @ApiProperty({
+    enum: AutomationActionType,
+    example: AutomationActionType.change_order_status,
+  })
   actionType!: AutomationActionType;
 
   @ApiProperty()
