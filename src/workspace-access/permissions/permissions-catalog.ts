@@ -160,6 +160,14 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
           booleanPermission("orders.create", "Create order"),
           booleanPermission("orders.edit_status", "Edit order status"),
           booleanPermission("orders.edit", "Edit order"),
+          booleanPermission(
+            "orders.automations.view",
+            "View order status automations",
+          ),
+          booleanPermission(
+            "orders.automations.manage",
+            "Manage order status automations",
+          ),
         ],
       },
     ],

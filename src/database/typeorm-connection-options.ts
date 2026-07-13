@@ -127,6 +127,9 @@ import { VariantStockReservations1744200000129 } from "./migrations/174420000012
 import { PaymentIntegrations1744200000130 } from "./migrations/1744200000130-PaymentIntegrations";
 import { ManualPaymentTransactions1744200000131 } from "./migrations/1744200000131-ManualPaymentTransactions";
 import { ManualPaymentMethods1744200000132 } from "./migrations/1744200000132-ManualPaymentMethods";
+import { OrderDeliveryInfoStatusCodeAt1744200000133 } from "./migrations/1744200000133-OrderDeliveryInfoStatusCodeAt";
+import { OrderStatusAutomations1744200000134 } from "./migrations/1744200000134-OrderStatusAutomations";
+import { OrderStatusSystemStatusesOnly1744200000135 } from "./migrations/1744200000135-OrderStatusSystemStatusesOnly";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -179,6 +182,8 @@ import {
   PaymentRequest,
   PaymentTransaction,
   ManualPaymentMethod,
+  OrderStatusAutomation,
+  OrderStatusAutomationExecution,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -282,6 +287,8 @@ const entities = [
   PaymentRequest,
   PaymentTransaction,
   ManualPaymentMethod,
+  OrderStatusAutomation,
+  OrderStatusAutomationExecution,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -453,6 +460,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       PaymentIntegrations1744200000130,
       ManualPaymentTransactions1744200000131,
       ManualPaymentMethods1744200000132,
+      OrderDeliveryInfoStatusCodeAt1744200000133,
+      OrderStatusAutomations1744200000134,
+      OrderStatusSystemStatusesOnly1744200000135,
     ],
   };
 }

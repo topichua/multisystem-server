@@ -30,6 +30,7 @@ import {
 import { PaymentProviderFactory } from "./providers/payment-provider.factory";
 import type { ParsedWebhookEvent } from "./providers/payment-provider.types";
 import { canMonobankCancelPaymentLink } from "./providers/monobank/monobank.status-mapper";
+import { OrderPaymentStatusApplicationService } from "./order-payment-status-application.service";
 
 @Injectable()
 export class PaymentDomainService {
@@ -44,6 +45,7 @@ export class PaymentDomainService {
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
     private readonly providerFactory: PaymentProviderFactory,
+    private readonly paymentStatusApplication: OrderPaymentStatusApplicationService,
   ) {}
 
   async applyProviderEvent(
@@ -52,7 +54,7 @@ export class PaymentDomainService {
     source: "provider_webhook" | "manual_sync",
     confirmedById?: number,
   ): Promise<PaymentRequest> {
-    return this.dataSource.transaction(async (manager) => {
+    const txResult = await this.dataSource.transaction(async (manager) => {
       const payment = await manager
         .getRepository(PaymentRequest)
         .createQueryBuilder("p")
@@ -73,7 +75,7 @@ export class PaymentDomainService {
         this.logger.log(
           `Payment ${payment.id} already succeeded — skipping duplicate provider event`,
         );
-        return payment;
+        return { payment, paymentStatusResult: null };
       }
 
       payment.status = event.localStatus;
@@ -87,33 +89,53 @@ export class PaymentDomainService {
       await manager.getRepository(PaymentRequest).save(payment);
 
       if (event.localStatus === PaymentRequestStatus.succeeded) {
-      await this.createChargeTransactionIfNeeded(manager, payment, event, {
-        source:
-          source === "provider_webhook"
-            ? PaymentTransactionSource.provider_webhook
-            : PaymentTransactionSource.system,
-        confirmedById: confirmedById ?? null,
-        chargeAmount: payment.amount,
-      });
+        await this.createChargeTransactionIfNeeded(manager, payment, event, {
+          source:
+            source === "provider_webhook"
+              ? PaymentTransactionSource.provider_webhook
+              : PaymentTransactionSource.system,
+          confirmedById: confirmedById ?? null,
+          chargeAmount: payment.amount,
+        });
       }
 
-      await this.recalculateOrderPaymentStatus(
-        manager,
-        payment.workspaceId,
-        payment.orderId,
-      );
+      const paymentStatusResult =
+        await this.paymentStatusApplication.updateOrderPaymentStatus(
+          manager,
+          payment.workspaceId,
+          payment.orderId,
+        );
 
-      return payment;
+      return { payment, paymentStatusResult };
     });
+
+    if (txResult.paymentStatusResult) {
+      await this.paymentStatusApplication.notifyPaymentStatusChangeIfNeeded(
+        txResult.payment.workspaceId,
+        txResult.payment.orderId,
+        txResult.paymentStatusResult,
+      );
+    }
+    return txResult.payment;
   }
 
   async recalculateOrderPaymentStatusForOrder(
     workspaceId: number,
     orderId: number,
   ): Promise<OrderPaymentStatus> {
-    return this.dataSource.transaction(async (manager) =>
-      this.recalculateOrderPaymentStatus(manager, workspaceId, orderId),
+    const result = await this.dataSource.transaction(async (manager) =>
+      this.paymentStatusApplication.updateOrderPaymentStatus(
+        manager,
+        workspaceId,
+        orderId,
+      ),
     );
+    await this.paymentStatusApplication.notifyPaymentStatusChangeIfNeeded(
+      workspaceId,
+      orderId,
+      result,
+    );
+    return result.paymentStatus;
   }
 
   async recordManualPayment(input: {
@@ -188,11 +210,12 @@ export class PaymentDomainService {
       });
       const saved = await manager.getRepository(PaymentTransaction).save(tx);
 
-      const paymentStatus = await this.recalculateOrderPaymentStatus(
-        manager,
-        input.workspaceId,
-        input.orderId,
-      );
+      const paymentStatusResult =
+        await this.paymentStatusApplication.updateOrderPaymentStatus(
+          manager,
+          input.workspaceId,
+          input.orderId,
+        );
 
       const updatedPaidAmount = calculatePaidAmount([
         ...existingTransactions,
@@ -201,13 +224,27 @@ export class PaymentDomainService {
 
       return {
         transaction: saved,
-        paymentStatus,
+        paymentStatus: paymentStatusResult.paymentStatus,
+        paymentStatusResult,
         totalAmount: order.totalAmount,
         paidAmount: updatedPaidAmount,
         remainingAmount: calculateRemainingAmount(
           order.totalAmount,
           updatedPaidAmount,
         ),
+      };
+    }).then(async (result) => {
+      await this.paymentStatusApplication.notifyPaymentStatusChangeIfNeeded(
+        input.workspaceId,
+        input.orderId,
+        result.paymentStatusResult,
+      );
+      return {
+        transaction: result.transaction,
+        paymentStatus: result.paymentStatus,
+        totalAmount: result.totalAmount,
+        paidAmount: result.paidAmount,
+        remainingAmount: result.remainingAmount,
       };
     });
   }
@@ -264,48 +301,6 @@ export class PaymentDomainService {
       }
       throw error;
     }
-  }
-
-  private async recalculateOrderPaymentStatus(
-    manager: EntityManager,
-    workspaceId: number,
-    orderId: number,
-  ): Promise<OrderPaymentStatus> {
-    const order = await manager.getRepository(Order).findOne({
-      where: { workspaceId, id: orderId },
-    });
-    if (!order) {
-      throw new NotFoundException("Order not found");
-    }
-
-    const transactions = await manager.getRepository(PaymentTransaction).find({
-      where: { workspaceId, orderId },
-    });
-
-    const paidAmount = calculatePaidAmount(transactions);
-    const paymentStatus = calculateOrderPaymentStatus(
-      order.totalAmount,
-      paidAmount,
-    );
-
-    order.paymentStatus = paymentStatus;
-    if (paymentStatus === OrderPaymentStatus.paid || paymentStatus === OrderPaymentStatus.overpaid) {
-      if (!order.paidAt) {
-        const latestCharge = transactions
-          .filter(
-            (t) =>
-              t.type === PaymentTransactionType.charge &&
-              t.status === PaymentTransactionStatus.succeeded,
-          )
-          .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())[0];
-        order.paidAt = latestCharge?.occurredAt ?? new Date();
-      }
-    } else if (paymentStatus === OrderPaymentStatus.unpaid) {
-      order.paidAt = null;
-    }
-
-    await manager.getRepository(Order).save(order);
-    return paymentStatus;
   }
 
   async getPaidAmountForOrder(

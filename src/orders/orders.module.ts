@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Client,
@@ -8,12 +8,14 @@ import {
   OrderEvent,
   OrderItem,
   OrderStatus,
+  OrderStatusAutomation,
   Product,
   ProductMedia,
   ProductVariant,
   User,
   Workspace,
 } from "../database/entities";
+import { DeliveryModule } from "../delivery/delivery.module";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
@@ -23,18 +25,21 @@ import { OrderStatusDefaultsModule } from "./order-status-defaults.module";
 import { OrderIdAllocationService } from "./order-id-allocation.service";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
+import { OrderStatusTransitionService } from "./order-status-transition.service";
 
 @Module({
   imports: [
     VariantCustomFieldsModule,
     InventoryModule,
     WorkspaceSettingsModule,
-    NovaPoshtaIntegrationsModule,
+    forwardRef(() => NovaPoshtaIntegrationsModule),
     OrderStatusDefaultsModule,
+    DeliveryModule,
     TypeOrmModule.forFeature([
       Client,
       Conversation,
       OrderStatus,
+      OrderStatusAutomation,
       Order,
       OrderItem,
       OrderDeliveryInfo,
@@ -46,7 +51,7 @@ import { OrdersService } from "./orders.service";
     ]),
   ],
   controllers: [OrdersController, OrderStatusesController],
-  providers: [OrdersService, OrderIdAllocationService],
-  exports: [OrdersService],
+  providers: [OrdersService, OrderIdAllocationService, OrderStatusTransitionService],
+  exports: [OrdersService, OrderStatusTransitionService],
 })
 export class OrdersModule {}

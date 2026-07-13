@@ -98,12 +98,13 @@ export class OrderDeliveryInfo {
   })
   providerStatusCode: string | null;
 
+  /** When the current `deliveryStatus` value was set (not `updatedAt`). */
   @Column({
-    name: "delivery_status_code_at",
+    name: "delivery_status_at",
     type: "timestamptz",
     nullable: true,
   })
-  deliveryStatusCodeAt: Date | null;
+  deliveryStatusAt: Date | null;
 
   @Column({
     name: "provider_status_text",

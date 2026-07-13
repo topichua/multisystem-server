@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, EntityManager, In, Repository } from "typeorm";
+import { DataSource, EntityManager, In, Not, Repository } from "typeorm";
 import {
   InventoryMode,
   Order,
@@ -57,7 +57,6 @@ import {
   applyRelease,
   applyReserve,
   applyReturn,
-  applyShipFromReservation,
   applySimpleQuantitySet,
   applySimpleSale,
   assertAdvancedMode,
@@ -404,7 +403,20 @@ export class InventoryService {
     await this.assertVariantInWorkspace(ctx.workspaceId, variantId);
 
     const [rows, total] = await this.movementRepo.findAndCount({
-      where: { variantId, workspaceId: ctx.workspaceId },
+      where: {
+        variantId,
+        workspaceId: ctx.workspaceId,
+        ...(ctx.mode === InventoryMode.simple
+          ? {
+              type: Not(
+                In([
+                  StockMovementType.orderReserve,
+                  StockMovementType.orderRelease,
+                ]),
+              ),
+            }
+          : {}),
+      },
       relations: { user: true },
       order: { createdAt: "DESC", id: "DESC" },
       take: limit,
@@ -426,7 +438,11 @@ export class InventoryService {
     const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;
-    const filters = this.buildStockHistoryFilters(ctx.workspaceId, query);
+    const filters = this.buildStockHistoryFilters(
+      ctx.workspaceId,
+      query,
+      ctx.mode,
+    );
 
     if (!filters.includeSupplies && !filters.includeMovements) {
       return { items: [], total: 0 };
@@ -627,6 +643,11 @@ export class InventoryService {
     actorUserId: number | null,
     previousStatusCategory?: OrderStatusCategory | null,
   ): Promise<void> {
+    const workspace = await this.workspaceRepo.findOne({
+      where: { id: workspaceId },
+    });
+    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+
     const order = await this.orderRepo.findOne({
       where: { workspaceId, id: orderId },
       relations: { items: true },
@@ -635,30 +656,31 @@ export class InventoryService {
       return;
     }
 
-    if (
-      previousStatusCategory != null &&
-      this.isReservationHoldingCategory(previousStatusCategory) &&
-      !this.isReservationHoldingCategory(newStatusCategory) &&
-      newStatusCategory !== OrderStatusCategory.shipped &&
-      newStatusCategory !== OrderStatusCategory.canceled
-    ) {
-      await this.releaseStockForOrder(order, actorUserId);
+    if (mode === InventoryMode.advanced) {
+      if (
+        previousStatusCategory != null &&
+        this.isReservationHoldingCategory(previousStatusCategory) &&
+        !this.isReservationHoldingCategory(newStatusCategory) &&
+        newStatusCategory !== OrderStatusCategory.completed &&
+        newStatusCategory !== OrderStatusCategory.canceled
+      ) {
+        await this.releaseStockForOrder(order, actorUserId);
+      }
     }
 
     switch (newStatusCategory) {
       case OrderStatusCategory.confirmed:
-      case OrderStatusCategory.packed:
-        await this.reserveStockForOrder(order, actorUserId);
+        if (mode === InventoryMode.advanced) {
+          await this.reserveStockForOrder(order, actorUserId);
+        }
         break;
-      case OrderStatusCategory.shipped:
-        await this.shipStockForOrder(order, actorUserId);
+      case OrderStatusCategory.completed:
+        await this.deductStockForOrder(order, actorUserId);
         break;
       case OrderStatusCategory.canceled:
-        await this.releaseStockForOrder(order, actorUserId);
-        await this.restoreStockForOrder(order, actorUserId);
-        break;
-      case OrderStatusCategory.returned:
-        await this.returnStockForOrder(order, actorUserId);
+        if (mode === InventoryMode.advanced) {
+          await this.releaseStockForOrder(order, actorUserId);
+        }
         break;
       default:
         break;
@@ -703,7 +725,16 @@ export class InventoryService {
     const mode = workspace?.inventoryMode ?? InventoryMode.simple;
     const stock = await this.requireDefaultVariantStock(workspaceId, variantId);
     const snapshot = this.toSnapshot(stock);
-    if (mode === InventoryMode.advanced && !snapshot.stockInitialized) {
+    if (mode === InventoryMode.simple) {
+      if (snapshot.quantity < quantity) {
+        throw new BadRequestException(
+          `Insufficient stock for variant ${variantId}`,
+        );
+      }
+      return;
+    }
+
+    if (!snapshot.stockInitialized) {
       throw new BadRequestException(
         "Variant stock requires initialization before sale",
       );
@@ -725,7 +756,7 @@ export class InventoryService {
   ): boolean {
     return (
       category === OrderStatusCategory.confirmed ||
-      category === OrderStatusCategory.packed
+      category === OrderStatusCategory.delivery
     );
   }
 
@@ -751,40 +782,17 @@ export class InventoryService {
     }
   }
 
-  private async returnStockForOrder(
+  private async deductStockForOrder(
     order: Order,
     actorUserId: number | null,
   ): Promise<void> {
     for (const item of order.items ?? []) {
       await this.dataSource.transaction(async (em) => {
-        await this.returnOrderItem(em, order, item.id, actorUserId);
+        await this.deductOrderItem(em, order, item.id, actorUserId);
       });
     }
   }
-
-  private async shipStockForOrder(
-    order: Order,
-    actorUserId: number | null,
-  ): Promise<void> {
-    for (const item of order.items ?? []) {
-      await this.dataSource.transaction(async (em) => {
-        await this.shipOrderItem(em, order, item.id, actorUserId);
-      });
-    }
-  }
-
-  private async restoreStockForOrder(
-    order: Order,
-    actorUserId: number | null,
-  ): Promise<void> {
-    for (const item of order.items ?? []) {
-      await this.dataSource.transaction(async (em) => {
-        await this.restoreOrderItem(em, order, item.id, actorUserId);
-      });
-    }
-  }
-
-  private async shipOrderItem(
+  private async deductOrderItem(
     em: EntityManager,
     order: Order,
     orderItemId: number,
@@ -811,15 +819,35 @@ export class InventoryService {
       lockedItem.stockReservedAt != null && lockedItem.stockReleasedAt == null;
     let before = this.toSnapshot(stock);
 
-    if (!wasReserved) {
-      if (availableQuantity(before) < lockedItem.quantity) {
+    if (wasReserved) {
+      const released = applyRelease(before, lockedItem.quantity);
+      before = released.after;
+      await em.save(
+        em.create(StockMovement, {
+          workspaceId: order.workspaceId,
+          variantId: lockedItem.variantId,
+          type: StockMovementType.orderRelease,
+          quantityChange: released.quantityChange,
+          purchasePrice: null,
+          totalCostChange: null,
+          reason: null,
+          comment: null,
+          orderId: order.id,
+          orderItemId: lockedItem.id,
+          userId: actorUserId,
+        }),
+      );
+    } else if (mode === InventoryMode.simple) {
+      if (before.quantity < lockedItem.quantity) {
         throw new BadRequestException(
-          `Insufficient available stock for variant ${lockedItem.variantId}`,
+          `Insufficient stock for variant ${lockedItem.variantId}`,
         );
       }
+    } else if (availableQuantity(before) < lockedItem.quantity) {
+      throw new BadRequestException(
+        `Insufficient available stock for variant ${lockedItem.variantId}`,
+      );
     }
-
-    before = applyShipFromReservation(before, lockedItem.quantity, wasReserved);
 
     if (mode === InventoryMode.advanced) {
       assertStockInitialized(before);
@@ -867,83 +895,6 @@ export class InventoryService {
     await em.save(OrderItem, lockedItem);
   }
 
-  private async restoreOrderItem(
-    em: EntityManager,
-    order: Order,
-    orderItemId: number,
-    actorUserId: number | null,
-  ): Promise<void> {
-    const lockedItem = await em.findOne(OrderItem, {
-      where: { id: orderItemId },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (
-      !lockedItem ||
-      lockedItem.stockDeductedAt == null ||
-      lockedItem.stockReturnedAt != null
-    ) {
-      return;
-    }
-
-    const workspace = await em.findOne(Workspace, {
-      where: { id: order.workspaceId },
-    });
-    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
-    const stock = await this.lockVariantStock(
-      em,
-      order.workspaceId,
-      lockedItem.variantId,
-    );
-    const before = this.toSnapshot(stock);
-
-    if (mode === InventoryMode.advanced) {
-      const restored = applyReturn(before, lockedItem.quantity);
-      await this.persistStock(em, stock, restored.after);
-      await em.save(
-        em.create(StockMovement, {
-          workspaceId: order.workspaceId,
-          variantId: lockedItem.variantId,
-          type: StockMovementType.orderCancel,
-          quantityChange: lockedItem.quantity,
-          purchasePrice: before.avgPurchasePrice,
-          totalCostChange: restored.totalCostChange,
-          reason: null,
-          comment: null,
-          orderId: order.id,
-          orderItemId: lockedItem.id,
-          userId: actorUserId,
-        }),
-      );
-    } else {
-      const after = {
-        quantity: before.quantity + lockedItem.quantity,
-        reservedQuantity: before.reservedQuantity,
-        avgPurchasePrice: null,
-        totalCost: null,
-        stockInitialized: false,
-      };
-      await this.persistStock(em, stock, after);
-      await em.save(
-        em.create(StockMovement, {
-          workspaceId: order.workspaceId,
-          variantId: lockedItem.variantId,
-          type: StockMovementType.simpleOrderCancel,
-          quantityChange: lockedItem.quantity,
-          purchasePrice: null,
-          totalCostChange: null,
-          reason: null,
-          comment: null,
-          orderId: order.id,
-          orderItemId: lockedItem.id,
-          userId: actorUserId,
-        }),
-      );
-    }
-
-    lockedItem.stockDeductedAt = null;
-    await em.save(OrderItem, lockedItem);
-  }
-
   private async reserveOrderItem(
     em: EntityManager,
     order: Order,
@@ -966,13 +917,17 @@ export class InventoryService {
       where: { id: order.workspaceId },
     });
     const mode = workspace?.inventoryMode ?? InventoryMode.simple;
+    if (mode !== InventoryMode.advanced) {
+      return;
+    }
+
     const stock = await this.lockVariantStock(
       em,
       order.workspaceId,
       lockedItem.variantId,
     );
     const before = this.toSnapshot(stock);
-    if (mode === InventoryMode.advanced && !before.stockInitialized) {
+    if (!before.stockInitialized) {
       throw new BadRequestException(
         "Variant stock requires initialization before reservation",
       );
@@ -1045,83 +1000,6 @@ export class InventoryService {
     );
 
     lockedItem.stockReleasedAt = new Date();
-    await em.save(OrderItem, lockedItem);
-  }
-
-  private async returnOrderItem(
-    em: EntityManager,
-    order: Order,
-    orderItemId: number,
-    actorUserId: number | null,
-  ): Promise<void> {
-    const lockedItem = await em.findOne(OrderItem, {
-      where: { id: orderItemId },
-      lock: { mode: "pessimistic_write" },
-    });
-    if (
-      !lockedItem ||
-      lockedItem.stockDeductedAt == null ||
-      lockedItem.stockReturnedAt != null
-    ) {
-      return;
-    }
-
-    const workspace = await em.findOne(Workspace, {
-      where: { id: order.workspaceId },
-    });
-    const mode = workspace?.inventoryMode ?? InventoryMode.simple;
-    const stock = await this.lockVariantStock(
-      em,
-      order.workspaceId,
-      lockedItem.variantId,
-    );
-    const before = this.toSnapshot(stock);
-
-    if (mode === InventoryMode.advanced) {
-      const restored = applyReturn(before, lockedItem.quantity);
-      await this.persistStock(em, stock, restored.after);
-      await em.save(
-        em.create(StockMovement, {
-          workspaceId: order.workspaceId,
-          variantId: lockedItem.variantId,
-          type: StockMovementType.return,
-          quantityChange: lockedItem.quantity,
-          purchasePrice: before.avgPurchasePrice,
-          totalCostChange: restored.totalCostChange,
-          reason: null,
-          comment: null,
-          orderId: order.id,
-          orderItemId: lockedItem.id,
-          userId: actorUserId,
-        }),
-      );
-    } else {
-      const after = {
-        quantity: before.quantity + lockedItem.quantity,
-        reservedQuantity: before.reservedQuantity,
-        avgPurchasePrice: null,
-        totalCost: null,
-        stockInitialized: false,
-      };
-      await this.persistStock(em, stock, after);
-      await em.save(
-        em.create(StockMovement, {
-          workspaceId: order.workspaceId,
-          variantId: lockedItem.variantId,
-          type: StockMovementType.return,
-          quantityChange: lockedItem.quantity,
-          purchasePrice: null,
-          totalCostChange: null,
-          reason: null,
-          comment: null,
-          orderId: order.id,
-          orderItemId: lockedItem.id,
-          userId: actorUserId,
-        }),
-      );
-    }
-
-    lockedItem.stockReturnedAt = new Date();
     await em.save(OrderItem, lockedItem);
   }
 
@@ -1320,11 +1198,14 @@ export class InventoryService {
   }
 
   private toStockDto(stock: VariantStock, mode: InventoryMode): VariantStockDto {
+    const hideReservations = mode === InventoryMode.simple;
     return {
       variantId: stock.variantId,
       quantity: stock.quantity,
-      reservedQuantity: stock.reservedQuantity,
-      availableQuantity: stock.quantity - stock.reservedQuantity,
+      reservedQuantity: hideReservations ? null : stock.reservedQuantity,
+      availableQuantity: hideReservations
+        ? null
+        : stock.quantity - stock.reservedQuantity,
       avgPurchasePrice: stock.avgPurchasePrice,
       totalCost: stock.totalCost,
       stockInitialized: stock.stockInitialized,
@@ -1362,11 +1243,17 @@ export class InventoryService {
   private buildStockHistoryFilters(
     workspaceId: number,
     query: ListStockHistoryQueryDto,
+    mode: InventoryMode,
   ): StockHistoryFilterSql {
     const params: unknown[] = [workspaceId];
     let idx = 2;
     const supplyParts = ["ss.workspace_id = $1"];
     const movementParts = ["sm.workspace_id = $1", "sm.supply_id IS NULL"];
+    if (mode === InventoryMode.simple) {
+      movementParts.push(
+        "sm.type NOT IN ('order_reserve'::stock_movement_type_enum, 'order_release'::stock_movement_type_enum)",
+      );
+    }
 
     if (query.from) {
       const from = this.parseHistoryDateBoundary(query.from, "start");

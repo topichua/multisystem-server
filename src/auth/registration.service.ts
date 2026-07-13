@@ -19,6 +19,7 @@ import {
 import { SendgridService } from "../sendgrid/sendgrid.service";
 import { ConversationGroupDefaultsService } from "../conversations/conversation-group-defaults.service";
 import { OrderStatusDefaultsService } from "../orders/order-status-defaults.service";
+import { OrderStatusAutomationDefaultsService } from "../order-status-automations/order-status-automation-defaults.service";
 import { BillingProvisioningService } from "../billing/billing-provisioning.service";
 import { PERMISSION_KEYS } from "../workspace-access/permissions/permission-keys";
 import { PasswordService } from "../users/crypto/password.service";
@@ -42,6 +43,7 @@ export class RegistrationService {
     private readonly config: ConfigService,
     private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
+    private readonly automationDefaults: OrderStatusAutomationDefaultsService,
     private readonly billingProvisioning: BillingProvisioningService,
   ) {}
 
@@ -188,6 +190,12 @@ export class RegistrationService {
 
     await this.conversationGroupDefaults.ensureSystemGroups(result.workspace.id);
     await this.orderStatusDefaults.ensureSystemStatuses(result.workspace.id);
+    await this.automationDefaults.createRecommendedDeliveryAutomations(
+      result.workspace.id,
+    );
+    await this.automationDefaults.createRecommendedPaymentAutomations(
+      result.workspace.id,
+    );
     await this.billingProvisioning.ensureForWorkspace(result.workspace.id);
 
     return {

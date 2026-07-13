@@ -14,6 +14,8 @@ export const PERMISSION_KEYS = [
   "orders.create",
   "orders.edit_status",
   "orders.edit",
+  "orders.automations.view",
+  "orders.automations.manage",
   "conversations.full_access",
   "clients.read",
   "workspace.chat_groups",

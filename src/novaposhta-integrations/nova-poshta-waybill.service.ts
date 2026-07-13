@@ -19,6 +19,7 @@ import {
   OrderItem,
 } from "../database/entities";
 import { canRemoveDeliveryTracking } from "../delivery/delivery-tracking.util";
+import { OrderDeliveryStatusApplicationService } from "../delivery/order-delivery-status-application.service";
 import { NormalizedDeliveryStatus } from "../delivery/normalized-delivery-status.enum";
 import { NovaPoshtaDeliveryTrackingService } from "./nova-poshta-delivery-tracking.service";
 import { buildSimulatedNovaPoshtaTrackingDocument } from "./nova-poshta-status-code.mapping";
@@ -49,6 +50,7 @@ export class NovaPoshtaWaybillService {
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly novaPoshtaApi: NovaPoshtaApiService,
     private readonly novaPoshtaTracking: NovaPoshtaDeliveryTrackingService,
+    private readonly deliveryStatusApplication: OrderDeliveryStatusApplicationService,
   ) {}
 
   async createForOrder(
@@ -183,8 +185,12 @@ export class NovaPoshtaWaybillService {
     delivery.providerDocumentRef = null;
     delivery.providerStatusCode = null;
     delivery.providerStatusText = null;
-    delivery.deliveryStatus = OrderDeliveryStatus.pending;
-    await this.deliveryRepo.save(delivery);
+    await this.deliveryStatusApplication.applyDeliveryStatusChange({
+      delivery,
+      newDeliveryStatus: OrderDeliveryStatus.pending,
+      providerStatusCode: null,
+      providerStatusText: null,
+    });
 
     return { orderId: order.id, removedTrackingNumber };
   }

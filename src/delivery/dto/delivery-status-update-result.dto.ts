@@ -12,10 +12,4 @@ export class DeliveryStatusUpdateResultDto {
 
   @ApiProperty({ enum: NormalizedDeliveryStatus })
   normalizedStatus: NormalizedDeliveryStatus;
-
-  @ApiPropertyOptional({
-    description: "Order status id applied from integration mapping, if any.",
-    nullable: true,
-  })
-  appliedOrderStatusId: number | null;
 }

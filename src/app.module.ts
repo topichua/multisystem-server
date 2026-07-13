@@ -30,6 +30,7 @@ import { DeliveryModule } from "./delivery/delivery.module";
 import { StorageModule } from "./storage/storage.module";
 import { BillingModule } from "./billing/billing.module";
 import { PaymentsModule } from "./payments/payments.module";
+import { OrderStatusAutomationsModule } from "./order-status-automations/order-status-automations.module";
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { PaymentsModule } from "./payments/payments.module";
     StorageModule,
     BillingModule,
     PaymentsModule,
+    OrderStatusAutomationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

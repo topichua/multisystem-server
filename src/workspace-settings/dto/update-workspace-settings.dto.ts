@@ -46,7 +46,7 @@ export class UpdateWorkspaceSettingsDto {
   @ApiPropertyOptional({
     enum: InventoryMode,
     description:
-      "Also accepted as `inventory_mode`. simple — editable quantity; advanced — inventory movements and cost tracking.",
+      "Inventory management mode. `simple` (default) — stock is deducted when an order reaches completed status; `advanced` — stock is reserved on confirmed, deducted on completed, released on cancelled.",
   })
   @IsOptional()
   @Transform(({ obj }) => pickInventoryMode(obj as Record<string, unknown>))

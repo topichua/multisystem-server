@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   ManualPaymentMethod,
@@ -8,6 +8,7 @@ import {
   PaymentTransaction,
 } from "../database/entities";
 import { WorkspaceAccessModule } from "../workspace-access/workspace-access.module";
+import { OrderStatusAutomationsModule } from "../order-status-automations/order-status-automations.module";
 import { CredentialsEncryptionService } from "./encryption/credentials-encryption.service";
 import { ManualPaymentMethodsController } from "./manual-payment-methods.controller";
 import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
@@ -19,6 +20,7 @@ import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsController } from "./payment-integrations.controller";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
 import { PaymentProviderFactory } from "./providers/payment-provider.factory";
+import { OrderPaymentStatusApplicationService } from "./order-payment-status-application.service";
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { PaymentProviderFactory } from "./providers/payment-provider.factory";
       Order,
     ]),
     WorkspaceAccessModule,
+    forwardRef(() => OrderStatusAutomationsModule),
   ],
   controllers: [
     PaymentIntegrationsController,
@@ -42,6 +45,7 @@ import { PaymentProviderFactory } from "./providers/payment-provider.factory";
     MonobankApiClient,
     PaymentProviderFactory,
     PaymentDomainService,
+    OrderPaymentStatusApplicationService,
     PaymentIntegrationsService,
     ManualPaymentMethodsService,
     OrderPaymentsService,
@@ -51,6 +55,7 @@ import { PaymentProviderFactory } from "./providers/payment-provider.factory";
     ManualPaymentMethodsService,
     OrderPaymentsService,
     PaymentDomainService,
+    OrderPaymentStatusApplicationService,
   ],
 })
 export class PaymentsModule {}

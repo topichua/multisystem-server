@@ -5,6 +5,7 @@ import type { CreateCompanyWithOwnerInput } from "./dto/create-company.dto";
 import { User, UserStatus, Workspace } from "../database/entities";
 import { ConversationGroupDefaultsService } from "../conversations/conversation-group-defaults.service";
 import { OrderStatusDefaultsService } from "../orders/order-status-defaults.service";
+import { OrderStatusAutomationDefaultsService } from "../order-status-automations/order-status-automation-defaults.service";
 import { PasswordService } from "../users/crypto/password.service";
 
 @Injectable()
@@ -15,6 +16,7 @@ export class CompaniesService {
     private readonly passwordService: PasswordService,
     private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
+    private readonly automationDefaults: OrderStatusAutomationDefaultsService,
   ) {}
 
   async createCompanyWithOwner(
@@ -55,6 +57,12 @@ export class CompaniesService {
 
     await this.conversationGroupDefaults.ensureSystemGroups(result.workspace.id);
     await this.orderStatusDefaults.ensureSystemStatuses(result.workspace.id);
+    await this.automationDefaults.createRecommendedDeliveryAutomations(
+      result.workspace.id,
+    );
+    await this.automationDefaults.createRecommendedPaymentAutomations(
+      result.workspace.id,
+    );
     return result;
   }
 }

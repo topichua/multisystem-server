@@ -1,32 +1,37 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
-  NovaPoshtaIntegration,
   Order,
   OrderDeliveryInfo,
   OrderEvent,
-  OrderStatus,
   WorkspaceMember,
 } from "../database/entities";
-import { InventoryModule } from "../inventory/inventory.module";
+import { OrderStatusAutomationsModule } from "../order-status-automations/order-status-automations.module";
 import { WorkspaceAccessModule } from "../workspace-access/workspace-access.module";
 import { DeliveryStatusService } from "./delivery-status.service";
 import { DevDeliverySimulatorGuard } from "./dev-delivery-simulator.guard";
+import { OrderDeliveryStatusApplicationService } from "./order-delivery-status-application.service";
 
 @Module({
   imports: [
     WorkspaceAccessModule,
-    InventoryModule,
+    forwardRef(() => OrderStatusAutomationsModule),
     TypeOrmModule.forFeature([
       OrderDeliveryInfo,
       Order,
-      NovaPoshtaIntegration,
-      OrderStatus,
       OrderEvent,
       WorkspaceMember,
     ]),
   ],
-  providers: [DeliveryStatusService, DevDeliverySimulatorGuard],
-  exports: [DeliveryStatusService, DevDeliverySimulatorGuard],
+  providers: [
+    DeliveryStatusService,
+    DevDeliverySimulatorGuard,
+    OrderDeliveryStatusApplicationService,
+  ],
+  exports: [
+    DeliveryStatusService,
+    DevDeliverySimulatorGuard,
+    OrderDeliveryStatusApplicationService,
+  ],
 })
 export class DeliveryModule {}

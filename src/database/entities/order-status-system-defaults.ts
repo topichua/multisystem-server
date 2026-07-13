@@ -8,6 +8,15 @@ export type OrderStatusSystemDefault = {
   isDefault: boolean;
 };
 
+/** Categories that have exactly one built-in system status per workspace. */
+export const SYSTEM_ORDER_STATUS_CATEGORIES = [
+  OrderStatusCategory.new,
+  OrderStatusCategory.confirmed,
+  OrderStatusCategory.delivery,
+  OrderStatusCategory.completed,
+  OrderStatusCategory.canceled,
+] as const;
+
 /** Seeded per workspace; matched by `category` + `isSystem: true`. */
 export const ORDER_STATUS_SYSTEM_DEFAULTS: readonly OrderStatusSystemDefault[] =
   [
@@ -44,13 +53,6 @@ export const ORDER_STATUS_SYSTEM_DEFAULTS: readonly OrderStatusSystemDefault[] =
       category: OrderStatusCategory.canceled,
       color: "#ef4444",
       sortOrder: 4,
-      isDefault: false,
-    },
-    {
-      name: "Returned",
-      category: OrderStatusCategory.returned,
-      color: "#f97316",
-      sortOrder: 5,
       isDefault: false,
     },
   ] as const;

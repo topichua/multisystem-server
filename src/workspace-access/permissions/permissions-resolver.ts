@@ -55,6 +55,8 @@ export function resolveOwnerPermissions(
       create: true,
       editStatus: true,
       edit: true,
+      automationsView: true,
+      automationsManage: true,
     },
     conversations: {
       fullAccess: true,
@@ -104,6 +106,8 @@ export function resolveRolePermissions(
       create: hasKey(keys, "orders.create"),
       editStatus: hasKey(keys, "orders.edit_status"),
       edit: hasKey(keys, "orders.edit"),
+      automationsView: hasKey(keys, "orders.automations.view"),
+      automationsManage: hasKey(keys, "orders.automations.manage"),
     },
     conversations: {
       fullAccess: hasKey(keys, "conversations.full_access"),
@@ -221,6 +225,10 @@ export function hasBooleanPermission(
       return resolved.orders.editStatus;
     case "orders.edit":
       return resolved.orders.edit;
+    case "orders.automations.view":
+      return resolved.orders.automationsView;
+    case "orders.automations.manage":
+      return resolved.orders.automationsManage;
     case "conversations.full_access":
       return resolved.conversations.fullAccess;
     case "clients.read":

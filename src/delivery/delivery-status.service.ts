@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,17 +7,13 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ROLE_SUPER_ADMIN } from "../auth/constants";
 import {
-  NovaPoshtaIntegration,
   Order,
   OrderDeliveryInfo,
-  OrderDeliveryProvider,
   OrderEvent,
-  OrderStatus,
   Workspace,
   WorkspaceMember,
   WorkspaceMemberStatus,
 } from "../database/entities";
-import { InventoryService } from "../inventory/inventory.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { DeliveryProvider } from "./delivery-provider.enum";
 import {
@@ -27,6 +22,7 @@ import {
 } from "./delivery-status-mapping";
 import type { DeliveryStatusUpdateResultDto } from "./dto/delivery-status-update-result.dto";
 import { NormalizedDeliveryStatus } from "./normalized-delivery-status.enum";
+import { OrderDeliveryStatusApplicationService } from "./order-delivery-status-application.service";
 
 export type ProcessDeliveryStatusUpdateInput = {
   deliveryOrderId: number;
@@ -38,7 +34,6 @@ export type ProcessDeliveryStatusUpdateInput = {
 };
 
 const OrderEventType = {
-  STATUS_CHANGED: "order.status_changed",
   DELIVERY_UPDATED: "order.delivery_updated",
 } as const;
 
@@ -49,16 +44,12 @@ export class DeliveryStatusService {
     private readonly deliveryRepo: Repository<OrderDeliveryInfo>,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
-    @InjectRepository(NovaPoshtaIntegration)
-    private readonly novaPoshtaIntegrationRepo: Repository<NovaPoshtaIntegration>,
-    @InjectRepository(OrderStatus)
-    private readonly orderStatusRepo: Repository<OrderStatus>,
     @InjectRepository(OrderEvent)
     private readonly orderEventRepo: Repository<OrderEvent>,
     @InjectRepository(WorkspaceMember)
     private readonly memberRepo: Repository<WorkspaceMember>,
     private readonly workspaceContext: WorkspaceAccessContextService,
-    private readonly inventory: InventoryService,
+    private readonly deliveryStatusApplication: OrderDeliveryStatusApplicationService,
   ) {}
 
   async processStatusUpdate(
@@ -78,22 +69,14 @@ export class DeliveryStatusService {
 
     const mappedDeliveryStatus =
       NORMALIZED_TO_ORDER_DELIVERY_STATUS[input.normalizedStatus];
-    const previousDeliveryStatus = delivery.deliveryStatus;
-    const previousProviderStatusCode = delivery.providerStatusCode;
 
-    delivery.deliveryStatus = mappedDeliveryStatus;
-    delivery.providerStatusCode = input.rawStatusCode?.trim() || null;
-    delivery.providerStatusText =
-      this.resolveProviderStatusText(input) || null;
-    if (
-      delivery.deliveryStatus !== previousDeliveryStatus ||
-      delivery.providerStatusCode !== previousProviderStatusCode
-    ) {
-      delivery.deliveryStatusCodeAt = new Date();
-    }
-    await this.deliveryRepo.save(delivery);
+    await this.deliveryStatusApplication.applyDeliveryStatusChange({
+      delivery,
+      newDeliveryStatus: mappedDeliveryStatus,
+      providerStatusCode: input.rawStatusCode?.trim() || null,
+      providerStatusText: this.resolveProviderStatusText(input) || null,
+    });
 
-    let appliedOrderStatusId: number | null = null;
     if (order && input.actorUserId != null) {
       await this.appendDeliveryEvent(
         order.workspaceId,
@@ -102,58 +85,6 @@ export class DeliveryStatusService {
         delivery,
         order.statusId,
       );
-    }
-
-    if (order) {
-      const mappedOrderStatusId = await this.resolveMappedOrderStatusId(
-        delivery,
-        order.workspaceId,
-        input.provider,
-        input.normalizedStatus,
-      );
-      if (mappedOrderStatusId != null && mappedOrderStatusId !== order.statusId) {
-        const newStatus = await this.orderStatusRepo.findOne({
-          where: { id: mappedOrderStatusId, workspaceId: order.workspaceId },
-        });
-        if (!newStatus) {
-          throw new BadRequestException(
-            "Mapped order status not found in workspace",
-          );
-        }
-        const previousStatusId = order.statusId;
-        const previousStatus = await this.orderStatusRepo.findOne({
-          where: { id: previousStatusId, workspaceId: order.workspaceId },
-        });
-        order.statusId = newStatus.id;
-        order.updatedById = input.actorUserId ?? null;
-        await this.orderRepo.save(order);
-        appliedOrderStatusId = newStatus.id;
-
-        await this.orderEventRepo.save(
-          this.orderEventRepo.create({
-            workspaceId: order.workspaceId,
-            orderId: order.id,
-            type: OrderEventType.STATUS_CHANGED,
-            actorId: input.actorUserId ?? null,
-            userId: input.actorUserId ?? null,
-            payload: {
-              previousStatusId,
-              statusId: newStatus.id,
-              statusName: newStatus.name,
-              source: "delivery_status_update",
-              normalizedDeliveryStatus: input.normalizedStatus,
-              provider: input.provider,
-            },
-          }),
-        );
-        await this.inventory.handleOrderInventoryForStatus(
-          order.workspaceId,
-          order.id,
-          newStatus.category,
-          input.actorUserId ?? 0,
-          previousStatus?.category ?? null,
-        );
-      }
     }
 
     const hydratedOrder = order
@@ -184,7 +115,6 @@ export class DeliveryStatusService {
       delivery,
       order: hydratedOrder,
       normalizedStatus: input.normalizedStatus,
-      appliedOrderStatusId,
     };
   }
 
@@ -244,66 +174,12 @@ export class DeliveryStatusService {
     return input.rawStatusCode?.trim() || null;
   }
 
-  private async resolveMappedOrderStatusId(
-    delivery: OrderDeliveryInfo,
-    workspaceId: number,
-    provider: DeliveryProvider,
-    normalizedStatus: NormalizedDeliveryStatus,
-  ): Promise<number | null> {
-    if (provider !== DeliveryProvider.NOVA_POSHTA) {
-      return null;
-    }
-    if (delivery.provider !== OrderDeliveryProvider.nova_poshta) {
-      return null;
-    }
-
-    const integration = await this.resolveNovaPoshtaIntegration(
-      delivery,
-      workspaceId,
-    );
-    if (!integration) {
-      return null;
-    }
-
-    switch (normalizedStatus) {
-      case NormalizedDeliveryStatus.CREATED:
-        return integration.onCreatedOrderStatusId;
-      case NormalizedDeliveryStatus.IN_TRANSIT:
-        return integration.onInTransitOrderStatusId;
-      case NormalizedDeliveryStatus.ARRIVED:
-        return integration.onArrivedOrderStatusId;
-      case NormalizedDeliveryStatus.DELIVERED:
-        return integration.onDeliveredOrderStatusId;
-      case NormalizedDeliveryStatus.RETURNED:
-        return integration.onReturnedOrderStatusId;
-      case NormalizedDeliveryStatus.DELIVERY_FAILED:
-        return integration.onDeliveryFailedOrderStatusId;
-      default:
-        return null;
-    }
-  }
-
-  private async resolveNovaPoshtaIntegration(
-    delivery: OrderDeliveryInfo,
-    workspaceId: number,
-  ): Promise<NovaPoshtaIntegration | null> {
-    if (delivery.providerId != null) {
-      return this.novaPoshtaIntegrationRepo.findOne({
-        where: { id: delivery.providerId, workspaceId },
-      });
-    }
-    return this.novaPoshtaIntegrationRepo.findOne({
-      where: { workspaceId },
-      order: { id: "ASC" },
-    });
-  }
-
   private async appendDeliveryEvent(
     workspaceId: number,
     orderId: number,
     input: ProcessDeliveryStatusUpdateInput,
     delivery: OrderDeliveryInfo,
-    previousOrderStatusId: number,
+    orderStatusId: number,
   ): Promise<void> {
     if (input.actorUserId == null) {
       return;
@@ -323,7 +199,7 @@ export class DeliveryStatusService {
           normalizedStatus: input.normalizedStatus,
           provider: input.provider,
           rawPayload: input.rawPayload ?? null,
-          previousOrderStatusId,
+          orderStatusId,
         },
       }),
     );

@@ -29,6 +29,8 @@ export type ResolvedUserPermissions = {
     create: boolean;
     editStatus: boolean;
     edit: boolean;
+    automationsView: boolean;
+    automationsManage: boolean;
   };
   conversations: {
     /** When true, all workspace integrations are granted with full conversation access. */

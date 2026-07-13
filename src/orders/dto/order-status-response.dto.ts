@@ -27,7 +27,7 @@ export class OrderStatusResponseDto {
 
   @ApiProperty({
     description:
-      "Seeded system status (`isSystem: true`). Only `name` and `color` can be changed via API; all other system statuses cannot be deleted. Legacy `Packed` and `Shipped` may be removed.",
+      "Built-in status for `new`, `confirmed`, `delivery`, `completed`, or `canceled`. Only `name` and `color` can be changed; cannot be deleted.",
   })
   isSystem: boolean;
 

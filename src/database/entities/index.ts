@@ -33,6 +33,7 @@ export { OrderStatus } from "./order-status.entity";
 export { OrderStatusCategory } from "./order-status-category.enum";
 export {
   ORDER_STATUS_SYSTEM_DEFAULTS,
+  SYSTEM_ORDER_STATUS_CATEGORIES,
   type OrderStatusSystemDefault,
 } from "./order-status-system-defaults";
 export { ProductCategory } from "./product-category.entity";
@@ -99,3 +100,10 @@ export { PaymentRequest } from "./payment-request.entity";
 export { PaymentTransaction } from "./payment-transaction.entity";
 export { ManualPaymentMethodType } from "./manual-payment-method-type.enum";
 export { ManualPaymentMethod } from "./manual-payment-method.entity";
+export { AutomationActionType } from "./automation-action-type.enum";
+export { AutomationDurationUnit } from "./automation-duration-unit.enum";
+export { AutomationExecutionStatus } from "./automation-execution-status.enum";
+export { AutomationOrigin } from "./automation-origin.enum";
+export { AutomationSourceType } from "./automation-source-type.enum";
+export { OrderStatusAutomation } from "./order-status-automation.entity";
+export { OrderStatusAutomationExecution } from "./order-status-automation-execution.entity";

@@ -20,6 +20,7 @@ import {
   OrderDeliveryStatus,
   OrderSource,
   OrderStatus,
+  OrderStatusAutomation,
   OrderStatusCategory,
   Product,
   ProductVariant,
@@ -47,6 +48,7 @@ import { WorkspaceSettingsService } from "../workspace-settings/workspace-settin
 import { NovaPoshtaWaybillService } from "../novaposhta-integrations/nova-poshta-waybill.service";
 import { NovaPoshtaDeliveryTrackingService } from "../novaposhta-integrations/nova-poshta-delivery-tracking.service";
 import { hydrateDeliveryTrackingFlags } from "../delivery/delivery-tracking.util";
+import { OrderDeliveryStatusApplicationService } from "../delivery/order-delivery-status-application.service";
 import type { DeliveryStatusUpdateResultDto } from "../delivery/dto/delivery-status-update-result.dto";
 import type { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import type { CreateNovaPoshtaWaybillResponseDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
@@ -58,6 +60,10 @@ import { pickMainMediaUrl } from "../products/product-media.util";
 import { OrderStatusDefaultsService } from "./order-status-defaults.service";
 import { OrderIdAllocationService } from "./order-id-allocation.service";
 import { buildOrdersKeywordClause } from "./order-search.util";
+import {
+  OrderStatusChangeSource,
+  OrderStatusTransitionService,
+} from "./order-status-transition.service";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -91,6 +97,7 @@ type OrderCreatedBySummary = {
 
 type OrderDeliverySummary = {
   deliveryStatus: OrderDeliveryStatus;
+  deliveryStatusAt: Date | null;
   trackingNumber: string | null;
   deliveryStatusCode: string | null;
   deliveryStatusText: string | null;
@@ -127,6 +134,10 @@ export class OrdersService {
     private readonly novaPoshtaTracking: NovaPoshtaDeliveryTrackingService,
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
     private readonly orderIdAllocation: OrderIdAllocationService,
+    private readonly orderStatusTransition: OrderStatusTransitionService,
+    private readonly deliveryStatusApplication: OrderDeliveryStatusApplicationService,
+    @InjectRepository(OrderStatusAutomation)
+    private readonly automationRepo: Repository<OrderStatusAutomation>,
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
@@ -413,18 +424,6 @@ export class OrdersService {
 
     await this.insertOrderLineItem(workspace.id, order, dto, ownerId);
     await this.recalculateOrderTotals(workspace.id, order.id, ownerId);
-    const orderWithStatus = await this.orderRepo.findOne({
-      where: { workspaceId: workspace.id, id: order.id },
-      relations: { status: true },
-    });
-    if (orderWithStatus?.status) {
-      await this.inventory.handleOrderInventoryForStatus(
-        workspace.id,
-        order.id,
-        orderWithStatus.status.category,
-        ownerId,
-      );
-    }
     return this.getOrderById(ownerId, order.id);
   }
 
@@ -624,12 +623,7 @@ export class OrdersService {
       throw new NotFoundException("Order status not found");
     }
     if (status.isSystem) {
-      if (
-        status.category !== OrderStatusCategory.packed &&
-        status.category !== OrderStatusCategory.shipped
-      ) {
-        throw new BadRequestException("System order statuses cannot be deleted");
-      }
+      throw new BadRequestException("System order statuses cannot be deleted");
     }
     if (status.isDefault) {
       throw new BadRequestException(
@@ -646,6 +640,15 @@ export class OrdersService {
       );
     }
 
+    const automationsUsing = await this.automationRepo.count({
+      where: { workspaceId, targetOrderStatusId: status.id },
+    });
+    if (automationsUsing > 0) {
+      throw new ConflictException(
+        `Cannot delete status: ${automationsUsing} automation(s) target it`,
+      );
+    }
+
     await this.orderStatusRepo.remove(status);
   }
 
@@ -657,46 +660,43 @@ export class OrdersService {
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
     );
-    const order = await this.requireOrderForWorkspace(
-      orderId,
-      workspace.id,
-    );
+    await this.requireOrderForWorkspace(orderId, workspace.id);
 
-    const newStatus = await this.orderStatusRepo.findOne({
-      where: { id: dto.statusId, workspaceId: workspace.id },
+    await this.orderStatusTransition.changeOrderStatus({
+      workspaceId: workspace.id,
+      orderId,
+      targetStatusId: dto.statusId,
+      actorId: ownerId,
+      changeSource: OrderStatusChangeSource.MANUAL,
     });
-    if (!newStatus) {
-      throw new BadRequestException(
-        "Order status not found or not in your workspace",
+    return this.getOrderById(ownerId, orderId);
+  }
+
+  async confirmOrder(ownerId: number, orderId: number): Promise<Order> {
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+    );
+    await this.requireOrderForWorkspace(orderId, workspace.id);
+
+    const confirmedStatusId =
+      await this.orderStatusTransition.findStatusIdByCategory(
+        workspace.id,
+        OrderStatusCategory.confirmed,
+      );
+    if (confirmedStatusId == null) {
+      throw new ServiceUnavailableException(
+        "Confirmed order status is not configured for workspace",
       );
     }
-    const previousStatusId = order.statusId;
-    const previousStatus = await this.orderStatusRepo.findOne({
-      where: { id: previousStatusId, workspaceId: workspace.id },
-    });
-    order.statusId = newStatus.id;
-    order.updatedById = ownerId;
-    await this.orderRepo.save(order);
 
-    await this.appendEvent(
-      workspace.id,
-      order.id,
-      OrderEventType.STATUS_CHANGED,
-      ownerId,
-      {
-        previousStatusId,
-        statusId: newStatus.id,
-        statusName: newStatus.name,
-      },
-    );
-    await this.inventory.handleOrderInventoryForStatus(
-      workspace.id,
-      order.id,
-      newStatus.category,
-      ownerId,
-      previousStatus?.category ?? null,
-    );
-    return this.getOrderById(ownerId, order.id);
+    await this.orderStatusTransition.changeOrderStatus({
+      workspaceId: workspace.id,
+      orderId,
+      targetStatusId: confirmedStatusId,
+      actorId: ownerId,
+      changeSource: OrderStatusChangeSource.CONFIRM,
+    });
+    return this.getOrderById(ownerId, orderId);
   }
 
   async updateDeliveryInfo(
@@ -717,29 +717,49 @@ export class OrdersService {
       row = this.orderDeliveryRepo.create({
         provider: dto.provider,
         ...this.mapDeliveryDtoToFields(dto, true),
-        deliveryStatusCodeAt: new Date(),
+        deliveryStatusAt: new Date(),
       });
       row = await this.orderDeliveryRepo.save(row);
       order.deliveryId = row.id;
       order.deliveryType = dto.provider;
       order.updatedById = ownerId;
       await this.orderRepo.save(order);
+      await this.deliveryStatusApplication.applyDeliveryStatusChange({
+        delivery: row,
+        newDeliveryStatus: row.deliveryStatus,
+        forceNotify: true,
+      });
     } else {
       const previousDeliveryStatus = row.deliveryStatus;
-      const previousProviderStatusCode = row.providerStatusCode;
-      Object.assign(row, this.mapDeliveryDtoToFields(dto, false));
+      const nextFields = this.mapDeliveryDtoToFields(dto, false);
+      const nextDeliveryStatus =
+        nextFields.deliveryStatus ?? row.deliveryStatus;
+
+      Object.assign(row, {
+        ...nextFields,
+        deliveryStatus: previousDeliveryStatus,
+      });
       row.provider = dto.provider;
-      if (
-        (dto.deliveryStatus !== undefined && dto.deliveryStatus !== previousDeliveryStatus) ||
-        (dto.providerStatusCode !== undefined && dto.providerStatusCode !== previousProviderStatusCode)
-      ) {
-        row.deliveryStatusCodeAt = new Date();
-      }
-      await this.orderDeliveryRepo.save(row);
+
       if (order.deliveryType !== dto.provider) {
         order.deliveryType = dto.provider;
         order.updatedById = ownerId;
         await this.orderRepo.save(order);
+      }
+
+      await this.orderDeliveryRepo.save(row);
+
+      if (nextDeliveryStatus !== previousDeliveryStatus) {
+        await this.deliveryStatusApplication.applyDeliveryStatusChange({
+          delivery: row,
+          newDeliveryStatus: nextDeliveryStatus,
+          providerStatusCode: row.providerStatusCode,
+          providerStatusText: row.providerStatusText,
+        });
+      } else if (dto.providerStatusCode !== undefined || dto.providerStatusText !== undefined) {
+        row.providerStatusCode = dto.providerStatusCode ?? row.providerStatusCode;
+        row.providerStatusText = dto.providerStatusText ?? row.providerStatusText;
+        await this.orderDeliveryRepo.save(row);
       }
     }
 
@@ -956,7 +976,12 @@ export class OrdersService {
 
     qb.leftJoinAndSelect("o.status", "status")
       .leftJoinAndSelect("o.customer", "customer")
-      .leftJoin(OrderDeliveryInfo, "delivery", "delivery.id = o.deliveryId");
+      .leftJoinAndMapOne(
+        "o.deliveryInfo",
+        OrderDeliveryInfo,
+        "delivery",
+        "delivery.id = o.deliveryId",
+      );
 
     if (query.clientId != null) {
       const client = await this.clientRepo.findOne({
@@ -1315,7 +1340,7 @@ export class OrdersService {
       deliveryRepo.create({
         provider: dto.provider,
         ...this.mapDeliveryDtoToFields(dto, true),
-        deliveryStatusCodeAt: new Date(),
+        deliveryStatusAt: new Date(),
       }),
     );
     order.deliveryId = row.id;
@@ -1716,6 +1741,7 @@ export class OrdersService {
       }
       (order as unknown as { delivery: OrderDeliverySummary }).delivery = {
         deliveryStatus: info.deliveryStatus,
+        deliveryStatusAt: info.deliveryStatusAt ?? null,
         trackingNumber: info.trackingNumber?.trim() || null,
         deliveryStatusCode: info.providerStatusCode?.trim() || null,
         deliveryStatusText: info.providerStatusText?.trim() || null,

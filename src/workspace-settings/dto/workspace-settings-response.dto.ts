@@ -16,7 +16,7 @@ export class WorkspaceSettingsResponseDto {
   @ApiProperty({
     enum: InventoryMode,
     description:
-      "simple — editable quantity, no cost tracking; advanced — inventory movements and profit calculation.",
+      "Inventory management mode. `simple` — deduct on completed only; `advanced` — reserve on confirmed, deduct on completed, release on cancelled.",
   })
   inventoryMode: InventoryMode;
 

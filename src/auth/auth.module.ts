@@ -16,6 +16,7 @@ import { ProductsModule } from "../products/products.module";
 import { SendgridModule } from "../sendgrid/sendgrid.module";
 import { ConversationGroupDefaultsModule } from "../conversations/conversation-group-defaults.module";
 import { OrderStatusDefaultsModule } from "../orders/order-status-defaults.module";
+import { OrderStatusAutomationsModule } from "../order-status-automations/order-status-automations.module";
 import { BillingProvisioningModule } from "../billing/billing-provisioning.module";
 import { BillingModule } from "../billing/billing.module";
 import { PasswordService } from "../users/crypto/password.service";
@@ -34,6 +35,7 @@ import { PasswordResetService } from "./password-reset.service";
     SendgridModule,
     ConversationGroupDefaultsModule,
     OrderStatusDefaultsModule,
+    OrderStatusAutomationsModule,
     BillingProvisioningModule,
     BillingModule,
     TypeOrmModule.forFeature([

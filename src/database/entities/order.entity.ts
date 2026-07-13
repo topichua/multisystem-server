@@ -76,6 +76,10 @@ export class Order {
   })
   paymentStatus: OrderPaymentStatus;
 
+  /** When the current `paymentStatus` value was set (not `updatedAt`). */
+  @Column({ name: "payment_status_at", type: "timestamptz", nullable: true })
+  paymentStatusAt: Date | null;
+
   @Column({ name: "currency", type: "varchar", length: 8 })
   currency: string;
 

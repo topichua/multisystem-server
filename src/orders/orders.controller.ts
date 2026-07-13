@@ -98,6 +98,21 @@ export class OrdersController {
     return this.orders.updateOrder(ownerId, orderId, dto);
   }
 
+  @Post(":orderId/confirm")
+  @ApiOperation({
+    summary: "Confirm order",
+    description:
+      "Sets order status to the workspace system status in category `confirmed` " +
+      "(same inventory side effects as manual status change).",
+  })
+  async confirmOrder(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+  ) {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.confirmOrder(ownerId, orderId);
+  }
+
   @Patch(":orderId/status")
   async updateStatus(
     @Req() req: { user?: AuthUser },
@@ -221,7 +236,7 @@ export class OrdersController {
   @ApiOperation({
     summary: "Create custom order status",
     description:
-      "Creates a non-system status (`isSystem: false`). `category` is required. Appended after existing statuses by `sortOrder`.",
+      "Creates a custom status (`isSystem: false`) under an existing category/type. Appended after existing statuses by `sortOrder`.",
   })
   @ApiBody({ type: CreateOrderStatusDefinitionDto })
   @ApiCreatedResponse({ type: OrderStatusResponseDto })
@@ -259,9 +274,9 @@ export class OrdersController {
   @Delete("statuses/:statusId")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: "Delete custom or legacy Packed/Shipped order status",
+    summary: "Delete custom order status",
     description:
-      "Deletes custom statuses and legacy built-in `Packed`/`Shipped` if present. Fails if default or referenced by orders.",
+      "Deletes custom statuses only. System statuses cannot be deleted. Fails if default, referenced by orders, or used in automations.",
   })
   @ApiParam({ name: "statusId", type: Number })
   @ApiNoContentResponse()
