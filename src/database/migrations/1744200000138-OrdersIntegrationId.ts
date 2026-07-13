@@ -23,13 +23,13 @@ export class OrdersIntegrationId1744200000138 implements MigrationInterface {
       SET "integration_id" = i."id"
       FROM "conversations" c
       INNER JOIN "instagram_integration" i
-        ON i."workspace_id" = o."workspace_id"
-        AND (
+        ON (
           i."page_id" = c."external_source_id"
           OR i."instagram_account_id" = c."external_source_id"
         )
       WHERE o."conversation_id" = c."id"
         AND c."source" = 1
+        AND i."workspace_id" = o."workspace_id"
         AND o."integration_id" IS NULL
     `);
 
