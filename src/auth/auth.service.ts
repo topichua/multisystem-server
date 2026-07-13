@@ -11,7 +11,14 @@ import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as bcrypt from "bcrypt";
 import { Repository } from "typeorm";
-import { InstagramIntegration, User, UserStatus, Workspace, WorkspaceMember, WorkspaceMemberStatus } from "../database/entities";
+import {
+  InstagramIntegration,
+  User,
+  UserStatus,
+  Workspace,
+  WorkspaceMember,
+  WorkspaceMemberStatus,
+} from "../database/entities";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { PasswordService } from "../users/crypto/password.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
@@ -115,9 +122,7 @@ export class AuthService {
       } else {
         const digits = user.phone.replace(/\D/g, "");
         user.mobilePhoneHash =
-          digits.length === 0
-            ? null
-            : this.invitationTokenService.hash(digits);
+          digits.length === 0 ? null : this.invitationTokenService.hash(digits);
       }
     }
     if (dto.country !== undefined) {

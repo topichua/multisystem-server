@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { NovaPoshtaIntegration } from "../database/entities";
@@ -43,7 +47,10 @@ export class NovaPoshtaIntegrationsService {
   }
 
   async searchSettlementsByApiKey(apiKey: string, query: string) {
-    return this.novaPoshtaApi.searchSettlements(this.normalizeApiKey(apiKey), query);
+    return this.novaPoshtaApi.searchSettlements(
+      this.normalizeApiKey(apiKey),
+      query,
+    );
   }
 
   async searchWarehousesByApiKey(
@@ -327,7 +334,8 @@ export class NovaPoshtaIntegrationsService {
       row.onReturnedOrderStatusId = dto.on_returned_order_status_id;
     }
     if (dto.on_delivery_failed_order_status_id !== undefined) {
-      row.onDeliveryFailedOrderStatusId = dto.on_delivery_failed_order_status_id;
+      row.onDeliveryFailedOrderStatusId =
+        dto.on_delivery_failed_order_status_id;
     }
   }
 

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ConversationGroupSystemStatuses1744200000103
-  implements MigrationInterface
-{
+export class ConversationGroupSystemStatuses1744200000103 implements MigrationInterface {
   name = "ConversationGroupSystemStatuses1744200000103";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

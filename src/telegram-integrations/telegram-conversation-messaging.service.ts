@@ -98,7 +98,9 @@ export class TelegramConversationMessagingService {
       }
     }
 
-    const connectedClient = this.updatesListener.getActiveClient(integration.id);
+    const connectedClient = this.updatesListener.getActiveClient(
+      integration.id,
+    );
     const sendOptions = {
       ...(replyToMessageId != null ? { replyToMessageId } : {}),
       ...(connectedClient ? { connectedClient } : {}),
@@ -106,16 +108,11 @@ export class TelegramConversationMessagingService {
 
     const sent =
       hasFile && mediaType
-        ? await this.telegramApi.sendPrivateMedia(
-            session,
-            recipient,
-            file,
-            {
-              mediaType,
-              caption: caption.length > 0 ? caption : undefined,
-              ...sendOptions,
-            },
-          )
+        ? await this.telegramApi.sendPrivateMedia(session, recipient, file, {
+            mediaType,
+            caption: caption.length > 0 ? caption : undefined,
+            ...sendOptions,
+          })
         : await this.telegramApi.sendPrivateMessage(
             session,
             recipient,
@@ -135,7 +132,10 @@ export class TelegramConversationMessagingService {
         ? await this.archiveOutboundFile(file, mediaType, archiveContext)
         : [];
 
-    const messageType = this.resolveOutboundMessageType(mediaType, storedAttachments);
+    const messageType = this.resolveOutboundMessageType(
+      mediaType,
+      storedAttachments,
+    );
     const displayText = this.resolveOutboundDisplayText(
       caption,
       hasFile,

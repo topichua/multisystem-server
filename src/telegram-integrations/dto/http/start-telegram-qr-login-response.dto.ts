@@ -2,7 +2,9 @@ import { ApiProperty } from "@nestjs/swagger";
 import { TelegramIntegrationStatus } from "../../../database/entities/telegram-integration-status.enum";
 
 export class StartTelegramQrLoginResponseDto {
-  @ApiProperty({ description: "`telegram_integrations.id` for this QR login attempt" })
+  @ApiProperty({
+    description: "`telegram_integrations.id` for this QR login attempt",
+  })
   integrationId: number;
 
   @ApiProperty()
@@ -27,12 +29,14 @@ export class StartTelegramQrLoginResponseDto {
   qrImageUrl: string;
 
   @ApiProperty({
-    description: "Base64url login token (same value as in `qrLoginUrl` query param).",
+    description:
+      "Base64url login token (same value as in `qrLoginUrl` query param).",
   })
   qrToken: string;
 
   @ApiProperty({
-    description: "ISO 8601 when this QR token expires; request a fresh one after that.",
+    description:
+      "ISO 8601 when this QR token expires; request a fresh one after that.",
   })
   expiresAt: string;
 

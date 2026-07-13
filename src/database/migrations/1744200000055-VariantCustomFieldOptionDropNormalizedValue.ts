@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class VariantCustomFieldOptionDropNormalizedValue1744200000055
-  implements MigrationInterface
-{
+export class VariantCustomFieldOptionDropNormalizedValue1744200000055 implements MigrationInterface {
   name = "VariantCustomFieldOptionDropNormalizedValue1744200000055";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

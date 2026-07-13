@@ -1,4 +1,10 @@
-import { Inject, Injectable, NotFoundException, Optional, forwardRef } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+  forwardRef,
+} from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import {
   AutomationSourceType,

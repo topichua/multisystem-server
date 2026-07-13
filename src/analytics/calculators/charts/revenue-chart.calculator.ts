@@ -10,9 +10,7 @@ import {
 } from "../../utils/analytics-chart-buckets.util";
 
 @Injectable()
-export class RevenueChartCalculator
-  implements AnalyticsMetricCalculator<AnalyticsRevenueChartResult>
-{
+export class RevenueChartCalculator implements AnalyticsMetricCalculator<AnalyticsRevenueChartResult> {
   constructor(
     private readonly revenueCalculator: RevenueKpiCalculator,
     private readonly dateRangeService: AnalyticsDateRangeService,
@@ -21,23 +19,18 @@ export class RevenueChartCalculator
   async calculate(
     context: AnalyticsFilterContext,
   ): Promise<AnalyticsRevenueChartResult> {
-    const strategy = resolveChartBucketStrategy(
-      context,
-      (from, to) => this.dateRangeService.inclusiveDayCount(from, to),
+    const strategy = resolveChartBucketStrategy(context, (from, to) =>
+      this.dateRangeService.inclusiveDayCount(from, to),
     );
-    const buckets = buildChartBuckets(
-      context.ranges.current,
-      strategy,
-      {
-        startOfDay: (value) => this.dateRangeService.startOfDay(value),
-        endOfDay: (value) => this.dateRangeService.endOfDay(value),
-        addDays: (value, days) => this.dateRangeService.addDays(value, days),
-        addMonths: (value, months) =>
-          this.dateRangeService.addMonths(value, months),
-        inclusiveDayCount: (from, to) =>
-          this.dateRangeService.inclusiveDayCount(from, to),
-      },
-    );
+    const buckets = buildChartBuckets(context.ranges.current, strategy, {
+      startOfDay: (value) => this.dateRangeService.startOfDay(value),
+      endOfDay: (value) => this.dateRangeService.endOfDay(value),
+      addDays: (value, days) => this.dateRangeService.addDays(value, days),
+      addMonths: (value, months) =>
+        this.dateRangeService.addMonths(value, months),
+      inclusiveDayCount: (from, to) =>
+        this.dateRangeService.inclusiveDayCount(from, to),
+    });
 
     const values = await Promise.all(
       buckets.map((bucket) =>

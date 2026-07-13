@@ -116,7 +116,8 @@ export class BillingPlansController {
   @ApiBearerAuth("bearer")
   @ApiOperation({
     summary: "[Dev] Poll MonoPay invoice status by monoInvoiceId",
-    description: "Calls GET /api/merchant/invoice/status — use when webhook did not arrive.",
+    description:
+      "Calls GET /api/merchant/invoice/status — use when webhook did not arrive.",
   })
   @ApiParam({ name: "monoInvoiceId", example: "p2_9ZgpZVsl3" })
   @ApiOkResponse({ type: MonopayTestInvoiceStatusResponseDto })
@@ -308,9 +309,7 @@ export class WorkspaceBillingController {
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
 @Controller("admin/workspaces/:workspaceId/billing")
 export class BillingAdminController {
-  constructor(
-    private readonly subscriptionChange: SubscriptionChangeService,
-  ) {}
+  constructor(private readonly subscriptionChange: SubscriptionChangeService) {}
 
   @Patch("entitlements")
   @ApiOperation({ summary: "Override workspace entitlements (custom plan)" })

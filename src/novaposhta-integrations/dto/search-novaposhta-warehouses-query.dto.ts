@@ -1,6 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 import { NovaPoshtaCredentialsQueryDto } from "./novaposhta-credentials-query.dto";
 
 export class SearchNovaPoshtaWarehousesQueryDto extends NovaPoshtaCredentialsQueryDto {

@@ -77,7 +77,12 @@ export class OrderStatusAutomationExecution {
   @Column({ name: "duration_value", type: "int", nullable: true })
   durationValue: number | null;
 
-  @Column({ name: "duration_unit", type: "varchar", length: 16, nullable: true })
+  @Column({
+    name: "duration_unit",
+    type: "varchar",
+    length: 16,
+    nullable: true,
+  })
   durationUnit: string | null;
 
   @Column({ name: "error_code", type: "varchar", length: 64, nullable: true })

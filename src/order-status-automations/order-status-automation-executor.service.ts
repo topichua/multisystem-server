@@ -13,9 +13,7 @@ import {
   addDuration,
   buildIdempotencyKey,
 } from "./logic/automation-duration.logic";
-import {
-  AutomationSkipReason,
-} from "./order-status-automation.constants";
+import { AutomationSkipReason } from "./order-status-automation.constants";
 import { OrderStatusChangeSource } from "../orders/order-status-transition.service";
 import { OrderStatusTransitionService } from "../orders/order-status-transition.service";
 
@@ -83,7 +81,9 @@ export class OrderStatusAutomationExecutorService {
   }): Promise<number> {
     const rules = await this.automationRepo.find({
       where: {
-        ...(input.workspaceId != null ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspaceId != null
+          ? { workspaceId: input.workspaceId }
+          : {}),
         isActive: true,
         sourceType: input.sourceType,
       },
@@ -169,7 +169,9 @@ export class OrderStatusAutomationExecutorService {
       .getRawAndEntities();
 
     return rows.entities.map((order, index) => {
-      const raw = rows.raw[index] as { delivery_status_at?: Date | string | null };
+      const raw = rows.raw[index] as {
+        delivery_status_at?: Date | string | null;
+      };
       const rawAt = raw.delivery_status_at ?? null;
       return Object.assign(order, {
         deliveryStatusAt:
@@ -302,10 +304,7 @@ export class OrderStatusAutomationExecutorService {
     }
 
     if (timed) {
-      if (
-        automation.durationValue == null ||
-        automation.durationUnit == null
-      ) {
+      if (automation.durationValue == null || automation.durationUnit == null) {
         await this.logSkippedExecution({
           automation,
           workspaceId,

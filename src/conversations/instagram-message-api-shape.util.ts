@@ -91,7 +91,7 @@ export function toLegacyInstagramMessageApiShape(
     out.shares = msg.shares as { data?: Array<Record<string, unknown>> };
   }
   if (msg.story != null) {
-    out.story = msg.story as Record<string, unknown>;
+    out.story = msg.story;
   }
   if (msg.reactions != null && msg.reactions.length > 0) {
     out.reactions = msg.reactions;

@@ -32,11 +32,7 @@ export function sortComparableValueLabels(labels: string[]): string[] {
 }
 
 export function normalizeValueKey(label: string): string {
-  return label
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
+  return label.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 }
 
 function tryExpandNumericRange(value: string): string[] | null {
@@ -63,7 +59,12 @@ function tryExpandLetterRange(value: string): string[] | null {
 
   const startIdx = letterSizeIndex(normalizeLetterSize(m[1]));
   const endIdx = letterSizeIndex(normalizeLetterSize(m[2]));
-  if (startIdx < 0 || endIdx < 0 || startIdx > endIdx || endIdx - startIdx > 10) {
+  if (
+    startIdx < 0 ||
+    endIdx < 0 ||
+    startIdx > endIdx ||
+    endIdx - startIdx > 10
+  ) {
     return null;
   }
 
@@ -78,9 +79,7 @@ function normalizeLetterSize(s: string): string {
 }
 
 function letterSizeIndex(label: string): number {
-  return LETTER_SIZE_ORDER.indexOf(
-    label as (typeof LETTER_SIZE_ORDER)[number],
-  );
+  return LETTER_SIZE_ORDER.indexOf(label as (typeof LETTER_SIZE_ORDER)[number]);
 }
 
 function compareValueLabels(a: string, b: string): number {

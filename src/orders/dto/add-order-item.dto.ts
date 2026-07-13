@@ -21,14 +21,21 @@ export class AddOrderItemDto {
   @Min(1)
   quantity: number;
 
-  @ApiPropertyOptional({ minimum: 0, description: "Fixed discount amount for this item." })
+  @ApiPropertyOptional({
+    minimum: 0,
+    description: "Fixed discount amount for this item.",
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   discountAmount?: number;
 
-  @ApiPropertyOptional({ minimum: 0, maximum: 100, description: "Percent discount for this item." })
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 100,
+    description: "Percent discount for this item.",
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

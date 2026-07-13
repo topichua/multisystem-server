@@ -1,10 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import {
-  IsOptional,
-  IsString,
-  MaxLength,
-  MinLength,
-} from "class-validator";
+import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { WorkspaceMemberResponseDto } from "./workspace-member-response.dto";
 
 export class CompleteWorkspaceMemberRegistrationRequestDto {
@@ -49,7 +44,8 @@ export class WorkspaceMemberRegistrationFormResponseDto {
   roleName: string;
 
   @ApiProperty({
-    description: "When false, the user already has a password and only needs to confirm.",
+    description:
+      "When false, the user already has a password and only needs to confirm.",
   })
   requiresPassword: boolean;
 }

@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsNumber, IsOptional, IsPositive, Max, Min } from "class-validator";
+import {
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  Max,
+  Min,
+} from "class-validator";
 
 export class UpdateCreditPricingRequestDto {
   @ApiPropertyOptional({ example: 1, description: "Price per one AI credit" })

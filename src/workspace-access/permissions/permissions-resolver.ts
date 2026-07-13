@@ -190,8 +190,8 @@ export function canTakeChat(
   integrationId: number,
 ): boolean {
   return (
-    getIntegrationGrant(resolved, integrationType, integrationId)?.canTakeChat ===
-    true
+    getIntegrationGrant(resolved, integrationType, integrationId)
+      ?.canTakeChat === true
   );
 }
 

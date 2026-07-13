@@ -51,7 +51,11 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     ]),
   ],
   controllers: [OrdersController, OrderStatusesController],
-  providers: [OrdersService, OrderIdAllocationService, OrderStatusTransitionService],
+  providers: [
+    OrdersService,
+    OrderIdAllocationService,
+    OrderStatusTransitionService,
+  ],
   exports: [OrdersService, OrderStatusTransitionService],
 })
 export class OrdersModule {}

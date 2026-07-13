@@ -4,7 +4,9 @@ export class NovaPoshtaTrackingDocumentDto {
   @ApiPropertyOptional({ description: "Tracking document number." })
   Number?: string | null;
 
-  @ApiPropertyOptional({ description: "Current status text returned by Nova Poshta." })
+  @ApiPropertyOptional({
+    description: "Current status text returned by Nova Poshta.",
+  })
   Status?: string | null;
 
   @ApiProperty({ description: "Current status code returned by Nova Poshta." })

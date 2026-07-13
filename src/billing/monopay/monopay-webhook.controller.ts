@@ -47,7 +47,9 @@ export class MonopayWebhookController {
 
   private parsePayload(rawBody: Buffer): MonopayInvoiceWebhookPayload {
     try {
-      return JSON.parse(rawBody.toString("utf8")) as MonopayInvoiceWebhookPayload;
+      return JSON.parse(
+        rawBody.toString("utf8"),
+      ) as MonopayInvoiceWebhookPayload;
     } catch {
       throw new UnauthorizedException("Invalid JSON body");
     }

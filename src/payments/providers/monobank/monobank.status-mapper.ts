@@ -23,7 +23,9 @@ export function mapMonobankStatusToPaymentRequestStatus(
   }
 }
 
-export function isMonobankTerminalStatus(status: MonobankInvoiceStatus): boolean {
+export function isMonobankTerminalStatus(
+  status: MonobankInvoiceStatus,
+): boolean {
   return (
     status === "success" ||
     status === "failure" ||
@@ -32,7 +34,9 @@ export function isMonobankTerminalStatus(status: MonobankInvoiceStatus): boolean
   );
 }
 
-export function canMonobankCancelPaymentLink(status: PaymentRequestStatus): boolean {
+export function canMonobankCancelPaymentLink(
+  status: PaymentRequestStatus,
+): boolean {
   return (
     status === PaymentRequestStatus.pending ||
     status === PaymentRequestStatus.processing

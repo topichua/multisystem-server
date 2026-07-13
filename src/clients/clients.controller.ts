@@ -43,7 +43,11 @@ import { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 
 @ApiTags("clients")
 @ApiBearerAuth("bearer")
-@ApiExtraModels(ClientLookupResponseDto, ClientsListResponseDto, ClientResponseDto)
+@ApiExtraModels(
+  ClientLookupResponseDto,
+  ClientsListResponseDto,
+  ClientResponseDto,
+)
 @UseGuards(JwtAuthGuard)
 @Controller("clients")
 export class ClientsController {

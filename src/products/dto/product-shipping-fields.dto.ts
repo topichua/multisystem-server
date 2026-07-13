@@ -27,12 +27,13 @@ export class ProductShippingFieldsDto {
     nullable: true,
   })
   @IsOptional()
-  @Transform(({ value, obj }) =>
-    pickOptionalNumber(
-      obj as Record<string, unknown>,
-      "weightGrams",
-      "weight_grams",
-    ) ?? value,
+  @Transform(
+    ({ value, obj }) =>
+      pickOptionalNumber(
+        obj as Record<string, unknown>,
+        "weightGrams",
+        "weight_grams",
+      ) ?? value,
   )
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: SHIPPING_DECIMAL_PLACES })
@@ -49,12 +50,13 @@ export class ProductShippingFieldsDto {
     nullable: true,
   })
   @IsOptional()
-  @Transform(({ value, obj }) =>
-    pickOptionalNumber(
-      obj as Record<string, unknown>,
-      "lengthCm",
-      "length_cm",
-    ) ?? value,
+  @Transform(
+    ({ value, obj }) =>
+      pickOptionalNumber(
+        obj as Record<string, unknown>,
+        "lengthCm",
+        "length_cm",
+      ) ?? value,
   )
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: SHIPPING_DECIMAL_PLACES })
@@ -71,12 +73,13 @@ export class ProductShippingFieldsDto {
     nullable: true,
   })
   @IsOptional()
-  @Transform(({ value, obj }) =>
-    pickOptionalNumber(
-      obj as Record<string, unknown>,
-      "widthCm",
-      "width_cm",
-    ) ?? value,
+  @Transform(
+    ({ value, obj }) =>
+      pickOptionalNumber(
+        obj as Record<string, unknown>,
+        "widthCm",
+        "width_cm",
+      ) ?? value,
   )
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: SHIPPING_DECIMAL_PLACES })
@@ -93,12 +96,13 @@ export class ProductShippingFieldsDto {
     nullable: true,
   })
   @IsOptional()
-  @Transform(({ value, obj }) =>
-    pickOptionalNumber(
-      obj as Record<string, unknown>,
-      "heightCm",
-      "height_cm",
-    ) ?? value,
+  @Transform(
+    ({ value, obj }) =>
+      pickOptionalNumber(
+        obj as Record<string, unknown>,
+        "heightCm",
+        "height_cm",
+      ) ?? value,
   )
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: SHIPPING_DECIMAL_PLACES })

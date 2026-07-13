@@ -22,7 +22,7 @@ export class InviteWorkspaceMemberRequestDto {
 
   @ApiPropertyOptional({
     description:
-      "Testing only: create user with password \"password\" and skip email confirmation",
+      'Testing only: create user with password "password" and skip email confirmation',
     default: false,
   })
   @IsOptional()

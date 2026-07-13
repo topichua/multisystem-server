@@ -143,7 +143,9 @@ export class MonopayApiService {
   async getInvoiceStatus(
     monopayInvoiceId: string,
   ): Promise<MonopayInvoiceWebhookPayload> {
-    const url = new URL(`${this.getApiBaseUrl()}${MONOPAY_INVOICE_STATUS_PATH}`);
+    const url = new URL(
+      `${this.getApiBaseUrl()}${MONOPAY_INVOICE_STATUS_PATH}`,
+    );
     url.searchParams.set("invoiceId", monopayInvoiceId);
     return this.merchantRequest<MonopayInvoiceWebhookPayload>({
       method: "GET",
@@ -230,9 +232,7 @@ export class MonopayApiService {
         "Content-Type": "application/json",
         "X-Token": token,
       },
-      ...(options.body != null
-        ? { body: JSON.stringify(options.body) }
-        : {}),
+      ...(options.body != null ? { body: JSON.stringify(options.body) } : {}),
     });
 
     const text = await response.text();
@@ -246,7 +246,10 @@ export class MonopayApiService {
       this.logger.error(
         `MonoPay ${options.operation} failed kind=${kind} http=${response.status} hint=${hint}`,
       );
-      if (kind === "personal_token_rejected" || kind === "invalid_merchant_token") {
+      if (
+        kind === "personal_token_rejected" ||
+        kind === "invalid_merchant_token"
+      ) {
         throw new BadRequestException(hint);
       }
       if (kind === "merchant_not_found") {

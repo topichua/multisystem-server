@@ -263,7 +263,8 @@ export class NovaPoshtaWaybillService {
     }
     if (
       senderType === NovaPoshtaSenderType.ADDRESS &&
-      (!integration.senderStreetRef?.trim() || !integration.senderBuilding?.trim())
+      (!integration.senderStreetRef?.trim() ||
+        !integration.senderBuilding?.trim())
     ) {
       throw new BadRequestException(
         "Nova Poshta integration address sender requires sender_street_ref and sender_building",
@@ -388,7 +389,8 @@ export class NovaPoshtaWaybillService {
     senderType: NovaPoshtaSenderType,
     recipientType: OrderDeliveryDestinationType,
   ): NovaPoshtaCreateWaybillInput["serviceType"] {
-    const sender = senderType === NovaPoshtaSenderType.WAREHOUSE ? "Warehouse" : "Doors";
+    const sender =
+      senderType === NovaPoshtaSenderType.WAREHOUSE ? "Warehouse" : "Doors";
     const recipient =
       recipientType === OrderDeliveryDestinationType.WAREHOUSE
         ? "Warehouse"

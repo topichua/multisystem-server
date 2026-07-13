@@ -35,8 +35,10 @@ export class ManualPaymentMethodsService {
     appRole?: string,
   ): Promise<ManualPaymentMethodsListResponseDto> {
     await this.requireViewPermission(userId, appRole);
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
     const rows = await this.repo.find({
       where: { workspaceId: workspace.id },
       order: { createdAt: "ASC" },
@@ -53,8 +55,10 @@ export class ManualPaymentMethodsService {
     appRole?: string,
   ): Promise<ManualPaymentMethodResponseDto> {
     await this.requireManagePermission(userId, appRole);
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
     const name = dto.name.trim();
     if (!name) {
       throw new BadRequestException("name is required");
@@ -78,7 +82,11 @@ export class ManualPaymentMethodsService {
   ): Promise<ManualPaymentMethodResponseDto> {
     await this.requireManagePermission(userId, appRole);
     const row = await this.requireOwnedMethod(userId, id, appRole);
-    if (dto.name === undefined && dto.type === undefined && dto.value === undefined) {
+    if (
+      dto.name === undefined &&
+      dto.type === undefined &&
+      dto.value === undefined
+    ) {
       throw new BadRequestException("At least one field is required");
     }
     const previousType = row.type;
@@ -132,7 +140,10 @@ export class ManualPaymentMethodsService {
       name: row.name,
       type: row.type,
       value: row.value,
-      displayValue: formatManualPaymentMethodValueForDisplay(row.type, row.value),
+      displayValue: formatManualPaymentMethodValueForDisplay(
+        row.type,
+        row.value,
+      ),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -143,8 +154,10 @@ export class ManualPaymentMethodsService {
     id: number,
     appRole?: string,
   ): Promise<ManualPaymentMethod> {
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
     const row = await this.repo.findOne({
       where: { id, workspaceId: workspace.id },
     });

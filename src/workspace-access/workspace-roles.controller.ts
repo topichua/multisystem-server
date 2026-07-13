@@ -78,7 +78,9 @@ export class WorkspaceRolesController {
   }
 
   @Patch(":roleId")
-  @ApiOperation({ summary: "Update role name, description, color, and/or permissions" })
+  @ApiOperation({
+    summary: "Update role name, description, color, and/or permissions",
+  })
   @ApiParam({ name: "roleId", type: Number })
   @ApiBody({ type: UpdateWorkspaceRoleRequestDto })
   @ApiOkResponse({ type: WorkspaceRoleResponseDto })

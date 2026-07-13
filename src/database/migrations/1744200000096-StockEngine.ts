@@ -124,9 +124,15 @@ export class StockEngine1744200000096 implements MigrationInterface {
 
     await queryRunner.query(`DROP TABLE IF EXISTS "inventory_reservations"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "inventory_movements"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "inventory_reservation_status_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "inventory_movement_type_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "inventory_movement_reason_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "inventory_reservation_status_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "inventory_movement_type_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "inventory_movement_reason_enum"`,
+    );
 
     await queryRunner.query(`
       ALTER TABLE "product_variants"
@@ -175,6 +181,8 @@ export class StockEngine1744200000096 implements MigrationInterface {
     await queryRunner.query(`
       ALTER TABLE "workspace" DROP COLUMN IF EXISTS "inventory_mode"
     `);
-    await queryRunner.query(`DROP TYPE IF EXISTS "workspace_inventory_mode_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "workspace_inventory_mode_enum"`,
+    );
   }
 }

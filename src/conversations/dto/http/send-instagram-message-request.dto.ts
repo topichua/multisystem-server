@@ -8,7 +8,8 @@ export type OutboundConversationMessageMediaType = "image" | "video" | "audio";
 export class SendInstagramMessageRequestDto {
   @ApiPropertyOptional({
     minLength: 1,
-    description: "Text body or media caption. Required when no `file` is uploaded.",
+    description:
+      "Text body or media caption. Required when no `file` is uploaded.",
   })
   @IsOptional()
   @IsString()

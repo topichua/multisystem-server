@@ -1,10 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import {
-  ConversationEvent,
-  ConversationEventType,
-} from "../database/entities";
+import { ConversationEvent, ConversationEventType } from "../database/entities";
 
 export type ConversationEventPayload = Record<string, unknown>;
 
@@ -30,7 +27,9 @@ export class ConversationEventsService {
     return this.eventRepo.save(row);
   }
 
-  async listForConversation(conversationId: number): Promise<ConversationEvent[]> {
+  async listForConversation(
+    conversationId: number,
+  ): Promise<ConversationEvent[]> {
     return this.eventRepo.find({
       where: { conversationId },
       order: { createdAt: "DESC", id: "DESC" },

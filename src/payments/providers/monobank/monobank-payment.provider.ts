@@ -36,7 +36,7 @@ export class MonobankPaymentProvider implements PaymentProviderAdapter {
         valid: false,
         userMessage:
           error instanceof BadRequestException
-            ? (error.message as string)
+            ? error.message
             : "Не вдалося підключити Monobank. Перевірте merchant token.",
       };
     }
@@ -53,20 +53,24 @@ export class MonobankPaymentProvider implements PaymentProviderAdapter {
       throw new BadRequestException("Сума має бути більше нуля");
     }
 
-    const validity = input.validitySeconds ?? this.api.getInvoiceValiditySeconds();
-    const response = await this.api.createInvoice(this.credentials.merchantToken, {
-      amount: amountKop,
-      ccy: currencyToMonobankCcy(input.currency),
-      merchantPaymInfo: {
-        reference: input.reference,
-        destination: input.description,
-        comment: input.description,
+    const validity =
+      input.validitySeconds ?? this.api.getInvoiceValiditySeconds();
+    const response = await this.api.createInvoice(
+      this.credentials.merchantToken,
+      {
+        amount: amountKop,
+        ccy: currencyToMonobankCcy(input.currency),
+        merchantPaymInfo: {
+          reference: input.reference,
+          destination: input.description,
+          comment: input.description,
+        },
+        redirectUrl: input.redirectUrl,
+        webHookUrl: input.webhookUrl,
+        validity,
+        paymentType: "debit",
       },
-      redirectUrl: input.redirectUrl,
-      webHookUrl: input.webhookUrl,
-      validity,
-      paymentType: "debit",
-    });
+    );
 
     const expiresAt = new Date(Date.now() + validity * 1000);
     return {
@@ -118,18 +122,23 @@ export class MonobankPaymentProvider implements PaymentProviderAdapter {
   }
 
   parseWebhook(rawBody: Buffer): ParsedWebhookEvent {
-    const payload = JSON.parse(rawBody.toString("utf8")) as MonobankInvoicePayload;
+    const payload = JSON.parse(
+      rawBody.toString("utf8"),
+    ) as MonobankInvoicePayload;
     const mapped = this.mapPayload(payload);
     return {
       ...mapped,
       externalTransactionId:
-        mapped.localStatus === PaymentRequestStatus.succeeded && payload.invoiceId
+        mapped.localStatus === PaymentRequestStatus.succeeded &&
+        payload.invoiceId
           ? `${payload.invoiceId}:success`
           : null,
     };
   }
 
-  private mapPayload(payload: MonobankInvoicePayload): ProviderPaymentStatusResult {
+  private mapPayload(
+    payload: MonobankInvoicePayload,
+  ): ProviderPaymentStatusResult {
     const localStatus = mapMonobankStatusToPaymentRequestStatus(payload.status);
     const amountMajor = monobankAmountToMajor(
       payload.finalAmount ?? payload.amount,
@@ -143,7 +152,8 @@ export class MonobankPaymentProvider implements PaymentProviderAdapter {
       localStatus,
       amount: amountMajor,
       currency: payload.ccy === 980 ? "UAH" : String(payload.ccy),
-      paidAt: localStatus === PaymentRequestStatus.succeeded ? modifiedAt : null,
+      paidAt:
+        localStatus === PaymentRequestStatus.succeeded ? modifiedAt : null,
       failureReason: payload.failureReason ?? null,
       providerModifiedAt: modifiedAt,
     };

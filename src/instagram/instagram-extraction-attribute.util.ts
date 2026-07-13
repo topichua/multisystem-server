@@ -8,7 +8,9 @@ export function expandAttributeValueTokens(values: string[]): string[] {
   const expanded: string[] = [];
   for (const token of values) {
     expanded.push(
-      ...expandValueRangeToken(token).map((p) => p.trim()).filter(Boolean),
+      ...expandValueRangeToken(token)
+        .map((p) => p.trim())
+        .filter(Boolean),
     );
   }
   return dedupeExpandedValues(expanded);

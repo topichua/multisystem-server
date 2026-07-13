@@ -20,7 +20,8 @@ export class R2ConfigStatusResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "Public base URL (CF_R2_PUBLIC_URL) used to build object links.",
+    description:
+      "Public base URL (CF_R2_PUBLIC_URL) used to build object links.",
   })
   publicBaseUrl: string | null;
 }

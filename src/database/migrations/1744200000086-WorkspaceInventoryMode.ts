@@ -22,6 +22,8 @@ export class WorkspaceInventoryMode1744200000086 implements MigrationInterface {
       ALTER TABLE "workspace"
       DROP COLUMN IF EXISTS "inventory_mode"
     `);
-    await queryRunner.query(`DROP TYPE IF EXISTS "workspace_inventory_mode_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "workspace_inventory_mode_enum"`,
+    );
   }
 }

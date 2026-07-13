@@ -203,9 +203,7 @@ export class ConversationGroupsService {
       sortOrder: row.sortOrder,
       systemKey: row.systemKey,
       isSystem: row.isSystem,
-      ...(conversationCount !== undefined
-        ? { conversationCount }
-        : {}),
+      ...(conversationCount !== undefined ? { conversationCount } : {}),
     };
   }
 }

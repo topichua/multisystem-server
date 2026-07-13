@@ -40,7 +40,7 @@ const SETTLEMENT_TYPE_LABELS: Record<string, string> = {
   "м.": "місто",
   "с.": "село",
   "смт.": "смт",
-  "смт": "смт",
+  смт: "смт",
 };
 
 type NovaPoshtaApiResponse<T = unknown> = {
@@ -54,18 +54,15 @@ type NovaPoshtaApiResponse<T = unknown> = {
 @Injectable()
 export class NovaPoshtaApiService {
   private readonly log = new Logger(NovaPoshtaApiService.name);
-  private readonly settlementsCache =
-    new NovaPoshtaResponseCache<NovaPoshtaSettlementSearchResult[]>(
-      SETTLEMENTS_CACHE_TTL_MS,
-    );
-  private readonly warehousesCache =
-    new NovaPoshtaResponseCache<NovaPoshtaWarehouseSearchResult[]>(
-      WAREHOUSES_CACHE_TTL_MS,
-    );
-  private readonly streetsCache =
-    new NovaPoshtaResponseCache<NovaPoshtaStreetSearchResult[]>(
-      STREETS_CACHE_TTL_MS,
-    );
+  private readonly settlementsCache = new NovaPoshtaResponseCache<
+    NovaPoshtaSettlementSearchResult[]
+  >(SETTLEMENTS_CACHE_TTL_MS);
+  private readonly warehousesCache = new NovaPoshtaResponseCache<
+    NovaPoshtaWarehouseSearchResult[]
+  >(WAREHOUSES_CACHE_TTL_MS);
+  private readonly streetsCache = new NovaPoshtaResponseCache<
+    NovaPoshtaStreetSearchResult[]
+  >(STREETS_CACHE_TTL_MS);
   /** Maps legacy `DeliveryCity` / warehouse `CityRef` → settlement `ref`. */
   private readonly deliveryCityToSettlementRef = new Map<string, string>();
 
@@ -116,10 +113,7 @@ export class NovaPoshtaApiService {
       );
     }
 
-    if (
-      cityRef &&
-      !this.warehouseMatchesLocationRef(warehouse, cityRef)
-    ) {
+    if (cityRef && !this.warehouseMatchesLocationRef(warehouse, cityRef)) {
       throw new BadRequestException(
         "sender_warehouse_ref does not belong to sender_city_ref",
       );
@@ -262,12 +256,8 @@ export class NovaPoshtaApiService {
   ): Promise<NovaPoshtaWarehouseSearchRecord[]> {
     const mappedSettlementRef =
       this.resolveSettlementRefForDeliveryCity(locationRef);
-    const settlementRefs = [
-      locationRef,
-      mappedSettlementRef,
-    ].filter(
-      (ref, index, refs): ref is string =>
-        !!ref && refs.indexOf(ref) === index,
+    const settlementRefs = [locationRef, mappedSettlementRef].filter(
+      (ref, index, refs): ref is string => !!ref && refs.indexOf(ref) === index,
     );
 
     for (const settlementRef of settlementRefs) {
@@ -613,8 +603,7 @@ export class NovaPoshtaApiService {
         return {
           ref: addressRef,
           city: warehouse?.CityDescription ?? fallbackCity ?? "",
-          warehouse:
-            warehouse?.Description ?? address.Description ?? "",
+          warehouse: warehouse?.Description ?? address.Description ?? "",
           cityRef: warehouse?.CityRef ?? cityRef ?? null,
         };
       }),
@@ -694,14 +683,11 @@ export class NovaPoshtaApiService {
     settlementRef: string,
   ): Promise<string | null> {
     try {
-      const payload = await this.request<NovaPoshtaSettlementRecord[]>(
-        apiKey,
-        {
-          modelName: "Address",
-          calledMethod: "getSettlements",
-          methodProperties: { Ref: settlementRef, Limit: "1" },
-        },
-      );
+      const payload = await this.request<NovaPoshtaSettlementRecord[]>(apiKey, {
+        modelName: "Address",
+        calledMethod: "getSettlements",
+        methodProperties: { Ref: settlementRef, Limit: "1" },
+      });
       return Array.isArray(payload) && payload.length > 0
         ? (payload[0].Description ?? null)
         : null;
@@ -754,7 +740,9 @@ export class NovaPoshtaApiService {
     }
 
     if (parts.length === 0 && body.warnings != null) {
-      const items = Array.isArray(body.warnings) ? body.warnings : [body.warnings];
+      const items = Array.isArray(body.warnings)
+        ? body.warnings
+        : [body.warnings];
       for (const item of items) {
         const text = this.formatNovaPoshtaApiErrorItem(item);
         if (text) {

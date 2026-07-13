@@ -36,7 +36,9 @@ export function extractInstagramPostMedia(
 
 export async function buildOpenAiVisionImageParts(
   media: InstagramPostMediaItem[],
-  download: (previewUrl: string) => Promise<{ buffer: Buffer; contentType: string }>,
+  download: (
+    previewUrl: string,
+  ) => Promise<{ buffer: Buffer; contentType: string }>,
   maxImages = 8,
 ): Promise<OpenAI.Chat.Completions.ChatCompletionContentPart[]> {
   const parts: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];

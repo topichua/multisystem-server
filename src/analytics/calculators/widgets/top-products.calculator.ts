@@ -26,9 +26,7 @@ type TopProductRow = {
 };
 
 @Injectable()
-export class TopProductsCalculator
-  implements AnalyticsMetricCalculator<AnalyticsTopProductsResult>
-{
+export class TopProductsCalculator implements AnalyticsMetricCalculator<AnalyticsTopProductsResult> {
   constructor(
     @InjectRepository(OrderItem)
     private readonly orderItemRepo: Repository<OrderItem>,

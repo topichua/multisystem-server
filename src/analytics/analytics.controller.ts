@@ -57,7 +57,10 @@ export class AnalyticsController {
     @Req() req: { user?: AuthUser },
     @Query() query: AnalyticsQueryDto,
   ): Promise<AnalyticsRevenueChartResponseDto> {
-    return this.overview.getRevenueChart(this.requireNumericOwnerId(req), query);
+    return this.overview.getRevenueChart(
+      this.requireNumericOwnerId(req),
+      query,
+    );
   }
 
   @Get("sales-channels")
@@ -71,7 +74,10 @@ export class AnalyticsController {
     @Req() req: { user?: AuthUser },
     @Query() query: AnalyticsQueryDto,
   ): Promise<AnalyticsSalesChannelsResponseDto> {
-    return this.overview.getSalesChannels(this.requireNumericOwnerId(req), query);
+    return this.overview.getSalesChannels(
+      this.requireNumericOwnerId(req),
+      query,
+    );
   }
 
   @Get("orders-by-status")
@@ -85,7 +91,10 @@ export class AnalyticsController {
     @Req() req: { user?: AuthUser },
     @Query() query: AnalyticsQueryDto,
   ): Promise<AnalyticsOrdersByStatusResponseDto> {
-    return this.overview.getOrdersByStatus(this.requireNumericOwnerId(req), query);
+    return this.overview.getOrdersByStatus(
+      this.requireNumericOwnerId(req),
+      query,
+    );
   }
 
   @Get("top-products")
@@ -113,7 +122,10 @@ export class AnalyticsController {
     @Req() req: { user?: AuthUser },
     @Query() query: AnalyticsQueryDto,
   ): Promise<AnalyticsTopCustomersResponseDto> {
-    return this.overview.getTopCustomers(this.requireNumericOwnerId(req), query);
+    return this.overview.getTopCustomers(
+      this.requireNumericOwnerId(req),
+      query,
+    );
   }
 
   private requireNumericOwnerId(req: { user?: AuthUser }): number {

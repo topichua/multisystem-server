@@ -55,7 +55,10 @@ export class Invoice {
   @Column({ name: "subscription_id", type: "int", nullable: true })
   subscriptionId: number | null;
 
-  @ManyToOne(() => WorkspaceSubscription, { onDelete: "SET NULL", nullable: true })
+  @ManyToOne(() => WorkspaceSubscription, {
+    onDelete: "SET NULL",
+    nullable: true,
+  })
   @JoinColumn({ name: "subscription_id" })
   subscription: WorkspaceSubscription | null;
 
@@ -99,13 +102,23 @@ export class Invoice {
   @Column({ name: "paid_at", type: "timestamptz", nullable: true })
   paidAt: Date | null;
 
-  @Column({ name: "external_payment_id", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "external_payment_id",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   externalPaymentId: string | null;
 
   @Column({ name: "payment_page_url", type: "text", nullable: true })
   paymentPageUrl: string | null;
 
-  @Column({ name: "payment_provider", type: "varchar", length: 32, nullable: true })
+  @Column({
+    name: "payment_provider",
+    type: "varchar",
+    length: 32,
+    nullable: true,
+  })
   paymentProvider: string | null;
 
   @Column({

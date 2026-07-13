@@ -15,9 +15,7 @@ import { OrdersKpiCalculator } from "./orders-kpi.calculator";
 import { RevenueKpiCalculator } from "./revenue-kpi.calculator";
 
 @Injectable()
-export class AnalyticsKpiCalculator
-  implements AnalyticsMetricCalculator<AnalyticsOverviewKpiResult>
-{
+export class AnalyticsKpiCalculator implements AnalyticsMetricCalculator<AnalyticsOverviewKpiResult> {
   constructor(
     private readonly revenueCalculator: RevenueKpiCalculator,
     private readonly ordersCalculator: OrdersKpiCalculator,
@@ -27,21 +25,30 @@ export class AnalyticsKpiCalculator
   async calculate(
     context: AnalyticsFilterContext,
   ): Promise<AnalyticsOverviewKpiResult> {
-    const [currentRevenue, previousRevenue, currentOrders, previousOrders, currentNewClients, previousNewClients] =
-      await Promise.all([
-        this.revenueCalculator.calculateForRange(context, context.ranges.current),
-        this.revenueCalculator.calculateForRange(context, context.ranges.previous),
-        this.ordersCalculator.calculateForRange(context, context.ranges.current),
-        this.ordersCalculator.calculateForRange(context, context.ranges.previous),
-        this.newClientsCalculator.calculateForRange(
-          context,
-          context.ranges.current,
-        ),
-        this.newClientsCalculator.calculateForRange(
-          context,
-          context.ranges.previous,
-        ),
-      ]);
+    const [
+      currentRevenue,
+      previousRevenue,
+      currentOrders,
+      previousOrders,
+      currentNewClients,
+      previousNewClients,
+    ] = await Promise.all([
+      this.revenueCalculator.calculateForRange(context, context.ranges.current),
+      this.revenueCalculator.calculateForRange(
+        context,
+        context.ranges.previous,
+      ),
+      this.ordersCalculator.calculateForRange(context, context.ranges.current),
+      this.ordersCalculator.calculateForRange(context, context.ranges.previous),
+      this.newClientsCalculator.calculateForRange(
+        context,
+        context.ranges.current,
+      ),
+      this.newClientsCalculator.calculateForRange(
+        context,
+        context.ranges.previous,
+      ),
+    ]);
 
     const revenue: AnalyticsCurrencyKpiValue = {
       value: currentRevenue,
@@ -79,10 +86,7 @@ export class AnalyticsKpiCalculator
     };
   }
 
-  private calculateAverageOrderValue(
-    revenue: number,
-    orders: number,
-  ): number {
+  private calculateAverageOrderValue(revenue: number, orders: number): number {
     if (orders === 0) {
       return 0;
     }

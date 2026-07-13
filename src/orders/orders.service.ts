@@ -141,9 +141,8 @@ export class OrdersService {
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
     const currency = (
       dto.currency?.trim() ||
@@ -237,10 +236,7 @@ export class OrdersService {
         }),
       );
 
-      if (
-        dto.discountAmount != null ||
-        dto.discountPercent != null
-      ) {
+      if (dto.discountAmount != null || dto.discountPercent != null) {
         await em.save(
           em.create(OrderEvent, {
             workspaceId,
@@ -259,7 +255,13 @@ export class OrdersService {
 
       const lineItems = dto.items ?? [];
       for (const line of lineItems) {
-        await this.insertOrderLineItem(workspaceId, persisted, line, ownerId, em);
+        await this.insertOrderLineItem(
+          workspaceId,
+          persisted,
+          line,
+          ownerId,
+          em,
+        );
       }
       if (lineItems.length > 0) {
         await this.recalculateOrderTotals(
@@ -291,9 +293,8 @@ export class OrdersService {
     orderId: number,
     dto: UpdateOrderDto,
   ): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const order = await this.orderRepo.findOne({
       where: { id: orderId, workspaceId: workspace.id },
       relations: { status: true },
@@ -410,9 +411,8 @@ export class OrdersService {
     orderId: number,
     dto: AddOrderItemDto,
   ): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const order = await this.orderRepo.findOne({
       where: { id: orderId, workspaceId: workspace.id },
       relations: { status: true },
@@ -430,9 +430,8 @@ export class OrdersService {
   async listOrderStatusesForOwner(
     ownerId: number,
   ): Promise<OrderStatusResponseDto[]> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.orderStatusDefaults.ensureSystemStatuses(workspace.id);
     const rows = await this.orderStatusRepo.find({
       where: { workspaceId: workspace.id },
@@ -445,9 +444,8 @@ export class OrdersService {
     ownerId: number,
     dto: SetOrderStatusesOrderDto,
   ): Promise<OrderStatusResponseDto[]> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
     await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
@@ -472,7 +470,9 @@ export class OrdersService {
       const byId = new Map(rows.map((r) => [r.id, r]));
       for (const id of dto.ids) {
         if (!byId.has(id)) {
-          throw new BadRequestException(`Order status ${id} not found in workspace`);
+          throw new BadRequestException(
+            `Order status ${id} not found in workspace`,
+          );
         }
       }
 
@@ -494,9 +494,8 @@ export class OrdersService {
     ownerId: number,
     dto: CreateOrderStatusDefinitionDto,
   ): Promise<OrderStatusResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
     await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
@@ -548,9 +547,8 @@ export class OrdersService {
       );
     }
 
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
     await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
@@ -610,9 +608,8 @@ export class OrdersService {
     ownerId: number,
     statusId: number,
   ): Promise<void> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
     await this.orderStatusDefaults.ensureSystemStatuses(workspaceId);
 
@@ -657,9 +654,8 @@ export class OrdersService {
     orderId: number,
     dto: UpdateOrderStatusDto,
   ): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireOrderForWorkspace(orderId, workspace.id);
 
     await this.orderStatusTransition.changeOrderStatus({
@@ -673,9 +669,8 @@ export class OrdersService {
   }
 
   async confirmOrder(ownerId: number, orderId: number): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireOrderForWorkspace(orderId, workspace.id);
 
     const confirmedStatusId =
@@ -704,13 +699,9 @@ export class OrdersService {
     orderId: number,
     dto: UpdateOrderDeliveryDto,
   ): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
-    const order = await this.requireOrderForWorkspace(
-      orderId,
-      workspace.id,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const order = await this.requireOrderForWorkspace(orderId, workspace.id);
 
     let row = await this.findDeliveryForOrder(order);
     if (!row) {
@@ -756,9 +747,14 @@ export class OrdersService {
           providerStatusCode: row.providerStatusCode,
           providerStatusText: row.providerStatusText,
         });
-      } else if (dto.providerStatusCode !== undefined || dto.providerStatusText !== undefined) {
-        row.providerStatusCode = dto.providerStatusCode ?? row.providerStatusCode;
-        row.providerStatusText = dto.providerStatusText ?? row.providerStatusText;
+      } else if (
+        dto.providerStatusCode !== undefined ||
+        dto.providerStatusText !== undefined
+      ) {
+        row.providerStatusCode =
+          dto.providerStatusCode ?? row.providerStatusCode;
+        row.providerStatusText =
+          dto.providerStatusText ?? row.providerStatusText;
         await this.orderDeliveryRepo.save(row);
       }
     }
@@ -783,9 +779,8 @@ export class OrdersService {
     ownerId: number,
     orderId: number,
   ): Promise<DeliveryStatusUpdateResultDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const order = await this.requireOrderForWorkspace(orderId, workspace.id);
     const delivery = await this.findDeliveryForOrder(order);
     if (!delivery) {
@@ -807,9 +802,8 @@ export class OrdersService {
     orderId: number,
     dto: CreateNovaPoshtaWaybillRequestDto = {},
   ): Promise<CreateNovaPoshtaWaybillResponseDto & { order: Order }> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const waybill = await this.novaPoshtaWaybill.createForOrder(
       ownerId,
       orderId,
@@ -833,9 +827,8 @@ export class OrdersService {
     ownerId: number,
     orderId: number,
   ): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const removed = await this.novaPoshtaWaybill.removeWaybillForOrder(
       ownerId,
       orderId,
@@ -856,9 +849,8 @@ export class OrdersService {
     ownerId: number,
     orderId: number,
   ): Promise<OrderEventsListResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireOrderForWorkspace(orderId, workspace.id);
 
     const rows = await this.orderEventRepo.find({
@@ -880,9 +872,8 @@ export class OrdersService {
   }
 
   async getOrderById(ownerId: number, orderId: number): Promise<Order> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const order = await this.orderRepo.findOne({
       where: { id: orderId, workspaceId: workspace.id },
       relations: {
@@ -961,18 +952,16 @@ export class OrdersService {
     page: number;
     pageSize: number;
   }> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const pageSize = query.pageSize ?? 50;
     const page = query.page ?? 1;
     const skip = (page - 1) * pageSize;
     const workspaceId = workspace.id;
 
-    const qb = this.orderRepo.createQueryBuilder("o").where(
-      "o.workspaceId = :workspaceId",
-      { workspaceId },
-    );
+    const qb = this.orderRepo
+      .createQueryBuilder("o")
+      .where("o.workspaceId = :workspaceId", { workspaceId });
 
     qb.leftJoinAndSelect("o.status", "status")
       .leftJoinAndSelect("o.customer", "customer")
@@ -995,15 +984,24 @@ export class OrdersService {
 
     // status filters: prefer `statuses` array, fall back to single statusId for compatibility
     const statuses = (query as any).statuses ?? (query as any).statuses;
-    if (Array.isArray((query as any).statuses) && (query as any).statuses.length > 0) {
-      qb.andWhere("o.statusId IN (:...statuses)", { statuses: (query as any).statuses });
+    if (
+      Array.isArray((query as any).statuses) &&
+      (query as any).statuses.length > 0
+    ) {
+      qb.andWhere("o.statusId IN (:...statuses)", {
+        statuses: (query as any).statuses,
+      });
     } else if ((query as any).statusId != null) {
-      qb.andWhere("o.statusId = :statusId", { statusId: (query as any).statusId });
+      qb.andWhere("o.statusId = :statusId", {
+        statusId: (query as any).statusId,
+      });
     }
 
     // created at range
     if (query.createdFrom) {
-      qb.andWhere("o.createdAt >= :createdFrom", { createdFrom: query.createdFrom });
+      qb.andWhere("o.createdAt >= :createdFrom", {
+        createdFrom: query.createdFrom,
+      });
     }
     if (query.createdTo) {
       qb.andWhere("o.createdAt <= :createdTo", { createdTo: query.createdTo });
@@ -1011,16 +1009,22 @@ export class OrdersService {
 
     // total amount range
     if (query.totalPriceFrom != null) {
-      qb.andWhere("o.totalAmount >= :totalPriceFrom", { totalPriceFrom: query.totalPriceFrom });
+      qb.andWhere("o.totalAmount >= :totalPriceFrom", {
+        totalPriceFrom: query.totalPriceFrom,
+      });
     }
     if (query.totalPriceTo != null) {
-      qb.andWhere("o.totalAmount <= :totalPriceTo", { totalPriceTo: query.totalPriceTo });
+      qb.andWhere("o.totalAmount <= :totalPriceTo", {
+        totalPriceTo: query.totalPriceTo,
+      });
     }
 
     // sources filter (instagram, telegram, manual)
     if (Array.isArray(query.sources) && query.sources.length > 0) {
       // Normalize values to match stored enum strings
-      const srcs = query.sources.map((s) => String(s).trim()).filter((s) => s.length > 0);
+      const srcs = query.sources
+        .map((s) => String(s).trim())
+        .filter((s) => s.length > 0);
       if (srcs.length > 0) {
         qb.andWhere("o.source IN (:...sources)", { sources: srcs });
       }
@@ -1058,9 +1062,8 @@ export class OrdersService {
     ownerId: number,
     clientId: number,
   ): Promise<ClientOrderStatsResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
 
     const client = await this.clientRepo.findOne({
@@ -1092,9 +1095,8 @@ export class OrdersService {
     ownerId: number,
     clientId: number,
   ): Promise<ClientLastOrderResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
 
     const client = await this.clientRepo.findOne({
@@ -1206,7 +1208,11 @@ export class OrdersService {
         id: dto.variantId,
         productId: dto.productId,
       },
-      relations: { product: { media: true }, media: true, customFieldValues: true },
+      relations: {
+        product: { media: true },
+        media: true,
+        customFieldValues: true,
+      },
     });
     if (
       !variant ||
@@ -1233,14 +1239,14 @@ export class OrdersService {
     const variantMainImage = pickMainMediaUrl(variant.media ?? []);
     const imageUrl = variantMainImage || productMainImage || null;
 
-    const unitCost = (
-      await this.inventory.getStockMapForVariantIds(workspaceId, [variant.id])
-    ).get(variant.id)?.avgPurchasePrice ?? null;
+    const unitCost =
+      (
+        await this.inventory.getStockMapForVariantIds(workspaceId, [variant.id])
+      ).get(variant.id)?.avgPurchasePrice ?? null;
 
     const mode =
       await this.workspaceSettings.getInventoryModeForWorkspace(workspaceId);
-    const costUnit =
-      mode === InventoryMode.advanced ? unitCost : null;
+    const costUnit = mode === InventoryMode.advanced ? unitCost : null;
 
     const costSnapshots = this.inventory.buildOrderItemCostSnapshots(
       unitPrice,
@@ -1435,7 +1441,9 @@ export class OrdersService {
   ): Promise<void> {
     const orderRepo = manager?.getRepository(Order) ?? this.orderRepo;
     const itemRepo = manager?.getRepository(OrderItem) ?? this.orderItemRepo;
-    const order = await orderRepo.findOne({ where: { workspaceId, id: orderId } });
+    const order = await orderRepo.findOne({
+      where: { workspaceId, id: orderId },
+    });
     if (!order) return;
 
     const items = await itemRepo.find({
@@ -1444,7 +1452,9 @@ export class OrdersService {
     });
 
     const itemEntries = items.map((item) => {
-      const baseAmountCents = this.toCents(Number(item.unitPriceAmount) * item.quantity);
+      const baseAmountCents = this.toCents(
+        Number(item.unitPriceAmount) * item.quantity,
+      );
       const itemDiscountCents = this.calculateDiscountAmountCents(
         baseAmountCents,
         item.discountPercent,
@@ -1512,11 +1522,15 @@ export class OrdersService {
       entry.item.profitAmount =
         totalCostAmount == null
           ? null
-          : roundMoney(this.centsToMoney(finalItemTotalCents) - totalCostAmount);
+          : roundMoney(
+              this.centsToMoney(finalItemTotalCents) - totalCostAmount,
+            );
     }
 
     for (const entry of itemEntries) {
-      if (!eligibleEntries.some((eligible) => eligible.item.id === entry.item.id)) {
+      if (
+        !eligibleEntries.some((eligible) => eligible.item.id === entry.item.id)
+      ) {
         entry.item.totalPriceAmount = 0;
         entry.item.totalSaleAmount = 0;
         entry.item.totalCostAmount = null;
@@ -1529,7 +1543,8 @@ export class OrdersService {
     order.totalAmount = Math.max(
       0,
       this.centsToMoney(
-        subtotalAfterItemDiscountsCents - orderDiscountAmountCents +
+        subtotalAfterItemDiscountsCents -
+          orderDiscountAmountCents +
           this.toCents(Number(order.deliveryAmount ?? 0)),
       ),
     );
@@ -1566,10 +1581,14 @@ export class OrdersService {
       );
     }
     if (fixedValue != null && fixedValue < 0) {
-      throw new BadRequestException(`${context} discount amount cannot be negative`);
+      throw new BadRequestException(
+        `${context} discount amount cannot be negative`,
+      );
     }
     if (percentValue != null && (percentValue < 0 || percentValue > 100)) {
-      throw new BadRequestException(`${context} discount percent must be between 0 and 100`);
+      throw new BadRequestException(
+        `${context} discount percent must be between 0 and 100`,
+      );
     }
   }
 
@@ -1735,8 +1754,9 @@ export class OrdersService {
     for (const order of orders) {
       const info = order.deliveryInfo;
       if (!info) {
-        (order as unknown as { delivery?: OrderDeliverySummary | null }).delivery =
-          null;
+        (
+          order as unknown as { delivery?: OrderDeliverySummary | null }
+        ).delivery = null;
         continue;
       }
       (order as unknown as { delivery: OrderDeliverySummary }).delivery = {
@@ -1777,5 +1797,4 @@ export class OrdersService {
       updatedAt: row.updatedAt,
     };
   }
-
 }

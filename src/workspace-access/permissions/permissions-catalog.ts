@@ -139,8 +139,14 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       booleanPermission("products.custom_fields", "Custom fields management"),
       booleanPermission("products.category", "Category management"),
       booleanPermission("products.ai_import", "AI product import"),
-      booleanPermission("products.inventory.view", "View inventory stock and movements"),
-      booleanPermission("products.inventory.manage", "Manage inventory movements"),
+      booleanPermission(
+        "products.inventory.view",
+        "View inventory stock and movements",
+      ),
+      booleanPermission(
+        "products.inventory.manage",
+        "Manage inventory movements",
+      ),
     ],
   },
   {

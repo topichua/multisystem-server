@@ -5,9 +5,7 @@ import type { MigrationInterface, QueryRunner } from "typeorm";
  * new, confirmed, delivery, completed, canceled.
  * Legacy system packed/shipped/returned become custom (is_system = false).
  */
-export class OrderStatusSystemStatusesOnly1744200000135
-  implements MigrationInterface
-{
+export class OrderStatusSystemStatusesOnly1744200000135 implements MigrationInterface {
   name = "OrderStatusSystemStatusesOnly1744200000135";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

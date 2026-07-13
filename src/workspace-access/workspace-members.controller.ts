@@ -60,7 +60,9 @@ export class WorkspaceMembersController {
   }
 
   @Put(":memberId")
-  @ApiOperation({ summary: "Update workspace member role and assignment settings" })
+  @ApiOperation({
+    summary: "Update workspace member role and assignment settings",
+  })
   @ApiParam({ name: "memberId", type: Number })
   @ApiBody({ type: UpdateWorkspaceMemberRequestDto })
   @ApiOkResponse({ type: WorkspaceMemberResponseDto })
@@ -124,7 +126,8 @@ export class WorkspaceMembersController {
   @Delete(":memberId/deactivate")
   @ApiOperation({
     summary: "Deactivate workspace member",
-    description: "Sets member status to deactivated. Only active members can be deactivated.",
+    description:
+      "Sets member status to deactivated. Only active members can be deactivated.",
   })
   @ApiParam({ name: "memberId", type: Number })
   @ApiOkResponse({ type: WorkspaceMemberResponseDto })
@@ -146,7 +149,7 @@ export class WorkspaceMembersController {
     description:
       "Creates an invited user and inactive workspace member, sends a SendGrid invitation email, " +
       "and returns invitationId (workspace member id). " +
-      "skipConfirmation (non-production): creates user with password \"password\" and adds member immediately.",
+      'skipConfirmation (non-production): creates user with password "password" and adds member immediately.',
   })
   @ApiBody({ type: InviteWorkspaceMemberRequestDto })
   @ApiCreatedResponse({ type: InviteWorkspaceMemberResponseDto })

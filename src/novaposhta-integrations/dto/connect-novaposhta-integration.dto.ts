@@ -36,7 +36,9 @@ export class NovaPoshtaIntegrationResponseDto {
   @ApiProperty()
   updatedAt: string;
 
-  @ApiProperty({ description: "API key is stored; full value is never returned." })
+  @ApiProperty({
+    description: "API key is stored; full value is never returned.",
+  })
   apiKeyConfigured: true;
 
   @ApiPropertyOptional({ nullable: true })

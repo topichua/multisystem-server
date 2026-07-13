@@ -94,7 +94,9 @@ export class UpdateClientRequestDto {
       return [...new Set(this.instagramUserIds)];
     }
     const singular =
-      this.instagramUserId !== undefined ? this.instagramUserId : this.instagramId;
+      this.instagramUserId !== undefined
+        ? this.instagramUserId
+        : this.instagramId;
     if (singular === undefined) {
       return undefined;
     }

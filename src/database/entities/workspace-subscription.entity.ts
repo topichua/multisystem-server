@@ -61,7 +61,12 @@ export class WorkspaceSubscription {
   @Column({ name: "period_end", type: "timestamptz" })
   periodEnd: Date;
 
-  @Column({ name: "custom_label", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "custom_label",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   customLabel: string | null;
 
   @Column({ name: "canceled_at", type: "timestamptz", nullable: true })

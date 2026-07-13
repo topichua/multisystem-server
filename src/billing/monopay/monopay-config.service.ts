@@ -38,7 +38,9 @@ export class MonopayConfigService {
     }
 
     const oauthId = this.config.get<string>("MONOPAY_CLIENT_ID")?.trim();
-    const oauthSecret = this.config.get<string>("MONOPAY_CLIENT_SECRET")?.trim();
+    const oauthSecret = this.config
+      .get<string>("MONOPAY_CLIENT_SECRET")
+      ?.trim();
     if (oauthId || oauthSecret) {
       checks.push({
         name: "MONOPAY_CLIENT_ID/SECRET",
@@ -84,7 +86,8 @@ export class MonopayConfigService {
       checks.push({
         name: "MONOPAY_WEBHOOK_URL",
         status: "missing",
-        message: "Set MONOPAY_WEBHOOK_URL or PUBLIC_API_URL (must be public HTTPS)",
+        message:
+          "Set MONOPAY_WEBHOOK_URL or PUBLIC_API_URL (must be public HTTPS)",
       });
     }
 
@@ -104,7 +107,9 @@ export class MonopayConfigService {
       });
     }
 
-    const apiTest = token ? await this.testApiToken(apiBaseUrl, token) : undefined;
+    const apiTest = token
+      ? await this.testApiToken(apiBaseUrl, token)
+      : undefined;
     if (apiTest && !apiTest.ok) {
       const tokenCheck = checks.find(
         (c) => c.name === tokenEnvKey || c.name === "MONOPAY_MERCHANT_TOKEN",

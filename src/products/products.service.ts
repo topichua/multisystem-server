@@ -4,7 +4,13 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { In, IsNull, Repository, type EntityManager, type SelectQueryBuilder } from "typeorm";
+import {
+  In,
+  IsNull,
+  Repository,
+  type EntityManager,
+  type SelectQueryBuilder,
+} from "typeorm";
 import {
   ClientWishlistItem,
   Product,
@@ -262,9 +268,8 @@ export class ProductsService {
     ownerId: number,
     query: ListProductsQueryDto,
   ): Promise<ProductListResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const pageSize = query.pageSize ?? query.limit ?? 50;
     const page = query.page ?? 1;
     const offset =
@@ -322,14 +327,14 @@ export class ProductsService {
       },
     });
     const byId = new Map(loaded.map((p) => [p.id, p]));
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
-    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
-      productIds,
-    );
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspace.id);
+    const mainImageByProductId =
+      await this.loadFirstProductLevelMediaUrls(productIds);
 
-    const variantIds = loaded.flatMap((p) => (p.variants ?? []).map((v) => v.id));
+    const variantIds = loaded.flatMap((p) =>
+      (p.variants ?? []).map((v) => v.id),
+    );
     const stockMap = await this.inventory.getStockMapForVariantIds(
       workspace.id,
       variantIds,
@@ -372,9 +377,8 @@ export class ProductsService {
     ownerId: number,
     query: ListCatalogVariantsQueryDto,
   ): Promise<CatalogVariantListResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const pageSize = query.pageSize ?? 50;
     const page = query.page ?? 1;
     const offset = (page - 1) * pageSize;
@@ -408,12 +412,11 @@ export class ProductsService {
       .skip(offset)
       .take(pageSize);
     const rows = await dataQb.getMany();
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
-    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
-      [...new Set(rows.map((v) => v.productId))],
-    );
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspace.id);
+    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls([
+      ...new Set(rows.map((v) => v.productId)),
+    ]);
 
     const stockMap = await this.inventory.getStockMapForVariantIds(
       workspace.id,
@@ -434,9 +437,8 @@ export class ProductsService {
     ownerId: number,
     query: ListProductsQueryDto,
   ): Promise<ProductVariantListResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const pageSize = query.pageSize ?? query.limit ?? 50;
     const page = query.page ?? 1;
     const offset =
@@ -452,7 +454,12 @@ export class ProductsService {
     const countQb = this.variantRepo
       .createQueryBuilder("v")
       .innerJoin("v.product", "p");
-    this.applyVariantListFilters(countQb, workspace.id, categoryIdFilter, query);
+    this.applyVariantListFilters(
+      countQb,
+      workspace.id,
+      categoryIdFilter,
+      query,
+    );
     const total = await countQb.getCount();
 
     const dataQb = this.variantRepo
@@ -463,12 +470,11 @@ export class ProductsService {
     this.applyVariantListFilters(dataQb, workspace.id, categoryIdFilter, query);
     applyVariantListSort(dataQb, query.sort);
     const rows = await dataQb.skip(offset).take(limit).getMany();
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
-    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
-      [...new Set(rows.map((v) => v.productId))],
-    );
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspace.id);
+    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls([
+      ...new Set(rows.map((v) => v.productId)),
+    ]);
 
     const stockMap = await this.inventory.getStockMapForVariantIds(
       workspace.id,
@@ -491,9 +497,8 @@ export class ProductsService {
     ownerId: number,
     productId: number,
   ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
       where: { id: productId, workspaceId: workspace.id },
       relations: {
@@ -505,9 +510,8 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspace.id);
     const stockMap = await this.inventory.getStockMapForVariantIds(
       workspace.id,
       (product.variants ?? []).map((v) => v.id),
@@ -516,13 +520,17 @@ export class ProductsService {
       workspace.id,
       [product.id],
     );
-    return this.toDetail(product, fieldDefs, stockMap, wishlistCountByProductId);
+    return this.toDetail(
+      product,
+      fieldDefs,
+      stockMap,
+      wishlistCountByProductId,
+    );
   }
 
   async createForOwner(ownerId: number, dto: CreateProductDto): Promise<void> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const defaultCurrency =
       await this.workspaceSettings.getDefaultCurrencyForOwner(ownerId);
     const name = dto.name.trim();
@@ -640,21 +648,15 @@ export class ProductsService {
     productId: number,
     dto: UpdateProductDto,
   ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
       where: { id: productId, workspaceId: workspace.id },
     });
     if (!product) {
       throw new NotFoundException("Product not found");
     }
-    await this.applyProductFieldUpdates(
-      workspace.id,
-      product,
-      ownerId,
-      dto,
-    );
+    await this.applyProductFieldUpdates(workspace.id, product, ownerId, dto);
     await this.applySingleProductQuantityFromDto(
       ownerId,
       workspace,
@@ -673,9 +675,8 @@ export class ProductsService {
     productId: number,
     dto: UpdateProductDto,
   ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
       where: { id: productId, workspaceId: workspace.id },
     });
@@ -726,13 +727,9 @@ export class ProductsService {
     return this.findOneForOwner(ownerId, productId);
   }
 
-  async removeForOwner(
-    ownerId: number,
-    productId: number,
-  ): Promise<void> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+  async removeForOwner(ownerId: number, productId: number): Promise<void> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
       where: { id: productId, workspaceId: workspace.id },
     });
@@ -759,9 +756,8 @@ export class ProductsService {
     productId: number,
     dto: CreateProductVariantDto,
   ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.requireProduct(workspace.id, productId);
     await this.assertCanAddVariantToProduct(product);
     const resolved =
@@ -814,9 +810,8 @@ export class ProductsService {
     variantId: number,
     dto: UpdateProductVariantDto,
   ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const variant = await this.variantRepo.findOne({
       where: { id: variantId, productId },
@@ -884,9 +879,8 @@ export class ProductsService {
     productId: number,
     variantId: number,
   ): Promise<void> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const variant = await this.variantRepo.findOne({
       where: { id: variantId, productId },
@@ -911,9 +905,8 @@ export class ProductsService {
     productId: number,
     dto: CreateProductMediaDto,
   ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.productMedia.addMedia(workspace.id, ownerId, {
       productId,
       variantId: dto.variantId,
@@ -931,9 +924,8 @@ export class ProductsService {
     mediaId: number,
     dto: UpdateProductMediaDto,
   ): Promise<ProductDetailDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const media = await this.mediaRepo.findOne({
       where: { id: mediaId, productId },
@@ -966,9 +958,8 @@ export class ProductsService {
     productId: number,
     mediaId: number,
   ): Promise<void> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const media = await this.mediaRepo.findOne({
       where: { id: mediaId, productId },
@@ -1044,10 +1035,9 @@ export class ProductsService {
       .createQueryBuilder()
       .delete()
       .from(ProductMedia)
-      .where(
-        '"product_id" = :productId AND "variant_id" IS NULL',
-        { productId },
-      )
+      .where('"product_id" = :productId AND "variant_id" IS NULL', {
+        productId,
+      })
       .execute();
     await this.insertProductMediaFromStaged(
       em,
@@ -1236,9 +1226,8 @@ export class ProductsService {
       ownerId,
     );
 
-    const stagedMediaIds = this.collectStagedMediaIdsFromVariantSync(
-      variantInputs,
-    );
+    const stagedMediaIds =
+      this.collectStagedMediaIdsFromVariantSync(variantInputs);
     const stagedById = stagedMediaIds.length
       ? await this.uploadMedia.requireForWorkspace(workspaceId, stagedMediaIds)
       : new Map<number, { cdnUrl: string }>();
@@ -1371,9 +1360,7 @@ export class ProductsService {
     productId: number,
     em?: EntityManager,
   ): Promise<Set<number>> {
-    const repo = em
-      ? em.getRepository(OrderItem)
-      : this.orderItemRepo;
+    const repo = em ? em.getRepository(OrderItem) : this.orderItemRepo;
     const rows = await repo.find({
       where: { productId },
       select: ["variantId"],
@@ -1715,9 +1702,8 @@ export class ProductsService {
       return [];
     }
 
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const productIds = [...new Set(references.map((r) => r.productId))];
     const loaded = await this.productRepo.find({
       where: { id: In(productIds), workspaceId: workspace.id },
@@ -1745,12 +1731,10 @@ export class ProductsService {
       refsByProductId.set(ref.productId, list);
     }
 
-    const fieldDefs = await this.variantCustomFields.listDefinitionsForWorkspace(
-      workspace.id,
-    );
-    const mainImageByProductId = await this.loadFirstProductLevelMediaUrls(
-      productIds,
-    );
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspace.id);
+    const mainImageByProductId =
+      await this.loadFirstProductLevelMediaUrls(productIds);
     const allVariantIds = loaded.flatMap((p) =>
       (p.variants ?? []).map((v) => v.id),
     );
@@ -1954,7 +1938,9 @@ export class ProductsService {
     );
   }
 
-  private inventoryModeOf(workspace: { inventoryMode?: InventoryMode }): InventoryMode {
+  private inventoryModeOf(workspace: {
+    inventoryMode?: InventoryMode;
+  }): InventoryMode {
     return workspace.inventoryMode ?? InventoryMode.simple;
   }
 

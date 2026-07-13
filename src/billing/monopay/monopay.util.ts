@@ -43,14 +43,12 @@ export function classifyMonopayHttpError(
     if (lower.includes("merchant") || lower.includes("not found")) {
       return {
         kind: "merchant_not_found",
-        hint:
-          "Merchant not found for this token. Confirm acquiring is enabled in Mono Business and the X-Token is from the merchant portal.",
+        hint: "Merchant not found for this token. Confirm acquiring is enabled in Mono Business and the X-Token is from the merchant portal.",
       };
     }
     return {
       kind: "invalid_merchant_token",
-      hint:
-        "Unauthorized (401/403). Use Merchant acquiring X-Token, not Personal API token from api.monobank.ua.",
+      hint: "Unauthorized (401/403). Use Merchant acquiring X-Token, not Personal API token from api.monobank.ua.",
     };
   }
 

@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { INTEGRATION_TYPES, type IntegrationType } from "../../integration-type";
+import {
+  INTEGRATION_TYPES,
+  type IntegrationType,
+} from "../../integration-type";
 
 export class IntegrationListItemDto {
   @ApiProperty({ enum: INTEGRATION_TYPES })

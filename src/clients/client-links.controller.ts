@@ -41,7 +41,8 @@ export class ClientLinksController {
   @ApiBody({ type: AddClientLinkRequestDto })
   @ApiCreatedResponse({
     type: ClientWriteResponseDto,
-    description: "Updated client with full `instagramUserIds` / `telegramUserIds` arrays.",
+    description:
+      "Updated client with full `instagramUserIds` / `telegramUserIds` arrays.",
   })
   async addLink(
     @Req() req: { user?: AuthUser },
@@ -75,7 +76,8 @@ export class ClientLinksController {
   @ApiBody({ type: AddClientLinkRequestDto })
   @ApiOkResponse({
     type: ClientWriteResponseDto,
-    description: "Updated client with full `instagramUserIds` / `telegramUserIds` arrays.",
+    description:
+      "Updated client with full `instagramUserIds` / `telegramUserIds` arrays.",
   })
   async removeLink(
     @Req() req: { user?: AuthUser },

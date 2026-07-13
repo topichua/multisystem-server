@@ -24,7 +24,9 @@ export class EntitlementsService {
     private readonly lifecycle: SubscriptionLifecycleService,
   ) {}
 
-  async getForWorkspace(workspaceId: number): Promise<WorkspaceEntitlementsResponseDto> {
+  async getForWorkspace(
+    workspaceId: number,
+  ): Promise<WorkspaceEntitlementsResponseDto> {
     await this.lifecycle.syncExpiredSubscription(workspaceId);
     const row = await this.requireEntitlements(workspaceId);
     const usage = await this.loadUsage(workspaceId);
@@ -38,7 +40,9 @@ export class EntitlementsService {
     };
   }
 
-  async requireEntitlements(workspaceId: number): Promise<WorkspaceEntitlements> {
+  async requireEntitlements(
+    workspaceId: number,
+  ): Promise<WorkspaceEntitlements> {
     const row = await this.entitlementsRepo.findOne({
       where: { workspaceId },
     });

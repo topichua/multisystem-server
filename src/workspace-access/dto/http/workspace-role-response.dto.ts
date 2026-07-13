@@ -30,12 +30,14 @@ export class WorkspaceRoleResponseDto {
 
   @ApiProperty({
     example: {},
-    description: "Deprecated — use integration grants for per-integration permissions.",
+    description:
+      "Deprecated — use integration grants for per-integration permissions.",
   })
   permissionOptionLists: Record<string, string[]>;
 
   @ApiPropertyOptional({
-    description: "Maximum percentage discount members with this role are allowed to apply to an order.",
+    description:
+      "Maximum percentage discount members with this role are allowed to apply to an order.",
   })
   maxOrderDiscountPercentage?: number;
 

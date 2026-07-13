@@ -15,7 +15,11 @@ export class ConversationEventResponseDto {
   @ApiPropertyOptional({ nullable: true })
   actorId: number | null;
 
-  @ApiPropertyOptional({ nullable: true, type: "object", additionalProperties: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    type: "object",
+    additionalProperties: true,
+  })
   payload: Record<string, unknown> | null;
 
   @ApiProperty()

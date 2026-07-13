@@ -15,9 +15,7 @@ type SalesChannelRow = {
 };
 
 @Injectable()
-export class SalesChannelsCalculator
-  implements AnalyticsMetricCalculator<AnalyticsSalesChannelsResult>
-{
+export class SalesChannelsCalculator implements AnalyticsMetricCalculator<AnalyticsSalesChannelsResult> {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,

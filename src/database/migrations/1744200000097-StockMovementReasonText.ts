@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class StockMovementReasonText1744200000097
-  implements MigrationInterface
-{
+export class StockMovementReasonText1744200000097 implements MigrationInterface {
   name = "StockMovementReasonText1744200000097";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -11,9 +9,7 @@ export class StockMovementReasonText1744200000097
       ALTER COLUMN "reason" TYPE varchar(255)
       USING "reason"::text
     `);
-    await queryRunner.query(
-      `DROP TYPE IF EXISTS "stock_movement_reason_enum"`,
-    );
+    await queryRunner.query(`DROP TYPE IF EXISTS "stock_movement_reason_enum"`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

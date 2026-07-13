@@ -7,7 +7,9 @@ export class ConnectMonobankIntegrationDto {
   @MinLength(8)
   merchantToken!: string;
 
-  @ApiPropertyOptional({ description: "Display name shown in workspace settings" })
+  @ApiPropertyOptional({
+    description: "Display name shown in workspace settings",
+  })
   @IsOptional()
   @IsString()
   displayName?: string;

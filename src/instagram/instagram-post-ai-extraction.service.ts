@@ -57,7 +57,8 @@ export class InstagramPostAiExtractionService {
     );
 
     const media = extractInstagramPostMedia(detail, postId);
-    const fallback = () => emptyInstagramPostAiExtractionFallback(postId, media);
+    const fallback = () =>
+      emptyInstagramPostAiExtractionFallback(postId, media);
 
     const categoryTree = await this.categories.findTreeForOwner(ownerId);
     const allowedCategoryIds = collectCategoryIds(categoryTree);
@@ -65,9 +66,7 @@ export class InstagramPostAiExtractionService {
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const customFields =
-      await this.variantCustomFields.listDefinitionsForWorkspace(
-        workspace.id,
-      );
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspace.id);
 
     const apiKey = this.config.get<string>("OPENAI_API_KEY")?.trim();
     if (!apiKey) {

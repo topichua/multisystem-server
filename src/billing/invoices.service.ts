@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { InvoiceStatus } from "../database/entities/invoice-status.enum";
@@ -62,7 +66,10 @@ export class InvoicesService {
     if (row.status === InvoiceStatus.paid) {
       return this.toDetail(row);
     }
-    if (row.status !== InvoiceStatus.open && row.status !== InvoiceStatus.draft) {
+    if (
+      row.status !== InvoiceStatus.open &&
+      row.status !== InvoiceStatus.draft
+    ) {
       throw new BadRequestException(
         `Invoice cannot be marked paid from status "${row.status}"`,
       );
@@ -72,7 +79,8 @@ export class InvoicesService {
     await this.invoicePayment.completePayment({
       invoiceId,
       paidAt,
-      externalPaymentId: row.externalPaymentId ?? `emulated-${invoiceId}-${paidAt.getTime()}`,
+      externalPaymentId:
+        row.externalPaymentId ?? `emulated-${invoiceId}-${paidAt.getTime()}`,
       provider: row.paymentProvider,
       providerModifiedAt: paidAt,
       paymentPageUrl: null,

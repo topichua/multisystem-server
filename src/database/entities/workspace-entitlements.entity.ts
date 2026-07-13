@@ -26,10 +26,18 @@ export class WorkspaceEntitlements {
   @Column({ name: "wishlist_enabled", type: "boolean", default: false })
   wishlistEnabled: boolean;
 
-  @Column({ name: "advanced_inventory_enabled", type: "boolean", default: false })
+  @Column({
+    name: "advanced_inventory_enabled",
+    type: "boolean",
+    default: false,
+  })
   advancedInventoryEnabled: boolean;
 
-  @Column({ name: "advanced_analytics_enabled", type: "boolean", default: false })
+  @Column({
+    name: "advanced_analytics_enabled",
+    type: "boolean",
+    default: false,
+  })
   advancedAnalyticsEnabled: boolean;
 
   @Column({ name: "ai_credits_monthly", type: "int", default: 0 })

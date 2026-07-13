@@ -33,7 +33,8 @@ export type InstagramPostAiExtractionMatchedFieldValueDto =
 
 export class InstagramPostAiExtractionMatchedFieldDto {
   @ApiProperty({
-    description: "Source attribute name from extraction (same order as attributes).",
+    description:
+      "Source attribute name from extraction (same order as attributes).",
     example: "Колір",
   })
   attributeName: string;

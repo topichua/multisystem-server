@@ -40,7 +40,9 @@ export class ManualPaymentMethodsController {
   constructor(private readonly methods: ManualPaymentMethodsService) {}
 
   @Get()
-  @ApiOperation({ summary: "List manual payment methods (IBAN / card) for workspace" })
+  @ApiOperation({
+    summary: "List manual payment methods (IBAN / card) for workspace",
+  })
   @ApiOkResponse({ type: ManualPaymentMethodsListResponseDto })
   list(
     @Req() req: { user?: AuthUser },
@@ -56,7 +58,11 @@ export class ManualPaymentMethodsController {
     @Req() req: { user?: AuthUser },
     @Body() dto: CreateManualPaymentMethodDto,
   ): Promise<ManualPaymentMethodResponseDto> {
-    return this.methods.createForUser(this.requireUserId(req), dto, req.user?.role);
+    return this.methods.createForUser(
+      this.requireUserId(req),
+      dto,
+      req.user?.role,
+    );
   }
 
   @Patch(":id")
@@ -85,7 +91,11 @@ export class ManualPaymentMethodsController {
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
   ): Promise<void> {
-    await this.methods.deleteForUser(this.requireUserId(req), id, req.user?.role);
+    await this.methods.deleteForUser(
+      this.requireUserId(req),
+      id,
+      req.user?.role,
+    );
   }
 
   private requireUserId(req: { user?: AuthUser }): number {

@@ -223,7 +223,11 @@ export class TelegramIntegrationsService {
       });
     }
 
-    await this.applyActiveTelegramProfile(row, result.profile, result.sessionString);
+    await this.applyActiveTelegramProfile(
+      row,
+      result.profile,
+      result.sessionString,
+    );
     await this.telegramRepo.save(row);
     await this.updatesListener.attachIntegration(row);
     return this.toDto(row);
@@ -281,9 +285,7 @@ export class TelegramIntegrationsService {
       row.status !== TelegramIntegrationStatus.PENDING_CODE &&
       row.status !== TelegramIntegrationStatus.PENDING_PASSWORD
     ) {
-      throw new BadRequestException(
-        "Integration is not awaiting a login code",
-      );
+      throw new BadRequestException("Integration is not awaiting a login code");
     }
 
     const result = await this.telegramApi.confirmLoginCode(row, dto.code);
@@ -298,7 +300,11 @@ export class TelegramIntegrationsService {
       });
     }
 
-    await this.applyActiveTelegramProfile(row, result.profile, result.sessionString);
+    await this.applyActiveTelegramProfile(
+      row,
+      result.profile,
+      result.sessionString,
+    );
     await this.telegramRepo.save(row);
     await this.updatesListener.attachIntegration(row);
     return this.toDto(row);
@@ -322,10 +328,8 @@ export class TelegramIntegrationsService {
       );
     }
 
-    const { profile, sessionString } = await this.telegramApi.confirmLoginPassword(
-      authSession,
-      dto.password,
-    );
+    const { profile, sessionString } =
+      await this.telegramApi.confirmLoginPassword(authSession, dto.password);
 
     await this.applyActiveTelegramProfile(row, profile, sessionString);
     await this.telegramRepo.save(row);
@@ -393,9 +397,7 @@ export class TelegramIntegrationsService {
   }
 
   /** For unified GET /integrations list. */
-  mapToIntegrationListItem(
-    row: TelegramIntegration,
-  ): {
+  mapToIntegrationListItem(row: TelegramIntegration): {
     type: "telegram";
     id: number;
     name: string;
@@ -415,7 +417,9 @@ export class TelegramIntegrationsService {
     };
   }
 
-  async findAllByWorkspace(workspaceId: number): Promise<TelegramIntegration[]> {
+  async findAllByWorkspace(
+    workspaceId: number,
+  ): Promise<TelegramIntegration[]> {
     return this.telegramRepo.find({
       where: { workspaceId },
       order: { id: "ASC" },

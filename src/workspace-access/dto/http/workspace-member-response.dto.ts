@@ -79,8 +79,7 @@ export class InviteWorkspaceMemberResponseDto {
   invitationId?: number;
 
   @ApiPropertyOptional({
-    description:
-      "Non-production only: raw invitation token for local testing.",
+    description: "Non-production only: raw invitation token for local testing.",
   })
   invitationToken?: string;
 }

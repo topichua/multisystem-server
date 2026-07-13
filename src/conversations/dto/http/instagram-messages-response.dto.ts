@@ -1,4 +1,8 @@
-import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  ApiHideProperty,
+  ApiProperty,
+  ApiPropertyOptional,
+} from "@nestjs/swagger";
 import { ConversationMessageAttachmentsDto } from "./conversation-message-attachment.dto";
 import { ConversationMessageReactionDto } from "./conversation-message-reaction.dto";
 import { ConversationMessageType } from "../../../database/entities/conversation-message-type.enum";
@@ -142,7 +146,8 @@ export class InstagramMessageReactionItemDto {
   reaction?: string;
 
   @ApiPropertyOptional({
-    description: "Emoji character from Instagram reaction webhook when available",
+    description:
+      "Emoji character from Instagram reaction webhook when available",
   })
   emoji?: string;
 

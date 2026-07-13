@@ -109,7 +109,8 @@ export class UserMeDto {
 
 export class WorkspaceSubscriptionMeDto {
   @ApiProperty({
-    description: "When the current billing period ends (ISO). Renew before this date.",
+    description:
+      "When the current billing period ends (ISO). Renew before this date.",
     example: "2026-08-01T00:00:00.000Z",
   })
   periodEnd: string;
@@ -127,7 +128,8 @@ export class WorkspaceSubscriptionMeDto {
   billingCycle: BillingCycle;
 
   @ApiProperty({
-    description: "True when periodEnd has passed and the plan is no longer active.",
+    description:
+      "True when periodEnd has passed and the plan is no longer active.",
   })
   isExpired: boolean;
 

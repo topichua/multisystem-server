@@ -1,11 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import {
-  ArrayMinSize,
-  IsArray,
-  IsInt,
-  Min,
-} from "class-validator";
+import { ArrayMinSize, IsArray, IsInt, Min } from "class-validator";
 
 export class SetOrderStatusesOrderDto {
   @ApiProperty({

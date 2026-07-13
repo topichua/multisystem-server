@@ -147,5 +147,4 @@ export class Product {
 
   @OneToMany(() => ProductMedia, (m) => m.product)
   media: ProductMedia[];
-
 }

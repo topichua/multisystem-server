@@ -1,8 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import {
-  StockMovementItemDto,
-  VariantStockDto,
-} from "./stock-response.dto";
+import { StockMovementItemDto, VariantStockDto } from "./stock-response.dto";
 
 export class StockSupplyItemResponseDto {
   @ApiProperty()

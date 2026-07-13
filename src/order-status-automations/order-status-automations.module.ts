@@ -20,7 +20,7 @@ import { OrderStatusAutomationsService } from "./order-status-automations.servic
 
 @Module({
   imports: [
-    WorkspaceAccessModule,
+    forwardRef(() => WorkspaceAccessModule),
     InventoryModule,
     forwardRef(() => OrdersModule),
     forwardRef(() => DeliveryModule),
@@ -44,6 +44,7 @@ import { OrderStatusAutomationsService } from "./order-status-automations.servic
     OrderStatusAutomationTriggerService,
     OrderStatusAutomationDefaultsService,
     OrderStatusAutomationsService,
+    OrderStatusAutomationExecutorService,
   ],
 })
 export class OrderStatusAutomationsModule {}

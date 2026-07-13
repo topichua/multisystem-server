@@ -168,7 +168,10 @@ export class Order {
   @Column({ name: "manual_payment_method_id", type: "int", nullable: true })
   manualPaymentMethodId: number | null;
 
-  @ManyToOne(() => ManualPaymentMethod, { onDelete: "SET NULL", nullable: true })
+  @ManyToOne(() => ManualPaymentMethod, {
+    onDelete: "SET NULL",
+    nullable: true,
+  })
   @JoinColumn({ name: "manual_payment_method_id" })
   manualPaymentMethod: ManualPaymentMethod | null;
 

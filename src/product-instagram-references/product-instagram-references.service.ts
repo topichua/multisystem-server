@@ -72,8 +72,11 @@ export class ProductInstagramReferencesService {
     postId: string,
     integrationId: number,
   ): Promise<InstagramPostProductVariantsResponseDto> {
-    const { postId: trimmedPostId, businessAccountId, references } =
-      await this.resolveReferencesForPost(ownerId, postId, integrationId);
+    const {
+      postId: trimmedPostId,
+      businessAccountId,
+      references,
+    } = await this.resolveReferencesForPost(ownerId, postId, integrationId);
     const items = await this.products.listListItemsForInstagramReferences(
       ownerId,
       references,
@@ -93,9 +96,8 @@ export class ProductInstagramReferencesService {
   ): Promise<void> {
     const { postId: trimmedPostId, businessAccountId } =
       await this.resolvePostScope(ownerId, postId, integrationId);
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const ref = await this.referenceRepo.findOne({
       where: {
         id: referenceId,
@@ -105,7 +107,9 @@ export class ProductInstagramReferencesService {
       },
     });
     if (!ref) {
-      throw new NotFoundException("Instagram reference not found for this post");
+      throw new NotFoundException(
+        "Instagram reference not found for this post",
+      );
     }
     await this.referenceRepo.remove(ref);
   }
@@ -114,10 +118,13 @@ export class ProductInstagramReferencesService {
     ownerId: number,
     postId: string,
     integrationId: number,
-  ): Promise<{ postId: string; businessAccountId: string; workspaceId: number }> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+  ): Promise<{
+    postId: string;
+    businessAccountId: string;
+    workspaceId: number;
+  }> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const integration =
       await this.workspaceContext.requireInstagramIntegrationByIdForOwner(
         ownerId,
@@ -149,8 +156,11 @@ export class ProductInstagramReferencesService {
       productVariantId: number | null;
     }>;
   }> {
-    const { postId: trimmedPostId, businessAccountId, workspaceId } =
-      await this.resolvePostScope(ownerId, postId, integrationId);
+    const {
+      postId: trimmedPostId,
+      businessAccountId,
+      workspaceId,
+    } = await this.resolvePostScope(ownerId, postId, integrationId);
     const rows = await this.referenceRepo.find({
       where: {
         workspaceId,
@@ -195,9 +205,8 @@ export class ProductInstagramReferencesService {
     ownerId: number,
     productId: number,
   ): Promise<ProductInstagramReferenceListResponseDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const rows = await this.referenceRepo.find({
       where: { workspaceId: workspace.id, productId },
@@ -211,9 +220,8 @@ export class ProductInstagramReferencesService {
     productId: number,
     dto: CreateProductInstagramReferenceDto,
   ): Promise<ProductInstagramReferenceDto> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const businessAccountId = dto.businessAccountId.trim();
     const productVariantId = await this.resolveVariantId(
@@ -238,9 +246,8 @@ export class ProductInstagramReferencesService {
     productId: number,
     referenceId: number,
   ): Promise<void> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const ref = await this.referenceRepo.findOne({
       where: {
@@ -279,9 +286,7 @@ export class ProductInstagramReferencesService {
       where: { id: productVariantId, productId },
     });
     if (!variant) {
-      throw new NotFoundException(
-        "Product variant not found on this product",
-      );
+      throw new NotFoundException("Product variant not found on this product");
     }
     return variant.id;
   }

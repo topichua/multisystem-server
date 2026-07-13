@@ -85,7 +85,11 @@ export class TelegramUsersService {
     const byIntegration = new Map<number, Set<string>>();
     for (const conv of conversations) {
       const participantId = conv.participantId?.trim();
-      if (!participantId || participantId === "unknown" || !/^\d+$/.test(participantId)) {
+      if (
+        !participantId ||
+        participantId === "unknown" ||
+        !/^\d+$/.test(participantId)
+      ) {
         continue;
       }
       const integrationId = Number(conv.externalSourceId?.trim());
@@ -107,7 +111,8 @@ export class TelegramUsersService {
       if (!integration) {
         continue;
       }
-      const connectedClient = this.updatesListener.getActiveClient(integrationId);
+      const connectedClient =
+        this.updatesListener.getActiveClient(integrationId);
       for (const participantId of participantIds) {
         try {
           await this.syncParticipantForIntegration(
@@ -211,7 +216,9 @@ export class TelegramUsersService {
     const firstName = entity.firstName?.trim() || "";
     const lastName = entity.lastName?.trim() || null;
     const username = entity.username?.trim() || null;
-    const profilePhone = TelegramUsersService.normalizePhoneOptional(entity.phone);
+    const profilePhone = TelegramUsersService.normalizePhoneOptional(
+      entity.phone,
+    );
     let profilePic = existing?.profilePic?.trim() || "";
 
     if (entity.photo) {

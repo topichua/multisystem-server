@@ -384,9 +384,7 @@ export class ClientsService {
       where: { id: dto.variantId, productId: product.id },
     });
     if (!variant) {
-      throw new BadRequestException(
-        "variantId does not belong to productId",
-      );
+      throw new BadRequestException("variantId does not belong to productId");
     }
 
     const at = dto.at ? new Date(dto.at) : new Date();
@@ -559,7 +557,9 @@ export class ClientsService {
     provider: ClientLinkProvider,
     externalIds: string[],
   ): Promise<void> {
-    const uniqueIds = [...new Set(externalIds.map((id) => id.trim()).filter(Boolean))];
+    const uniqueIds = [
+      ...new Set(externalIds.map((id) => id.trim()).filter(Boolean)),
+    ];
     for (const externalId of uniqueIds) {
       await this.assertExternalUserExists(provider, externalId, workspaceId);
       await this.assertExternalIdAvailable(
@@ -877,7 +877,9 @@ export class ClientsService {
       ...(options?.includeAvatarSrc === true
         ? { avatar_src: options.avatarSrc ?? null }
         : {}),
-      ...(options?.orderStats != null ? { orderStats: options.orderStats } : {}),
+      ...(options?.orderStats != null
+        ? { orderStats: options.orderStats }
+        : {}),
     };
   }
 

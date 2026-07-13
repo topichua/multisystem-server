@@ -14,11 +14,18 @@ import { WorkspaceVariantCustomField } from "./workspace-variant-custom-field.en
 import { WorkspaceVariantCustomFieldOption } from "./workspace-variant-custom-field-option.entity";
 
 @Entity({ name: "product_variant_custom_field_value" })
-@Index("UQ_product_variant_custom_field_value_variant_field", ["variantId", "fieldId"], {
-  unique: true,
-})
+@Index(
+  "UQ_product_variant_custom_field_value_variant_field",
+  ["variantId", "fieldId"],
+  {
+    unique: true,
+  },
+)
 @Index("IDX_product_variant_custom_field_value_variant_id", ["variantId"])
-@Index("IDX_product_variant_custom_field_value_field_value", ["fieldId", "value"])
+@Index("IDX_product_variant_custom_field_value_field_value", [
+  "fieldId",
+  "value",
+])
 export class ProductVariantCustomFieldValue {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;

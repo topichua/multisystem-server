@@ -25,7 +25,9 @@ export class UploadMedia1744200000044 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_upload_media_workspace_id"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_upload_media_workspace_id"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "upload_media"`);
   }
 }

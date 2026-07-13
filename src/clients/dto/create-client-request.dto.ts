@@ -95,7 +95,9 @@ export class CreateClientRequestDto {
 
   resolvedInstagramUserIds(): string[] | undefined {
     const singular =
-      this.instagramUserId !== undefined ? this.instagramUserId : this.instagramId;
+      this.instagramUserId !== undefined
+        ? this.instagramUserId
+        : this.instagramId;
     const merged = appendSingularToArray(this.instagramUserIds, singular);
     if (merged === undefined) {
       return undefined;
@@ -104,7 +106,10 @@ export class CreateClientRequestDto {
   }
 
   resolvedTelegramUserIds(): string[] | undefined {
-    const merged = appendSingularToArray(this.telegramUserIds, this.telegramUserId);
+    const merged = appendSingularToArray(
+      this.telegramUserIds,
+      this.telegramUserId,
+    );
     if (merged === undefined) {
       return undefined;
     }

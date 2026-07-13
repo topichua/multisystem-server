@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class WorkspaceDropInventoryMode1744200000095
-  implements MigrationInterface
-{
+export class WorkspaceDropInventoryMode1744200000095 implements MigrationInterface {
   name = "WorkspaceDropInventoryMode1744200000095";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

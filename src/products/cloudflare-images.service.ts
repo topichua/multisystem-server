@@ -30,7 +30,9 @@ export class CloudflareImagesService {
   private readonly accountId = process.env.CF_ACCOUNT_ID?.trim();
   private readonly apiToken = process.env.CF_API_KEY?.trim();
 
-  async uploadImage(file: UploadedImageFile): Promise<CloudflareImageUploadResult> {
+  async uploadImage(
+    file: UploadedImageFile,
+  ): Promise<CloudflareImageUploadResult> {
     if (!this.accountId || !this.apiToken) {
       throw new ServiceUnavailableException(
         "Cloudflare image upload is not configured (CF_ACCOUNT_ID / CF_API_KEY).",

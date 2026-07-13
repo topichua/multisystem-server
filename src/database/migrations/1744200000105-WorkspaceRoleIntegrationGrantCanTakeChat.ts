@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class WorkspaceRoleIntegrationGrantCanTakeChat1744200000105
-  implements MigrationInterface
-{
+export class WorkspaceRoleIntegrationGrantCanTakeChat1744200000105 implements MigrationInterface {
   name = "WorkspaceRoleIntegrationGrantCanTakeChat1744200000105";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

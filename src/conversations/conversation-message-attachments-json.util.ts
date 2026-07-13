@@ -14,13 +14,20 @@ export type StoredMessageAttachment = {
   name: string;
 };
 
-function normalizeStoredAttachment(item: unknown): StoredMessageAttachment | null {
+function normalizeStoredAttachment(
+  item: unknown,
+): StoredMessageAttachment | null {
   if (!item || typeof item !== "object") {
     return null;
   }
   const raw = item as Record<string, unknown>;
   const type = raw.type;
-  if (type !== "image" && type !== "video" && type !== "audio" && type !== "file") {
+  if (
+    type !== "image" &&
+    type !== "video" &&
+    type !== "audio" &&
+    type !== "file"
+  ) {
     return null;
   }
   const key = typeof raw.key === "string" ? raw.key.trim() : "";
@@ -118,7 +125,11 @@ export function mapAttachmentsJsonForApi(
 
 /** Best-effort legacy `instagram_json.attachments.data` → unified attachments shape. */
 export function mapInstagramStoredAttachmentsForApi(
-  row: { attachmentJson: string | null; createdAt: Date; systemUpdatedAt: Date | null },
+  row: {
+    attachmentJson: string | null;
+    createdAt: Date;
+    systemUpdatedAt: Date | null;
+  },
   stored: { data?: Array<Record<string, unknown>> } | undefined,
 ): ConversationMessageAttachmentsDto | undefined {
   const fromColumn = mapAttachmentsJsonForApi(row.attachmentJson);
@@ -136,8 +147,7 @@ export function mapInstagramStoredAttachmentsForApi(
   const out: ConversationMessageAttachmentDto[] = [];
 
   for (const item of data) {
-    const r2Key =
-      typeof item.r2_key === "string" ? item.r2_key.trim() : "";
+    const r2Key = typeof item.r2_key === "string" ? item.r2_key.trim() : "";
     const url =
       (typeof item.r2_url === "string" ? item.r2_url.trim() : "") ||
       (typeof item.file_url === "string" ? item.file_url.trim() : "") ||
@@ -150,9 +160,7 @@ export function mapInstagramStoredAttachmentsForApi(
       typeof item.mime_type === "string" ? item.mime_type.toLowerCase() : "";
     const type = resolveAttachmentTypeFromLegacyItem(item, mime);
     const key =
-      r2Key ||
-      (typeof item.key === "string" ? item.key.trim() : "") ||
-      url;
+      r2Key || (typeof item.key === "string" ? item.key.trim() : "") || url;
     if (!key || !url) {
       continue;
     }
@@ -162,11 +170,7 @@ export function mapInstagramStoredAttachmentsForApi(
       url,
       at: fallbackAt,
       name,
-      ...(r2Key
-        ? { r2_key: r2Key }
-        : type !== "image"
-          ? { r2_key: key }
-          : {}),
+      ...(r2Key ? { r2_key: r2Key } : type !== "image" ? { r2_key: key } : {}),
     });
   }
 

@@ -26,7 +26,9 @@ export class AnalyticsDateRangeService {
         );
       }
       if (customFrom.getTime() > customTo.getTime()) {
-        throw new BadRequestException("dateFrom must be before or equal to dateTo");
+        throw new BadRequestException(
+          "dateFrom must be before or equal to dateTo",
+        );
       }
 
       const current = { from: customFrom, to: customTo };
@@ -45,7 +47,10 @@ export class AnalyticsDateRangeService {
     };
   }
 
-  private buildPeriodRange(period: AnalyticsPeriod, now: Date): AnalyticsDateRange {
+  private buildPeriodRange(
+    period: AnalyticsPeriod,
+    now: Date,
+  ): AnalyticsDateRange {
     const end = this.endOfDay(now);
 
     switch (period) {
@@ -70,7 +75,9 @@ export class AnalyticsDateRangeService {
           to: end,
         };
       default:
-        throw new BadRequestException(`Unsupported analytics period: ${period}`);
+        throw new BadRequestException(
+          `Unsupported analytics period: ${period}`,
+        );
     }
   }
 

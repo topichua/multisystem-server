@@ -21,19 +21,20 @@ export class WorkspaceTemplatesService {
   ) {}
 
   async listForOwner(ownerId: number): Promise<WorkspaceTemplate[]> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     return this.templateRepo.find({
       where: { workspaceId: workspace.id },
       order: { id: "ASC" },
     });
   }
 
-  async getForOwner(ownerId: number, templateId: number): Promise<WorkspaceTemplate> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+  async getForOwner(
+    ownerId: number,
+    templateId: number,
+  ): Promise<WorkspaceTemplate> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const template = await this.templateRepo.findOne({
       where: { id: templateId, workspaceId: workspace.id },
     });
@@ -47,9 +48,8 @@ export class WorkspaceTemplatesService {
     ownerId: number,
     dto: CreateWorkspaceTemplateDto,
   ): Promise<WorkspaceTemplate> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const template = this.templateRepo.create({
       workspaceId: workspace.id,
       name: dto.name.trim(),
@@ -65,9 +65,8 @@ export class WorkspaceTemplatesService {
     templateId: number,
     dto: UpdateWorkspaceTemplateDto,
   ): Promise<WorkspaceTemplate> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const template = await this.templateRepo.findOne({
       where: { id: templateId, workspaceId: workspace.id },
     });
@@ -85,9 +84,8 @@ export class WorkspaceTemplatesService {
   }
 
   async deleteForOwner(ownerId: number, templateId: number): Promise<void> {
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const template = await this.templateRepo.findOne({
       where: { id: templateId, workspaceId: workspace.id },
     });

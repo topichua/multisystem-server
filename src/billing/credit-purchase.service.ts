@@ -1,7 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-} from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { InvoiceStatus } from "../database/entities/invoice-status.enum";

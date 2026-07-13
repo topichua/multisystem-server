@@ -4,9 +4,7 @@ import type { MigrationInterface, QueryRunner } from "typeorm";
  * Ensures every workspace has all 6 system order statuses and keeps the
  * workspace INSERT trigger aligned with `ORDER_STATUS_SYSTEM_DEFAULTS`.
  */
-export class SeedOrderStatusesOnWorkspaceCreate1744200000112
-  implements MigrationInterface
-{
+export class SeedOrderStatusesOnWorkspaceCreate1744200000112 implements MigrationInterface {
   name = "SeedOrderStatusesOnWorkspaceCreate1744200000112";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -30,12 +28,48 @@ export class SeedOrderStatusesOnWorkspaceCreate1744200000112
     `);
 
     const categories = [
-      { name: "New", category: "new", color: "#6366f1", sortOrder: 0, isDefault: true },
-      { name: "Confirmed", category: "confirmed", color: "#22c55e", sortOrder: 1, isDefault: false },
-      { name: "Delivery", category: "delivery", color: "#a855f7", sortOrder: 2, isDefault: false },
-      { name: "Completed", category: "completed", color: "#10b981", sortOrder: 3, isDefault: false },
-      { name: "Canceled", category: "canceled", color: "#ef4444", sortOrder: 4, isDefault: false },
-      { name: "Returned", category: "returned", color: "#f97316", sortOrder: 5, isDefault: false },
+      {
+        name: "New",
+        category: "new",
+        color: "#6366f1",
+        sortOrder: 0,
+        isDefault: true,
+      },
+      {
+        name: "Confirmed",
+        category: "confirmed",
+        color: "#22c55e",
+        sortOrder: 1,
+        isDefault: false,
+      },
+      {
+        name: "Delivery",
+        category: "delivery",
+        color: "#a855f7",
+        sortOrder: 2,
+        isDefault: false,
+      },
+      {
+        name: "Completed",
+        category: "completed",
+        color: "#10b981",
+        sortOrder: 3,
+        isDefault: false,
+      },
+      {
+        name: "Canceled",
+        category: "canceled",
+        color: "#ef4444",
+        sortOrder: 4,
+        isDefault: false,
+      },
+      {
+        name: "Returned",
+        category: "returned",
+        color: "#f97316",
+        sortOrder: 5,
+        isDefault: false,
+      },
     ] as const;
 
     for (const def of categories) {

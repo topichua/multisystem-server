@@ -16,9 +16,13 @@ import { PaymentRequest } from "./payment-request.entity";
 
 @Entity("payment_integrations")
 @Index("IDX_payment_integrations_workspace_id", ["workspaceId"])
-@Index("UQ_payment_integrations_workspace_provider", ["workspaceId", "provider"], {
-  unique: true,
-})
+@Index(
+  "UQ_payment_integrations_workspace_provider",
+  ["workspaceId", "provider"],
+  {
+    unique: true,
+  },
+)
 export class PaymentIntegration {
   @PrimaryGeneratedColumn()
   id: number;
@@ -54,7 +58,11 @@ export class PaymentIntegration {
   @Column({ name: "credentials_encrypted", type: "text", nullable: true })
   credentialsEncrypted: string | null;
 
-  @Column({ name: "last_connection_check_at", type: "timestamptz", nullable: true })
+  @Column({
+    name: "last_connection_check_at",
+    type: "timestamptz",
+    nullable: true,
+  })
   lastConnectionCheckAt: Date | null;
 
   @Column({ name: "last_error", type: "text", nullable: true })

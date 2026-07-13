@@ -28,9 +28,10 @@ export class StorageService {
       throw new BadRequestException("Multipart field `file` is required.");
     }
 
-    const originalName = this.sanitizeFilename(file.originalname ?? "upload.bin");
-    const contentType =
-      file.mimetype?.trim() || "application/octet-stream";
+    const originalName = this.sanitizeFilename(
+      file.originalname ?? "upload.bin",
+    );
+    const contentType = file.mimetype?.trim() || "application/octet-stream";
     const key = `upload-tests/${randomUUID()}/${originalName}`;
 
     const uploaded = await this.r2.uploadObject({

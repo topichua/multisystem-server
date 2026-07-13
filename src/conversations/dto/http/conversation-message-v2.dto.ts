@@ -23,13 +23,22 @@ export class ConversationMessageV2Dto {
 
   receiverId: string;
 
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'instagram_comment'| 'instagram_post' | 'instagram_reels' | 'instagram_story';
+  type:
+    | "text"
+    | "image"
+    | "video"
+    | "audio"
+    | "file"
+    | "instagram_comment"
+    | "instagram_post"
+    | "instagram_reels"
+    | "instagram_story";
 
   repliedToMessage: ConversationMessageV2Dto;
 
   @ApiProperty({ type: () => [ConversationMessageReactionDto] })
   reactions: ConversationMessageReactionDto[];
-  
+
   @ApiProperty({ type: () => ConversationMessageAttachmentsDto })
   attachments: ConversationMessageAttachmentsDto;
 

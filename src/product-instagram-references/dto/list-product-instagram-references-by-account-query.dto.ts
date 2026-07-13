@@ -19,7 +19,8 @@ export class ListProductInstagramReferencesByAccountQueryDto {
   instagram_account_id?: string;
 
   @ApiPropertyOptional({
-    description: "Same as `instagram_account_id` (from GET /api/instagram/integrations).",
+    description:
+      "Same as `instagram_account_id` (from GET /api/instagram/integrations).",
   })
   @IsOptional()
   @Transform(({ value }) => {

@@ -40,7 +40,9 @@ export class PaymentProviderFactory {
             ? parsed.merchantToken.trim()
             : "";
         if (!merchantToken) {
-          throw new BadRequestException("Stored Monobank credentials are invalid");
+          throw new BadRequestException(
+            "Stored Monobank credentials are invalid",
+          );
         }
         return {
           provider: PaymentProvider.monobank,
@@ -61,7 +63,10 @@ export class PaymentProviderFactory {
     return this.encryption.encrypt(payload);
   }
 
-  maskCredentials(provider: PaymentProvider, credentialsEncrypted: string | null): string | null {
+  maskCredentials(
+    provider: PaymentProvider,
+    credentialsEncrypted: string | null,
+  ): string | null {
     if (!credentialsEncrypted) {
       return null;
     }

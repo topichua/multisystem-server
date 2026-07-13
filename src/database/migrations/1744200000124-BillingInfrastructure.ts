@@ -267,9 +267,13 @@ export class BillingInfrastructure1744200000124 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "workspace_subscriptions"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "plan_templates"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "workspace_entitlements"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "subscription_change_type_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "subscription_change_type_enum"`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS "invoice_status_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "workspace_subscription_status_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "workspace_subscription_status_enum"`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS "billing_cycle_enum"`);
   }
 }

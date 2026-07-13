@@ -5,11 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import {
-  DataSource,
-  EntityManager,
-  Repository,
-} from "typeorm";
+import { DataSource, EntityManager, Repository } from "typeorm";
 import {
   Order,
   OrderPaymentStatus,
@@ -159,94 +155,99 @@ export class PaymentDomainService {
       throw new BadRequestException("Amount must be greater than zero");
     }
 
-    return this.dataSource.transaction(async (manager) => {
-      const order = await manager
-        .getRepository(Order)
-        .createQueryBuilder("o")
-        .setLock("pessimistic_write")
-        .where("o.workspace_id = :workspaceId AND o.id = :orderId", {
+    return this.dataSource
+      .transaction(async (manager) => {
+        const order = await manager
+          .getRepository(Order)
+          .createQueryBuilder("o")
+          .setLock("pessimistic_write")
+          .where("o.workspace_id = :workspaceId AND o.id = :orderId", {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+          })
+          .getOne();
+
+        if (!order) {
+          throw new NotFoundException("Order not found");
+        }
+
+        const existingTransactions = await manager
+          .getRepository(PaymentTransaction)
+          .find({
+            where: { workspaceId: input.workspaceId, orderId: input.orderId },
+          });
+        const paidAmount = calculatePaidAmount(existingTransactions);
+        const remaining = calculateRemainingAmount(
+          order.totalAmount,
+          paidAmount,
+        );
+
+        if (input.amount > remaining) {
+          throw new BadRequestException(
+            `Amount exceeds remaining balance (${remaining})`,
+          );
+        }
+
+        const occurredAt = input.occurredAt ?? new Date();
+        const reference = input.reference?.trim() || null;
+        const note = input.note?.trim() || null;
+
+        const tx = manager.getRepository(PaymentTransaction).create({
           workspaceId: input.workspaceId,
           orderId: input.orderId,
-        })
-        .getOne();
-
-      if (!order) {
-        throw new NotFoundException("Order not found");
-      }
-
-      const existingTransactions = await manager
-        .getRepository(PaymentTransaction)
-        .find({
-          where: { workspaceId: input.workspaceId, orderId: input.orderId },
+          paymentId: null,
+          provider: null,
+          type: PaymentTransactionType.charge,
+          amount: input.amount,
+          currency: input.currency,
+          status: PaymentTransactionStatus.succeeded,
+          source: PaymentTransactionSource.manual,
+          externalTransactionId: reference,
+          note,
+          confirmedById: input.confirmedById,
+          occurredAt,
+          manualPaymentMethodId: input.manualPaymentMethodId ?? null,
         });
-      const paidAmount = calculatePaidAmount(existingTransactions);
-      const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
+        const saved = await manager.getRepository(PaymentTransaction).save(tx);
 
-      if (input.amount > remaining) {
-        throw new BadRequestException(
-          `Amount exceeds remaining balance (${remaining})`,
-        );
-      }
+        const paymentStatusResult =
+          await this.paymentStatusApplication.updateOrderPaymentStatus(
+            manager,
+            input.workspaceId,
+            input.orderId,
+          );
 
-      const occurredAt = input.occurredAt ?? new Date();
-      const reference = input.reference?.trim() || null;
-      const note = input.note?.trim() || null;
+        const updatedPaidAmount = calculatePaidAmount([
+          ...existingTransactions,
+          saved,
+        ]);
 
-      const tx = manager.getRepository(PaymentTransaction).create({
-        workspaceId: input.workspaceId,
-        orderId: input.orderId,
-        paymentId: null,
-        provider: null,
-        type: PaymentTransactionType.charge,
-        amount: input.amount,
-        currency: input.currency,
-        status: PaymentTransactionStatus.succeeded,
-        source: PaymentTransactionSource.manual,
-        externalTransactionId: reference,
-        note,
-        confirmedById: input.confirmedById,
-        occurredAt,
-        manualPaymentMethodId: input.manualPaymentMethodId ?? null,
-      });
-      const saved = await manager.getRepository(PaymentTransaction).save(tx);
-
-      const paymentStatusResult =
-        await this.paymentStatusApplication.updateOrderPaymentStatus(
-          manager,
+        return {
+          transaction: saved,
+          paymentStatus: paymentStatusResult.paymentStatus,
+          paymentStatusResult,
+          totalAmount: order.totalAmount,
+          paidAmount: updatedPaidAmount,
+          remainingAmount: calculateRemainingAmount(
+            order.totalAmount,
+            updatedPaidAmount,
+          ),
+        };
+      })
+      .then(async (result) => {
+        await this.paymentStatusApplication.notifyPaymentStatusChangeIfNeeded(
           input.workspaceId,
           input.orderId,
+          result.paymentStatusResult,
         );
-
-      const updatedPaidAmount = calculatePaidAmount([
-        ...existingTransactions,
-        saved,
-      ]);
-
-      return {
-        transaction: saved,
-        paymentStatus: paymentStatusResult.paymentStatus,
-        paymentStatusResult,
-        totalAmount: order.totalAmount,
-        paidAmount: updatedPaidAmount,
-        remainingAmount: calculateRemainingAmount(
-          order.totalAmount,
-          updatedPaidAmount,
-        ),
-      };
-    }).then(async (result) => {
-      await this.paymentStatusApplication.notifyPaymentStatusChangeIfNeeded(
-        input.workspaceId,
-        input.orderId,
-        result.paymentStatusResult,
-      );
-      return {
-        transaction: result.transaction,
-        paymentStatus: result.paymentStatus,
-        totalAmount: result.totalAmount,
-        paidAmount: result.paidAmount,
-        remainingAmount: result.remainingAmount,
-      };
-    });
+        return {
+          transaction: result.transaction,
+          paymentStatus: result.paymentStatus,
+          totalAmount: result.totalAmount,
+          paidAmount: result.paidAmount,
+          remainingAmount: result.remainingAmount,
+        };
+      });
   }
 
   private async createChargeTransactionIfNeeded(

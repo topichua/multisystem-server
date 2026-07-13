@@ -6,7 +6,10 @@ import { WorkspaceTemplatesController } from "./workspace-templates.controller";
 import { WorkspaceTemplatesService } from "./workspace-templates.service";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WorkspaceTemplate]), WorkspaceAccessModule],
+  imports: [
+    TypeOrmModule.forFeature([WorkspaceTemplate]),
+    WorkspaceAccessModule,
+  ],
   controllers: [WorkspaceTemplatesController],
   providers: [WorkspaceTemplatesService],
 })

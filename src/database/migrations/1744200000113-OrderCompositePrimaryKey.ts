@@ -2,9 +2,7 @@ import type { MigrationInterface, QueryRunner } from "typeorm";
 
 const ORDER_ID_SEQUENCE_START = 1001;
 
-export class OrderCompositePrimaryKey1744200000113
-  implements MigrationInterface
-{
+export class OrderCompositePrimaryKey1744200000113 implements MigrationInterface {
   name = "OrderCompositePrimaryKey1744200000113";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

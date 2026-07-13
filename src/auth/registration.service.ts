@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   InternalServerErrorException,
+  forwardRef,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -43,6 +45,7 @@ export class RegistrationService {
     private readonly config: ConfigService,
     private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
+    @Inject(forwardRef(() => OrderStatusAutomationDefaultsService))
     private readonly automationDefaults: OrderStatusAutomationDefaultsService,
     private readonly billingProvisioning: BillingProvisioningService,
   ) {}
@@ -90,7 +93,9 @@ export class RegistrationService {
     return { success: true };
   }
 
-  async confirmRegistration(token: string): Promise<ConfirmRegistrationResponseDto> {
+  async confirmRegistration(
+    token: string,
+  ): Promise<ConfirmRegistrationResponseDto> {
     const rawToken = token.trim();
     if (!rawToken) {
       throw new BadRequestException("Registration token is required");
@@ -131,7 +136,9 @@ export class RegistrationService {
       }
 
       const userRepo = em.getRepository(User);
-      const emailTaken = await userRepo.exist({ where: { email: locked.email } });
+      const emailTaken = await userRepo.exist({
+        where: { email: locked.email },
+      });
       if (emailTaken) {
         throw new ConflictException("Email already in use");
       }
@@ -188,7 +195,9 @@ export class RegistrationService {
       return { user, workspace, member, ownerRole };
     });
 
-    await this.conversationGroupDefaults.ensureSystemGroups(result.workspace.id);
+    await this.conversationGroupDefaults.ensureSystemGroups(
+      result.workspace.id,
+    );
     await this.orderStatusDefaults.ensureSystemStatuses(result.workspace.id);
     await this.automationDefaults.createRecommendedDeliveryAutomations(
       result.workspace.id,

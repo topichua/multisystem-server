@@ -178,4 +178,3 @@ export type NovaPoshtaCreateWaybillResult = {
   documentRef: string;
   raw: Record<string, unknown>;
 };
-

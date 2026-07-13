@@ -69,7 +69,9 @@ export class IntegrationsController {
     if (workspaceIdRaw != null && workspaceIdRaw.trim() !== "") {
       workspaceId = Number(workspaceIdRaw.trim());
       if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
-        throw new BadRequestException("workspace_id must be a positive integer");
+        throw new BadRequestException(
+          "workspace_id must be a positive integer",
+        );
       }
     }
 

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class WorkspaceVariantCustomFields1744200000045
-  implements MigrationInterface
-{
+export class WorkspaceVariantCustomFields1744200000045 implements MigrationInterface {
   name = "WorkspaceVariantCustomFields1744200000045";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -63,7 +61,11 @@ export class WorkspaceVariantCustomFields1744200000045
     await queryRunner.query(`
       ALTER TABLE "product_variants" DROP COLUMN IF EXISTS "custom_attributes"
     `);
-    await queryRunner.query(`DROP TABLE IF EXISTS "workspace_variant_custom_field"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "variant_custom_field_type_enum"`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "workspace_variant_custom_field"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "variant_custom_field_type_enum"`,
+    );
   }
 }

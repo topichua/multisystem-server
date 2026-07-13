@@ -219,7 +219,11 @@ export class ConversationMediaArchiveService {
     }
 
     const mediaFolder: MediaFolder =
-      mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "files";
+      mediaType === "video"
+        ? "video"
+        : mediaType === "audio"
+          ? "audio"
+          : "files";
     const key = this.buildObjectKey(context, filename, mediaFolder);
     try {
       const uploaded = await this.r2.uploadObject({
@@ -266,13 +270,17 @@ export class ConversationMediaArchiveService {
       !isAudio &&
       Boolean(
         (typeof item.file_url === "string" && item.file_url.trim()) ||
-          mimeType.startsWith("application/"),
+        mimeType.startsWith("application/"),
       );
     if (!isVideo && !isAudio && !isFile) {
       return item;
     }
 
-    const mediaFolder: MediaFolder = isVideo ? "video" : isAudio ? "audio" : "files";
+    const mediaFolder: MediaFolder = isVideo
+      ? "video"
+      : isAudio
+        ? "audio"
+        : "files";
     const sourceUrl = this.pickInstagramSourceUrl(item, isVideo || isFile);
     if (!sourceUrl) {
       return item;
@@ -378,7 +386,9 @@ export class ConversationMediaArchiveService {
       return { buffer, contentType };
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
-      this.log.warn(`Media download failed url=${assetUrl.slice(0, 120)}: ${err}`);
+      this.log.warn(
+        `Media download failed url=${assetUrl.slice(0, 120)}: ${err}`,
+      );
       return null;
     }
   }
@@ -495,7 +505,10 @@ export class ConversationMediaArchiveService {
     filename: string,
     mediaFolder: MediaFolder,
   ): string {
-    const safeMessageId = context.messageExternalId.replace(/[^a-zA-Z0-9:_-]/g, "_");
+    const safeMessageId = context.messageExternalId.replace(
+      /[^a-zA-Z0-9:_-]/g,
+      "_",
+    );
     const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     return [
       "conversations",

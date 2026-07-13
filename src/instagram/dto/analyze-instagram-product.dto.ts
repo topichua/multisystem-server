@@ -26,7 +26,6 @@ export class MatchedCustomFieldDto {
   fieldId: string;
 
   @ApiProperty()
-
   @ApiProperty({ type: () => [MatchedCustomFieldDto] })
   matchedCustomFields: MatchedCustomFieldDto[];
 

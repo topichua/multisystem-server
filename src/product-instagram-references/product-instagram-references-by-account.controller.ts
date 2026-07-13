@@ -24,9 +24,7 @@ import { ProductInstagramReferencesService } from "./product-instagram-reference
 @UseGuards(JwtAuthGuard)
 @Controller("api/instagram/references")
 export class ProductInstagramReferencesByAccountController {
-  constructor(
-    private readonly references: ProductInstagramReferencesService,
-  ) {}
+  constructor(private readonly references: ProductInstagramReferencesService) {}
 
   @Get("product-ids")
   @ApiOperation({

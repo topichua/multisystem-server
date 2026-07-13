@@ -169,7 +169,8 @@ function matchOptionValueSemantic(
     return { optionId: exact.optionId, optionName: exact.optionName };
   }
 
-  let best: { optionId: number; optionName: string; score: number } | null = null;
+  let best: { optionId: number; optionName: string; score: number } | null =
+    null;
 
   for (const [, opt] of field.optionsByNormalizedKey) {
     if (!optionValuesShareMeaning(trimmed, opt.optionName)) continue;
@@ -203,7 +204,10 @@ function meaningMatchScore(a: string, b: string): number {
   return Math.max(prefixScore, editScore);
 }
 
-function optionValuesShareMeaning(input: string, catalogLabel: string): boolean {
+function optionValuesShareMeaning(
+  input: string,
+  catalogLabel: string,
+): boolean {
   const a = normalizeOptionValueForFuzzyMatch(input);
   const b = normalizeOptionValueForFuzzyMatch(catalogLabel);
   if (!a || !b) return false;
@@ -263,11 +267,16 @@ function commonPrefixLength(a: string, b: string): number {
 }
 
 /** Strict: повний збіг label (для цифр — символ у символ). */
-function isStrictOptionLabelEqual(input: string, catalogLabel: string): boolean {
+function isStrictOptionLabelEqual(
+  input: string,
+  catalogLabel: string,
+): boolean {
   const a = input.trim();
   const b = catalogLabel.trim();
   if (!a || !b) return false;
-  if (normalizeCustomFieldOptionValue(a) !== normalizeCustomFieldOptionValue(b)) {
+  if (
+    normalizeCustomFieldOptionValue(a) !== normalizeCustomFieldOptionValue(b)
+  ) {
     return false;
   }
   if (/^\d+$/.test(a)) {
@@ -282,7 +291,9 @@ function isStrictOptionLabelEqual(input: string, catalogLabel: string): boolean 
 function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
-  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  const dp = Array.from({ length: m + 1 }, () =>
+    new Array<number>(n + 1).fill(0),
+  );
   for (let i = 0; i <= m; i++) dp[i][0] = i;
   for (let j = 0; j <= n; j++) dp[0][j] = j;
   for (let i = 1; i <= m; i++) {

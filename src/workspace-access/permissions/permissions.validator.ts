@@ -98,12 +98,15 @@ export function validatePermissionOptionLists(
   }
 
   if ((PERMISSION_OPTION_LIST_KEYS as readonly string[]).length === 0) {
-    if (Object.keys(raw as object).length > 0) {
+    if (Object.keys(raw).length > 0) {
       throw new BadRequestException(
         "permissionOptionLists is not used; configure integration grants via PUT /workspace/roles/:roleId/integration-grants",
       );
     }
     return {};
   }
-  return normalizePermissionOptionLists(options, raw as Record<string, string[]>);
+  return normalizePermissionOptionLists(
+    options,
+    raw as Record<string, string[]>,
+  );
 }

@@ -31,12 +31,16 @@ export class CreditFulfillmentService {
         );
       }
 
-      const entitlements = await em.getRepository(WorkspaceEntitlements).findOne({
-        where: { workspaceId: invoice.workspaceId },
-        lock: { mode: "pessimistic_write" },
-      });
+      const entitlements = await em
+        .getRepository(WorkspaceEntitlements)
+        .findOne({
+          where: { workspaceId: invoice.workspaceId },
+          lock: { mode: "pessimistic_write" },
+        });
       if (!entitlements) {
-        throw new InternalServerErrorException("Workspace entitlements not found");
+        throw new InternalServerErrorException(
+          "Workspace entitlements not found",
+        );
       }
 
       entitlements.aiCreditsPurchased += creditsAmount;

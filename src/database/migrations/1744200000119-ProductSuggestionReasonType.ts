@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ProductSuggestionReasonType1744200000119
-  implements MigrationInterface
-{
+export class ProductSuggestionReasonType1744200000119 implements MigrationInterface {
   name = "ProductSuggestionReasonType1744200000119";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

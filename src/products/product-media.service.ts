@@ -141,10 +141,9 @@ export class ProductMediaService {
         .createQueryBuilder()
         .delete()
         .from(ProductMedia)
-        .where(
-          '"product_id" = :productId AND "variant_id" IS NULL',
-          { productId },
-        )
+        .where('"product_id" = :productId AND "variant_id" IS NULL', {
+          productId,
+        })
         .execute();
       let order = 0;
       for (const item of items) {

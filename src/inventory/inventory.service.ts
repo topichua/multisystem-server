@@ -124,10 +124,17 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<StockOperationResponseDto> {
-    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     assertSimpleMode(ctx.mode);
     return this.runStockOperation(ctx, dto.variantId, async (stock) => {
-      const result = applySimpleQuantitySet(this.toSnapshot(stock), dto.quantity);
+      const result = applySimpleQuantitySet(
+        this.toSnapshot(stock),
+        dto.quantity,
+      );
       return {
         type: StockMovementType.simpleAdjustment,
         reason: null,
@@ -146,7 +153,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<StockOperationResponseDto> {
-    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     assertAdvancedMode(ctx.mode);
     return this.runStockOperation(ctx, dto.variantId, async (stock) => {
       const result = applyInitialStock(
@@ -172,7 +183,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<StockOperationResponseDto> {
-    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     assertAdvancedMode(ctx.mode);
     return this.runStockOperation(ctx, dto.variantId, async (stock) => {
       const result = applyPurchase(
@@ -198,7 +213,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<CreateStockSupplyResponseDto> {
-    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     assertAdvancedMode(ctx.mode);
 
     return this.dataSource.transaction(async (em) => {
@@ -299,7 +318,11 @@ export class InventoryService {
         "reason is required when quantityChange is negative (write-off)",
       );
     }
-    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     assertAdvancedMode(ctx.mode);
     return this.runStockOperation(ctx, dto.variantId, async (stock) => {
       const before = this.toSnapshot(stock);
@@ -327,7 +350,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<StockOperationResponseDto> {
-    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     assertAdvancedMode(ctx.mode);
     return this.runStockOperation(ctx, dto.variantId, async (stock) => {
       const before = this.toSnapshot(stock);
@@ -336,11 +363,7 @@ export class InventoryService {
       if (quantityChange === 0) {
         throw new BadRequestException("Counted quantity matches current stock");
       }
-      const result = applyAdvancedQuantityDelta(
-        before,
-        quantityChange,
-        true,
-      );
+      const result = applyAdvancedQuantityDelta(before, quantityChange, true);
       return {
         type: StockMovementType.inventory,
         reason: null,
@@ -359,7 +382,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<StockOperationResponseDto> {
-    const ctx = await this.requireManageContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     assertAdvancedMode(ctx.mode);
     return this.runStockOperation(ctx, dto.variantId, async (stock) => {
       const before = this.toSnapshot(stock);
@@ -383,7 +410,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<VariantStockDto> {
-    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireViewContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     const stock = await this.requireDefaultVariantStock(
       ctx.workspaceId,
       variantId,
@@ -399,7 +430,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<StockMovementListResponseDto> {
-    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireViewContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     await this.assertVariantInWorkspace(ctx.workspaceId, variantId);
 
     const [rows, total] = await this.movementRepo.findAndCount({
@@ -435,7 +470,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<StockHistoryListResponseDto> {
-    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireViewContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;
     const filters = this.buildStockHistoryFilters(
@@ -457,7 +496,9 @@ export class InventoryService {
       this.dataSource.query(listSql, listParams),
     ]);
 
-    const total = Number(readPostgresQueryRows<{ cnt: string }>(countRows)[0]?.cnt ?? 0);
+    const total = Number(
+      readPostgresQueryRows<{ cnt: string }>(countRows)[0]?.cnt ?? 0,
+    );
     const refs = readPostgresQueryRows<StockHistoryEntryRef>(entryRows);
     if (refs.length === 0) {
       return { items: [], total };
@@ -566,7 +607,11 @@ export class InventoryService {
     appRole?: string,
     workspaceIdParam?: number,
   ): Promise<ProductStockListResponseDto> {
-    const ctx = await this.requireViewContext(userId, appRole, workspaceIdParam);
+    const ctx = await this.requireViewContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
     const product = await this.productRepo.findOne({
       where: { id: productId, workspaceId: ctx.workspaceId },
     });
@@ -580,7 +625,9 @@ export class InventoryService {
       relations: { customFieldValues: true },
     });
     const fieldDefs =
-      await this.variantCustomFields.listDefinitionsForWorkspace(ctx.workspaceId);
+      await this.variantCustomFields.listDefinitionsForWorkspace(
+        ctx.workspaceId,
+      );
     const stocks =
       variants.length === 0
         ? []
@@ -751,9 +798,7 @@ export class InventoryService {
     }
   }
 
-  private isReservationHoldingCategory(
-    category: OrderStatusCategory,
-  ): boolean {
+  private isReservationHoldingCategory(category: OrderStatusCategory): boolean {
     return (
       category === OrderStatusCategory.confirmed ||
       category === OrderStatusCategory.delivery
@@ -1019,11 +1064,7 @@ export class InventoryService {
     }>,
   ): Promise<StockOperationResponseDto> {
     return this.dataSource.transaction(async (em) => {
-      const stock = await this.lockVariantStock(
-        em,
-        ctx.workspaceId,
-        variantId,
-      );
+      const stock = await this.lockVariantStock(em, ctx.workspaceId, variantId);
       const op = await build(stock);
       await this.persistStock(em, stock, op.after);
       const movement = await em.save(
@@ -1182,10 +1223,7 @@ export class InventoryService {
     };
   }
 
-  private emptyStockRow(
-    workspaceId: number,
-    variantId: number,
-  ): VariantStock {
+  private emptyStockRow(workspaceId: number, variantId: number): VariantStock {
     return this.stockRepo.create({
       workspaceId,
       variantId,
@@ -1197,7 +1235,10 @@ export class InventoryService {
     });
   }
 
-  private toStockDto(stock: VariantStock, mode: InventoryMode): VariantStockDto {
+  private toStockDto(
+    stock: VariantStock,
+    mode: InventoryMode,
+  ): VariantStockDto {
     const hideReservations = mode === InventoryMode.simple;
     return {
       variantId: stock.variantId,
@@ -1588,7 +1629,9 @@ export class InventoryService {
       workspaceIdParam,
     );
     if (!resolved.products.inventoryView) {
-      throw new ForbiddenException("Missing products.inventory.view permission");
+      throw new ForbiddenException(
+        "Missing products.inventory.view permission",
+      );
     }
   }
 

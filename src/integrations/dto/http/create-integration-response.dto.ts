@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { INTEGRATION_TYPES, type IntegrationType } from "../../integration-type";
+import {
+  INTEGRATION_TYPES,
+  type IntegrationType,
+} from "../../integration-type";
 
 export class CreateIntegrationResponseDto {
   @ApiProperty({ enum: INTEGRATION_TYPES })
@@ -21,7 +24,8 @@ export class CreateIntegrationResponseDto {
   url: string;
 
   @ApiPropertyOptional({
-    description: "ISO 8601 if already connected before starting a new OAuth flow",
+    description:
+      "ISO 8601 if already connected before starting a new OAuth flow",
   })
   connectedAt?: string;
 }

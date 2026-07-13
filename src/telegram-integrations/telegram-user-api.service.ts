@@ -172,11 +172,13 @@ export class TelegramUserApiService {
       const expiresAt = new Date(result.expires * 1000).toISOString();
       const authSessionString = this.saveSession(client);
 
-      this.registerPendingQrLogin(authSessionString, client, result.expires * 1000);
-
-      this.log.log(
-        `Telegram QR login token exported expiresAt=${expiresAt}`,
+      this.registerPendingQrLogin(
+        authSessionString,
+        client,
+        result.expires * 1000,
       );
+
+      this.log.log(`Telegram QR login token exported expiresAt=${expiresAt}`);
 
       return { qrLoginUrl, qrToken, qrImageUrl, expiresAt, authSessionString };
     } catch (e) {
@@ -243,7 +245,9 @@ export class TelegramUserApiService {
       );
     } catch (e) {
       if (this.isQrTokenExpired(e)) {
-        throw this.qrTokenExpiredException("Telegram QR login completion failed:");
+        throw this.qrTokenExpiredException(
+          "Telegram QR login completion failed:",
+        );
       }
       throw this.toHttpError(e, "Telegram QR login completion failed");
     } finally {
@@ -356,8 +360,7 @@ export class TelegramUserApiService {
         const entity = d.entity;
         const isUser = entity instanceof Api.User;
         const isGroup =
-          entity instanceof Api.Chat ||
-          entity instanceof Api.Channel;
+          entity instanceof Api.Chat || entity instanceof Api.Channel;
         const id = d.id?.toString() ?? "";
         return {
           id,
@@ -414,9 +417,7 @@ export class TelegramUserApiService {
         throw new BadGatewayException("Telegram did not return a message id");
       }
       const date =
-        typeof sent.date === "number"
-          ? new Date(sent.date * 1000)
-          : new Date();
+        typeof sent.date === "number" ? new Date(sent.date * 1000) : new Date();
       return {
         messageId: Number(messageId),
         chatId: peer,
@@ -488,9 +489,7 @@ export class TelegramUserApiService {
         throw new BadGatewayException("Telegram did not return a message id");
       }
       const date =
-        typeof sent.date === "number"
-          ? new Date(sent.date * 1000)
-          : new Date();
+        typeof sent.date === "number" ? new Date(sent.date * 1000) : new Date();
       return {
         messageId: Number(messageId),
         chatId: peer,
@@ -633,11 +632,16 @@ export class TelegramUserApiService {
     options?: { autoReconnect?: boolean },
   ): TelegramClient {
     const { apiId, apiHash } = this.getCredentials();
-    return new TelegramClient(new StringSession(sessionString), apiId, apiHash, {
-      connectionRetries: 10,
-      retryDelay: 2000,
-      autoReconnect: options?.autoReconnect ?? true,
-    });
+    return new TelegramClient(
+      new StringSession(sessionString),
+      apiId,
+      apiHash,
+      {
+        connectionRetries: 10,
+        retryDelay: 2000,
+        autoReconnect: options?.autoReconnect ?? true,
+      },
+    );
   }
 
   private buildQrImageUrl(qrLoginUrl: string, size = 300): string {
@@ -662,7 +666,9 @@ export class TelegramUserApiService {
     return saved;
   }
 
-  private async readProfile(client: TelegramClient): Promise<TelegramUserProfile> {
+  private async readProfile(
+    client: TelegramClient,
+  ): Promise<TelegramUserProfile> {
     const me = await client.getMe();
     const telegramUserId = me.id?.toString() ?? "";
     const username = me.username?.trim() || null;
@@ -706,7 +712,9 @@ export class TelegramUserApiService {
     return pending.client;
   }
 
-  private async releasePendingQrLogin(authSessionString: string): Promise<void> {
+  private async releasePendingQrLogin(
+    authSessionString: string,
+  ): Promise<void> {
     const pending = this.pendingQrLogins.get(authSessionString);
     if (!pending) {
       return;
@@ -773,7 +781,9 @@ export class TelegramUserApiService {
       );
     } catch (e) {
       if (this.isQrTokenExpired(e)) {
-        throw this.qrTokenExpiredException("Telegram QR login completion failed:");
+        throw this.qrTokenExpiredException(
+          "Telegram QR login completion failed:",
+        );
       }
       if (this.isPasswordRequired(e)) {
         return {
@@ -850,9 +860,11 @@ export class TelegramUserApiService {
     );
   }
 
-  private async buildActiveQrLoginResult(
-    client: TelegramClient,
-  ): Promise<{ kind: "active"; profile: TelegramUserProfile; sessionString: string }> {
+  private async buildActiveQrLoginResult(client: TelegramClient): Promise<{
+    kind: "active";
+    profile: TelegramUserProfile;
+    sessionString: string;
+  }> {
     const profile = await this.readProfile(client);
     return {
       kind: "active",
@@ -901,7 +913,7 @@ export class TelegramUserApiService {
     this.log.warn(`Telegram login code unavailable: ${detail}`);
     return new BadRequestException(
       "Telegram does not deliver SMS login codes to third-party apps. " +
-        "Omit force_sms and read the code in the Telegram app (message from \"Telegram\" on a logged-in device). " +
+        'Omit force_sms and read the code in the Telegram app (message from "Telegram" on a logged-in device). ' +
         "For accounts without an active Telegram session, use QR login: POST /telegram-integrations/qr-login/start.",
     );
   }

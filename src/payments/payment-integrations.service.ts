@@ -39,8 +39,10 @@ export class PaymentIntegrationsService {
     appRole?: string,
   ): Promise<PaymentIntegrationsListResponseDto> {
     await this.requireViewPermission(userId, appRole);
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
     const rows = await this.repo.find({
       where: { workspaceId: workspace.id },
       order: { provider: "ASC" },
@@ -64,8 +66,10 @@ export class PaymentIntegrationsService {
     appRole?: string,
   ): Promise<PaymentIntegrationResponseDto> {
     await this.requireManagePermission(userId, appRole);
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
     const merchantToken = dto.merchantToken.trim();
     if (!merchantToken) {
       throw new BadRequestException("merchantToken is required");
@@ -129,7 +133,11 @@ export class PaymentIntegrationsService {
     appRole?: string,
   ): Promise<PaymentIntegrationResponseDto> {
     await this.requireManagePermission(userId, appRole);
-    const row = await this.requireOwnedIntegration(userId, integrationId, appRole);
+    const row = await this.requireOwnedIntegration(
+      userId,
+      integrationId,
+      appRole,
+    );
 
     if (dto.displayName !== undefined) {
       const name = dto.displayName.trim();
@@ -151,8 +159,7 @@ export class PaymentIntegrationsService {
       const validation = await provider.validateCredentials();
       if (!validation.valid) {
         throw new BadRequestException(
-          validation.userMessage ??
-            "Не вдалося оновити credentials Monobank.",
+          validation.userMessage ?? "Не вдалося оновити credentials Monobank.",
         );
       }
       row.credentialsEncrypted =
@@ -172,7 +179,11 @@ export class PaymentIntegrationsService {
     appRole?: string,
   ): Promise<PaymentIntegrationResponseDto> {
     await this.requireViewPermission(userId, appRole);
-    const row = await this.requireOwnedIntegration(userId, integrationId, appRole);
+    const row = await this.requireOwnedIntegration(
+      userId,
+      integrationId,
+      appRole,
+    );
     if (row.status === PaymentIntegrationStatus.disconnected) {
       throw new BadRequestException("Integration is disconnected");
     }
@@ -182,8 +193,7 @@ export class PaymentIntegrationsService {
       const validation = await provider.validateCredentials();
       if (!validation.valid) {
         row.status = PaymentIntegrationStatus.error;
-        row.lastError =
-          validation.userMessage ?? "Connection check failed";
+        row.lastError = validation.userMessage ?? "Connection check failed";
       } else {
         row.status = PaymentIntegrationStatus.connected;
         row.lastError = null;
@@ -193,7 +203,7 @@ export class PaymentIntegrationsService {
       row.status = PaymentIntegrationStatus.error;
       row.lastError =
         error instanceof BadRequestException
-          ? (error.message as string)
+          ? error.message
           : "Connection check failed";
       row.lastConnectionCheckAt = new Date();
     }
@@ -213,9 +223,15 @@ export class PaymentIntegrationsService {
     appRole?: string,
   ): Promise<PaymentIntegrationResponseDto> {
     await this.requireManagePermission(userId, appRole);
-    const row = await this.requireOwnedIntegration(userId, integrationId, appRole);
+    const row = await this.requireOwnedIntegration(
+      userId,
+      integrationId,
+      appRole,
+    );
     if (row.status !== PaymentIntegrationStatus.connected) {
-      throw new BadRequestException("Only connected integrations can be default");
+      throw new BadRequestException(
+        "Only connected integrations can be default",
+      );
     }
 
     await this.repo.update(
@@ -233,7 +249,11 @@ export class PaymentIntegrationsService {
     appRole?: string,
   ): Promise<PaymentIntegrationResponseDto> {
     await this.requireManagePermission(userId, appRole);
-    const row = await this.requireOwnedIntegration(userId, integrationId, appRole);
+    const row = await this.requireOwnedIntegration(
+      userId,
+      integrationId,
+      appRole,
+    );
     row.status = PaymentIntegrationStatus.disconnected;
     row.isDefault = false;
     row.lastError = null;
@@ -333,8 +353,10 @@ export class PaymentIntegrationsService {
     integrationId: number,
     appRole?: string,
   ): Promise<PaymentIntegration> {
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
     const row = await this.repo.findOne({
       where: { id: integrationId, workspaceId: workspace.id },
     });
@@ -353,7 +375,9 @@ export class PaymentIntegrationsService {
       !hasBooleanPermission(resolved, "payments.integrations.view") &&
       !hasBooleanPermission(resolved, "payments.integrations.manage")
     ) {
-      throw new ForbiddenException("Missing payments.integrations.view permission");
+      throw new ForbiddenException(
+        "Missing payments.integrations.view permission",
+      );
     }
   }
 

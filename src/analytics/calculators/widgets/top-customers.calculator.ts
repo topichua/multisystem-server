@@ -18,9 +18,7 @@ type TopCustomerRow = {
 };
 
 @Injectable()
-export class TopCustomersCalculator
-  implements AnalyticsMetricCalculator<AnalyticsTopCustomersResult>
-{
+export class TopCustomersCalculator implements AnalyticsMetricCalculator<AnalyticsTopCustomersResult> {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,

@@ -10,7 +10,15 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Brackets, FindOptionsWhere, In, IsNull, Repository, SelectQueryBuilder, WhereExpressionBuilder } from "typeorm";
+import {
+  Brackets,
+  FindOptionsWhere,
+  In,
+  IsNull,
+  Repository,
+  SelectQueryBuilder,
+  WhereExpressionBuilder,
+} from "typeorm";
 import {
   InstagramIntegration,
   Conversation,
@@ -198,7 +206,8 @@ export class ConversationsService {
 
     if (permissions.isOwner || permissions.conversations.fullAccess) {
       const rows = await this.countConversationsByGroupQuery(workspaceId);
-      const hiddenGroupIds = await this.resolveHiddenSystemGroupIds(workspaceId);
+      const hiddenGroupIds =
+        await this.resolveHiddenSystemGroupIds(workspaceId);
       return this.mapConversationDistributionRows(rows, hiddenGroupIds);
     }
 
@@ -229,7 +238,10 @@ export class ConversationsService {
       )
       .groupBy("c.group_id");
 
-    const rows = await qb.getRawMany<{ groupId: string | null; count: string }>();
+    const rows = await qb.getRawMany<{
+      groupId: string | null;
+      count: string;
+    }>();
     const hiddenGroupIds = await this.resolveHiddenSystemGroupIds(workspaceId);
     return this.mapConversationDistributionRows(rows, hiddenGroupIds);
   }
@@ -360,7 +372,11 @@ export class ConversationsService {
         telegramById,
         myAccountIds,
         listAccessContext
-          ? this.resolveConversationActionFlags(r, permissions, listAccessContext)
+          ? this.resolveConversationActionFlags(
+              r,
+              permissions,
+              listAccessContext,
+            )
           : this.resolveConversationActionFlags(r, permissions, null),
       ),
     );
@@ -528,18 +544,14 @@ export class ConversationsService {
     conversationId: number,
     dto: UpdateConversationRequestDto,
   ): Promise<ConversationRowDto> {
-    if (
-      dto.groupId === undefined &&
-      dto.responsible_member_id === undefined
-    ) {
+    if (dto.groupId === undefined && dto.responsible_member_id === undefined) {
       throw new BadRequestException(
         "At least one of groupId or responsible_member_id is required",
       );
     }
 
-    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
-      ownerId,
-    );
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
 
     const conv = await this.requireConversationInWorkspace(ownerId, {
@@ -646,7 +658,10 @@ export class ConversationsService {
   private async resolveConversationIntegration(
     conversation: Conversation,
     workspaceId: number,
-  ): Promise<{ integrationType: IntegrationType; integrationId: number } | null> {
+  ): Promise<{
+    integrationType: IntegrationType;
+    integrationId: number;
+  } | null> {
     if (conversation.source === ConversationSource.TELEGRAM) {
       const integrationId = Number.parseInt(
         conversation.externalSourceId.trim(),
@@ -758,7 +773,11 @@ export class ConversationsService {
       await this.conversationRepo.save(conversation);
     }
 
-    await this.conversationWorkflow.onTakeChat(conversation, fromMemberId, userId);
+    await this.conversationWorkflow.onTakeChat(
+      conversation,
+      fromMemberId,
+      userId,
+    );
 
     return this.buildConversationRowForUser(
       userId,
@@ -812,7 +831,11 @@ export class ConversationsService {
       telegramById,
       myAccountIds,
       listAccessContext
-        ? this.resolveConversationActionFlags(row, permissions, listAccessContext)
+        ? this.resolveConversationActionFlags(
+            row,
+            permissions,
+            listAccessContext,
+          )
         : this.resolveConversationActionFlags(row, permissions, null),
     );
   }
@@ -828,7 +851,8 @@ export class ConversationsService {
             ownerId,
             context.sessionWorkspaceId,
           )
-        : (await this.requireConversationInWorkspace(ownerId, { id })).workspaceId;
+        : (await this.requireConversationInWorkspace(ownerId, { id }))
+            .workspaceId;
 
     const permissions = await this.workspacePermissions.getResolvedForUser(
       ownerId,
@@ -851,7 +875,8 @@ export class ConversationsService {
     await this.requireConversationInWorkspace(ownerId, {
       id: conversationId,
     });
-    const rows = await this.conversationEvents.listForConversation(conversationId);
+    const rows =
+      await this.conversationEvents.listForConversation(conversationId);
     return {
       items: rows.map((row) => ({
         id: row.id,
@@ -888,13 +913,15 @@ export class ConversationsService {
 
     const postIds = [
       ...new Set(
-        rows.map((row) => row.postId?.trim()).filter((id): id is string => !!id),
+        rows
+          .map((row) => row.postId?.trim())
+          .filter((id): id is string => !!id),
       ),
     ];
 
     return {
       conversationId,
-      postId: postIds.length === 1 ? postIds[0]! : null,
+      postId: postIds.length === 1 ? postIds[0] : null,
       businessAccountId: conv.externalSourceId?.trim() || null,
       items,
     };
@@ -942,7 +969,9 @@ export class ConversationsService {
     return this.toProductSuggestionItem(row);
   }
 
-  private toProductSuggestionItem(row: ProductSuggestion): ProductSuggestionItemDto {
+  private toProductSuggestionItem(
+    row: ProductSuggestion,
+  ): ProductSuggestionItemDto {
     return {
       id: row.id,
       productId: row.productId,
@@ -1294,7 +1323,10 @@ export class ConversationsService {
     includeGroupIds?: number[];
     excludeGroupIds?: number[];
   }> {
-    const explicit = await this.validateOptionalGroupIds(workspaceId, groupIdsRaw);
+    const explicit = await this.validateOptionalGroupIds(
+      workspaceId,
+      groupIdsRaw,
+    );
     if (explicit != null) {
       return { includeGroupIds: explicit };
     }
@@ -1355,17 +1387,13 @@ export class ConversationsService {
 
   private resolveInstagramChannelName(row: InstagramIntegration): string {
     return (
-      row.facebookPageName?.trim() ||
-      row.name?.trim() ||
-      `Instagram #${row.id}`
+      row.facebookPageName?.trim() || row.name?.trim() || `Instagram #${row.id}`
     );
   }
 
   private resolveTelegramChannelName(row: TelegramIntegration): string {
     return (
-      row.name?.trim() ||
-      row.telegramUsername?.trim() ||
-      `Telegram #${row.id}`
+      row.name?.trim() || row.telegramUsername?.trim() || `Telegram #${row.id}`
     );
   }
 
@@ -1480,7 +1508,9 @@ export class ConversationsService {
       workspaceId,
       permissions,
     );
-    const accessibleIds = new Set(accessible.map((channel) => channel.integrationId));
+    const accessibleIds = new Set(
+      accessible.map((channel) => channel.integrationId),
+    );
     const missing = channelIds.filter((id) => !accessibleIds.has(id));
     if (missing.length > 0) {
       throw new BadRequestException(
@@ -1507,9 +1537,7 @@ export class ConversationsService {
       userId,
       permissions,
     );
-    const accessibleIds = new Set(
-      accessible.map((user) => user.id),
-    );
+    const accessibleIds = new Set(accessible.map((user) => user.id));
     const missing = responsibleUserIds.filter((id) => !accessibleIds.has(id));
     if (missing.length > 0) {
       throw new BadRequestException(
@@ -1880,11 +1908,7 @@ export class ConversationsService {
               [memberParam]: memberId,
             },
           );
-          if (
-            grant.canTakeChat &&
-            grant.write === "mine" &&
-            memberId != null
-          ) {
+          if (grant.canTakeChat && grant.write === "mine" && memberId != null) {
             sub.orWhere(
               `c.source = :${sourceParam} AND c.external_source_id IN (:...${externalParam}) AND c.responsible_member_id IS NULL`,
               {
@@ -1926,11 +1950,7 @@ export class ConversationsService {
               [memberParam]: memberId,
             },
           );
-          if (
-            grant.canTakeChat &&
-            grant.write === "mine" &&
-            memberId != null
-          ) {
+          if (grant.canTakeChat && grant.write === "mine" && memberId != null) {
             sub.orWhere(
               `c.source = :${sourceParam} AND c.external_source_id = :${externalParam} AND c.responsible_member_id IS NULL`,
               {
@@ -2093,7 +2113,10 @@ export class ConversationsService {
 
   private async findConversationsForWorkspace(
     workspaceId: number,
-    groupFilter: { includeGroupIds?: number[]; excludeGroupIds?: number[] } = {},
+    groupFilter: {
+      includeGroupIds?: number[];
+      excludeGroupIds?: number[];
+    } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {
       instagram: InstagramIntegration[];
@@ -2161,21 +2184,19 @@ export class ConversationsService {
       .map((grant) => grant.integrationId);
 
     const instagramById = new Map(
-      (
-        instagramIds.length > 0
-          ? await this.instagramIntegrationRepo.find({
-              where: { workspaceId, id: In(instagramIds) },
-            })
-          : []
+      (instagramIds.length > 0
+        ? await this.instagramIntegrationRepo.find({
+            where: { workspaceId, id: In(instagramIds) },
+          })
+        : []
       ).map((row) => [row.id, row]),
     );
     const telegramById = new Map(
-      (
-        telegramIds.length > 0
-          ? await this.telegramIntegrationRepo.find({
-              where: { workspaceId, id: In(telegramIds) },
-            })
-          : []
+      (telegramIds.length > 0
+        ? await this.telegramIntegrationRepo.find({
+            where: { workspaceId, id: In(telegramIds) },
+          })
+        : []
       ).map((row) => [row.id, row]),
     );
 
@@ -2329,7 +2350,10 @@ export class ConversationsService {
     workspaceId: number,
     userId: number,
     grants: ResolvedIntegrationGrant[],
-    groupFilter: { includeGroupIds?: number[]; excludeGroupIds?: number[] } = {},
+    groupFilter: {
+      includeGroupIds?: number[];
+      excludeGroupIds?: number[];
+    } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {
       instagram: InstagramIntegration[];
@@ -2902,7 +2926,10 @@ export class ConversationsService {
     const url = new URL(
       `https://graph.facebook.com/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
     );
-    url.searchParams.set("fields", INSTAGRAM_GRAPH_CONVERSATION_MESSAGES_FIELDS);
+    url.searchParams.set(
+      "fields",
+      INSTAGRAM_GRAPH_CONVERSATION_MESSAGES_FIELDS,
+    );
     url.searchParams.set("limit", String(query.limit ?? 25));
     url.searchParams.set("access_token", accessToken);
     if (query.after?.trim()) {
@@ -3357,7 +3384,9 @@ export class ConversationsService {
     file: { buffer: Buffer; mimetype?: string; originalname?: string },
     mediaType: OutboundConversationMessageMediaType,
   ): Promise<string> {
-    const url = new URL("https://graph.facebook.com/v25.0/me/message_attachments");
+    const url = new URL(
+      "https://graph.facebook.com/v25.0/me/message_attachments",
+    );
     url.searchParams.set("access_token", accessToken);
 
     const form = new FormData();

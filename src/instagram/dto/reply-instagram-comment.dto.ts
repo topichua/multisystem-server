@@ -1,6 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from "class-validator";
 
 export class ReplyInstagramCommentQueryDto {
   @ApiPropertyOptional({
@@ -18,7 +25,8 @@ export class ReplyInstagramCommentQueryDto {
 
 export class ReplyInstagramCommentRequestDto {
   @ApiProperty({
-    description: "Reply text sent to Meta Graph `POST /{ig-comment-id}/replies`.",
+    description:
+      "Reply text sent to Meta Graph `POST /{ig-comment-id}/replies`.",
     maxLength: 2200,
   })
   @IsString()

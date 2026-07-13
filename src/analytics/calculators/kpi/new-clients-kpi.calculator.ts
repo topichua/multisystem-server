@@ -32,7 +32,9 @@ export class NewClientsKpiCalculator implements AnalyticsRangeMetricCalculator {
       .select("o.customerId", "customerId")
       .addSelect("MIN(o.createdAt)", "firstOrderAt")
       .groupBy("o.customerId")
-      .having("MIN(o.createdAt) >= :analyticsFrom", { analyticsFrom: range.from })
+      .having("MIN(o.createdAt) >= :analyticsFrom", {
+        analyticsFrom: range.from,
+      })
       .andHaving("MIN(o.createdAt) <= :analyticsTo", { analyticsTo: range.to })
       .getRawMany<{ customerId: string; firstOrderAt: string }>();
 

@@ -14,8 +14,8 @@ function assertStartupEnv(): void {
   const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
   const hasDbParts = Boolean(
     process.env.DB_HOST?.trim() &&
-      process.env.DB_USERNAME?.trim() &&
-      process.env.DB_NAME?.trim(),
+    process.env.DB_USERNAME?.trim() &&
+    process.env.DB_NAME?.trim(),
   );
   if (!hasDatabaseUrl && !hasDbParts) {
     missing.push("DATABASE_URL (or DB_HOST + DB_USERNAME + DB_NAME)");

@@ -35,9 +35,12 @@ export function isGramMessagePeerReaction(
   );
 }
 
-export function isGramReactionCount(value: unknown): value is Api.ReactionCount {
+export function isGramReactionCount(
+  value: unknown,
+): value is Api.ReactionCount {
   return (
-    value instanceof Api.ReactionCount || gramClassName(value) === "ReactionCount"
+    value instanceof Api.ReactionCount ||
+    gramClassName(value) === "ReactionCount"
   );
 }
 
@@ -51,7 +54,7 @@ export function gramBigIntToId(value: unknown): string {
   if (typeof value === "number") {
     return String(value);
   }
-  if (typeof value === "object" && "value" in (value as object)) {
+  if (typeof value === "object" && "value" in value) {
     return String((value as { value: bigint }).value);
   }
   return String(value).trim();
@@ -75,17 +78,12 @@ export function extractGramPeerUserId(peer: unknown): string | null {
   }
 }
 
-export function extractGramReactionEmoticon(
-  reaction: unknown,
-): string | null {
+export function extractGramReactionEmoticon(reaction: unknown): string | null {
   if (!reaction || typeof reaction !== "object") {
     return null;
   }
   const className = gramClassName(reaction);
-  if (
-    reaction instanceof Api.ReactionEmoji ||
-    className === "ReactionEmoji"
-  ) {
+  if (reaction instanceof Api.ReactionEmoji || className === "ReactionEmoji") {
     const emoticon = (reaction as Api.ReactionEmoji).emoticon?.trim();
     return emoticon || null;
   }

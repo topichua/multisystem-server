@@ -19,10 +19,7 @@ import {
   applySnapshotToEntitlements,
   entitlementsToSnapshot,
 } from "./entitlements.mapper";
-import {
-  billingPeriodBounds,
-  nextCreditsResetAt,
-} from "./billing-period.util";
+import { billingPeriodBounds, nextCreditsResetAt } from "./billing-period.util";
 import { PlansService } from "./plans.service";
 import type { ChangeSubscriptionRequestDto } from "./dto/change-subscription-request.dto";
 import type { ChangeSubscriptionResponseDto } from "./dto/change-subscription-response.dto";
@@ -80,137 +77,141 @@ export class SubscriptionChangeService {
       );
     }
 
-    const result = await this.subscriptionRepo.manager.transaction(async (em) => {
-      const subscription = await em.getRepository(WorkspaceSubscription).findOne({
-        where: { workspaceId, status: In(ACTIVE_STATUSES) },
-        order: { id: "DESC" },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!subscription) {
-        throw new NotFoundException("Active subscription not found");
-      }
-      subscription.planTemplate = subscription.planTemplateId
-        ? await em.getRepository(PlanTemplate).findOne({
-            where: { id: subscription.planTemplateId },
-          })
-        : null;
+    const result = await this.subscriptionRepo.manager.transaction(
+      async (em) => {
+        const subscription = await em
+          .getRepository(WorkspaceSubscription)
+          .findOne({
+            where: { workspaceId, status: In(ACTIVE_STATUSES) },
+            order: { id: "DESC" },
+            lock: { mode: "pessimistic_write" },
+          });
+        if (!subscription) {
+          throw new NotFoundException("Active subscription not found");
+        }
+        subscription.planTemplate = subscription.planTemplateId
+          ? await em.getRepository(PlanTemplate).findOne({
+              where: { id: subscription.planTemplateId },
+            })
+          : null;
 
-      const entitlementsRow = await em
-        .getRepository(WorkspaceEntitlements)
-        .findOne({
-          where: { workspaceId },
-          lock: { mode: "pessimistic_write" },
-        });
-      if (!entitlementsRow) {
-        throw new NotFoundException("Workspace entitlements not found");
-      }
+        const entitlementsRow = await em
+          .getRepository(WorkspaceEntitlements)
+          .findOne({
+            where: { workspaceId },
+            lock: { mode: "pessimistic_write" },
+          });
+        if (!entitlementsRow) {
+          throw new NotFoundException("Workspace entitlements not found");
+        }
 
-      const fromSnapshot = entitlementsToSnapshot(entitlementsRow);
-      const changeType = this.resolveChangeType(
-        subscription,
-        targetPlan,
-        fromSnapshot,
-        targetEntitlements,
-        dto.entitlements != null,
-      );
-
-      const amount = targetPlan
-        ? billingCycle === BillingCycle.yearly
-          ? targetPlan.priceYearly
-          : targetPlan.priceMonthly
-        : 0;
-
-      const purpose: InvoiceLinePurpose =
-        changeType === SubscriptionChangeType.renewal
-          ? "renewal"
-          : changeType === SubscriptionChangeType.downgrade
-            ? "downgrade"
-            : changeType === SubscriptionChangeType.subscribe
-              ? "subscribe"
-              : "upgrade";
-
-      let invoice: Invoice | null = null;
-      if (amount > 0) {
-        const { periodStart, periodEnd } = billingPeriodBounds(
-          billingCycle,
-          new Date(),
-        );
-        invoice = await em.getRepository(Invoice).save(
-          em.getRepository(Invoice).create({
-            workspaceId,
-            subscriptionId: subscription.id,
-            number: await this.generateInvoiceNumber(workspaceId),
-            status: InvoiceStatus.open,
-            amount,
-            currency: targetPlan?.currency ?? "UAH",
-            periodStart,
-            periodEnd,
-            description: targetPlan
-              ? `${targetPlan.name} — ${billingCycle}`
-              : "Custom plan",
-            lineItems: [
-              {
-                type: "subscription",
-                description: targetPlan?.name ?? "Custom plan",
-                amount,
-                quantity: 1,
-                planTemplateId: targetPlan?.id,
-                planSlug: targetPlan?.slug,
-                billingCycle,
-                purpose,
-              },
-            ],
-            dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            paidAt: null,
-            externalPaymentId: null,
-          }),
+        const fromSnapshot = entitlementsToSnapshot(entitlementsRow);
+        const changeType = this.resolveChangeType(
+          subscription,
+          targetPlan,
+          fromSnapshot,
+          targetEntitlements,
+          dto.entitlements != null,
         );
 
-        await em.getRepository(SubscriptionChange).save(
-          em.getRepository(SubscriptionChange).create({
-            subscriptionId: subscription.id,
-            changeType,
-            fromEntitlements: fromSnapshot,
-            toEntitlements: targetEntitlements,
-            invoiceId: invoice.id,
-            createdByUserId: userId,
-          }),
-        );
-      } else {
-        const { periodStart, periodEnd } = billingPeriodBounds(
-          billingCycle,
-          new Date(),
-        );
-        applySnapshotToEntitlements(entitlementsRow, targetEntitlements);
-        entitlementsRow.aiCreditsUsed = 0;
-        entitlementsRow.creditsResetAt = nextCreditsResetAt();
-        await em.getRepository(WorkspaceEntitlements).save(entitlementsRow);
+        const amount = targetPlan
+          ? billingCycle === BillingCycle.yearly
+            ? targetPlan.priceYearly
+            : targetPlan.priceMonthly
+          : 0;
 
-        subscription.planTemplateId = targetPlan?.id ?? null;
-        subscription.entitlementsSnapshot = targetEntitlements;
-        subscription.billingCycle = billingCycle;
-        subscription.periodStart = periodStart;
-        subscription.periodEnd = periodEnd;
-        subscription.customLabel =
-          targetPlan == null ? dto.customLabel?.trim() ?? "Custom" : null;
-        subscription.status = SubscriptionStatus.active;
-        subscription.canceledAt = null;
-        await em.getRepository(WorkspaceSubscription).save(subscription);
+        const purpose: InvoiceLinePurpose =
+          changeType === SubscriptionChangeType.renewal
+            ? "renewal"
+            : changeType === SubscriptionChangeType.downgrade
+              ? "downgrade"
+              : changeType === SubscriptionChangeType.subscribe
+                ? "subscribe"
+                : "upgrade";
 
-        await em.getRepository(SubscriptionChange).save(
-          em.getRepository(SubscriptionChange).create({
-            subscriptionId: subscription.id,
-            changeType,
-            fromEntitlements: fromSnapshot,
-            toEntitlements: targetEntitlements,
-            invoiceId: null,
-            createdByUserId: userId,
-          }),
-        );
-      }
+        let invoice: Invoice | null = null;
+        if (amount > 0) {
+          const { periodStart, periodEnd } = billingPeriodBounds(
+            billingCycle,
+            new Date(),
+          );
+          invoice = await em.getRepository(Invoice).save(
+            em.getRepository(Invoice).create({
+              workspaceId,
+              subscriptionId: subscription.id,
+              number: await this.generateInvoiceNumber(workspaceId),
+              status: InvoiceStatus.open,
+              amount,
+              currency: targetPlan?.currency ?? "UAH",
+              periodStart,
+              periodEnd,
+              description: targetPlan
+                ? `${targetPlan.name} — ${billingCycle}`
+                : "Custom plan",
+              lineItems: [
+                {
+                  type: "subscription",
+                  description: targetPlan?.name ?? "Custom plan",
+                  amount,
+                  quantity: 1,
+                  planTemplateId: targetPlan?.id,
+                  planSlug: targetPlan?.slug,
+                  billingCycle,
+                  purpose,
+                },
+              ],
+              dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+              paidAt: null,
+              externalPaymentId: null,
+            }),
+          );
 
-      return { subscription, invoice, pendingPayment: amount > 0 };
-    });
+          await em.getRepository(SubscriptionChange).save(
+            em.getRepository(SubscriptionChange).create({
+              subscriptionId: subscription.id,
+              changeType,
+              fromEntitlements: fromSnapshot,
+              toEntitlements: targetEntitlements,
+              invoiceId: invoice.id,
+              createdByUserId: userId,
+            }),
+          );
+        } else {
+          const { periodStart, periodEnd } = billingPeriodBounds(
+            billingCycle,
+            new Date(),
+          );
+          applySnapshotToEntitlements(entitlementsRow, targetEntitlements);
+          entitlementsRow.aiCreditsUsed = 0;
+          entitlementsRow.creditsResetAt = nextCreditsResetAt();
+          await em.getRepository(WorkspaceEntitlements).save(entitlementsRow);
+
+          subscription.planTemplateId = targetPlan?.id ?? null;
+          subscription.entitlementsSnapshot = targetEntitlements;
+          subscription.billingCycle = billingCycle;
+          subscription.periodStart = periodStart;
+          subscription.periodEnd = periodEnd;
+          subscription.customLabel =
+            targetPlan == null ? (dto.customLabel?.trim() ?? "Custom") : null;
+          subscription.status = SubscriptionStatus.active;
+          subscription.canceledAt = null;
+          await em.getRepository(WorkspaceSubscription).save(subscription);
+
+          await em.getRepository(SubscriptionChange).save(
+            em.getRepository(SubscriptionChange).create({
+              subscriptionId: subscription.id,
+              changeType,
+              fromEntitlements: fromSnapshot,
+              toEntitlements: targetEntitlements,
+              invoiceId: null,
+              createdByUserId: userId,
+            }),
+          );
+        }
+
+        return { subscription, invoice, pendingPayment: amount > 0 };
+      },
+    );
 
     const [entitlementsDto, subscriptionDto] = await Promise.all([
       this.entitlements.getForWorkspace(workspaceId),

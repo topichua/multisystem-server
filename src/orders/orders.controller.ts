@@ -70,7 +70,7 @@ export class OrdersController {
   @ApiOperation({
     summary: "Add line item to order",
     description:
-      'Allowed only while order status category is `new`. Prefer PATCH /orders/:orderId with `items` to replace the full list.',
+      "Allowed only while order status category is `new`. Prefer PATCH /orders/:orderId with `items` to replace the full list.",
   })
   async addItem(
     @Req() req: { user?: AuthUser },
@@ -86,7 +86,7 @@ export class OrdersController {
     summary: "Update order",
     description:
       "Patch order fields. `items` replaces all line items (same shape as create) — " +
-      'allowed only while order status category is `new`. Notes can be updated anytime.',
+      "allowed only while order status category is `new`. Notes can be updated anytime.",
   })
   @ApiBody({ type: UpdateOrderDto })
   async updateOrder(

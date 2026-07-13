@@ -31,7 +31,7 @@ import { OrderPaymentStatusApplicationService } from "./order-payment-status-app
       ManualPaymentMethod,
       Order,
     ]),
-    WorkspaceAccessModule,
+    forwardRef(() => WorkspaceAccessModule),
     forwardRef(() => OrderStatusAutomationsModule),
   ],
   controllers: [

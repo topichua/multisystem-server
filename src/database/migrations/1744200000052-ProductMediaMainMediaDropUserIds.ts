@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ProductMediaMainMediaDropUserIds1744200000052
-  implements MigrationInterface
-{
+export class ProductMediaMainMediaDropUserIds1744200000052 implements MigrationInterface {
   name = "ProductMediaMainMediaDropUserIds1744200000052";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

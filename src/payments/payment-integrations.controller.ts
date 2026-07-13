@@ -41,7 +41,9 @@ export class PaymentIntegrationsController {
   @Get()
   @ApiOperation({ summary: "List payment integrations for workspace" })
   @ApiOkResponse({ type: PaymentIntegrationsListResponseDto })
-  list(@Req() req: { user?: AuthUser }): Promise<PaymentIntegrationsListResponseDto> {
+  list(
+    @Req() req: { user?: AuthUser },
+  ): Promise<PaymentIntegrationsListResponseDto> {
     const userId = this.requireUserId(req);
     return this.integrations.listForUser(userId, req.user?.role);
   }

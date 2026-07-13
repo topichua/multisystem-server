@@ -1,4 +1,10 @@
-import { BadRequestException, forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Api, utils } from "telegram";
 import type { TelegramClient } from "telegram";
@@ -317,7 +323,8 @@ export class TelegramMessagePersistenceService {
         let messages: Api.Message[];
         try {
           messages = await client.getMessages(entity, {
-            limit: TelegramMessagePersistenceService.CATCHUP_MESSAGES_PER_DIALOG,
+            limit:
+              TelegramMessagePersistenceService.CATCHUP_MESSAGES_PER_DIALOG,
           });
         } catch (e) {
           const err = e instanceof Error ? e.message : String(e);
@@ -382,9 +389,7 @@ export class TelegramMessagePersistenceService {
     } = this.resolvePrivateMessageActors(msg, chatId, myUserId);
 
     const messageDate =
-      typeof msg.date === "number"
-        ? new Date(msg.date * 1000)
-        : new Date();
+      typeof msg.date === "number" ? new Date(msg.date * 1000) : new Date();
     const externalMessageId = `tg:${chatId}:${msg.id}`;
     const externalConversationId = `telegram:private:${chatId}`;
 
@@ -1027,7 +1032,9 @@ export class TelegramMessagePersistenceService {
       };
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
-      this.log.warn(`Telegram photo Cloudflare upload failed chat=${chatId}: ${err}`);
+      this.log.warn(
+        `Telegram photo Cloudflare upload failed chat=${chatId}: ${err}`,
+      );
       return null;
     }
   }
@@ -1041,7 +1048,9 @@ export class TelegramMessagePersistenceService {
       return null;
     }
 
-    const phone = TelegramUsersService.normalizePhoneOptional(media.phoneNumber);
+    const phone = TelegramUsersService.normalizePhoneOptional(
+      media.phoneNumber,
+    );
     if (!phone) {
       return null;
     }
@@ -1094,7 +1103,11 @@ export class TelegramMessagePersistenceService {
         accessHash: this.bigIntToId(photo.accessHash),
         dcId: photo.dcId,
         ...(photo.fileReference
-          ? { fileReference: Buffer.from(photo.fileReference).toString("base64") }
+          ? {
+              fileReference: Buffer.from(photo.fileReference).toString(
+                "base64",
+              ),
+            }
           : {}),
         ...(largest && "type" in largest
           ? {
@@ -1225,7 +1238,7 @@ export class TelegramMessagePersistenceService {
     if (typeof value === "number") {
       return String(value);
     }
-    if (typeof value === "object" && "value" in (value as object)) {
+    if (typeof value === "object" && "value" in value) {
       return String((value as { value: bigint }).value);
     }
     return String(value);
@@ -1334,9 +1347,12 @@ export class TelegramMessagePersistenceService {
         { peerUserId },
       );
 
-    return qb.getOne() ?? this.findPersistedTelegramMessageByTelegramIdOnly(
-      integration,
-      telegramMessageId,
+    return (
+      qb.getOne() ??
+      this.findPersistedTelegramMessageByTelegramIdOnly(
+        integration,
+        telegramMessageId,
+      )
     );
   }
 
@@ -1374,7 +1390,11 @@ export class TelegramMessagePersistenceService {
       messageReceiverId,
     );
     const otherRole =
-      myRole === "sender" ? "receiver" : myRole === "receiver" ? "sender" : null;
+      myRole === "sender"
+        ? "receiver"
+        : myRole === "receiver"
+          ? "sender"
+          : null;
     const at = new Date().toISOString();
     const out: StoredMessageReaction[] = [];
 

@@ -202,12 +202,7 @@ export class ProductsController {
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
-    await this.productMedia.replaceMedia(
-      workspaceId,
-      ownerId,
-      id,
-      dto.items,
-    );
+    await this.productMedia.replaceMedia(workspaceId, ownerId, id, dto.items);
     return this.products.findOneForOwner(ownerId, id);
   }
 

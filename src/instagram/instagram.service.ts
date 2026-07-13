@@ -150,8 +150,7 @@ export class InstagramService {
       url.searchParams.set("before", query.before.trim());
     }
 
-    const mediaPage =
-      await this.instagramGraphFetch<IgMediaListResponse>(url);
+    const mediaPage = await this.instagramGraphFetch<IgMediaListResponse>(url);
 
     return {
       data: (mediaPage.data ?? []).map((item) => this.normalizeMediaItem(item)),
@@ -289,14 +288,12 @@ export class InstagramService {
     );
     url.searchParams.set("access_token", accessToken);
 
-    const result = await this.instagramGraphFetch<ReplyInstagramCommentResponseDto>(
-      url,
-      {
+    const result =
+      await this.instagramGraphFetch<ReplyInstagramCommentResponseDto>(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
-      },
-    );
+      });
 
     const createdId = result.id?.trim();
     if (!createdId) {
@@ -482,7 +479,10 @@ export class InstagramService {
 
   private enrichCommentWithUser(
     comment: InstagramCommentDto,
-    userById: Map<string, { id: string; name: string; username: string; profilePic: string }>,
+    userById: Map<
+      string,
+      { id: string; name: string; username: string; profilePic: string }
+    >,
   ): InstagramCommentDto {
     const authorId = comment.from?.id?.trim();
     const user = authorId ? userById.get(authorId) : undefined;

@@ -14,7 +14,7 @@ import { OrderDeliveryStatusApplicationService } from "./order-delivery-status-a
 
 @Module({
   imports: [
-    WorkspaceAccessModule,
+    forwardRef(() => WorkspaceAccessModule),
     forwardRef(() => OrderStatusAutomationsModule),
     TypeOrmModule.forFeature([
       OrderDeliveryInfo,

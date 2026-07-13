@@ -88,7 +88,9 @@ export class InstagramController {
     if (workspaceIdRaw != null && workspaceIdRaw.trim() !== "") {
       workspaceId = Number(workspaceIdRaw.trim());
       if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
-        throw new BadRequestException("workspace_id must be a positive integer");
+        throw new BadRequestException(
+          "workspace_id must be a positive integer",
+        );
       }
     }
 
@@ -156,8 +158,14 @@ export class InstagramController {
       "comment from GET /api/instagram/posts/:instagramPostId/comments. " +
       "Pass `integrationId` when you have multiple connected Instagram accounts.",
   })
-  @ApiParam({ name: "instagramPostId", description: "Instagram Graph media/post id" })
-  @ApiParam({ name: "commentId", description: "Parent comment id from GET .../comments" })
+  @ApiParam({
+    name: "instagramPostId",
+    description: "Instagram Graph media/post id",
+  })
+  @ApiParam({
+    name: "commentId",
+    description: "Parent comment id from GET .../comments",
+  })
   @ApiOkResponse({ type: InstagramPostCommentsListResponseDto })
   async listCommentReplies(
     @Req() req: { user?: AuthUser },
@@ -190,8 +198,14 @@ export class InstagramController {
       "Calls Meta Graph `POST /{ig-comment-id}/replies` with the integration Page token. " +
       "Only top-level comments can be replied to. Pass `integrationId` when you have multiple connected accounts.",
   })
-  @ApiParam({ name: "instagramPostId", description: "Instagram Graph media/post id" })
-  @ApiParam({ name: "commentId", description: "Parent comment id from GET .../comments" })
+  @ApiParam({
+    name: "instagramPostId",
+    description: "Instagram Graph media/post id",
+  })
+  @ApiParam({
+    name: "commentId",
+    description: "Parent comment id from GET .../comments",
+  })
   @ApiCreatedResponse({ type: ReplyInstagramCommentResponseDto })
   async replyToComment(
     @Req() req: { user?: AuthUser },

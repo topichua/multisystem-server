@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-} from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
@@ -77,12 +74,16 @@ export class WorkspaceSettingsService {
     return (ws.defaultCurrency?.trim() || "UAH").slice(0, 8);
   }
 
-  async getInventoryModeForWorkspace(workspaceId: number): Promise<InventoryMode> {
+  async getInventoryModeForWorkspace(
+    workspaceId: number,
+  ): Promise<InventoryMode> {
     const ws = await this.workspaceRepo.findOne({ where: { id: workspaceId } });
     return ws?.inventoryMode ?? InventoryMode.simple;
   }
 
-  private async resetStocksForAdvancedSwitch(workspaceId: number): Promise<void> {
+  private async resetStocksForAdvancedSwitch(
+    workspaceId: number,
+  ): Promise<void> {
     const rows = await this.stockRepo.find({ where: { workspaceId } });
     for (const row of rows) {
       const after = resetAdvancedStockOnModeSwitch({

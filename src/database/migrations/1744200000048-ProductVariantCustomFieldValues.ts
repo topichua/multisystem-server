@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ProductVariantCustomFieldValues1744200000048
-  implements MigrationInterface
-{
+export class ProductVariantCustomFieldValues1744200000048 implements MigrationInterface {
   name = "ProductVariantCustomFieldValues1744200000048";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -75,6 +73,8 @@ export class ProductVariantCustomFieldValues1744200000048
       )
     `);
 
-    await queryRunner.query(`DROP TABLE IF EXISTS "product_variant_custom_field_value"`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "product_variant_custom_field_value"`,
+    );
   }
 }

@@ -35,12 +35,11 @@ export class CloudflareR2Service {
   private readonly log = new Logger(CloudflareR2Service.name);
   private readonly accountId = process.env.CF_ACCOUNT_ID?.trim();
   private readonly accessKeyId = process.env.CF_R2_ACCESS_KEY_ID?.trim();
-  private readonly secretAccessKey = process.env.CF_R2_SECRET_ACCESS_KEY?.trim();
+  private readonly secretAccessKey =
+    process.env.CF_R2_SECRET_ACCESS_KEY?.trim();
   private readonly bucketName = process.env.CF_R2_BUCKET_NAME?.trim();
-  private readonly publicBaseUrl = process.env.CF_R2_PUBLIC_URL?.trim()?.replace(
-    /\/+$/,
-    "",
-  );
+  private readonly publicBaseUrl =
+    process.env.CF_R2_PUBLIC_URL?.trim()?.replace(/\/+$/, "");
 
   private client: S3Client | null = null;
 
@@ -57,10 +56,10 @@ export class CloudflareR2Service {
     return {
       configured: Boolean(
         accountIdPresent &&
-          accessKeyPresent &&
-          secretKeyPresent &&
-          bucketName &&
-          publicBaseUrl,
+        accessKeyPresent &&
+        secretKeyPresent &&
+        bucketName &&
+        publicBaseUrl,
       ),
       accountIdPresent,
       accessKeyPresent,

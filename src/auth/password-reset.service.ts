@@ -6,11 +6,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Repository } from "typeorm";
-import {
-  PasswordResetToken,
-  User,
-  UserStatus,
-} from "../database/entities";
+import { PasswordResetToken, User, UserStatus } from "../database/entities";
 import { DEFAULT_SUPPORT_EMAIL } from "../sendgrid/sendgrid.constants";
 import { SendgridService } from "../sendgrid/sendgrid.service";
 import { PasswordService } from "../users/crypto/password.service";
@@ -34,7 +30,9 @@ export class PasswordResetService {
     private readonly config: ConfigService,
   ) {}
 
-  async requestPasswordReset(emailRaw: string): Promise<ForgotPasswordResponseDto> {
+  async requestPasswordReset(
+    emailRaw: string,
+  ): Promise<ForgotPasswordResponseDto> {
     const email = emailRaw.trim().toLowerCase();
     const user = await this.userRepo.findOne({
       where: { email },

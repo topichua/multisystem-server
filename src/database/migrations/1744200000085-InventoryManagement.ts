@@ -109,8 +109,12 @@ export class InventoryManagement1744200000085 implements MigrationInterface {
       DROP COLUMN IF EXISTS "unit_price_snapshot"
     `);
     await queryRunner.query(`DROP TABLE IF EXISTS "inventory_movements"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "inventory_movement_reason_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "inventory_movement_type_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "inventory_movement_reason_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "inventory_movement_type_enum"`,
+    );
     await queryRunner.query(`
       ALTER TABLE "product_variants"
       DROP COLUMN IF EXISTS "average_purchase_price",

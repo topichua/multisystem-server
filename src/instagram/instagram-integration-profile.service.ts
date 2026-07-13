@@ -23,7 +23,9 @@ type InstagramErrorResponse = {
 export class InstagramIntegrationProfileService {
   private readonly log = new Logger(InstagramIntegrationProfileService.name);
 
-  async mapRow(row: InstagramIntegration): Promise<InstagramIntegrationListItemDto> {
+  async mapRow(
+    row: InstagramIntegration,
+  ): Promise<InstagramIntegrationListItemDto> {
     const fallbackName =
       row.facebookPageName?.trim() ||
       row.name?.trim() ||

@@ -47,7 +47,10 @@ export class CreateOrderStatusAutomationDto {
   @IsEnum(AutomationDurationUnit)
   durationUnit?: AutomationDurationUnit | null;
 
-  @ApiProperty({ enum: AutomationActionType, default: AutomationActionType.change_order_status })
+  @ApiProperty({
+    enum: AutomationActionType,
+    default: AutomationActionType.change_order_status,
+  })
   @IsEnum(AutomationActionType)
   actionType: AutomationActionType = AutomationActionType.change_order_status;
 

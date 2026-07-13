@@ -1,8 +1,10 @@
 import {
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  forwardRef,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -28,6 +30,7 @@ export class NovaPoshtaDeliverySyncWorkerService
     @InjectRepository(OrderDeliveryInfo)
     private readonly deliveryRepo: Repository<OrderDeliveryInfo>,
     private readonly tracking: NovaPoshtaDeliveryTrackingService,
+    @Inject(forwardRef(() => OrderStatusAutomationExecutorService))
     private readonly automationExecutor: OrderStatusAutomationExecutorService,
   ) {}
 
@@ -109,7 +112,8 @@ export class NovaPoshtaDeliverySyncWorkerService
           synced += 1;
         } catch (error) {
           failed += 1;
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           this.log.warn(
             `Nova Poshta sync skipped delivery=${delivery.id}: ${message}`,
           );

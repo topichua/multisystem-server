@@ -132,7 +132,9 @@ export class WorkspaceRoleIntegrationGrantsService {
     await this.grantRepo.delete({ integrationType, integrationId });
   }
 
-  hasConversationsFullAccess(permissions: string[] | null | undefined): boolean {
+  hasConversationsFullAccess(
+    permissions: string[] | null | undefined,
+  ): boolean {
     return (permissions ?? []).some(
       (key) => key.trim() === "conversations.full_access",
     );
@@ -203,7 +205,9 @@ export class WorkspaceRoleIntegrationGrantsService {
     integrationType: IntegrationType,
     integrationId: number,
   ): boolean {
-    return getIntegrationGrant(resolved, integrationType, integrationId) != null;
+    return (
+      getIntegrationGrant(resolved, integrationType, integrationId) != null
+    );
   }
 
   private async requireRole(roleId: number): Promise<WorkspaceRole> {
@@ -276,7 +280,9 @@ export class WorkspaceRoleIntegrationGrantsService {
       }
       const integrationId = Number(grant.integrationId);
       if (!Number.isInteger(integrationId) || integrationId <= 0) {
-        throw new BadRequestException("integrationId must be a positive integer");
+        throw new BadRequestException(
+          "integrationId must be a positive integer",
+        );
       }
       if (!grant.permissions || typeof grant.permissions !== "object") {
         throw new BadRequestException(

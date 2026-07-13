@@ -38,9 +38,15 @@ export class WorkspaceTemplates1744200000059 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_workspace_templates_updated_by"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_workspace_templates_created_by"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_workspace_templates_workspace_id"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_workspace_templates_updated_by"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_workspace_templates_created_by"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_workspace_templates_workspace_id"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "workspace_templates"`);
   }
 }

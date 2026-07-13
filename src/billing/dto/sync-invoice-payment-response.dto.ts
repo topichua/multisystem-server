@@ -13,7 +13,8 @@ export class SyncInvoicePaymentResponseDto {
   localStatus: InvoiceStatus;
 
   @ApiProperty({
-    description: "True when local invoice is paid and subscription was activated",
+    description:
+      "True when local invoice is paid and subscription was activated",
   })
   activated: boolean;
 

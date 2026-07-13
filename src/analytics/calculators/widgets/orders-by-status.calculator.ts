@@ -14,9 +14,7 @@ type StatusCountRow = {
 };
 
 @Injectable()
-export class OrdersByStatusCalculator
-  implements AnalyticsMetricCalculator<AnalyticsOrdersByStatusResult>
-{
+export class OrdersByStatusCalculator implements AnalyticsMetricCalculator<AnalyticsOrdersByStatusResult> {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class StockMovementIntegerId1744200000100
-  implements MigrationInterface
-{
+export class StockMovementIntegerId1744200000100 implements MigrationInterface {
   name = "StockMovementIntegerId1744200000100";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class RemoveConversationManagerId1744200000106
-  implements MigrationInterface
-{
+export class RemoveConversationManagerId1744200000106 implements MigrationInterface {
   name = "RemoveConversationManagerId1744200000106";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

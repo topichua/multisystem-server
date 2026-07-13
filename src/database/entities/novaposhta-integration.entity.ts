@@ -36,7 +36,12 @@ export class NovaPoshtaIntegration {
   @JoinColumn({ name: "owner_id" })
   owner: User;
 
-  @Column({ name: "name", type: "varchar", length: 255, default: "Nova Poshta" })
+  @Column({
+    name: "name",
+    type: "varchar",
+    length: 255,
+    default: "Nova Poshta",
+  })
   name: string;
 
   @Column({ name: "api_key", type: "text" })
@@ -48,10 +53,20 @@ export class NovaPoshtaIntegration {
   @Column({ name: "sender_phone", type: "varchar", length: 64, nullable: true })
   senderPhone: string | null;
 
-  @Column({ name: "sender_city_ref", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "sender_city_ref",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   senderCityRef: string | null;
 
-  @Column({ name: "sender_city_name", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "sender_city_name",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   senderCityName: string | null;
 
   @Column({ name: "sender_type", type: "varchar", length: 32, nullable: true })
@@ -73,13 +88,28 @@ export class NovaPoshtaIntegration {
   })
   senderWarehouseName: string | null;
 
-  @Column({ name: "sender_street_ref", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "sender_street_ref",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   senderStreetRef: string | null;
 
-  @Column({ name: "sender_street_name", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "sender_street_name",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   senderStreetName: string | null;
 
-  @Column({ name: "sender_building", type: "varchar", length: 64, nullable: true })
+  @Column({
+    name: "sender_building",
+    type: "varchar",
+    length: 64,
+    nullable: true,
+  })
   senderBuilding: string | null;
 
   @Column({ name: "sender_flat", type: "varchar", length: 64, nullable: true })
@@ -98,7 +128,12 @@ export class NovaPoshtaIntegration {
   })
   senderContactRef: string | null;
 
-  @Column({ name: "payment_method", type: "varchar", length: 32, nullable: true })
+  @Column({
+    name: "payment_method",
+    type: "varchar",
+    length: 32,
+    nullable: true,
+  })
   paymentMethod: NovaPoshtaPaymentMethod | null;
 
   @Column({ name: "payer_type", type: "varchar", length: 32, nullable: true })
@@ -107,7 +142,11 @@ export class NovaPoshtaIntegration {
   @Column({ name: "on_created_order_status_id", type: "int", nullable: true })
   onCreatedOrderStatusId: number | null;
 
-  @Column({ name: "on_in_transit_order_status_id", type: "int", nullable: true })
+  @Column({
+    name: "on_in_transit_order_status_id",
+    type: "int",
+    nullable: true,
+  })
   onInTransitOrderStatusId: number | null;
 
   @Column({ name: "on_arrived_order_status_id", type: "int", nullable: true })

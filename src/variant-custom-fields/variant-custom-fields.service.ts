@@ -77,7 +77,9 @@ export class VariantCustomFieldsService {
     private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
-  async listForOwner(ownerId: number): Promise<VariantCustomFieldsListResponseDto> {
+  async listForOwner(
+    ownerId: number,
+  ): Promise<VariantCustomFieldsListResponseDto> {
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.ensureDefaults(workspace.id);
@@ -250,7 +252,9 @@ export class VariantCustomFieldsService {
       throw new NotFoundException("Option not found for this field");
     }
 
-    const usage = await this.valueRepo.count({ where: { optionId: option.id } });
+    const usage = await this.valueRepo.count({
+      where: { optionId: option.id },
+    });
     if (usage > 0) {
       throw new ConflictException("Option is in use and cannot be deleted");
     }
@@ -261,7 +265,9 @@ export class VariantCustomFieldsService {
   async getUsageForOwner(
     ownerId: number,
     fieldId: number,
-  ): Promise<import("./dto/variant-custom-field-usage.dto").VariantCustomFieldUsageDto> {
+  ): Promise<
+    import("./dto/variant-custom-field-usage.dto").VariantCustomFieldUsageDto
+  > {
     const field = await this.requireOwnedField(ownerId, fieldId);
     const totalProducts = await this.countProductsUsingField(field.id);
 
@@ -281,7 +287,10 @@ export class VariantCustomFieldsService {
         .groupBy("v.option_id")
         .getRawMany();
 
-      const countsMap = new Map<number, { productCount: number; productVariantCount: number }>();
+      const countsMap = new Map<
+        number,
+        { productCount: number; productVariantCount: number }
+      >();
       for (const row of rawCounts) {
         countsMap.set(Number(row.option_id), {
           productCount: Number(row.product_count),
@@ -690,9 +699,7 @@ export class VariantCustomFieldsService {
         label,
       );
       if (!exists) {
-        await optionRepo.save(
-          optionRepo.create({ fieldId, label }),
-        );
+        await optionRepo.save(optionRepo.create({ fieldId, label }));
       }
     }
   }
@@ -756,10 +763,11 @@ export class VariantCustomFieldsService {
       relations: { role: true },
     });
     const permissions = member?.role?.permissions ?? [];
-    if (!permissions.includes(permission) && !permissions.includes("products.custom_fields")) {
-      throw new ForbiddenException(
-        `Missing permission: ${permission}`,
-      );
+    if (
+      !permissions.includes(permission) &&
+      !permissions.includes("products.custom_fields")
+    ) {
+      throw new ForbiddenException(`Missing permission: ${permission}`);
     }
   }
 
@@ -813,7 +821,9 @@ export class VariantCustomFieldsService {
     }
   }
 
-  private toDto(row: WorkspaceVariantCustomField): VariantCustomFieldDefinitionDto {
+  private toDto(
+    row: WorkspaceVariantCustomField,
+  ): VariantCustomFieldDefinitionDto {
     const optionLabels = [...(row.fieldOptions ?? [])]
       .sort((a, b) => a.id - b.id)
       .map((o) => o.label);

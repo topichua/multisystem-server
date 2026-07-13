@@ -200,7 +200,7 @@ export class ConversationsAllocationService {
       "reply_to",
       "message",
       "shares{link,id,media_id}",
-     `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
+      `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
       "reactions{data{reaction,emoji,users{id,username}}}",
     ].join(",");
   }
@@ -236,18 +236,21 @@ export class ConversationsAllocationService {
       throw new Error("Could not resolve customer user_id from message");
     }
 
-    const { row: conv, participantExtras, saveConversation } =
-      await this.ensureInstagramConversationRowForWebhook({
-        traceId: ctx.traceId,
-        msg,
-        mid,
-        customerUserId,
-        businessInstagramId: ctx.businessInstagramId,
-        ownerId: ctx.companyCtx.ownerId,
-        workspaceId: ctx.companyCtx.workspaceId,
-        accessToken: ctx.accessToken,
-        pageId: ctx.pageId,
-      });
+    const {
+      row: conv,
+      participantExtras,
+      saveConversation,
+    } = await this.ensureInstagramConversationRowForWebhook({
+      traceId: ctx.traceId,
+      msg,
+      mid,
+      customerUserId,
+      businessInstagramId: ctx.businessInstagramId,
+      ownerId: ctx.companyCtx.ownerId,
+      workspaceId: ctx.companyCtx.workspaceId,
+      accessToken: ctx.accessToken,
+      pageId: ctx.pageId,
+    });
 
     if (saveConversation) {
       await this.conversationRepo.save(conv);
@@ -280,11 +283,7 @@ export class ConversationsAllocationService {
       conv.readAt,
     );
 
-    await this.archiveInstagramMessageRow(
-      messageRow,
-      ctx.accessToken,
-      conv.id,
-    );
+    await this.archiveInstagramMessageRow(messageRow, ctx.accessToken, conv.id);
 
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
 
@@ -300,7 +299,9 @@ export class ConversationsAllocationService {
       ctx.traceId,
       null,
     );
-    this.log.log(`${t} new_message saved mid=${mid} conversation_id=${conv.id}`);
+    this.log.log(
+      `${t} new_message saved mid=${mid} conversation_id=${conv.id}`,
+    );
   }
 
   /** (2) Reaction — merge into `instagram_json.reactions` (+ optional Graph refresh). */
@@ -332,7 +333,10 @@ export class ConversationsAllocationService {
         ctx.accessToken,
         this.graphMessageFieldsWithReactions(),
       );
-      row.instagramJson = this.buildInstagramJsonWithWebhookReaction(graphMsg, ev);
+      row.instagramJson = this.buildInstagramJsonWithWebhookReaction(
+        graphMsg,
+        ev,
+      );
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       this.log.warn(
@@ -402,10 +406,7 @@ export class ConversationsAllocationService {
       conv = await this.conversationRepo.save(conv);
     }
 
-    if (
-      conv.readAt == null ||
-      conv.readAt.getTime() < readAt.getTime()
-    ) {
+    if (conv.readAt == null || conv.readAt.getTime() < readAt.getTime()) {
       conv.readAt = readAt;
     }
 
@@ -565,7 +566,10 @@ export class ConversationsAllocationService {
     });
 
     if (!existing) {
-      if(conversation.readAt != null && conversation.readAt.getTime() > fresh.createdAt?.getTime()) {
+      if (
+        conversation.readAt != null &&
+        conversation.readAt.getTime() > fresh.createdAt?.getTime()
+      ) {
         fresh.readAt = conversation.readAt;
       }
       return fresh;
@@ -577,10 +581,7 @@ export class ConversationsAllocationService {
       unknown
     >;
     existing.instagramJson = JSON.stringify(
-      mergeMessageJsonPreservingReactions(
-        existing.instagramJson,
-        freshPayload,
-      ),
+      mergeMessageJsonPreservingReactions(existing.instagramJson, freshPayload),
     );
     existing.createdAt = fresh.createdAt;
     existing.senderId = fresh.senderId;
@@ -589,8 +590,8 @@ export class ConversationsAllocationService {
       existing.repliedToExternalId = fresh.repliedToExternalId;
     }
     if (
-      (conversation.readAt == null ||
-        conversation.readAt.getTime() > fresh.createdAt?.getTime())
+      conversation.readAt == null ||
+      conversation.readAt.getTime() > fresh.createdAt?.getTime()
     ) {
       existing.readAt = fresh.readAt;
     }
@@ -865,7 +866,10 @@ export class ConversationsAllocationService {
         "unknown");
 
     row = await this.conversationRepo.findOne({
-      where: { workspaceId: params.workspaceId, externalId: graphConversationId },
+      where: {
+        workspaceId: params.workspaceId,
+        externalId: graphConversationId,
+      },
     });
 
     if (!row) {

@@ -1,4 +1,8 @@
-import { ApiProperty, ApiPropertyOptional, IntersectionType } from "@nestjs/swagger";
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   IsArray,

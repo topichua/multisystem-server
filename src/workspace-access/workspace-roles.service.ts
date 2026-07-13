@@ -71,13 +71,7 @@ export class WorkspaceRolesService {
       ownerId,
       appRole,
     );
-    return this.updateForWorkspace(
-      ownerId,
-      workspace.id,
-      roleId,
-      dto,
-      appRole,
-    );
+    return this.updateForWorkspace(ownerId, workspace.id, roleId, dto, appRole);
   }
 
   async deleteForOwner(
@@ -151,8 +145,7 @@ export class WorkspaceRolesService {
       permissions,
       permissionOptions,
       permissionOptionLists,
-      maxOrderDiscountPercentage:
-        dto.maxOrderDiscountPercentage ?? null,
+      maxOrderDiscountPercentage: dto.maxOrderDiscountPercentage ?? null,
     });
     const saved = await this.roleRepo.save(row);
     return this.toDto(saved);

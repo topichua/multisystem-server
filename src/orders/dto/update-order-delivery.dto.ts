@@ -127,8 +127,7 @@ export class UpdateOrderDeliveryDto {
   providerStatusCode?: string | null;
 
   @ApiPropertyOptional({
-    description:
-      "Human-readable carrier status, e.g. «Прибув на відділення».",
+    description: "Human-readable carrier status, e.g. «Прибув на відділення».",
     example: "Прибув на відділення",
   })
   @IsOptional()

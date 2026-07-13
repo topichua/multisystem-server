@@ -19,21 +19,29 @@ function pickString(
 ): string | null | undefined {
   const camelVal = obj[camel];
   if (camelVal !== undefined) {
-    return typeof camelVal === "string" ? camelVal.trim() : (camelVal as string);
+    return typeof camelVal === "string"
+      ? camelVal.trim()
+      : (camelVal as string);
   }
   const snakeVal = obj[snake];
   if (snakeVal !== undefined) {
-    return typeof snakeVal === "string" ? snakeVal.trim() : (snakeVal as string);
+    return typeof snakeVal === "string"
+      ? snakeVal.trim()
+      : (snakeVal as string);
   }
   return undefined;
 }
 
 export class UpdateAuthProfileRequestDto {
-  @ApiPropertyOptional({ example: "Alex", description: "Also accepted as `first_name`." })
+  @ApiPropertyOptional({
+    example: "Alex",
+    description: "Also accepted as `first_name`.",
+  })
   @IsOptional()
-  @Transform(({ value, obj }) =>
-    pickString(obj as Record<string, unknown>, "firstName", "first_name") ??
-    trimOptionalString(value),
+  @Transform(
+    ({ value, obj }) =>
+      pickString(obj as Record<string, unknown>, "firstName", "first_name") ??
+      trimOptionalString(value),
   )
   @IsString()
   @MinLength(1)

@@ -16,7 +16,9 @@ export function pickWorkspaceMemberColor(
   workspaceId: number,
 ): string {
   const seed = userId + workspaceId * 9973;
-  return WORKSPACE_MEMBER_COLORS[Math.abs(seed) % WORKSPACE_MEMBER_COLORS.length];
+  return WORKSPACE_MEMBER_COLORS[
+    Math.abs(seed) % WORKSPACE_MEMBER_COLORS.length
+  ];
 }
 
 export function assignWorkspaceMemberColor(

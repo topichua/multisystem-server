@@ -1,16 +1,18 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  forwardRef,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
 import {
   User,
-  UserStatus, 
+  UserStatus,
   Workspace,
   WorkspaceInvitation,
   WorkspaceInvitationStatus,
@@ -59,6 +61,7 @@ export class WorkspaceMembersService {
     private readonly passwordService: PasswordService,
     private readonly invitationTokenService: InvitationTokenService,
     private readonly sendgrid: SendgridService,
+    @Inject(forwardRef(() => AuthService))
     private readonly authService: AuthService,
     private readonly config: ConfigService,
   ) {}
@@ -169,11 +172,10 @@ export class WorkspaceMembersService {
       ownerId,
       appRole,
     );
-    const member = await this.requireInactiveMember(
-      workspace.id,
-      memberId,
-      ["user", "role"],
-    );
+    const member = await this.requireInactiveMember(workspace.id, memberId, [
+      "user",
+      "role",
+    ]);
     const user = member.user;
     if (user.status === UserStatus.Disabled) {
       throw new BadRequestException("User account is disabled");
@@ -281,8 +283,7 @@ export class WorkspaceMembersService {
       dto.role_id,
     );
     const email = dto.email.trim().toLowerCase();
-    const displayName =
-      dto.first_name?.trim() || email.split("@")[0] || "User";
+    const displayName = dto.first_name?.trim() || email.split("@")[0] || "User";
 
     if (dto.skipConfirmation) {
       if (this.config.get<string>("NODE_ENV") === "production") {
@@ -310,7 +311,9 @@ export class WorkspaceMembersService {
         },
       });
       if (activeMember) {
-        throw new ConflictException("User is already a member of this workspace");
+        throw new ConflictException(
+          "User is already a member of this workspace",
+        );
       }
       if (user.status === UserStatus.Disabled) {
         throw new BadRequestException("User account is disabled");
@@ -726,7 +729,8 @@ export class WorkspaceMembersService {
       roleName: "Owner",
       status: WorkspaceMemberStatus.ACTIVE,
       joinedAt: workspace.createdAt?.toISOString() ?? new Date().toISOString(),
-      updated_at: workspace.createdAt?.toISOString() ?? new Date().toISOString(),
+      updated_at:
+        workspace.createdAt?.toISOString() ?? new Date().toISOString(),
       can_be_assigned_to_chat: true,
       ...(color ? { color } : {}),
       user: this.userToDto(ownerUser),

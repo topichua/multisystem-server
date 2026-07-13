@@ -23,7 +23,8 @@ export function classifyMonobankHttpError(
 
   if (httpStatus === 404) {
     return {
-      userMessage: "Ресурс Monobank не знайдено. Перевірте налаштування інтеграції.",
+      userMessage:
+        "Ресурс Monobank не знайдено. Перевірте налаштування інтеграції.",
     };
   }
 

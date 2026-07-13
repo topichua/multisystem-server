@@ -6,7 +6,8 @@ export class VariantCustomFieldDefinitionDto {
   id: number;
 
   @ApiProperty({
-    description: "Stable key; `color` and `size` map to product_variants columns",
+    description:
+      "Stable key; `color` and `size` map to product_variants columns",
   })
   key: string;
 

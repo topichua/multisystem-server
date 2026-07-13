@@ -267,9 +267,7 @@ export class UsersService {
       } else {
         const digits = phone.replace(/\D/g, "");
         user.mobilePhoneHash =
-          digits.length === 0
-            ? null
-            : this.invitationTokenService.hash(digits);
+          digits.length === 0 ? null : this.invitationTokenService.hash(digits);
       }
     }
     return toSafeUser(await this.userRepo.save(user));

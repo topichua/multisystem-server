@@ -19,9 +19,13 @@ import { Workspace } from "./workspace.entity";
 @Entity("telegram_integrations")
 @Index("IDX_telegram_integrations_workspace_id", ["workspaceId"])
 @Index("IDX_telegram_integrations_owner_id", ["ownerId"])
-@Index("UQ_telegram_integrations_workspace_phone", ["workspaceId", "phoneNumber"], {
-  unique: true,
-})
+@Index(
+  "UQ_telegram_integrations_workspace_phone",
+  ["workspaceId", "phoneNumber"],
+  {
+    unique: true,
+  },
+)
 export class TelegramIntegration {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
@@ -46,10 +50,20 @@ export class TelegramIntegration {
   })
   status: TelegramIntegrationStatus;
 
-  @Column({ name: "telegram_user_id", type: "varchar", length: 32, nullable: true })
+  @Column({
+    name: "telegram_user_id",
+    type: "varchar",
+    length: 32,
+    nullable: true,
+  })
   telegramUserId: string | null;
 
-  @Column({ name: "telegram_username", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "telegram_username",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   telegramUsername: string | null;
 
   /** GramJS session after successful login — secret. */
@@ -60,7 +74,12 @@ export class TelegramIntegration {
   @Column({ name: "auth_session_string", type: "text", nullable: true })
   authSessionString: string | null;
 
-  @Column({ name: "phone_code_hash", type: "varchar", length: 255, nullable: true })
+  @Column({
+    name: "phone_code_hash",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
   phoneCodeHash: string | null;
 
   @Column({ name: "connected_at", type: "timestamptz", nullable: true })
@@ -78,7 +97,11 @@ export class TelegramIntegration {
   })
   listenerInstanceId: string | null;
 
-  @Column({ name: "listener_heartbeat_at", type: "timestamptz", nullable: true })
+  @Column({
+    name: "listener_heartbeat_at",
+    type: "timestamptz",
+    nullable: true,
+  })
   listenerHeartbeatAt: Date | null;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })

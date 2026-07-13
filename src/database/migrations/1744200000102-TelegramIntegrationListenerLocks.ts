@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class TelegramIntegrationListenerLocks1744200000102
-  implements MigrationInterface
-{
+export class TelegramIntegrationListenerLocks1744200000102 implements MigrationInterface {
   name = "TelegramIntegrationListenerLocks1744200000102";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

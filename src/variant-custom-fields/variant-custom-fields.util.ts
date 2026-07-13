@@ -5,9 +5,10 @@ import {
   WorkspaceVariantCustomFieldOption,
 } from "../database/entities";
 
-export type WorkspaceVariantCustomFieldWithOptions = WorkspaceVariantCustomField & {
-  fieldOptions?: WorkspaceVariantCustomFieldOption[];
-};
+export type WorkspaceVariantCustomFieldWithOptions =
+  WorkspaceVariantCustomField & {
+    fieldOptions?: WorkspaceVariantCustomFieldOption[];
+  };
 
 export function getFieldOptionLabels(
   def: WorkspaceVariantCustomFieldWithOptions,

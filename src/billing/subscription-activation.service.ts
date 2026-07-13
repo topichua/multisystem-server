@@ -51,10 +51,12 @@ export class SubscriptionActivationService {
         );
       }
 
-      const subscription = await em.getRepository(WorkspaceSubscription).findOne({
-        where: { id: invoice.subscriptionId },
-        lock: { mode: "pessimistic_write" },
-      });
+      const subscription = await em
+        .getRepository(WorkspaceSubscription)
+        .findOne({
+          where: { id: invoice.subscriptionId },
+          lock: { mode: "pessimistic_write" },
+        });
       if (!subscription) {
         throw new InternalServerErrorException("Subscription not found");
       }
@@ -66,7 +68,9 @@ export class SubscriptionActivationService {
           lock: { mode: "pessimistic_write" },
         });
       if (!entitlementsRow) {
-        throw new InternalServerErrorException("Workspace entitlements not found");
+        throw new InternalServerErrorException(
+          "Workspace entitlements not found",
+        );
       }
 
       const lineItem = this.resolvePrimaryLineItem(invoice.lineItems);
@@ -102,7 +106,9 @@ export class SubscriptionActivationService {
     });
   }
 
-  private resolvePrimaryLineItem(lineItems: InvoiceLineItem[]): InvoiceLineItem {
+  private resolvePrimaryLineItem(
+    lineItems: InvoiceLineItem[],
+  ): InvoiceLineItem {
     const item = lineItems[0];
     if (!item) {
       throw new InternalServerErrorException("Invoice has no line items");

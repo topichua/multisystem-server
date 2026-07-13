@@ -19,9 +19,7 @@ import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
 import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
-import {
-  calculateRemainingAmount,
-} from "./logic/order-payment-status.logic";
+import { calculateRemainingAmount } from "./logic/order-payment-status.logic";
 import { resolveManualPaymentKind } from "./logic/manual-payment-kind";
 import type { CreateOrderPaymentLinkDto } from "./dto/create-order-payment-link.dto";
 import type { CreateManualPaymentDto } from "./dto/create-manual-payment.dto";
@@ -68,10 +66,11 @@ export class OrderPaymentsService {
       order.manualPaymentMethodId,
     );
     if (order.manualPaymentMethodId) {
-      const method = await this.manualPaymentMethods.requireOwnedMethodForWorkspace(
-        order.workspaceId,
-        order.manualPaymentMethodId,
-      );
+      const method =
+        await this.manualPaymentMethods.requireOwnedMethodForWorkspace(
+          order.workspaceId,
+          order.manualPaymentMethodId,
+        );
       selectedManualPaymentMethod = this.manualPaymentMethods.toDto(method);
     }
     return {
@@ -231,10 +230,11 @@ export class OrderPaymentsService {
     }
 
     const provider = this.domain.resolveProviderForIntegration(
-      payment.integration ?? (await this.integrations.getIntegrationById(
-        payment.workspaceId,
-        payment.integrationId,
-      )),
+      payment.integration ??
+        (await this.integrations.getIntegrationById(
+          payment.workspaceId,
+          payment.integrationId,
+        )),
     );
     const status = await provider.getPaymentStatus(payment.externalPaymentId);
     const updated = await this.domain.applyProviderEvent(
@@ -357,7 +357,8 @@ export class OrderPaymentsService {
       throw new BadRequestException("Missing invoiceId in webhook");
     }
 
-    const payment = await this.domain.findPaymentByExternalId(externalPaymentId);
+    const payment =
+      await this.domain.findPaymentByExternalId(externalPaymentId);
     if (!payment) {
       return;
     }
@@ -383,8 +384,10 @@ export class OrderPaymentsService {
     orderId: number,
     appRole?: string,
   ): Promise<Order> {
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
     const order = await this.orderRepo.findOne({
       where: { workspaceId: workspace.id, id: orderId },
     });
@@ -452,7 +455,9 @@ export class OrderPaymentsService {
     }
   }
 
-  private toPaymentDto(payment: PaymentRequest): OrderPaymentRequestResponseDto {
+  private toPaymentDto(
+    payment: PaymentRequest,
+  ): OrderPaymentRequestResponseDto {
     return {
       id: payment.id,
       orderId: payment.orderId,

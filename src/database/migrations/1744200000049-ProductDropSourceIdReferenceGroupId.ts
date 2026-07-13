@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ProductDropSourceIdReferenceGroupId1744200000049
-  implements MigrationInterface
-{
+export class ProductDropSourceIdReferenceGroupId1744200000049 implements MigrationInterface {
   name = "ProductDropSourceIdReferenceGroupId1744200000049";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

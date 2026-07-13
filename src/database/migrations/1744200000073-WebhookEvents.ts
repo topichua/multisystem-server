@@ -42,8 +42,6 @@ export class WebhookEvents1744200000073 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "webhook_events"`);
-    await queryRunner.query(
-      `DROP TYPE IF EXISTS "webhook_events_status_enum"`,
-    );
+    await queryRunner.query(`DROP TYPE IF EXISTS "webhook_events_status_enum"`);
   }
 }

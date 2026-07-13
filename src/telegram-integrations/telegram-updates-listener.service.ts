@@ -49,10 +49,7 @@ type AttachResult =
 
 @Injectable()
 export class TelegramUpdatesListenerService
-  implements
-    OnApplicationBootstrap,
-    BeforeApplicationShutdown,
-    OnModuleDestroy
+  implements OnApplicationBootstrap, BeforeApplicationShutdown, OnModuleDestroy
 {
   private readonly log = new Logger(TelegramUpdatesListenerService.name);
   readonly instanceId = `${hostname()}-${process.pid}-${randomUUID()}`;
@@ -473,7 +470,10 @@ export class TelegramUpdatesListenerService
     const isReconnect = existing != null;
     await this.detachIntegration(integration.id, { releaseLock: true });
 
-    const lock = await this.lockService.acquire(integration.id, this.instanceId);
+    const lock = await this.lockService.acquire(
+      integration.id,
+      this.instanceId,
+    );
     if (!lock.acquired) {
       await this.patchIntegration(integration.id, {
         listenerInstanceId: lock.ownerInstanceId ?? null,
@@ -483,7 +483,7 @@ export class TelegramUpdatesListenerService
     }
 
     const client = this.telegramApi.createListenerClient(session);
-    let lockVersion = lock.lockVersion;
+    const lockVersion = lock.lockVersion;
 
     try {
       await this.connectClientWithTimeout(client, integration.id);
@@ -763,8 +763,7 @@ export class TelegramUpdatesListenerService
       if (this.isAuthKeyDuplicated(e)) {
         await this.handleAuthKeyDuplicated(integration, {
           client,
-          hint:
-            "session auth key is active in another process or stale listener",
+          hint: "session auth key is active in another process or stale listener",
           lockVersion,
         });
         return "auth_key_duplicated";
@@ -847,7 +846,9 @@ export class TelegramUpdatesListenerService
     });
   }
 
-  private async stopListenerDueToLostLock(integrationId: number): Promise<void> {
+  private async stopListenerDueToLostLock(
+    integrationId: number,
+  ): Promise<void> {
     const active = this.clients.get(integrationId);
     if (!active) {
       return;
@@ -931,11 +932,7 @@ export class TelegramUpdatesListenerService
     }
 
     if (version != null) {
-      await this.lockService.release(
-        integration.id,
-        this.instanceId,
-        version,
-      );
+      await this.lockService.release(integration.id, this.instanceId, version);
     }
 
     await this.patchIntegration(integration.id, {
@@ -962,10 +959,7 @@ export class TelegramUpdatesListenerService
     patch: Partial<
       Pick<
         TelegramIntegration,
-        | "status"
-        | "listenerInstanceId"
-        | "listenerHeartbeatAt"
-        | "lastError"
+        "status" | "listenerInstanceId" | "listenerHeartbeatAt" | "lastError"
       >
     >,
   ): Promise<void> {
@@ -1031,7 +1025,9 @@ export class TelegramUpdatesListenerService
   }
 
   async reloadIntegration(integrationId: number): Promise<void> {
-    const row = await this.telegramRepo.findOne({ where: { id: integrationId } });
+    const row = await this.telegramRepo.findOne({
+      where: { id: integrationId },
+    });
     if (!row) {
       await this.detachIntegration(integrationId, { releaseLock: true });
       return;

@@ -48,13 +48,7 @@ export const NOVA_POSHTA_SIMULATED_STATUS_CODES: Record<
   },
 };
 
-const IN_TRANSIT_CODES = new Set([
-  "4",
-  "41",
-  "5",
-  "6",
-  "101",
-]);
+const IN_TRANSIT_CODES = new Set(["4", "41", "5", "6", "101"]);
 
 const ARRIVED_CODES = new Set(["7", "8", "14"]);
 

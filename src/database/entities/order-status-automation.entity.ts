@@ -19,7 +19,10 @@ import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 
 @Entity("order_status_automations")
-@Index("IDX_order_status_automations_workspace_active", ["workspaceId", "isActive"])
+@Index("IDX_order_status_automations_workspace_active", [
+  "workspaceId",
+  "isActive",
+])
 export class OrderStatusAutomation {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
@@ -86,7 +89,12 @@ export class OrderStatusAutomation {
   })
   origin: AutomationOrigin;
 
-  @Column({ name: "template_key", type: "varchar", length: 128, nullable: true })
+  @Column({
+    name: "template_key",
+    type: "varchar",
+    length: 128,
+    nullable: true,
+  })
   templateKey: string | null;
 
   @Column({ name: "created_by_id", type: "int", nullable: true })

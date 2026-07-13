@@ -40,7 +40,8 @@ export class CreateProductSuggestionRequestDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => {
     if (value === null || value === undefined) return null;
-    const trimmed = typeof value === "string" ? value.trim() : String(value).trim();
+    const trimmed =
+      typeof value === "string" ? value.trim() : String(value).trim();
     return trimmed || null;
   })
   @IsString()

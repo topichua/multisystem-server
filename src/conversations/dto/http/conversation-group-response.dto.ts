@@ -33,7 +33,8 @@ export class ConversationGroupResponseDto {
   systemKey?: string | null;
 
   @ApiProperty({
-    description: "System groups cannot be deleted; only name/color are editable",
+    description:
+      "System groups cannot be deleted; only name/color are editable",
   })
   isSystem: boolean;
 

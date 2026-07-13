@@ -39,8 +39,7 @@ export class NovaPoshtaSearchController {
   @Get("settlements/search")
   @ApiOperation({
     summary: "Search Nova Poshta settlements by name",
-    description:
-      `${SEARCH_CREDENTIALS_HINT} Returns an empty array when query is empty.`,
+    description: `${SEARCH_CREDENTIALS_HINT} Returns an empty array when query is empty.`,
   })
   @ApiOkResponse({ type: [NovaPoshtaSettlementSearchItemDto] })
   async searchSettlements(
@@ -58,8 +57,7 @@ export class NovaPoshtaSearchController {
   @Get("warehouses/search")
   @ApiOperation({
     summary: "Search Nova Poshta warehouses, branches and parcel lockers",
-    description:
-      `${SEARCH_CREDENTIALS_HINT} \`cityRef\` accepts settlement \`ref\` or delivery \`cityRef\` from settlement search.`,
+    description: `${SEARCH_CREDENTIALS_HINT} \`cityRef\` accepts settlement \`ref\` or delivery \`cityRef\` from settlement search.`,
   })
   @ApiOkResponse({ type: [NovaPoshtaWarehouseSearchItemDto] })
   async searchWarehouses(
@@ -111,7 +109,9 @@ export class NovaPoshtaSearchController {
   async getDocumentStatuses(
     @Req() req: { user?: AuthUser },
     @Query() query: GetNovaPoshtaDocumentStatusesQueryDto,
-  ): Promise<import("./nova-poshta-status-code.mapping").NovaPoshtaTrackingDocument> {
+  ): Promise<
+    import("./nova-poshta-status-code.mapping").NovaPoshtaTrackingDocument
+  > {
     const ownerId = this.requireOwnerId(req);
     return this.novaPoshta.getDocumentStatusesForOwner(ownerId, query);
   }

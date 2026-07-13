@@ -179,11 +179,8 @@ export class InstagramUsersService {
   }): Promise<void> {
     const instagramUserId = params.id.trim();
     const name =
-      params.name?.trim() ||
-      params.username?.trim() ||
-      instagramUserId;
-    const username =
-      params.username?.trim() || instagramUserId;
+      params.name?.trim() || params.username?.trim() || instagramUserId;
+    const username = params.username?.trim() || instagramUserId;
     const profilePic = params.profilePic?.trim() || "";
     const now = new Date();
 

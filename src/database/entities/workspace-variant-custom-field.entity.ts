@@ -14,9 +14,13 @@ import { Workspace } from "./workspace.entity";
 import { WorkspaceVariantCustomFieldOption } from "./workspace-variant-custom-field-option.entity";
 
 @Entity({ name: "workspace_variant_custom_field" })
-@Index("UQ_workspace_variant_custom_field_workspace_key", ["workspaceId", "key"], {
-  unique: true,
-})
+@Index(
+  "UQ_workspace_variant_custom_field_workspace_key",
+  ["workspaceId", "key"],
+  {
+    unique: true,
+  },
+)
 @Index("IDX_workspace_variant_custom_field_workspace_id", ["workspaceId"])
 export class WorkspaceVariantCustomField {
   @PrimaryGeneratedColumn({ name: "id" })

@@ -66,6 +66,10 @@ export class Conversation {
   @JoinColumn({ name: "responsible_member_id" })
   responsibleMember: WorkspaceMember | null;
 
-  @Column({ name: "responsible_member_set_at", type: "timestamptz", nullable: true })
+  @Column({
+    name: "responsible_member_set_at",
+    type: "timestamptz",
+    nullable: true,
+  })
   responsibleMemberSetAt: Date | null;
 }

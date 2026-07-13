@@ -392,7 +392,8 @@ export class ConversationsController {
       properties: {
         message: {
           type: "string",
-          description: "Text body or media caption. Required when no file is uploaded.",
+          description:
+            "Text body or media caption. Required when no file is uploaded.",
         },
         reply_to_id: {
           type: "string",
@@ -474,10 +475,14 @@ export class ConversationsController {
     ) {
       throw new BadRequestException("id must be a positive integer");
     }
-    return this.conversationsService.takeConversationForUser(ownerId, numericId, {
-      sessionWorkspaceId,
-      appRole: req.user?.role,
-    });
+    return this.conversationsService.takeConversationForUser(
+      ownerId,
+      numericId,
+      {
+        sessionWorkspaceId,
+        appRole: req.user?.role,
+      },
+    );
   }
 
   @Put(":id")

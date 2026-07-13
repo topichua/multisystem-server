@@ -39,7 +39,8 @@ export class ConversationProductSuggestionsResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "Conversation external source id (e.g. Instagram business account).",
+    description:
+      "Conversation external source id (e.g. Instagram business account).",
   })
   businessAccountId: string | null;
 

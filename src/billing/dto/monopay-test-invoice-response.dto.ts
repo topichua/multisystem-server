@@ -14,7 +14,10 @@ export class MonopayTestInvoiceResponseDto {
   @ApiProperty({ example: 1 })
   amountUah: number;
 
-  @ApiProperty({ example: 100, description: "Amount in kopiyky sent to MonoPay" })
+  @ApiProperty({
+    example: 100,
+    description: "Amount in kopiyky sent to MonoPay",
+  })
   amountKopiyky: number;
 
   @ApiProperty({ type: MonopayIntegrationInfoDto })

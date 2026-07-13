@@ -67,7 +67,9 @@ export class InvoicePaymentService {
     invoiceId: number,
     targetStatus: InvoiceStatus.open | InvoiceStatus.void,
   ): Promise<void> {
-    const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId } });
+    const invoice = await this.invoiceRepo.findOne({
+      where: { id: invoiceId },
+    });
     if (!invoice || invoice.status === InvoiceStatus.paid) {
       return;
     }

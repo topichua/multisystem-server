@@ -171,7 +171,9 @@ export function applyAdvancedQuantityDelta(
       reservedQuantity: before.reservedQuantity,
       totalCost: newQuantity > 0 ? newTotalCost : null,
       avgPurchasePrice:
-        newQuantity > 0 ? deriveAvgPurchasePrice(newTotalCost, newQuantity) : null,
+        newQuantity > 0
+          ? deriveAvgPurchasePrice(newTotalCost, newQuantity)
+          : null,
       stockInitialized: before.stockInitialized,
     },
   };
@@ -221,7 +223,11 @@ export function applySimpleSale(
 export function applyReturn(
   before: StockSnapshot,
   quantity: number,
-): { after: StockSnapshot; quantityChange: number; totalCostChange: number | null } {
+): {
+  after: StockSnapshot;
+  quantityChange: number;
+  totalCostChange: number | null;
+} {
   if (quantity <= 0) {
     throw new BadRequestException("quantity must be greater than 0");
   }

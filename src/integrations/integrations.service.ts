@@ -16,10 +16,7 @@ import { TelegramIntegrationsService } from "../telegram-integrations/telegram-i
 import { NovaPoshtaIntegrationsService } from "../novaposhta-integrations/novaposhta-integrations.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspaceRoleIntegrationGrantsService } from "../workspace-access/workspace-role-integration-grants.service";
-import {
-  INTEGRATION_TYPES,
-  type IntegrationType,
-} from "./integration-type";
+import { INTEGRATION_TYPES, type IntegrationType } from "./integration-type";
 import type { CreateIntegrationRequestDto } from "./dto/http/create-integration-request.dto";
 import type { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import type { IntegrationListItemDto } from "./dto/http/integration-list-item.dto";
@@ -116,7 +113,9 @@ export class IntegrationsService {
     const novaPoshtaRows =
       await this.novaPoshtaIntegrations.findAllByWorkspace(workspaceId);
     for (const novaPoshta of novaPoshtaRows) {
-      items.push(this.novaPoshtaIntegrations.mapToIntegrationListItem(novaPoshta));
+      items.push(
+        this.novaPoshtaIntegrations.mapToIntegrationListItem(novaPoshta),
+      );
     }
 
     return { workspaceId, items };
@@ -165,10 +164,7 @@ export class IntegrationsService {
       throw new NotFoundException("Instagram integration not found");
     }
 
-    await this.workspaceContext.requireWorkspaceOwner(
-      ownerId,
-      row.workspaceId,
-    );
+    await this.workspaceContext.requireWorkspaceOwner(ownerId, row.workspaceId);
 
     await this.facebookOAuth.revokeIntegrationPermissionsBestEffort(row);
     await this.roleIntegrationGrants.removeForIntegration("instagram", id);

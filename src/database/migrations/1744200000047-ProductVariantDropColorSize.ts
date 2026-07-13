@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ProductVariantDropColorSize1744200000047
-  implements MigrationInterface
-{
+export class ProductVariantDropColorSize1744200000047 implements MigrationInterface {
   name = "ProductVariantDropColorSize1744200000047";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

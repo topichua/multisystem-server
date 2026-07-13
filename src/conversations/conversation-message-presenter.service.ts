@@ -76,7 +76,9 @@ export class ConversationMessagePresenterService {
           id: row.externalId,
           created_time: parsed.created_time,
           message: (parsed.message ?? row.message) || undefined,
-          ...(parentAttachments != null ? { attachments: parentAttachments } : {}),
+          ...(parentAttachments != null
+            ? { attachments: parentAttachments }
+            : {}),
           ...(parsed.from != null ? { from: parsed.from } : {}),
         };
       }
@@ -107,7 +109,9 @@ export class ConversationMessagePresenterService {
       return fromColumn;
     }
     if (parsed) {
-      const stored = parsed.reactions as InstagramMessageReactionsDto | undefined;
+      const stored = parsed.reactions as
+        | InstagramMessageReactionsDto
+        | undefined;
       return mapInstagramStoredReactionsForApi(row, stored);
     }
     return undefined;
@@ -135,8 +139,13 @@ export class ConversationMessagePresenterService {
       m: Omit<InstagramMessageDto, "system_updated_at"> &
         Partial<Pick<InstagramMessageDto, "system_updated_at">>,
     ): InstagramMessageDto => {
-      const { read_at, edited_at, deleted_at, system_updated_at, ...fromGraph } =
-        m;
+      const {
+        read_at,
+        edited_at,
+        deleted_at,
+        system_updated_at,
+        ...fromGraph
+      } = m;
       void read_at;
       void edited_at;
       void deleted_at;
@@ -183,7 +192,7 @@ export class ConversationMessagePresenterService {
           ...(attachments != null ? { attachments } : {}),
           id:
             typeof forClient.id === "string" && forClient.id.length > 0
-              ? (forClient.id as string)
+              ? forClient.id
               : row.externalId,
         } as InstagramMessageDto);
       }

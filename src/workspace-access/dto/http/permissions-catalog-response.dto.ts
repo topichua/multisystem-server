@@ -30,7 +30,8 @@ export class PermissionCatalogNodeDto {
   storage?: "permissions" | "permissionOptions" | "integrationGrants";
 
   @ApiPropertyOptional({
-    description: "Default when unset (boolean: false, option: catalog default).",
+    description:
+      "Default when unset (boolean: false, option: catalog default).",
   })
   default?: string | boolean;
 
@@ -39,7 +40,8 @@ export class PermissionCatalogNodeDto {
 
   @ApiPropertyOptional({
     example: "selected",
-    description: "When the scope option equals this value, use permissionOptionLists.",
+    description:
+      "When the scope option equals this value, use permissionOptionLists.",
   })
   selectedValue?: string;
 

@@ -22,7 +22,9 @@ export class TelegramUsers1744200000077 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_telegram_users_username"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_telegram_users_username"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "telegram_users"`);
   }
 }

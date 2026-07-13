@@ -1,11 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import {
-  IsInt,
-  IsOptional,
-  Min,
-  ValidateIf,
-} from "class-validator";
+import { IsInt, IsOptional, Min, ValidateIf } from "class-validator";
 
 export class UpdateConversationRequestDto {
   @ApiPropertyOptional({

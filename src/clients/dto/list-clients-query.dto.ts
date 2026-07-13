@@ -65,8 +65,7 @@ export class ListClientsQueryDto {
   instagramId?: string;
 
   @ApiPropertyOptional({
-    description:
-      "Telegram user id. `page` / `pageSize` are ignored when set.",
+    description: "Telegram user id. `page` / `pageSize` are ignored when set.",
     example: "123456789",
   })
   @IsOptional()

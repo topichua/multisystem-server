@@ -40,8 +40,7 @@ export class ListCatalogVariantsQueryDto {
   @ApiPropertyOptional({
     enum: ProductStatus,
     default: ProductStatus.active,
-    description:
-      "Filter by product status. Defaults to `active` when omitted.",
+    description: "Filter by product status. Defaults to `active` when omitted.",
   })
   @IsOptional()
   @IsEnum(ProductStatus)

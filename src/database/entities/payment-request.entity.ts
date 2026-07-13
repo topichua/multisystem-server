@@ -22,10 +22,14 @@ import { PaymentTransaction } from "./payment-transaction.entity";
 @Index("IDX_payment_requests_workspace_id", ["workspaceId"])
 @Index("IDX_payment_requests_order_id", ["workspaceId", "orderId"])
 @Index("IDX_payment_requests_integration_id", ["integrationId"])
-@Index("UQ_payment_requests_provider_external_payment_id", ["provider", "externalPaymentId"], {
-  unique: true,
-  where: `"external_payment_id" IS NOT NULL`,
-})
+@Index(
+  "UQ_payment_requests_provider_external_payment_id",
+  ["provider", "externalPaymentId"],
+  {
+    unique: true,
+    where: `"external_payment_id" IS NOT NULL`,
+  },
+)
 export class PaymentRequest {
   @PrimaryGeneratedColumn()
   id: number;

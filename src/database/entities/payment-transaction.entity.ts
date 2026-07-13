@@ -21,10 +21,14 @@ import { ManualPaymentMethod } from "./manual-payment-method.entity";
 @Index("IDX_payment_transactions_workspace_id", ["workspaceId"])
 @Index("IDX_payment_transactions_order_id", ["workspaceId", "orderId"])
 @Index("IDX_payment_transactions_payment_id", ["paymentId"])
-@Index("UQ_payment_transactions_provider_external_id", ["provider", "externalTransactionId"], {
-  unique: true,
-  where: `"external_transaction_id" IS NOT NULL`,
-})
+@Index(
+  "UQ_payment_transactions_provider_external_id",
+  ["provider", "externalTransactionId"],
+  {
+    unique: true,
+    where: `"external_transaction_id" IS NOT NULL`,
+  },
+)
 export class PaymentTransaction {
   @PrimaryGeneratedColumn()
   id: number;
@@ -67,7 +71,10 @@ export class PaymentTransaction {
   @Column({ name: "manual_payment_method_id", type: "int", nullable: true })
   manualPaymentMethodId: number | null;
 
-  @ManyToOne(() => ManualPaymentMethod, { onDelete: "SET NULL", nullable: true })
+  @ManyToOne(() => ManualPaymentMethod, {
+    onDelete: "SET NULL",
+    nullable: true,
+  })
   @JoinColumn({ name: "manual_payment_method_id" })
   manualPaymentMethod: ManualPaymentMethod | null;
 

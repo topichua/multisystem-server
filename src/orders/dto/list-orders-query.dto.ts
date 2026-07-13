@@ -47,7 +47,8 @@ export class ListOrdersQueryDto {
   clientId?: number;
 
   @ApiPropertyOptional({
-    description: "Filter by multiple status ids (comma or repeated query). Empty = all",
+    description:
+      "Filter by multiple status ids (comma or repeated query). Empty = all",
     type: [Number],
   })
   @IsOptional()

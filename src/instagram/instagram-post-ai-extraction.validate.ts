@@ -50,7 +50,11 @@ export function validateAndNormalizeInstagramPostAiExtraction(params: {
     params.media,
   );
 
-  if (!params.raw || typeof params.raw !== "object" || Array.isArray(params.raw)) {
+  if (
+    !params.raw ||
+    typeof params.raw !== "object" ||
+    Array.isArray(params.raw)
+  ) {
     return fallback;
   }
 

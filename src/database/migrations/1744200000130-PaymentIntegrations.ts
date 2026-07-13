@@ -167,12 +167,22 @@ export class PaymentIntegrations1744200000130 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "payment_transactions"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "payment_requests"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "payment_integrations"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "payment_transaction_source_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "payment_transaction_status_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "payment_transaction_type_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "payment_request_status_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "payment_transaction_source_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "payment_transaction_status_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "payment_transaction_type_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "payment_request_status_enum"`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS "payment_method_enum"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "payment_integration_status_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "payment_integration_status_enum"`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS "payment_provider_enum"`);
   }
 }

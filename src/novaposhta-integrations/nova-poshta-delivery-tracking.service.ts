@@ -79,7 +79,8 @@ export class NovaPoshtaDeliveryTrackingService {
     normalizedStatus: NormalizedDeliveryStatus,
     actorUserId?: number | null,
   ): Promise<DeliveryStatusUpdateResultDto> {
-    const { delivery } = await this.loadNovaPoshtaDeliveryContext(deliveryOrderId);
+    const { delivery } =
+      await this.loadNovaPoshtaDeliveryContext(deliveryOrderId);
 
     const trackingNumber = delivery.trackingNumber?.trim();
     if (
@@ -134,7 +135,9 @@ export class NovaPoshtaDeliveryTrackingService {
     });
   }
 
-  private async loadNovaPoshtaDeliveryContext(deliveryOrderId: number): Promise<{
+  private async loadNovaPoshtaDeliveryContext(
+    deliveryOrderId: number,
+  ): Promise<{
     delivery: OrderDeliveryInfo;
     integration: NovaPoshtaIntegration;
     order: Order | null;

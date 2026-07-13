@@ -5,7 +5,8 @@ export class InstagramIntegrationListItemDto {
   type: "instagram";
 
   @ApiProperty({
-    description: "`instagram_integration.id` — pass as `integrationId` on GET /api/instagram/media.",
+    description:
+      "`instagram_integration.id` — pass as `integrationId` on GET /api/instagram/media.",
   })
   id: number;
 

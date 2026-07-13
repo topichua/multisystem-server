@@ -19,7 +19,11 @@ export class OrderEventResponseDto {
   @ApiPropertyOptional({ nullable: true })
   userId: number | null;
 
-  @ApiPropertyOptional({ nullable: true, type: "object", additionalProperties: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    type: "object",
+    additionalProperties: true,
+  })
   payload: Record<string, unknown> | null;
 
   @ApiProperty()

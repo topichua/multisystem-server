@@ -16,8 +16,7 @@ export class ConversationMessageAttachmentDto {
   key: string;
 
   @ApiPropertyOptional({
-    description:
-      "Cloudflare R2 object key for video/audio/file attachments",
+    description: "Cloudflare R2 object key for video/audio/file attachments",
   })
   r2_key?: string;
 

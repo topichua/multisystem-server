@@ -12,7 +12,8 @@ import {
 
 export class CreateManualPaymentDto {
   @ApiProperty({
-    description: "Amount received. Backend validates against order remaining balance.",
+    description:
+      "Amount received. Backend validates against order remaining balance.",
   })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -43,8 +44,7 @@ export class CreateManualPaymentDto {
   note?: string;
 
   @ApiPropertyOptional({
-    description:
-      "Manual payment method (IBAN/card). Omit for cash payment.",
+    description: "Manual payment method (IBAN/card). Omit for cash payment.",
   })
   @IsOptional()
   @Type(() => Number)

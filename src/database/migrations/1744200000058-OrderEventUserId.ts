@@ -4,7 +4,9 @@ export class OrderEventUserId1744200000058 implements MigrationInterface {
   name = "OrderEventUserId1744200000058";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "order_events" ADD COLUMN "user_id" integer`);
+    await queryRunner.query(
+      `ALTER TABLE "order_events" ADD COLUMN "user_id" integer`,
+    );
     await queryRunner.query(`
       ALTER TABLE "order_events"
       ADD CONSTRAINT "FK_order_events_user_id"
@@ -17,12 +19,12 @@ export class OrderEventUserId1744200000058 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS "IDX_order_events_user_id"`,
-    );
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_order_events_user_id"`);
     await queryRunner.query(
       `ALTER TABLE "order_events" DROP CONSTRAINT IF EXISTS "FK_order_events_user_id"`,
     );
-    await queryRunner.query(`ALTER TABLE "order_events" DROP COLUMN IF EXISTS "user_id"`);
+    await queryRunner.query(
+      `ALTER TABLE "order_events" DROP COLUMN IF EXISTS "user_id"`,
+    );
   }
 }

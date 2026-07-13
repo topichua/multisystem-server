@@ -115,13 +115,14 @@ export class OrderStatusAutomations1744200000134 implements MigrationInterface {
           UNIQUE ("automation_id", "order_id", "idempotency_key")
       )
     `);
-
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE "order_status_automation_executions"`);
     await queryRunner.query(`DROP TABLE "order_status_automations"`);
-    await queryRunner.query(`ALTER TABLE "orders" DROP COLUMN "payment_status_at"`);
+    await queryRunner.query(
+      `ALTER TABLE "orders" DROP COLUMN "payment_status_at"`,
+    );
     await queryRunner.query(`DROP TYPE "automation_execution_status_enum"`);
     await queryRunner.query(`DROP TYPE "automation_origin_enum"`);
     await queryRunner.query(`DROP TYPE "automation_duration_unit_enum"`);

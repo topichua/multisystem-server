@@ -1,4 +1,4 @@
-import { Global, Module } from "@nestjs/common";
+import { Global, Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   InstagramIntegration,
@@ -38,9 +38,9 @@ import { WorkspaceRolesService } from "./workspace-roles.service";
       WorkspaceInvitation,
       User,
     ]),
-    UsersModule,
+    forwardRef(() => UsersModule),
     SendgridModule,
-    AuthModule,
+    forwardRef(() => AuthModule),
   ],
   controllers: [
     PermissionsCatalogController,

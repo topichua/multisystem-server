@@ -45,7 +45,11 @@ export class TelegramIntegrationsController {
     description:
       "User-account (MTProto) links — not Bot API. Requires TELEGRAM_API_ID / TELEGRAM_API_HASH.",
   })
-  @ApiQuery({ name: "workspace_id", required: false, schema: { type: "integer" } })
+  @ApiQuery({
+    name: "workspace_id",
+    required: false,
+    schema: { type: "integer" },
+  })
   @ApiOkResponse({ type: TelegramIntegrationsListResponseDto })
   list(
     @Req() req: { user?: AuthUser },

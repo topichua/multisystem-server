@@ -71,7 +71,10 @@ export class NovaPoshtaIntegrationsController {
     @Req() req: { user?: AuthUser },
     @Body() dto: DiscoverNovaPoshtaSendersRequestDto,
   ): Promise<DiscoverNovaPoshtaSendersResponseDto> {
-    return this.novaPoshta.discoverSendersForOwner(this.requireOwnerId(req), dto);
+    return this.novaPoshta.discoverSendersForOwner(
+      this.requireOwnerId(req),
+      dto,
+    );
   }
 
   @Get()

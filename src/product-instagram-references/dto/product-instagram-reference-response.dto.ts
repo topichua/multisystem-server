@@ -8,7 +8,8 @@ export class ProductInstagramReferenceDto {
   workspaceId: number;
 
   @ApiProperty({
-    description: "Instagram Business Account id (Graph `instagram_business_account.id`).",
+    description:
+      "Instagram Business Account id (Graph `instagram_business_account.id`).",
   })
   businessAccountId: string;
 

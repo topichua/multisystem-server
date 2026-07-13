@@ -107,7 +107,10 @@ export class OrderStatusAutomationsService {
       userId,
       appRole,
     );
-    this.validateDurationPair(dto.durationValue ?? null, dto.durationUnit ?? null);
+    this.validateDurationPair(
+      dto.durationValue ?? null,
+      dto.durationUnit ?? null,
+    );
     this.validateActionType(dto.actionType);
     const sourceStatus = normalizeAutomationSourceStatus(dto.sourceStatus);
     if (!isValidAutomationSourceStatus(dto.sourceType, sourceStatus)) {
@@ -139,7 +142,9 @@ export class OrderStatusAutomationsService {
         updatedById: userId,
       }),
     );
-    return this.toResponse(await this.findAutomationOrThrow(saved.id, workspace.id));
+    return this.toResponse(
+      await this.findAutomationOrThrow(saved.id, workspace.id),
+    );
   }
 
   async updateForUser(
@@ -207,7 +212,9 @@ export class OrderStatusAutomationsService {
     row.updatedById = userId;
 
     await this.automationRepo.save(row);
-    return this.toResponse(await this.findAutomationOrThrow(row.id, workspace.id));
+    return this.toResponse(
+      await this.findAutomationOrThrow(row.id, workspace.id),
+    );
   }
 
   async setActiveForUser(
@@ -277,7 +284,9 @@ export class OrderStatusAutomationsService {
 
   private validateDurationPair(
     durationValue: number | null,
-    durationUnit: import("../database/entities/automation-duration-unit.enum").AutomationDurationUnit | null,
+    durationUnit:
+      | import("../database/entities/automation-duration-unit.enum").AutomationDurationUnit
+      | null,
   ): void {
     const hasValue = durationValue != null;
     const hasUnit = durationUnit != null;
@@ -305,14 +314,18 @@ export class OrderStatusAutomationsService {
       sourceType: AutomationSourceType;
       sourceStatus: string;
       durationValue: number | null;
-      durationUnit: import("../database/entities/automation-duration-unit.enum").AutomationDurationUnit | null;
+      durationUnit:
+        | import("../database/entities/automation-duration-unit.enum").AutomationDurationUnit
+        | null;
       targetOrderStatusId: number;
     },
     excludeId?: number,
   ): Promise<void> {
     const qb = this.automationRepo
       .createQueryBuilder("a")
-      .where("a.workspace_id = :workspaceId", { workspaceId: input.workspaceId })
+      .where("a.workspace_id = :workspaceId", {
+        workspaceId: input.workspaceId,
+      })
       .andWhere("a.is_active = true")
       .andWhere("a.deleted_at IS NULL")
       .andWhere("a.source_type = :sourceType", {
@@ -342,7 +355,9 @@ export class OrderStatusAutomationsService {
 
     const existing = await qb.getOne();
     if (existing) {
-      throw new ConflictException("An active automation with the same conditions already exists");
+      throw new ConflictException(
+        "An active automation with the same conditions already exists",
+      );
     }
   }
 
@@ -362,7 +377,10 @@ export class OrderStatusAutomationsService {
       sourceStatus: row.sourceStatus,
       durationValue: row.durationValue,
       durationUnit: row.durationUnit,
-      durationLabel: formatAutomationDuration(row.durationValue, row.durationUnit),
+      durationLabel: formatAutomationDuration(
+        row.durationValue,
+        row.durationUnit,
+      ),
       actionType: row.actionType,
       targetOrderStatusId: row.targetOrderStatusId,
       targetOrderStatus: {
@@ -384,7 +402,9 @@ export class OrderStatusAutomationsService {
   private async requireView(userId: number, appRole?: string): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
     if (!hasBooleanPermission(resolved, "orders.automations.view")) {
-      throw new ForbiddenException("Missing orders.automations.view permission");
+      throw new ForbiddenException(
+        "Missing orders.automations.view permission",
+      );
     }
   }
 

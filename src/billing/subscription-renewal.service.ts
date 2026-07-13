@@ -86,56 +86,58 @@ export class SubscriptionRenewalService {
     const { periodEnd } = billingPeriodFrom(billingCycle, previewStart);
     const purpose: InvoiceLinePurpose = "renewal";
 
-    const result = await this.subscriptionRepo.manager.transaction(async (em) => {
-      const invoice = await em.getRepository(Invoice).save(
-        em.getRepository(Invoice).create({
-          workspaceId,
-          subscriptionId: subscription.id,
-          number: await this.generateInvoiceNumber(workspaceId),
-          status: InvoiceStatus.open,
-          amount,
-          currency: plan.currency,
-          periodStart: previewStart,
-          periodEnd,
-          description: `${plan.name} — renewal (${billingCycle})`,
-          lineItems: [
-            {
-              type: "subscription",
-              description: `${plan.name} — renewal`,
-              amount,
-              quantity: 1,
-              planTemplateId: plan.id,
-              planSlug: plan.slug,
-              billingCycle,
-              purpose,
-            },
-          ],
-          dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          paidAt: null,
-          externalPaymentId: null,
-        }),
-      );
+    const result = await this.subscriptionRepo.manager.transaction(
+      async (em) => {
+        const invoice = await em.getRepository(Invoice).save(
+          em.getRepository(Invoice).create({
+            workspaceId,
+            subscriptionId: subscription.id,
+            number: await this.generateInvoiceNumber(workspaceId),
+            status: InvoiceStatus.open,
+            amount,
+            currency: plan.currency,
+            periodStart: previewStart,
+            periodEnd,
+            description: `${plan.name} — renewal (${billingCycle})`,
+            lineItems: [
+              {
+                type: "subscription",
+                description: `${plan.name} — renewal`,
+                amount,
+                quantity: 1,
+                planTemplateId: plan.id,
+                planSlug: plan.slug,
+                billingCycle,
+                purpose,
+              },
+            ],
+            dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            paidAt: null,
+            externalPaymentId: null,
+          }),
+        );
 
-      const entitlementsRow = await em
-        .getRepository(WorkspaceSubscription)
-        .findOne({ where: { id: subscription.id } });
-      if (!entitlementsRow) {
-        throw new NotFoundException("Subscription not found");
-      }
+        const entitlementsRow = await em
+          .getRepository(WorkspaceSubscription)
+          .findOne({ where: { id: subscription.id } });
+        if (!entitlementsRow) {
+          throw new NotFoundException("Subscription not found");
+        }
 
-      await em.getRepository(SubscriptionChange).save(
-        em.getRepository(SubscriptionChange).create({
-          subscriptionId: subscription.id,
-          changeType: SubscriptionChangeType.renewal,
-          fromEntitlements: subscription.entitlementsSnapshot,
-          toEntitlements: plan.entitlements,
-          invoiceId: invoice.id,
-          createdByUserId: userId,
-        }),
-      );
+        await em.getRepository(SubscriptionChange).save(
+          em.getRepository(SubscriptionChange).create({
+            subscriptionId: subscription.id,
+            changeType: SubscriptionChangeType.renewal,
+            fromEntitlements: subscription.entitlementsSnapshot,
+            toEntitlements: plan.entitlements,
+            invoiceId: invoice.id,
+            createdByUserId: userId,
+          }),
+        );
 
-      return invoice;
-    });
+        return invoice;
+      },
+    );
 
     return {
       invoice: await this.invoices.getForWorkspace(workspaceId, result.id),

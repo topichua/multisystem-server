@@ -5,8 +5,10 @@ export type MonobankCredentials = {
   merchantToken: string;
 };
 
-export type PaymentProviderCredentials =
-  | { provider: PaymentProvider.monobank; data: MonobankCredentials };
+export type PaymentProviderCredentials = {
+  provider: PaymentProvider.monobank;
+  data: MonobankCredentials;
+};
 
 export type CreatePaymentLinkInput = {
   amount: number;
@@ -58,9 +60,13 @@ export interface PaymentProviderAdapter {
 
   validateCredentials(): Promise<ValidateCredentialsResult>;
 
-  createPaymentLink(input: CreatePaymentLinkInput): Promise<CreatePaymentLinkResult>;
+  createPaymentLink(
+    input: CreatePaymentLinkInput,
+  ): Promise<CreatePaymentLinkResult>;
 
-  getPaymentStatus(externalPaymentId: string): Promise<ProviderPaymentStatusResult>;
+  getPaymentStatus(
+    externalPaymentId: string,
+  ): Promise<ProviderPaymentStatusResult>;
 
   cancelPayment(externalPaymentId: string): Promise<{ providerStatus: string }>;
 
@@ -69,7 +75,10 @@ export interface PaymentProviderAdapter {
     amount?: number,
   ): Promise<{ providerStatus: string }>;
 
-  verifyWebhook(rawBody: Buffer, headers: Record<string, string | undefined>): Promise<boolean>;
+  verifyWebhook(
+    rawBody: Buffer,
+    headers: Record<string, string | undefined>,
+  ): Promise<boolean>;
 
   parseWebhook(rawBody: Buffer): ParsedWebhookEvent;
 }

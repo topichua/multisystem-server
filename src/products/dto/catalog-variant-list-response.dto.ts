@@ -46,7 +46,9 @@ export class CatalogVariantProductDto {
 }
 
 export class CatalogVariantItemDto {
-  @ApiProperty({ description: "Variant id (`variantId` for order line items)." })
+  @ApiProperty({
+    description: "Variant id (`variantId` for order line items).",
+  })
   id: number;
 
   @ApiProperty()

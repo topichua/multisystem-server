@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ProductVariantCustomFieldValueSortOrder1744200000057
-  implements MigrationInterface
-{
+export class ProductVariantCustomFieldValueSortOrder1744200000057 implements MigrationInterface {
   name = "ProductVariantCustomFieldValueSortOrder1744200000057";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

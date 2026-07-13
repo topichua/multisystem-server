@@ -211,12 +211,10 @@ export class InstagramProductAiService {
       categoryCatalogLines: catalogText,
     });
 
-    const workspaceId = await this.workspaceContext.resolveWorkspaceIdForOwner(
-      ownerId,
-    );
-    const fieldDefs = await this.variantFields.listDefinitionsForWorkspace(
-      workspaceId,
-    );
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const fieldDefs =
+      await this.variantFields.listDefinitionsForWorkspace(workspaceId);
     const fieldCatalog = fieldDefs.map((field) => ({
       id: String(field.id),
       name: field.label,
@@ -330,10 +328,11 @@ export class InstagramProductAiService {
     ): Array<Record<string, unknown>> => {
       if (!Array.isArray(value)) return [];
       return value
-        .filter((item): item is Record<string, unknown> =>
-          item && typeof item === "object" && !Array.isArray(item),
+        .filter(
+          (item): item is Record<string, unknown> =>
+            item && typeof item === "object" && !Array.isArray(item),
         )
-        .map((item) => item as Record<string, unknown>);
+        .map((item) => item);
     };
 
     const matchedCustomFields = parseObjectsArray(root.matchedCustomFields);

@@ -6,7 +6,11 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import sgMail from "@sendgrid/mail";
-import { SENDGRID_PRICE_TEMPLATE_ID, SENDGRID_REGISTRATION_TEMPLATE_ID, SENDGRID_PASSWORD_RESET_TEMPLATE_ID } from "./sendgrid.constants";
+import {
+  SENDGRID_PRICE_TEMPLATE_ID,
+  SENDGRID_REGISTRATION_TEMPLATE_ID,
+  SENDGRID_PASSWORD_RESET_TEMPLATE_ID,
+} from "./sendgrid.constants";
 
 type SendDynamicTemplateParams = {
   to: string;
@@ -58,9 +62,7 @@ export class SendgridService {
     confirmUrl: string;
   }): Promise<void> {
     const templateId =
-      this.config
-        .get<string>("SENDGRID_REGISTRATION_TEMPLATE_ID")
-        ?.trim() ||
+      this.config.get<string>("SENDGRID_REGISTRATION_TEMPLATE_ID")?.trim() ||
       SENDGRID_REGISTRATION_TEMPLATE_ID;
     await this.sendDynamicTemplate({
       to: params.to,
@@ -82,9 +84,7 @@ export class SendgridService {
     supportEmail: string;
   }): Promise<void> {
     const templateId =
-      this.config
-        .get<string>("SENDGRID_PASSWORD_RESET_TEMPLATE_ID")
-        ?.trim() ||
+      this.config.get<string>("SENDGRID_PASSWORD_RESET_TEMPLATE_ID")?.trim() ||
       SENDGRID_PASSWORD_RESET_TEMPLATE_ID;
     await this.sendDynamicTemplate({
       to: params.to,
@@ -106,7 +106,9 @@ export class SendgridService {
     const apiKey = this.config.get<string>("SENDGRID_API_KEY")?.trim();
     const from = this.config.get<string>("SENDGRID_FROM_EMAIL")?.trim();
     if (!apiKey) {
-      throw new InternalServerErrorException("SENDGRID_API_KEY is not configured");
+      throw new InternalServerErrorException(
+        "SENDGRID_API_KEY is not configured",
+      );
     }
     if (!from) {
       throw new InternalServerErrorException(

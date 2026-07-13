@@ -15,9 +15,7 @@ export class WorkspaceEntitlementsUsageDto implements WorkspaceEntitlementsUsage
   aiCreditsUsed: number;
 }
 
-export class WorkspaceEntitlementsResponseDto
-  implements WorkspaceEntitlementsSnapshot
-{
+export class WorkspaceEntitlementsResponseDto implements WorkspaceEntitlementsSnapshot {
   @ApiProperty({ nullable: true, example: 5 })
   socialAccountsLimit: number | null;
 

@@ -52,7 +52,8 @@ export class UpdateWorkspaceRoleRequestDto {
 
   @ApiPropertyOptional({
     example: 20,
-    description: "Maximum percentage discount that members with this role may apply to an order.",
+    description:
+      "Maximum percentage discount that members with this role may apply to an order.",
   })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })

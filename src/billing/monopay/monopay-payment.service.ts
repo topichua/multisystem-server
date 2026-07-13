@@ -50,7 +50,10 @@ export class MonopayPaymentService {
     if (invoice.status === InvoiceStatus.paid) {
       throw new BadRequestException("Invoice is already paid");
     }
-    if (invoice.status !== InvoiceStatus.open && invoice.status !== InvoiceStatus.draft) {
+    if (
+      invoice.status !== InvoiceStatus.open &&
+      invoice.status !== InvoiceStatus.draft
+    ) {
       throw new BadRequestException(
         `Invoice cannot be paid from status "${invoice.status}"`,
       );
@@ -248,7 +251,10 @@ export class MonopayPaymentService {
       this.logger.warn(
         `MonoPay payment ${payload.status} localInvoiceId=${invoice.id} reason=${payload.failureReason ?? "?"}`,
       );
-      await this.invoicePayment.markTerminalStatus(invoice.id, InvoiceStatus.open);
+      await this.invoicePayment.markTerminalStatus(
+        invoice.id,
+        InvoiceStatus.open,
+      );
       return;
     }
 
@@ -256,7 +262,10 @@ export class MonopayPaymentService {
       this.logger.warn(
         `MonoPay invoice expired localInvoiceId=${invoice.id} monoInvoiceId=${payload.invoiceId}`,
       );
-      await this.invoicePayment.markTerminalStatus(invoice.id, InvoiceStatus.void);
+      await this.invoicePayment.markTerminalStatus(
+        invoice.id,
+        InvoiceStatus.void,
+      );
     }
   }
 

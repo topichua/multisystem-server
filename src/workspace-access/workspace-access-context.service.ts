@@ -7,7 +7,12 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Not, Repository } from "typeorm";
 import { ROLE_SUPER_ADMIN } from "../auth/constants";
-import { InstagramIntegration, Workspace, WorkspaceMember, WorkspaceMemberStatus } from "../database/entities";
+import {
+  InstagramIntegration,
+  Workspace,
+  WorkspaceMember,
+  WorkspaceMemberStatus,
+} from "../database/entities";
 
 @Injectable()
 export class WorkspaceAccessContextService {
@@ -39,7 +44,7 @@ export class WorkspaceAccessContextService {
     }
 
     // Check if user is owner of a workspace
-    let workspace = await this.workspaceRepo.findOne({
+    const workspace = await this.workspaceRepo.findOne({
       where: { ownerId },
       order: { id: "DESC" },
     });
@@ -81,7 +86,10 @@ export class WorkspaceAccessContextService {
     integrationId?: number,
   ): Promise<InstagramIntegration> {
     if (integrationId != null) {
-      return this.requireInstagramIntegrationByIdForOwner(ownerId, integrationId);
+      return this.requireInstagramIntegrationByIdForOwner(
+        ownerId,
+        integrationId,
+      );
     }
 
     const workspace = await this.requireWorkspaceForOwner(
@@ -106,9 +114,7 @@ export class WorkspaceAccessContextService {
     integrationId: number,
   ): Promise<InstagramIntegration> {
     if (!Number.isInteger(integrationId) || integrationId <= 0) {
-      throw new BadRequestException(
-        "integrationId must be a positive integer",
-      );
+      throw new BadRequestException("integrationId must be a positive integer");
     }
     const row = await this.instagramIntegrationRepo.findOne({
       where: { id: integrationId },

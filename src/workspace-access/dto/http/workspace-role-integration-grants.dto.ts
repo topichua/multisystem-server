@@ -125,7 +125,8 @@ export class IntegrationGrantPermissionCatalogItemDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: "When set, permission applies only to these integration types.",
+    description:
+      "When set, permission applies only to these integration types.",
   })
   integrationTypes?: string[];
 }

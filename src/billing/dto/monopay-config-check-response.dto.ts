@@ -30,7 +30,8 @@ export class MonopayConfigCheckResponseDto {
 
   @ApiPropertyOptional({
     type: MonopayConfigCheckApiTestDto,
-    description: "Result of live GET /api/merchant/pubkey with merchant X-Token",
+    description:
+      "Result of live GET /api/merchant/pubkey with merchant X-Token",
   })
   apiTest?: MonopayConfigCheckApiTestDto;
 

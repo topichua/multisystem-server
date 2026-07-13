@@ -2,12 +2,14 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class ConversationChannelCriteriaItemDto {
   @ApiProperty({
-    description: "Integration id (Instagram or Telegram row id in this workspace).",
+    description:
+      "Integration id (Instagram or Telegram row id in this workspace).",
   })
   integrationId: number;
 
   @ApiProperty({
-    description: "Display name for the channel (page name, @username, or bot name).",
+    description:
+      "Display name for the channel (page name, @username, or bot name).",
   })
   name: string;
 

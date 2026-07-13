@@ -15,7 +15,7 @@ function toCatalogNodeDto(
   node: PermissionCatalogNode,
 ): PermissionCatalogNodeDto {
   if (node.type === "group") {
-    const group = node as PermissionCatalogGroupItem;
+    const group = node;
     return {
       type: "group",
       key: group.key,
@@ -25,7 +25,7 @@ function toCatalogNodeDto(
     };
   }
   if (node.type === "integration_grants") {
-    const grants = node as PermissionCatalogIntegrationGrantsItem;
+    const grants = node;
     return {
       type: "integration_grants",
       key: grants.key,

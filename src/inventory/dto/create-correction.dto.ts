@@ -15,7 +15,7 @@ export class CreateCorrectionDto {
 
   @ApiPropertyOptional({
     description:
-      "Free-text reason (e.g. \"брак\", \"втрата\"). Required when quantityChange < 0.",
+      'Free-text reason (e.g. "брак", "втрата"). Required when quantityChange < 0.',
     example: "брак",
   })
   @IsOptional()

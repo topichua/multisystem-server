@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class DropProductDraftDeleteTrigger1744200000099
-  implements MigrationInterface
-{
+export class DropProductDraftDeleteTrigger1744200000099 implements MigrationInterface {
   name = "DropProductDraftDeleteTrigger1744200000099";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

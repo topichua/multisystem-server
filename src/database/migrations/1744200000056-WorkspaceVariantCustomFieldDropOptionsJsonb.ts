@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056
-  implements MigrationInterface
-{
+export class WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056 implements MigrationInterface {
   name = "WorkspaceVariantCustomFieldDropOptionsJsonb1744200000056";
 
   public async up(queryRunner: QueryRunner): Promise<void> {

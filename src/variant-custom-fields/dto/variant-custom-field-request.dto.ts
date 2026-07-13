@@ -17,7 +17,8 @@ import { VariantCustomFieldType } from "../../database/entities/variant-custom-f
 export class CreateVariantCustomFieldDto {
   @ApiProperty({
     example: "material",
-    description: "Lowercase slug; use `color` or `size` to map to variant columns",
+    description:
+      "Lowercase slug; use `color` or `size` to map to variant columns",
   })
   @IsString()
   @Transform(({ value }: { value: unknown }) =>
@@ -25,7 +26,8 @@ export class CreateVariantCustomFieldDto {
   )
   @IsNotEmpty()
   @Matches(/^[a-z][a-z0-9_]{0,63}$/, {
-    message: "key must be lowercase letters, digits, underscores; start with a letter",
+    message:
+      "key must be lowercase letters, digits, underscores; start with a letter",
   })
   key: string;
 
@@ -44,7 +46,8 @@ export class CreateVariantCustomFieldDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: "Predefined option labels for type `options`; can be added later via POST /workspace/variant-custom-fields/:id/option",
+    description:
+      "Predefined option labels for type `options`; can be added later via POST /workspace/variant-custom-fields/:id/option",
   })
   @IsOptional()
   @IsArray()

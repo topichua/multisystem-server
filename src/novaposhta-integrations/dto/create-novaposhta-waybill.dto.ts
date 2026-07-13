@@ -1,10 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import {
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from "class-validator";
 
 export class CreateNovaPoshtaWaybillRequestDto {
   @ApiPropertyOptional({
-    description: "Override cargo weight in grams (defaults to sum of product weights or 1000 g).",
+    description:
+      "Override cargo weight in grams (defaults to sum of product weights or 1000 g).",
     minimum: 1,
   })
   @IsOptional()

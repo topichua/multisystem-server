@@ -68,6 +68,8 @@ export class ManualPaymentMethods1744200000132 implements MigrationInterface {
       DROP COLUMN IF EXISTS "manual_payment_method_id"
     `);
     await queryRunner.query(`DROP TABLE IF EXISTS "manual_payment_methods"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "manual_payment_method_type_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "manual_payment_method_type_enum"`,
+    );
   }
 }

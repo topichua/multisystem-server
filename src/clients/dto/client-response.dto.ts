@@ -38,8 +38,7 @@ export class ClientResponseDto {
   @ApiProperty({
     type: [String],
     example: ["17841400008460056"],
-    description:
-      "Instagram ids from `client_links` (provider `instagram`).",
+    description: "Instagram ids from `client_links` (provider `instagram`).",
   })
   instagramUserIds: string[];
 

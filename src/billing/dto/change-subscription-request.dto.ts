@@ -43,7 +43,8 @@ class EntitlementsOverrideDto implements WorkspaceEntitlementsSnapshot {
 
 export class ChangeSubscriptionRequestDto {
   @ApiPropertyOptional({
-    description: "Public plan template id or workspace-specific individual plan",
+    description:
+      "Public plan template id or workspace-specific individual plan",
     example: 2,
   })
   @IsOptional()
@@ -68,7 +69,8 @@ export class ChangeSubscriptionRequestDto {
   entitlements?: EntitlementsOverrideDto;
 
   @ApiPropertyOptional({
-    description: "Label for custom subscription when entitlements are overridden",
+    description:
+      "Label for custom subscription when entitlements are overridden",
     example: "Enterprise custom",
   })
   @IsOptional()

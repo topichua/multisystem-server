@@ -38,7 +38,10 @@ export class AnalyticsQueryDto {
   @IsDateString()
   dateTo?: string;
 
-  @ApiPropertyOptional({ type: [Number], description: "Reserved for future filters." })
+  @ApiPropertyOptional({
+    type: [Number],
+    description: "Reserved for future filters.",
+  })
   @IsOptional()
   @IsArray()
   @Type(() => Number)
@@ -46,7 +49,10 @@ export class AnalyticsQueryDto {
   @Min(1, { each: true })
   channelIds?: number[];
 
-  @ApiPropertyOptional({ type: [Number], description: "Reserved for future filters." })
+  @ApiPropertyOptional({
+    type: [Number],
+    description: "Reserved for future filters.",
+  })
   @IsOptional()
   @IsArray()
   @Type(() => Number)
@@ -54,7 +60,10 @@ export class AnalyticsQueryDto {
   @Min(1, { each: true })
   managerIds?: number[];
 
-  @ApiPropertyOptional({ type: [Number], description: "Reserved for future filters." })
+  @ApiPropertyOptional({
+    type: [Number],
+    description: "Reserved for future filters.",
+  })
   @IsOptional()
   @IsArray()
   @Type(() => Number)
@@ -62,7 +71,10 @@ export class AnalyticsQueryDto {
   @Min(1, { each: true })
   orderStatusIds?: number[];
 
-  @ApiPropertyOptional({ type: [Number], description: "Reserved for future filters." })
+  @ApiPropertyOptional({
+    type: [Number],
+    description: "Reserved for future filters.",
+  })
   @IsOptional()
   @IsArray()
   @Type(() => Number)
@@ -70,7 +82,10 @@ export class AnalyticsQueryDto {
   @Min(1, { each: true })
   productIds?: number[];
 
-  @ApiPropertyOptional({ type: [Number], description: "Reserved for future filters." })
+  @ApiPropertyOptional({
+    type: [Number],
+    description: "Reserved for future filters.",
+  })
   @IsOptional()
   @IsArray()
   @Type(() => Number)
@@ -78,7 +93,10 @@ export class AnalyticsQueryDto {
   @Min(1, { each: true })
   categoryIds?: number[];
 
-  @ApiPropertyOptional({ type: [String], description: "Reserved for future filters." })
+  @ApiPropertyOptional({
+    type: [String],
+    description: "Reserved for future filters.",
+  })
   @IsOptional()
   @Transform(({ value }) =>
     Array.isArray(value)
@@ -89,7 +107,10 @@ export class AnalyticsQueryDto {
   @IsString({ each: true })
   clientTags?: string[];
 
-  @ApiPropertyOptional({ type: [String], description: "Reserved for future filters." })
+  @ApiPropertyOptional({
+    type: [String],
+    description: "Reserved for future filters.",
+  })
   @IsOptional()
   @Transform(({ value }) =>
     Array.isArray(value)

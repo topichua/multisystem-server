@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class ProductVariantDropImageUrl1744200000051
-  implements MigrationInterface
-{
+export class ProductVariantDropImageUrl1744200000051 implements MigrationInterface {
   name = "ProductVariantDropImageUrl1744200000051";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -60,4 +58,3 @@ export class ProductVariantDropImageUrl1744200000051
     `);
   }
 }
-

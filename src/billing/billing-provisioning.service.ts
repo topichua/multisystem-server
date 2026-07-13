@@ -8,10 +8,7 @@ import { WorkspaceEntitlements } from "../database/entities/workspace-entitlemen
 import { WorkspaceSubscription } from "../database/entities/workspace-subscription.entity";
 import { DEFAULT_FREE_PLAN_SLUG } from "./types/default-plan-templates";
 import { applySnapshotToEntitlements } from "./entitlements.mapper";
-import {
-  billingPeriodBounds,
-  nextCreditsResetAt,
-} from "./billing-period.util";
+import { billingPeriodBounds, nextCreditsResetAt } from "./billing-period.util";
 
 @Injectable()
 export class BillingProvisioningService {
@@ -39,7 +36,9 @@ export class BillingProvisioningService {
       where: { slug: DEFAULT_FREE_PLAN_SLUG, workspaceId: IsNull() },
     });
     if (!freePlan) {
-      throw new InternalServerErrorException("Free plan template is not configured");
+      throw new InternalServerErrorException(
+        "Free plan template is not configured",
+      );
     }
 
     const entitlements = entRepo.create({ workspaceId });
@@ -60,7 +59,9 @@ export class BillingProvisioningService {
       return;
     }
 
-    const { periodStart, periodEnd } = billingPeriodBounds(BillingCycle.monthly);
+    const { periodStart, periodEnd } = billingPeriodBounds(
+      BillingCycle.monthly,
+    );
     await subRepo.save(
       subRepo.create({
         workspaceId,

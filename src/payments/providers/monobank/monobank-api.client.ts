@@ -113,7 +113,9 @@ export class MonobankApiClient {
     merchantToken: string,
     invoiceId: string,
   ): Promise<MonobankInvoicePayload> {
-    const url = new URL(`${this.getApiBaseUrl()}${MONOBANK_INVOICE_STATUS_PATH}`);
+    const url = new URL(
+      `${this.getApiBaseUrl()}${MONOBANK_INVOICE_STATUS_PATH}`,
+    );
     url.searchParams.set("invoiceId", invoiceId);
     return this.merchantRequest<MonobankInvoicePayload>({
       token: merchantToken,
@@ -124,10 +126,7 @@ export class MonobankApiClient {
     });
   }
 
-  async removeInvoice(
-    merchantToken: string,
-    invoiceId: string,
-  ): Promise<void> {
+  async removeInvoice(merchantToken: string, invoiceId: string): Promise<void> {
     await this.merchantRequest<Record<string, never>>({
       token: merchantToken,
       method: "POST",

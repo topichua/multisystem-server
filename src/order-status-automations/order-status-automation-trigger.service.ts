@@ -20,9 +20,7 @@ export class OrderStatusAutomationTriggerService {
     private readonly executor: OrderStatusAutomationExecutorService,
   ) {}
 
-  async onSourceStatusChanged(
-    input: StatusChangeNotification,
-  ): Promise<void> {
+  async onSourceStatusChanged(input: StatusChangeNotification): Promise<void> {
     if (!input.changed) {
       return;
     }

@@ -11,15 +11,14 @@ export type StoredMessageReaction = {
   from: ConversationMessageReactionFrom;
 };
 
-function normalizeStoredReaction(
-  item: unknown,
-): StoredMessageReaction | null {
+function normalizeStoredReaction(item: unknown): StoredMessageReaction | null {
   if (!item || typeof item !== "object") {
     return null;
   }
   const raw = item as Record<string, unknown>;
   const reaction = typeof raw.reaction === "string" ? raw.reaction.trim() : "";
-  const from = raw.from === "sender" || raw.from === "receiver" ? raw.from : null;
+  const from =
+    raw.from === "sender" || raw.from === "receiver" ? raw.from : null;
   if (!reaction || !from) {
     return null;
   }
@@ -93,8 +92,7 @@ export function mapInstagramStoredReactionsForApi(
   const out: ConversationMessageReactionDto[] = [];
 
   for (const item of data) {
-    const reaction =
-      item.emoji?.trim() || item.reaction?.trim() || "";
+    const reaction = item.emoji?.trim() || item.reaction?.trim() || "";
     if (!reaction) {
       continue;
     }

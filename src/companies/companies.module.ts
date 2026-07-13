@@ -7,7 +7,12 @@ import { CompaniesController } from "./companies.controller";
 import { CompaniesService } from "./companies.service";
 
 @Module({
-  imports: [UsersModule, ConversationGroupDefaultsModule, OrderStatusDefaultsModule, OrderStatusAutomationsModule],
+  imports: [
+    UsersModule,
+    ConversationGroupDefaultsModule,
+    OrderStatusDefaultsModule,
+    OrderStatusAutomationsModule,
+  ],
   controllers: [CompaniesController],
   providers: [CompaniesService],
   exports: [CompaniesService],

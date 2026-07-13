@@ -141,7 +141,12 @@ export class FacebookOAuthService {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException("owner id must be a positive integer");
     }
-    return this.buildAuthorizeUrlForUser(ownerId, appId, redirectUri, workspaceId);
+    return this.buildAuthorizeUrlForUser(
+      ownerId,
+      appId,
+      redirectUri,
+      workspaceId,
+    );
   }
 
   private async buildAuthorizeUrlForUser(
@@ -371,7 +376,9 @@ export class FacebookOAuthService {
 
     if (workspaceId != null) {
       if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
-        throw new BadRequestException("workspace id must be a positive integer");
+        throw new BadRequestException(
+          "workspace id must be a positive integer",
+        );
       }
       const workspace = await this.workspaceRepo.findOne({
         where: { id: workspaceId, ownerId },

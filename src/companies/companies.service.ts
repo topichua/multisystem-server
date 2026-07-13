@@ -55,7 +55,9 @@ export class CompaniesService {
       return { workspace, user };
     });
 
-    await this.conversationGroupDefaults.ensureSystemGroups(result.workspace.id);
+    await this.conversationGroupDefaults.ensureSystemGroups(
+      result.workspace.id,
+    );
     await this.orderStatusDefaults.ensureSystemStatuses(result.workspace.id);
     await this.automationDefaults.createRecommendedDeliveryAutomations(
       result.workspace.id,

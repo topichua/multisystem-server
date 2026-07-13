@@ -44,7 +44,9 @@ export class CredentialsEncryptionService implements OnModuleInit {
     const key = this.requireKey();
     const parts = payload.split(":");
     if (parts.length !== 3) {
-      throw new InternalServerErrorException("Invalid encrypted credentials format");
+      throw new InternalServerErrorException(
+        "Invalid encrypted credentials format",
+      );
     }
     const [ivB64, tagB64, dataB64] = parts;
     const iv = Buffer.from(ivB64, "base64");
