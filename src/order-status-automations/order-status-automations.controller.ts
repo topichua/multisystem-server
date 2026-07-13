@@ -18,6 +18,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
@@ -36,29 +37,22 @@ import {
   OrderStatusAutomationResponseDto,
   OrderStatusAutomationsListResponseDto,
 } from "./dto/order-status-automation-response.dto";
-import { OrderStatusAutomationCriteriaResponseDto } from "./dto/order-status-automation-criteria-response.dto";
+import {
+  OrderStatusAutomationCriteriaItemDto,
+  OrderStatusAutomationCriteriaResponseDto,
+} from "./dto/order-status-automation-criteria-response.dto";
 import { OrderStatusAutomationsService } from "./order-status-automations.service";
 
 @ApiTags("order-status-automations")
 @ApiBearerAuth("bearer")
+@ApiExtraModels(
+  OrderStatusAutomationCriteriaResponseDto,
+  OrderStatusAutomationCriteriaItemDto,
+)
 @UseGuards(JwtAuthGuard)
 @Controller("order-status-automations")
 export class OrderStatusAutomationsController {
   constructor(private readonly automations: OrderStatusAutomationsService) {}
-
-  @Get()
-  @ApiOperation({ summary: "List order status automations for workspace" })
-  @ApiOkResponse({ type: OrderStatusAutomationsListResponseDto })
-  list(
-    @Req() req: { user?: AuthUser },
-    @Query() query: ListOrderStatusAutomationsQueryDto,
-  ): Promise<OrderStatusAutomationsListResponseDto> {
-    return this.automations.listForUser(
-      this.requireUserId(req),
-      query,
-      req.user?.role,
-    );
-  }
 
   @Get("criteria")
   @ApiOperation({
@@ -73,6 +67,20 @@ export class OrderStatusAutomationsController {
   ): Promise<OrderStatusAutomationCriteriaResponseDto> {
     return this.automations.getCriteriaForUser(
       this.requireUserId(req),
+      req.user?.role,
+    );
+  }
+
+  @Get()
+  @ApiOperation({ summary: "List order status automations for workspace" })
+  @ApiOkResponse({ type: OrderStatusAutomationsListResponseDto })
+  list(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListOrderStatusAutomationsQueryDto,
+  ): Promise<OrderStatusAutomationsListResponseDto> {
+    return this.automations.listForUser(
+      this.requireUserId(req),
+      query,
       req.user?.role,
     );
   }
