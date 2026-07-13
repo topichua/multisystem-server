@@ -1,10 +1,16 @@
 import { NormalizedDeliveryStatus } from "../delivery/normalized-delivery-status.enum";
+import { OrderDeliveryDestinationType } from "../database/entities/order-delivery-destination-type.enum";
+import { OrderDeliveryStatus } from "../database/entities/order-delivery-status.enum";
+import { NORMALIZED_TO_ORDER_DELIVERY_STATUS } from "../delivery/delivery-status-mapping";
 
 export type NovaPoshtaTrackingDocument = {
   Number?: string;
   Status?: string;
   StatusCode?: string;
   WarehouseRecipient?: string;
+  WarehouseRecipientNumber?: string;
+  WarehouseRecipientRef?: string;
+  WarehouseRecipientInternetAddressRef?: string;
   WarehouseSender?: string;
   DateCreated?: string;
   DateScan?: string;
@@ -12,9 +18,18 @@ export type NovaPoshtaTrackingDocument = {
   RecipientDateTime?: string;
   RecipientFullName?: string;
   CityRecipient?: string;
+  RefCityRecipient?: string;
+  RefSettlementRecipient?: string;
   CitySender?: string;
   Redelivery?: string;
   ScheduledDeliveryDate?: string;
+  /** e.g. WarehouseWarehouse, WarehouseDoors, DoorsWarehouse, DoorsDoors */
+  ServiceType?: string;
+  /** Street ref (UUID) or formatted address for courier (doors) delivery. */
+  RecipientAddress?: string;
+  RecipientHouse?: string;
+  RecipientFlat?: string;
+  PhoneRecipient?: string;
 };
 
 /** Representative StatusCode per normalized step (dev simulation + docs). */
@@ -98,5 +113,220 @@ export function buildSimulatedNovaPoshtaTrackingDocument(
     StatusCode: sample.statusCode,
     Status: sample.status,
     DateScan: new Date().toISOString(),
+  };
+}
+
+export type NovaPoshtaDeliveryPatchFromTracking = {
+  recipientName: string | null;
+  city: string | null;
+  cityRef: string | null;
+  warehouse: string | null;
+  warehouseRef: string | null;
+  street: string | null;
+  streetRef: string | null;
+  building: string | null;
+  flat: string | null;
+  trackingNumber: string;
+  providerStatusCode: string | null;
+  providerStatusText: string | null;
+  deliveryStatus: OrderDeliveryStatus;
+  deliveryType: OrderDeliveryDestinationType | null;
+};
+
+const NOVA_POSHTA_REF_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isNovaPoshtaRef(value: string): boolean {
+  return NOVA_POSHTA_REF_PATTERN.test(value.trim());
+}
+
+function resolveNovaPoshtaWarehouseRef(
+  doc: NovaPoshtaTrackingDocument,
+): string | null {
+  return (
+    doc.WarehouseRecipientRef?.trim() ||
+    doc.WarehouseRecipientInternetAddressRef?.trim() ||
+    null
+  );
+}
+
+function resolveNovaPoshtaCityRef(
+  doc: NovaPoshtaTrackingDocument,
+): string | null {
+  return (
+    doc.RefSettlementRecipient?.trim() ||
+    doc.RefCityRecipient?.trim() ||
+    null
+  );
+}
+
+/** Split NP `RecipientAddress` into street ref or street/building/flat parts. */
+export function parseNovaPoshtaRecipientAddress(
+  raw: string | null | undefined,
+  explicitHouse?: string | null,
+  explicitFlat?: string | null,
+): {
+  streetRef: string | null;
+  street: string | null;
+  building: string | null;
+  flat: string | null;
+} {
+  const value = raw?.trim();
+  if (!value) {
+    return {
+      streetRef: null,
+      street: null,
+      building: explicitHouse?.trim() || null,
+      flat: explicitFlat?.trim() || null,
+    };
+  }
+
+  if (isNovaPoshtaRef(value)) {
+    return {
+      streetRef: value,
+      street: null,
+      building: explicitHouse?.trim() || null,
+      flat: explicitFlat?.trim() || null,
+    };
+  }
+
+  let flat = explicitFlat?.trim() || null;
+  let building = explicitHouse?.trim() || null;
+  let remaining = value;
+
+  if (!flat) {
+    const flatMatch = remaining.match(
+      /(?:^|[\s,])(?:кв\.?|квартира)\s*([0-9а-яіїєґА-ЯІЇЄҐ\-/]+)/iu,
+    );
+    if (flatMatch) {
+      flat = flatMatch[1].trim();
+      remaining = remaining
+        .replace(flatMatch[0], "")
+        .replace(/,\s*$/, "")
+        .trim();
+    }
+  }
+
+  if (!building) {
+    const buildingMatch = remaining.match(
+      /(?:^|[\s,])(?:буд\.?|будинок|д\.?|дом)\s*([0-9а-яіїєґА-ЯІЇЄҐ\-/]+)/iu,
+    );
+    if (buildingMatch) {
+      building = buildingMatch[1].trim();
+      remaining = remaining
+        .replace(buildingMatch[0], "")
+        .replace(/,\s*$/, "")
+        .trim();
+    }
+  }
+
+  if (!building) {
+    const parts = remaining
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      if (/^[0-9]+[а-яіїєґА-ЯІЇЄҐ\-/]*$/iu.test(last)) {
+        building = last;
+        remaining = parts.slice(0, -1).join(", ");
+      }
+    }
+  }
+
+  return {
+    streetRef: null,
+    street: remaining || null,
+    building,
+    flat,
+  };
+}
+
+function normalizeNovaPoshtaServiceType(
+  raw: string | null | undefined,
+): string | null {
+  const value = raw?.trim();
+  if (!value) {
+    return null;
+  }
+  return value.replace(/_/g, "");
+}
+
+/** Recipient leg of NP ServiceType: Warehouse* → branch, *Doors → address. */
+export function resolveNovaPoshtaDeliveryType(
+  doc: NovaPoshtaTrackingDocument,
+): OrderDeliveryDestinationType | null {
+  const serviceType = normalizeNovaPoshtaServiceType(doc.ServiceType);
+  if (serviceType) {
+    if (serviceType.endsWith("Warehouse")) {
+      return OrderDeliveryDestinationType.WAREHOUSE;
+    }
+    if (serviceType.endsWith("Doors")) {
+      return OrderDeliveryDestinationType.ADDRESS;
+    }
+  }
+
+  if (
+    doc.WarehouseRecipient?.trim() ||
+    doc.WarehouseRecipientNumber?.trim()
+  ) {
+    return OrderDeliveryDestinationType.WAREHOUSE;
+  }
+
+  if (doc.RecipientAddress?.trim()) {
+    return OrderDeliveryDestinationType.ADDRESS;
+  }
+
+  return null;
+}
+
+/** Map Nova Poshta `getStatusDocuments` payload into order delivery fields. */
+export function mapNovaPoshtaTrackingToDeliveryPatch(
+  doc: NovaPoshtaTrackingDocument,
+  trackingNumber: string,
+): NovaPoshtaDeliveryPatchFromTracking {
+  const normalized = mapNovaPoshtaStatusCodeToNormalized(doc.StatusCode);
+  const deliveryStatus =
+    normalized != null
+      ? NORMALIZED_TO_ORDER_DELIVERY_STATUS[normalized]
+      : OrderDeliveryStatus.waybill_created;
+
+  const deliveryType = resolveNovaPoshtaDeliveryType(doc);
+  const warehouse = doc.WarehouseRecipient?.trim() || null;
+  const warehouseRef = resolveNovaPoshtaWarehouseRef(doc);
+  const cityRef = resolveNovaPoshtaCityRef(doc);
+  const addressParts =
+    deliveryType === OrderDeliveryDestinationType.ADDRESS
+      ? parseNovaPoshtaRecipientAddress(
+          doc.RecipientAddress,
+          doc.RecipientHouse,
+          doc.RecipientFlat,
+        )
+      : {
+          streetRef: null,
+          street: null,
+          building: null,
+          flat: null,
+        };
+
+  return {
+    recipientName: doc.RecipientFullName?.trim() || null,
+    city: doc.CityRecipient?.trim() || null,
+    cityRef,
+    warehouse:
+      deliveryType === OrderDeliveryDestinationType.WAREHOUSE ? warehouse : null,
+    warehouseRef:
+      deliveryType === OrderDeliveryDestinationType.WAREHOUSE
+        ? warehouseRef
+        : null,
+    street: addressParts.street,
+    streetRef: addressParts.streetRef,
+    building: addressParts.building,
+    flat: addressParts.flat,
+    trackingNumber: doc.Number?.trim() || trackingNumber.trim(),
+    providerStatusCode: String(doc.StatusCode ?? "").trim() || null,
+    providerStatusText: doc.Status?.trim() || null,
+    deliveryStatus,
+    deliveryType,
   };
 }

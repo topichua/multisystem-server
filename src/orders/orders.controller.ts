@@ -34,6 +34,7 @@ import { CreateOrderStatusDefinitionDto } from "./dto/create-order-status-defini
 import { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
 import { OrderStatusResponseDto } from "./dto/order-status-response.dto";
 import { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
+import { AddOrderDeliveryFromTrackingDto } from "./dto/add-order-delivery-from-tracking.dto";
 import { UpdateOrderDto } from "./dto/update-order.dto";
 import { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
@@ -135,6 +136,27 @@ export class OrdersController {
   ) {
     const ownerId = this.requireNumericOwnerId(req);
     return this.orders.updateDeliveryInfo(ownerId, orderId, dto);
+  }
+
+  @Post(":orderId/delivery/tracking")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Add delivery info from carrier tracking number",
+    description:
+      "Creates delivery info on an order that has none yet. " +
+      "For Nova Poshta, calls `TrackingDocument.getStatusDocuments` and fills recipient, city, warehouse, warehouse ref, address parts, status, and tracking fields. " +
+      "Phone defaults to the order customer phone when omitted.",
+  })
+  @ApiBody({ type: AddOrderDeliveryFromTrackingDto })
+  @ApiParam({ name: "orderId", type: Number })
+  @ApiCreatedResponse({ description: "Order with hydrated delivery info." })
+  addDeliveryFromTracking(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+    @Body() dto: AddOrderDeliveryFromTrackingDto,
+  ) {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.addDeliveryFromTracking(ownerId, orderId, dto);
   }
 
   @Patch(":orderId/delivery/status")

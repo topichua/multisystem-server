@@ -33,6 +33,7 @@ import type { CreateOrderDto } from "./dto/create-order.dto";
 import type { CreateOrderStatusDefinitionDto } from "./dto/create-order-status-definition.dto";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import type { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
+import type { AddOrderDeliveryFromTrackingDto } from "./dto/add-order-delivery-from-tracking.dto";
 import type { OrderStatusResponseDto } from "./dto/order-status-response.dto";
 import type { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
 import type { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
@@ -49,6 +50,7 @@ import { InventoryMode } from "../database/entities/inventory-mode.enum";
 import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
 import { NovaPoshtaWaybillService } from "../novaposhta-integrations/nova-poshta-waybill.service";
 import { NovaPoshtaDeliveryTrackingService } from "../novaposhta-integrations/nova-poshta-delivery-tracking.service";
+import { mapNovaPoshtaTrackingToDeliveryPatch } from "../novaposhta-integrations/nova-poshta-status-code.mapping";
 import { hydrateDeliveryTrackingFlags } from "../delivery/delivery-tracking.util";
 import { DeliveryStatusService } from "../delivery/delivery-status.service";
 import { OrderDeliveryStatusApplicationService } from "../delivery/order-delivery-status-application.service";
@@ -794,6 +796,95 @@ export class OrdersService {
         providerStatusCode: row.providerStatusCode,
       },
     );
+    return this.getOrderById(ownerId, order.id);
+  }
+
+  async addDeliveryFromTracking(
+    ownerId: number,
+    orderId: number,
+    dto: AddOrderDeliveryFromTrackingDto,
+  ): Promise<Order> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const order = await this.requireOrderForWorkspace(orderId, workspace.id);
+
+    if (order.deliveryId != null) {
+      throw new ConflictException("Order already has delivery info");
+    }
+
+    const trackingNumber = dto.trackingNumber.trim();
+    const phone = await this.resolveDeliveryTrackingPhone(order, dto.phone);
+
+    switch (dto.provider) {
+      case OrderDeliveryProvider.nova_poshta: {
+        const doc = await this.novaPoshtaTracking.lookupTrackingDocument({
+          workspaceId: workspace.id,
+          trackingNumber,
+          phone,
+          providerId: dto.providerId ?? null,
+        });
+        const mapped = mapNovaPoshtaTrackingToDeliveryPatch(doc, trackingNumber);
+        const now = new Date();
+
+        const row = await this.orderDeliveryRepo.save(
+          this.orderDeliveryRepo.create({
+            provider: OrderDeliveryProvider.nova_poshta,
+            providerId: dto.providerId ?? null,
+            recipientName: mapped.recipientName,
+            phone,
+            city: mapped.city,
+            cityRef: mapped.cityRef,
+            warehouse: mapped.warehouse,
+            warehouseRef: mapped.warehouseRef,
+            street: mapped.street,
+            streetRef: mapped.streetRef,
+            building: mapped.building,
+            flat: mapped.flat,
+            deliveryType: mapped.deliveryType,
+            trackingNumber: mapped.trackingNumber,
+            providerStatusCode: mapped.providerStatusCode,
+            providerStatusText: mapped.providerStatusText,
+            deliveryStatus: mapped.deliveryStatus,
+            deliveryStatusAt: now,
+          }),
+        );
+
+        order.deliveryId = row.id;
+        order.deliveryType = OrderDeliveryProvider.nova_poshta;
+        order.updatedById = ownerId;
+        await this.orderRepo.save(order);
+
+        await this.deliveryStatusApplication.applyDeliveryStatusChange({
+          delivery: row,
+          newDeliveryStatus: mapped.deliveryStatus,
+          providerStatusCode: mapped.providerStatusCode,
+          providerStatusText: mapped.providerStatusText,
+          forceNotify: true,
+        });
+
+        await this.appendEvent(
+          workspace.id,
+          order.id,
+          OrderEventType.DELIVERY_UPDATED,
+          ownerId,
+          {
+            deliveryInfoId: row.id,
+            provider: row.provider,
+            deliveryStatus: row.deliveryStatus,
+            trackingNumber: row.trackingNumber,
+            providerStatusCode: row.providerStatusCode,
+            providerStatusText: row.providerStatusText,
+            source: "TRACKING_LOOKUP",
+          },
+        );
+        break;
+      }
+      default:
+        throw new BadRequestException(
+          `Tracking lookup is not supported for provider ${dto.provider}`,
+        );
+    }
+
     return this.getOrderById(ownerId, order.id);
   }
 
@@ -1695,6 +1786,29 @@ export class OrdersService {
         userId: actorId,
         payload,
       }),
+    );
+  }
+
+  private async resolveDeliveryTrackingPhone(
+    order: Order,
+    phoneFromDto?: string | null,
+  ): Promise<string> {
+    const direct = phoneFromDto?.trim();
+    if (direct) {
+      return direct;
+    }
+
+    const customer = await this.clientRepo.findOne({
+      where: { id: order.customerId, workspaceId: order.workspaceId },
+      select: { phone: true },
+    });
+    const customerPhone = customer?.phone?.trim();
+    if (customerPhone) {
+      return customerPhone;
+    }
+
+    throw new BadRequestException(
+      "Recipient phone is required for tracking lookup (provide phone or set customer phone)",
     );
   }
 

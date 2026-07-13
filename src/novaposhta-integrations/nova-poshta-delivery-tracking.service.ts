@@ -45,21 +45,10 @@ export class NovaPoshtaDeliveryTrackingService {
     const { delivery, integration } =
       await this.loadNovaPoshtaDeliveryContext(deliveryOrderId);
 
-    if (!delivery.trackingNumber?.trim()) {
-      throw new BadRequestException(
-        "Delivery has no tracking number — create a TTN first",
-      );
-    }
-    if (!delivery.phone?.trim()) {
-      throw new BadRequestException(
-        "Delivery phone is required for Nova Poshta tracking",
-      );
-    }
-
-    const doc = await this.novaPoshtaApi.getTrackingStatusDocument(
+    const doc = await this.fetchTrackingDocument(
       integration.apiKey,
-      delivery.trackingNumber,
-      delivery.phone,
+      delivery.trackingNumber!,
+      delivery.phone!,
     );
 
     return this.applyTrackingDocument(
@@ -67,6 +56,48 @@ export class NovaPoshtaDeliveryTrackingService {
       doc,
       "NOVA_POSHTA_API",
       actorUserId,
+    );
+  }
+
+  async lookupTrackingDocument(input: {
+    workspaceId: number;
+    trackingNumber: string;
+    phone: string;
+    providerId?: number | null;
+  }): Promise<NovaPoshtaTrackingDocument> {
+    const integration = await this.resolveIntegrationForWorkspace(
+      input.workspaceId,
+      input.providerId ?? null,
+    );
+    return this.fetchTrackingDocument(
+      integration.apiKey,
+      input.trackingNumber,
+      input.phone,
+    );
+  }
+
+  private async fetchTrackingDocument(
+    apiKey: string,
+    trackingNumber: string,
+    phone: string,
+  ): Promise<NovaPoshtaTrackingDocument> {
+    const ttn = trackingNumber.trim();
+    if (!ttn) {
+      throw new BadRequestException(
+        "Delivery has no tracking number — create a TTN first",
+      );
+    }
+    const normalizedPhone = phone.trim();
+    if (!normalizedPhone) {
+      throw new BadRequestException(
+        "Delivery phone is required for Nova Poshta tracking",
+      );
+    }
+
+    return this.novaPoshtaApi.getTrackingStatusDocument(
+      apiKey,
+      ttn,
+      normalizedPhone,
     );
   }
 
@@ -165,17 +196,17 @@ export class NovaPoshtaDeliveryTrackingService {
     return { delivery, integration, order };
   }
 
-  private async resolveIntegration(
-    delivery: OrderDeliveryInfo,
+  private async resolveIntegrationForWorkspace(
     workspaceId: number,
+    providerId: number | null,
   ): Promise<NovaPoshtaIntegration> {
-    if (delivery.providerId != null) {
+    if (providerId != null) {
       const row = await this.integrationRepo.findOne({
-        where: { id: delivery.providerId, workspaceId },
+        where: { id: providerId, workspaceId },
       });
       if (!row) {
         throw new BadRequestException(
-          "Nova Poshta integration not found for delivery.providerId",
+          "Nova Poshta integration not found for providerId",
         );
       }
       return row;
@@ -191,5 +222,15 @@ export class NovaPoshtaDeliveryTrackingService {
       );
     }
     return row;
+  }
+
+  private async resolveIntegration(
+    delivery: OrderDeliveryInfo,
+    workspaceId: number,
+  ): Promise<NovaPoshtaIntegration> {
+    return this.resolveIntegrationForWorkspace(
+      workspaceId,
+      delivery.providerId,
+    );
   }
 }
