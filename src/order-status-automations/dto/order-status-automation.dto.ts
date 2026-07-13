@@ -162,16 +162,4 @@ export class ListOrderStatusAutomationsQueryDto {
   @IsOptional()
   @IsEnum(AutomationSourceType)
   sourceType?: AutomationSourceType;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @IsInt()
-  @IsPositive()
-  page?: number;
-
-  @ApiPropertyOptional({ default: 50 })
-  @IsOptional()
-  @IsInt()
-  @IsPositive()
-  pageSize?: number;
 }

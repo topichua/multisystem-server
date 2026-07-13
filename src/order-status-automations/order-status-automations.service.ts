@@ -83,8 +83,6 @@ export class OrderStatusAutomationsService {
       userId,
       appRole,
     );
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 50;
 
     const qb = this.automationRepo
       .createQueryBuilder("a")
@@ -113,16 +111,11 @@ export class OrderStatusAutomationsService {
       .addOrderBy("conditions.sort_order", "ASC")
       .addOrderBy("conditions.id", "ASC");
 
-    const [rows, total] = await qb
-      .skip((page - 1) * pageSize)
-      .take(pageSize)
-      .getManyAndCount();
+    const rows = await qb.getMany();
 
     return {
       items: rows.map((row) => this.toResponse(row)),
-      total,
-      page,
-      pageSize,
+      total: rows.length,
     };
   }
 

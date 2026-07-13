@@ -112,10 +112,4 @@ export class OrderStatusAutomationsListResponseDto {
 
   @ApiProperty()
   total!: number;
-
-  @ApiProperty()
-  page!: number;
-
-  @ApiProperty()
-  pageSize!: number;
 }
