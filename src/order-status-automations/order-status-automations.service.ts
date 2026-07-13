@@ -244,7 +244,8 @@ export class OrderStatusAutomationsService {
       appRole,
     );
     const row = await this.findAutomationOrThrow(automationId, workspace.id);
-    await this.automationRepo.softRemove(row);
+    // softDelete by id — softRemove cascades into conditions (no deleted_at) and fails
+    await this.automationRepo.softDelete({ id: row.id });
   }
 
   async countActiveByTargetStatusId(
