@@ -41,6 +41,10 @@ import { OrderEventsListResponseDto } from "./dto/order-events-list-response.dto
 import { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import { CreateNovaPoshtaWaybillResponseDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import { DeliveryStatusUpdateResultDto } from "../delivery/dto/delivery-status-update-result.dto";
+import {
+  ChangeDeliveryStatusDto,
+  ChangeDeliveryStatusResultDto,
+} from "../delivery/dto/change-delivery-status.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("orders")
@@ -131,6 +135,23 @@ export class OrdersController {
   ) {
     const ownerId = this.requireNumericOwnerId(req);
     return this.orders.updateDeliveryInfo(ownerId, orderId, dto);
+  }
+
+  @Patch(":orderId/delivery/status")
+  @ApiOperation({
+    summary: "Change order delivery status",
+    description:
+      "Updates `deliveryStatus` for the order delivery record and triggers order status automations when the value changes.",
+  })
+  @ApiParam({ name: "orderId", type: Number })
+  @ApiOkResponse({ type: ChangeDeliveryStatusResultDto })
+  changeDeliveryStatus(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+    @Body() dto: ChangeDeliveryStatusDto,
+  ): Promise<ChangeDeliveryStatusResultDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.changeOrderDeliveryStatus(ownerId, orderId, dto);
   }
 
   @Post(":orderId/novaposhta/waybill")

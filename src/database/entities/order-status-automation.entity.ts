@@ -6,6 +6,7 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   VersionColumn,
@@ -13,8 +14,8 @@ import {
 import { AutomationActionType } from "./automation-action-type.enum";
 import { AutomationDurationUnit } from "./automation-duration-unit.enum";
 import { AutomationOrigin } from "./automation-origin.enum";
-import { AutomationSourceType } from "./automation-source-type.enum";
 import { OrderStatus } from "./order-status.entity";
+import { OrderStatusAutomationCondition } from "./order-status-automation-condition.entity";
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
 
@@ -40,17 +41,12 @@ export class OrderStatusAutomation {
   @Column({ name: "is_active", type: "boolean", default: true })
   isActive: boolean;
 
-  @Column({
-    name: "source_type",
-    type: "enum",
-    enum: AutomationSourceType,
-    enumName: "automation_source_type_enum",
-  })
-  sourceType: AutomationSourceType;
-
-  /** OrderDeliveryStatus or OrderPaymentStatus code as string. */
-  @Column({ name: "source_status", type: "varchar", length: 64 })
-  sourceStatus: string;
+  @OneToMany(
+    () => OrderStatusAutomationCondition,
+    (condition) => condition.automation,
+    { cascade: true },
+  )
+  conditions: OrderStatusAutomationCondition[];
 
   @Column({ name: "duration_value", type: "int", nullable: true })
   durationValue: number | null;

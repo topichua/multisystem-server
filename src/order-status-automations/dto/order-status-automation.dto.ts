@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import {
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -9,10 +12,23 @@ import {
   MaxLength,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from "class-validator";
 import { AutomationActionType } from "../../database/entities/automation-action-type.enum";
 import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
+
+export class OrderStatusAutomationConditionDto {
+  @ApiProperty({ enum: AutomationSourceType })
+  @IsEnum(AutomationSourceType)
+  sourceType!: AutomationSourceType;
+
+  @ApiProperty({ example: "at_branch" })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  sourceStatus!: string;
+}
 
 export class CreateOrderStatusAutomationDto {
   @ApiProperty({ example: "Довго на відділенні" })
@@ -26,15 +42,16 @@ export class CreateOrderStatusAutomationDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiProperty({ enum: AutomationSourceType })
-  @IsEnum(AutomationSourceType)
-  sourceType!: AutomationSourceType;
-
-  @ApiProperty({ example: "at_branch" })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(64)
-  sourceStatus!: string;
+  @ApiProperty({
+    type: [OrderStatusAutomationConditionDto],
+    description:
+      "Trigger conditions combined with OR. When any condition matches, the automation may run.",
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => OrderStatusAutomationConditionDto)
+  conditions!: OrderStatusAutomationConditionDto[];
 
   @ApiPropertyOptional({ nullable: true })
   @ValidateIf((o) => o.durationUnit != null)
@@ -50,6 +67,7 @@ export class CreateOrderStatusAutomationDto {
   @ApiProperty({
     enum: AutomationActionType,
     default: AutomationActionType.change_order_status,
+    description: "V1 supports only CHANGE_ORDER_STATUS.",
   })
   @IsEnum(AutomationActionType)
   actionType: AutomationActionType = AutomationActionType.change_order_status;
@@ -73,17 +91,13 @@ export class UpdateOrderStatusAutomationDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ enum: AutomationSourceType })
+  @ApiPropertyOptional({ type: [OrderStatusAutomationConditionDto] })
   @IsOptional()
-  @IsEnum(AutomationSourceType)
-  sourceType?: AutomationSourceType;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(64)
-  sourceStatus?: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => OrderStatusAutomationConditionDto)
+  conditions?: OrderStatusAutomationConditionDto[];
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
@@ -122,7 +136,10 @@ export class ListOrderStatusAutomationsQueryDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ enum: AutomationSourceType })
+  @ApiPropertyOptional({
+    enum: AutomationSourceType,
+    description: "Filter automations that include a condition of this source type.",
+  })
   @IsOptional()
   @IsEnum(AutomationSourceType)
   sourceType?: AutomationSourceType;

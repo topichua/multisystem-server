@@ -5,6 +5,7 @@ import {
   OrderDeliveryInfo,
   OrderStatus,
   OrderStatusAutomation,
+  OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
 } from "../database/entities";
 import { InventoryModule } from "../inventory/inventory.module";
@@ -27,6 +28,7 @@ import { OrderStatusAutomationsService } from "./order-status-automations.servic
     forwardRef(() => PaymentsModule),
     TypeOrmModule.forFeature([
       OrderStatusAutomation,
+      OrderStatusAutomationCondition,
       OrderStatusAutomationExecution,
       OrderStatus,
       Order,

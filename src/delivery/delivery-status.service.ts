@@ -20,9 +20,19 @@ import {
   DEV_SIMULATOR_STATUS_LABELS,
   NORMALIZED_TO_ORDER_DELIVERY_STATUS,
 } from "./delivery-status-mapping";
+import type { ChangeDeliveryStatusResultDto } from "./dto/change-delivery-status.dto";
 import type { DeliveryStatusUpdateResultDto } from "./dto/delivery-status-update-result.dto";
 import { NormalizedDeliveryStatus } from "./normalized-delivery-status.enum";
 import { OrderDeliveryStatusApplicationService } from "./order-delivery-status-application.service";
+
+export type ChangeDeliveryStatusForOrderInput = {
+  workspaceId: number;
+  orderId: number;
+  deliveryStatus: import("../database/entities").OrderDeliveryStatus;
+  providerStatusCode?: string | null;
+  providerStatusText?: string | null;
+  actorUserId?: number | null;
+};
 
 export type ProcessDeliveryStatusUpdateInput = {
   deliveryOrderId: number;
@@ -52,6 +62,59 @@ export class DeliveryStatusService {
     private readonly deliveryStatusApplication: OrderDeliveryStatusApplicationService,
   ) {}
 
+  async changeDeliveryStatusForOrder(
+    input: ChangeDeliveryStatusForOrderInput,
+  ): Promise<ChangeDeliveryStatusResultDto> {
+    const order = await this.orderRepo.findOne({
+      where: { workspaceId: input.workspaceId, id: input.orderId },
+      relations: { status: true },
+    });
+    if (!order) {
+      throw new NotFoundException("Order not found");
+    }
+    if (order.deliveryId == null) {
+      throw new NotFoundException("Order has no delivery");
+    }
+
+    const { delivery, ...result } =
+      await this.deliveryStatusApplication.changeDeliveryStatus({
+        deliveryId: order.deliveryId,
+        newDeliveryStatus: input.deliveryStatus,
+        providerStatusCode: input.providerStatusCode,
+        providerStatusText: input.providerStatusText,
+      });
+
+    if (input.actorUserId != null && (result.changed || delivery)) {
+      await this.orderEventRepo.save(
+        this.orderEventRepo.create({
+          workspaceId: input.workspaceId,
+          orderId: order.id,
+          type: OrderEventType.DELIVERY_UPDATED,
+          actorId: input.actorUserId,
+          userId: input.actorUserId,
+          payload: {
+            deliveryInfoId: delivery.id,
+            deliveryStatus: delivery.deliveryStatus,
+            previousDeliveryStatus: result.previousStatus,
+            providerStatusCode: delivery.providerStatusCode,
+            providerStatusText: delivery.providerStatusText,
+            orderStatusId: order.statusId,
+            source: "MANUAL_STATUS_CHANGE",
+          },
+        }),
+      );
+    }
+
+    return {
+      deliveryId: delivery.id,
+      orderId: order.id,
+      previousStatus: result.previousStatus,
+      newStatus: result.newStatus,
+      changed: result.changed,
+      statusChangedAt: result.statusChangedAt,
+    };
+  }
+
   async processStatusUpdate(
     input: ProcessDeliveryStatusUpdateInput,
   ): Promise<DeliveryStatusUpdateResultDto> {
@@ -70,12 +133,17 @@ export class DeliveryStatusService {
     const mappedDeliveryStatus =
       NORMALIZED_TO_ORDER_DELIVERY_STATUS[input.normalizedStatus];
 
-    await this.deliveryStatusApplication.applyDeliveryStatusChange({
-      delivery,
-      newDeliveryStatus: mappedDeliveryStatus,
-      providerStatusCode: input.rawStatusCode?.trim() || null,
-      providerStatusText: this.resolveProviderStatusText(input) || null,
-    });
+    const { delivery: updatedDelivery } =
+      await this.deliveryStatusApplication.changeDeliveryStatus({
+        deliveryId: delivery.id,
+        newDeliveryStatus: mappedDeliveryStatus,
+        providerStatusCode: input.rawStatusCode?.trim() || null,
+        providerStatusText: this.resolveProviderStatusText(input) || null,
+      });
+    delivery.deliveryStatus = updatedDelivery.deliveryStatus;
+    delivery.deliveryStatusAt = updatedDelivery.deliveryStatusAt;
+    delivery.providerStatusCode = updatedDelivery.providerStatusCode;
+    delivery.providerStatusText = updatedDelivery.providerStatusText;
 
     if (order && input.actorUserId != null) {
       await this.appendDeliveryEvent(

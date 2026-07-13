@@ -130,6 +130,7 @@ import { ManualPaymentMethods1744200000132 } from "./migrations/1744200000132-Ma
 import { OrderDeliveryInfoStatusCodeAt1744200000133 } from "./migrations/1744200000133-OrderDeliveryInfoStatusCodeAt";
 import { OrderStatusAutomations1744200000134 } from "./migrations/1744200000134-OrderStatusAutomations";
 import { OrderStatusSystemStatusesOnly1744200000135 } from "./migrations/1744200000135-OrderStatusSystemStatusesOnly";
+import { OrderStatusAutomationConditions1744200000136 } from "./migrations/1744200000136-OrderStatusAutomationConditions";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -463,6 +464,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderDeliveryInfoStatusCodeAt1744200000133,
       OrderStatusAutomations1744200000134,
       OrderStatusSystemStatusesOnly1744200000135,
+      OrderStatusAutomationConditions1744200000136,
     ],
   };
 }

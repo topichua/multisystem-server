@@ -1,4 +1,10 @@
-import { Inject, Injectable, Optional, forwardRef } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+  forwardRef,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
@@ -25,6 +31,13 @@ export type ApplyDeliveryStatusChangeResult = {
   statusChangedAt: Date | null;
 };
 
+export type ChangeDeliveryStatusInput = {
+  deliveryId: number;
+  newDeliveryStatus: OrderDeliveryStatus;
+  providerStatusCode?: string | null;
+  providerStatusText?: string | null;
+};
+
 @Injectable()
 export class OrderDeliveryStatusApplicationService {
   constructor(
@@ -36,6 +49,30 @@ export class OrderDeliveryStatusApplicationService {
     @Inject(forwardRef(() => OrderStatusAutomationTriggerService))
     private readonly automationTrigger?: OrderStatusAutomationTriggerService,
   ) {}
+
+  /** Central entry point: updates delivery status and triggers order automations. */
+  async changeDeliveryStatus(
+    input: ChangeDeliveryStatusInput,
+  ): Promise<ApplyDeliveryStatusChangeResult & { delivery: OrderDeliveryInfo }> {
+    const delivery = await this.deliveryRepo.findOne({
+      where: { id: input.deliveryId },
+    });
+    if (!delivery) {
+      throw new NotFoundException("Delivery not found");
+    }
+
+    const result = await this.applyDeliveryStatusChange({
+      delivery,
+      newDeliveryStatus: input.newDeliveryStatus,
+      providerStatusCode: input.providerStatusCode,
+      providerStatusText: input.providerStatusText,
+    });
+
+    return {
+      ...result,
+      delivery,
+    };
+  }
 
   async applyDeliveryStatusChange(
     input: ApplyDeliveryStatusChangeInput,
@@ -65,15 +102,15 @@ export class OrderDeliveryStatusApplicationService {
         where: { deliveryId: delivery.id },
       });
       if (order) {
-        const statusChangedAt = delivery.deliveryStatusAt ?? new Date();
+        const automationChangedAt = delivery.deliveryStatusAt ?? new Date();
         await this.automationTrigger.onSourceStatusChanged({
           workspaceId: order.workspaceId,
           orderId: order.id,
           sourceType: AutomationSourceType.delivery_status,
           sourceStatus: delivery.deliveryStatus,
           previousSourceStatus: previousStatus,
-          statusChangedAt,
-          changed: true,
+          statusChangedAt: automationChangedAt,
+          changed: changed || Boolean(input.forceNotify),
         });
       }
     }

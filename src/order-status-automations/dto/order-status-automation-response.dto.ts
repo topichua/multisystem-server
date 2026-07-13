@@ -19,6 +19,20 @@ export class OrderStatusAutomationTargetStatusDto {
   color!: string;
 }
 
+export class OrderStatusAutomationConditionResponseDto {
+  @ApiProperty()
+  id!: number;
+
+  @ApiProperty({ enum: AutomationSourceType })
+  sourceType!: AutomationSourceType;
+
+  @ApiProperty()
+  sourceStatus!: string;
+
+  @ApiProperty()
+  sortOrder!: number;
+}
+
 export class OrderStatusAutomationResponseDto {
   @ApiProperty()
   id!: number;
@@ -32,11 +46,8 @@ export class OrderStatusAutomationResponseDto {
   @ApiProperty()
   isActive!: boolean;
 
-  @ApiProperty({ enum: AutomationSourceType })
-  sourceType!: AutomationSourceType;
-
-  @ApiProperty()
-  sourceStatus!: string;
+  @ApiProperty({ type: [OrderStatusAutomationConditionResponseDto] })
+  conditions!: OrderStatusAutomationConditionResponseDto[];
 
   @ApiPropertyOptional({ nullable: true })
   durationValue!: number | null;

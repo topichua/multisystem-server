@@ -106,4 +106,5 @@ export { AutomationExecutionStatus } from "./automation-execution-status.enum";
 export { AutomationOrigin } from "./automation-origin.enum";
 export { AutomationSourceType } from "./automation-source-type.enum";
 export { OrderStatusAutomation } from "./order-status-automation.entity";
+export { OrderStatusAutomationCondition } from "./order-status-automation-condition.entity";
 export { OrderStatusAutomationExecution } from "./order-status-automation-execution.entity";

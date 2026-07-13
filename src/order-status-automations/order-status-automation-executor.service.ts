@@ -48,20 +48,25 @@ export class OrderStatusAutomationExecutorService {
   async evaluateImmediateRules(
     input: EvaluateImmediateRulesInput,
   ): Promise<void> {
-    const rules = await this.automationRepo.find({
-      where: {
+    const rules = await this.automationRepo
+      .createQueryBuilder("a")
+      .innerJoinAndSelect("a.conditions", "c")
+      .where("a.workspace_id = :workspaceId", {
         workspaceId: input.workspaceId,
-        isActive: true,
+      })
+      .andWhere("a.is_active = true")
+      .andWhere("a.deleted_at IS NULL")
+      .andWhere("a.duration_value IS NULL")
+      .andWhere("a.duration_unit IS NULL")
+      .andWhere("c.source_type = :sourceType", {
         sourceType: input.sourceType,
+      })
+      .andWhere("c.source_status = :sourceStatus", {
         sourceStatus: input.sourceStatus,
-      },
-    });
+      })
+      .getMany();
 
-    const immediateRules = rules.filter(
-      (rule) => rule.durationValue == null && rule.durationUnit == null,
-    );
-
-    for (const rule of immediateRules) {
+    for (const rule of rules) {
       await this.applyAutomation({
         automation: rule,
         workspaceId: input.workspaceId,
@@ -79,55 +84,67 @@ export class OrderStatusAutomationExecutorService {
     workspaceId?: number;
     limitPerRule?: number;
   }): Promise<number> {
-    const rules = await this.automationRepo.find({
-      where: {
-        ...(input.workspaceId != null
-          ? { workspaceId: input.workspaceId }
-          : {}),
-        isActive: true,
+    const rulesQb = this.automationRepo
+      .createQueryBuilder("a")
+      .innerJoinAndSelect("a.conditions", "c")
+      .where("a.is_active = true")
+      .andWhere("a.deleted_at IS NULL")
+      .andWhere("a.duration_value IS NOT NULL")
+      .andWhere("a.duration_unit IS NOT NULL")
+      .andWhere("c.source_type = :sourceType", {
         sourceType: input.sourceType,
-      },
-    });
+      });
 
-    const timedRules = rules.filter(
-      (rule) => rule.durationValue != null && rule.durationUnit != null,
-    );
+    if (input.workspaceId != null) {
+      rulesQb.andWhere("a.workspace_id = :workspaceId", {
+        workspaceId: input.workspaceId,
+      });
+    }
+
+    const rules = await rulesQb.getMany();
 
     let evaluated = 0;
-    for (const rule of timedRules) {
-      const candidates = await this.findTimedRuleCandidates(
-        rule,
-        input.limitPerRule ?? 100,
+    for (const rule of rules) {
+      const matchingConditions = (rule.conditions ?? []).filter(
+        (condition) => condition.sourceType === input.sourceType,
       );
 
-      for (const candidate of candidates) {
-        const statusChangedAt =
-          input.sourceType === AutomationSourceType.delivery_status
-            ? candidate.deliveryStatusAt
-            : candidate.paymentStatusAt;
-        if (!statusChangedAt) {
-          continue;
-        }
-
-        const dueAt = addDuration(
-          statusChangedAt,
-          rule.durationValue!,
-          rule.durationUnit!,
+      for (const condition of matchingConditions) {
+        const candidates = await this.findTimedRuleCandidates(
+          rule,
+          condition,
+          input.limitPerRule ?? 100,
         );
-        if (dueAt.getTime() > Date.now()) {
-          continue;
-        }
 
-        await this.applyAutomation({
-          automation: rule,
-          workspaceId: candidate.workspaceId,
-          orderId: candidate.id,
-          sourceType: rule.sourceType,
-          sourceStatus: rule.sourceStatus,
-          expectedStatusChangedAt: statusChangedAt,
-          timed: true,
-        });
-        evaluated += 1;
+        for (const candidate of candidates) {
+          const statusChangedAt =
+            input.sourceType === AutomationSourceType.delivery_status
+              ? candidate.deliveryStatusAt
+              : candidate.paymentStatusAt;
+          if (!statusChangedAt) {
+            continue;
+          }
+
+          const dueAt = addDuration(
+            statusChangedAt,
+            rule.durationValue!,
+            rule.durationUnit!,
+          );
+          if (dueAt.getTime() > Date.now()) {
+            continue;
+          }
+
+          await this.applyAutomation({
+            automation: rule,
+            workspaceId: candidate.workspaceId,
+            orderId: candidate.id,
+            sourceType: condition.sourceType,
+            sourceStatus: condition.sourceStatus,
+            expectedStatusChangedAt: statusChangedAt,
+            timed: true,
+          });
+          evaluated += 1;
+        }
       }
     }
 
@@ -136,6 +153,10 @@ export class OrderStatusAutomationExecutorService {
 
   private async findTimedRuleCandidates(
     rule: OrderStatusAutomation,
+    condition: {
+      sourceType: AutomationSourceType;
+      sourceStatus: string;
+    },
     limit: number,
   ): Promise<
     Array<
@@ -144,11 +165,11 @@ export class OrderStatusAutomationExecutorService {
       }
     >
   > {
-    if (rule.sourceType === AutomationSourceType.payment_status) {
+    if (condition.sourceType === AutomationSourceType.payment_status) {
       return this.orderRepo.find({
         where: {
           workspaceId: rule.workspaceId,
-          paymentStatus: rule.sourceStatus as Order["paymentStatus"],
+          paymentStatus: condition.sourceStatus as Order["paymentStatus"],
         },
         take: limit,
       });
@@ -162,7 +183,7 @@ export class OrderStatusAutomationExecutorService {
         workspaceId: rule.workspaceId,
       })
       .andWhere("d.delivery_status = :sourceStatus", {
-        sourceStatus: rule.sourceStatus,
+        sourceStatus: condition.sourceStatus,
       })
       .andWhere("d.delivery_status_at IS NOT NULL")
       .limit(limit)

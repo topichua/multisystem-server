@@ -13,6 +13,7 @@ import {
   AutomationSourceType,
   OrderStatus,
   OrderStatusAutomation,
+  OrderStatusAutomationCondition,
 } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
@@ -25,15 +26,18 @@ import type {
 import type { OrderStatusAutomationResponseDto } from "./dto/order-status-automation-response.dto";
 import { formatAutomationDuration } from "./logic/automation-duration.logic";
 import {
-  isValidAutomationSourceStatus,
-  normalizeAutomationSourceStatus,
-} from "./logic/automation-source-status.logic";
+  buildConditionSignature,
+  normalizeAutomationConditions,
+  type NormalizedAutomationCondition,
+} from "./logic/automation-conditions.logic";
 
 @Injectable()
 export class OrderStatusAutomationsService {
   constructor(
     @InjectRepository(OrderStatusAutomation)
     private readonly automationRepo: Repository<OrderStatusAutomation>,
+    @InjectRepository(OrderStatusAutomationCondition)
+    private readonly conditionRepo: Repository<OrderStatusAutomationCondition>,
     @InjectRepository(OrderStatus)
     private readonly orderStatusRepo: Repository<OrderStatus>,
     private readonly workspaceContext: WorkspaceAccessContextService,
@@ -56,6 +60,7 @@ export class OrderStatusAutomationsService {
     const qb = this.automationRepo
       .createQueryBuilder("a")
       .leftJoinAndSelect("a.targetOrderStatus", "target")
+      .leftJoinAndSelect("a.conditions", "conditions")
       .where("a.workspace_id = :workspaceId", { workspaceId: workspace.id })
       .andWhere("a.deleted_at IS NULL");
 
@@ -63,12 +68,21 @@ export class OrderStatusAutomationsService {
       qb.andWhere("a.is_active = :isActive", { isActive: query.isActive });
     }
     if (query.sourceType != null) {
-      qb.andWhere("a.source_type = :sourceType", {
-        sourceType: query.sourceType,
-      });
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM order_status_automation_conditions c
+          WHERE c.automation_id = a.id
+            AND c.source_type = :sourceType
+        )`,
+        { sourceType: query.sourceType },
+      );
     }
 
-    qb.orderBy("a.created_at", "DESC").addOrderBy("a.id", "DESC");
+    qb.orderBy("a.created_at", "DESC")
+      .addOrderBy("a.id", "DESC")
+      .addOrderBy("conditions.sort_order", "ASC")
+      .addOrderBy("conditions.id", "ASC");
 
     const [rows, total] = await qb
       .skip((page - 1) * pageSize)
@@ -107,20 +121,16 @@ export class OrderStatusAutomationsService {
       userId,
       appRole,
     );
+    const conditions = normalizeAutomationConditions(dto.conditions);
     this.validateDurationPair(
       dto.durationValue ?? null,
       dto.durationUnit ?? null,
     );
     this.validateActionType(dto.actionType);
-    const sourceStatus = normalizeAutomationSourceStatus(dto.sourceStatus);
-    if (!isValidAutomationSourceStatus(dto.sourceType, sourceStatus)) {
-      throw new BadRequestException("Invalid sourceStatus for sourceType");
-    }
     await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
     await this.assertNoDuplicate({
       workspaceId: workspace.id,
-      sourceType: dto.sourceType,
-      sourceStatus,
+      conditions,
       durationValue: dto.durationValue ?? null,
       durationUnit: dto.durationUnit ?? null,
       targetOrderStatusId: dto.targetOrderStatusId,
@@ -131,8 +141,6 @@ export class OrderStatusAutomationsService {
         workspaceId: workspace.id,
         name: dto.name.trim(),
         isActive: dto.isActive ?? true,
-        sourceType: dto.sourceType,
-        sourceStatus,
         durationValue: dto.durationValue ?? null,
         durationUnit: dto.durationUnit ?? null,
         actionType: AutomationActionType.change_order_status,
@@ -140,6 +148,7 @@ export class OrderStatusAutomationsService {
         origin: AutomationOrigin.user,
         createdById: userId,
         updatedById: userId,
+        conditions: this.buildConditionEntities(conditions),
       }),
     );
     return this.toResponse(
@@ -160,10 +169,10 @@ export class OrderStatusAutomationsService {
     );
     const row = await this.findAutomationOrThrow(automationId, workspace.id);
 
-    const nextSourceType = dto.sourceType ?? row.sourceType;
-    const nextSourceStatus = normalizeAutomationSourceStatus(
-      dto.sourceStatus ?? row.sourceStatus,
-    );
+    const nextConditions =
+      dto.conditions != null
+        ? normalizeAutomationConditions(dto.conditions)
+        : this.normalizePersistedConditions(row.conditions ?? []);
     const nextDurationValue =
       dto.durationValue !== undefined ? dto.durationValue : row.durationValue;
     const nextDurationUnit =
@@ -175,15 +184,6 @@ export class OrderStatusAutomationsService {
     if (dto.actionType != null) {
       this.validateActionType(dto.actionType);
     }
-    if (
-      dto.sourceType != null ||
-      dto.sourceStatus != null ||
-      !isValidAutomationSourceStatus(nextSourceType, nextSourceStatus)
-    ) {
-      if (!isValidAutomationSourceStatus(nextSourceType, nextSourceStatus)) {
-        throw new BadRequestException("Invalid sourceStatus for sourceType");
-      }
-    }
     if (dto.targetOrderStatusId != null) {
       await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
     }
@@ -191,8 +191,7 @@ export class OrderStatusAutomationsService {
     await this.assertNoDuplicate(
       {
         workspaceId: workspace.id,
-        sourceType: nextSourceType,
-        sourceStatus: nextSourceStatus,
+        conditions: nextConditions,
         durationValue: nextDurationValue,
         durationUnit: nextDurationUnit,
         targetOrderStatusId: nextTargetStatusId,
@@ -202,14 +201,17 @@ export class OrderStatusAutomationsService {
 
     if (dto.name != null) row.name = dto.name.trim();
     if (dto.isActive != null) row.isActive = dto.isActive;
-    if (dto.sourceType != null) row.sourceType = dto.sourceType;
-    if (dto.sourceStatus != null) row.sourceStatus = nextSourceStatus;
     if (dto.durationValue !== undefined) row.durationValue = dto.durationValue;
     if (dto.durationUnit !== undefined) row.durationUnit = dto.durationUnit;
     if (dto.targetOrderStatusId != null) {
       row.targetOrderStatusId = dto.targetOrderStatusId;
     }
     row.updatedById = userId;
+
+    if (dto.conditions != null) {
+      await this.conditionRepo.delete({ automationId: row.id });
+      row.conditions = this.buildConditionEntities(nextConditions);
+    }
 
     await this.automationRepo.save(row);
     return this.toResponse(
@@ -260,12 +262,35 @@ export class OrderStatusAutomationsService {
   ): Promise<OrderStatusAutomation> {
     const row = await this.automationRepo.findOne({
       where: { id: automationId, workspaceId, deletedAt: IsNull() },
-      relations: { targetOrderStatus: true },
+      relations: { targetOrderStatus: true, conditions: true },
     });
     if (!row) {
       throw new NotFoundException("Automation not found");
     }
     return row;
+  }
+
+  private buildConditionEntities(
+    conditions: NormalizedAutomationCondition[],
+  ): OrderStatusAutomationCondition[] {
+    return conditions.map((condition, index) =>
+      this.conditionRepo.create({
+        sourceType: condition.sourceType,
+        sourceStatus: condition.sourceStatus,
+        sortOrder: index,
+      }),
+    );
+  }
+
+  private normalizePersistedConditions(
+    conditions: OrderStatusAutomationCondition[],
+  ): NormalizedAutomationCondition[] {
+    return [...conditions]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+      .map((condition) => ({
+        sourceType: condition.sourceType,
+        sourceStatus: condition.sourceStatus,
+      }));
   }
 
   private async assertTargetStatus(
@@ -311,8 +336,7 @@ export class OrderStatusAutomationsService {
   private async assertNoDuplicate(
     input: {
       workspaceId: number;
-      sourceType: AutomationSourceType;
-      sourceStatus: string;
+      conditions: NormalizedAutomationCondition[];
       durationValue: number | null;
       durationUnit:
         | import("../database/entities/automation-duration-unit.enum").AutomationDurationUnit
@@ -321,43 +345,32 @@ export class OrderStatusAutomationsService {
     },
     excludeId?: number,
   ): Promise<void> {
-    const qb = this.automationRepo
-      .createQueryBuilder("a")
-      .where("a.workspace_id = :workspaceId", {
+    const signature = buildConditionSignature(input.conditions);
+    const activeRows = await this.automationRepo.find({
+      where: {
         workspaceId: input.workspaceId,
-      })
-      .andWhere("a.is_active = true")
-      .andWhere("a.deleted_at IS NULL")
-      .andWhere("a.source_type = :sourceType", {
-        sourceType: input.sourceType,
-      })
-      .andWhere("a.source_status = :sourceStatus", {
-        sourceStatus: input.sourceStatus,
-      })
-      .andWhere("a.target_order_status_id = :targetOrderStatusId", {
+        isActive: true,
+        deletedAt: IsNull(),
         targetOrderStatusId: input.targetOrderStatusId,
-      });
+        durationValue:
+          input.durationValue == null ? IsNull() : input.durationValue,
+        durationUnit: input.durationUnit == null ? IsNull() : input.durationUnit,
+      },
+      relations: { conditions: true },
+    });
 
-    if (input.durationValue == null) {
-      qb.andWhere("a.duration_value IS NULL");
-    } else {
-      qb.andWhere("a.duration_value = :durationValue", {
-        durationValue: input.durationValue,
-      });
-      qb.andWhere("a.duration_unit = :durationUnit", {
-        durationUnit: input.durationUnit,
-      });
-    }
-
-    if (excludeId != null) {
-      qb.andWhere("a.id != :excludeId", { excludeId });
-    }
-
-    const existing = await qb.getOne();
-    if (existing) {
-      throw new ConflictException(
-        "An active automation with the same conditions already exists",
+    for (const row of activeRows) {
+      if (excludeId != null && row.id === excludeId) {
+        continue;
+      }
+      const rowSignature = buildConditionSignature(
+        this.normalizePersistedConditions(row.conditions ?? []),
       );
+      if (rowSignature === signature) {
+        throw new ConflictException(
+          "An active automation with the same OR conditions already exists",
+        );
+      }
     }
   }
 
@@ -368,13 +381,20 @@ export class OrderStatusAutomationsService {
     if (!target) {
       throw new NotFoundException("Target order status not found");
     }
+    const conditions = [...(row.conditions ?? [])].sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.id - b.id,
+    );
     return {
       id: row.id,
       workspaceId: row.workspaceId,
       name: row.name,
       isActive: row.isActive,
-      sourceType: row.sourceType,
-      sourceStatus: row.sourceStatus,
+      conditions: conditions.map((condition) => ({
+        id: condition.id,
+        sourceType: condition.sourceType,
+        sourceStatus: condition.sourceStatus,
+        sortOrder: condition.sortOrder,
+      })),
       durationValue: row.durationValue,
       durationUnit: row.durationUnit,
       durationLabel: formatAutomationDuration(

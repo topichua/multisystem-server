@@ -48,8 +48,11 @@ import { WorkspaceSettingsService } from "../workspace-settings/workspace-settin
 import { NovaPoshtaWaybillService } from "../novaposhta-integrations/nova-poshta-waybill.service";
 import { NovaPoshtaDeliveryTrackingService } from "../novaposhta-integrations/nova-poshta-delivery-tracking.service";
 import { hydrateDeliveryTrackingFlags } from "../delivery/delivery-tracking.util";
+import { DeliveryStatusService } from "../delivery/delivery-status.service";
 import { OrderDeliveryStatusApplicationService } from "../delivery/order-delivery-status-application.service";
 import type { DeliveryStatusUpdateResultDto } from "../delivery/dto/delivery-status-update-result.dto";
+import type { ChangeDeliveryStatusDto } from "../delivery/dto/change-delivery-status.dto";
+import type { ChangeDeliveryStatusResultDto } from "../delivery/dto/change-delivery-status.dto";
 import type { CreateNovaPoshtaWaybillRequestDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import type { CreateNovaPoshtaWaybillResponseDto } from "../novaposhta-integrations/dto/create-novaposhta-waybill.dto";
 import {
@@ -135,6 +138,7 @@ export class OrdersService {
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
     private readonly orderIdAllocation: OrderIdAllocationService,
     private readonly orderStatusTransition: OrderStatusTransitionService,
+    private readonly deliveryStatus: DeliveryStatusService,
     private readonly deliveryStatusApplication: OrderDeliveryStatusApplicationService,
     @InjectRepository(OrderStatusAutomation)
     private readonly automationRepo: Repository<OrderStatusAutomation>,
@@ -773,6 +777,23 @@ export class OrdersService {
       },
     );
     return this.getOrderById(ownerId, order.id);
+  }
+
+  async changeOrderDeliveryStatus(
+    ownerId: number,
+    orderId: number,
+    dto: ChangeDeliveryStatusDto,
+  ): Promise<ChangeDeliveryStatusResultDto> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    return this.deliveryStatus.changeDeliveryStatusForOrder({
+      workspaceId: workspace.id,
+      orderId,
+      deliveryStatus: dto.deliveryStatus,
+      providerStatusCode: dto.providerStatusCode,
+      providerStatusText: dto.providerStatusText,
+      actorUserId: ownerId,
+    });
   }
 
   async syncDeliveryInfo(

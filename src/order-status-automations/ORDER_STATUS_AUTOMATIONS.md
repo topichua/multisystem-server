@@ -7,11 +7,19 @@
 - `orders.payment_status_at` — when current `payment_status` was entered
 - `order_delivery_infos.delivery_status_at` — when current `delivery_status` was entered
 
+## Rule shape
+
+- `conditions[]` — OR trigger conditions (`sourceType` + `sourceStatus`)
+- `durationValue` / `durationUnit` — optional delay applied to the matched condition
+- `targetOrderStatusId` — single action: change order status
+
+Example: when delivery is `at_branch` **OR** `delivered` → move order to `completed`.
+
 ## Lifecycle: immediate rule
 
 1. Delivery or payment status changes through a centralized application service
 2. If value actually changed, timestamp is updated (`*StatusAt`)
-3. `OrderStatusAutomationTriggerService` loads active rules for workspace + source type + source status
+3. `OrderStatusAutomationTriggerService` loads active rules whose **conditions** include the changed source type + status
 4. Rules with `duration_value IS NULL` are evaluated immediately via `OrderStatusAutomationExecutorService`
 5. Rules with duration are not executed immediately
 6. Executor re-validates conditions and applies `OrderStatusTransitionService.changeOrderStatus` with `source: AUTOMATION`
@@ -29,6 +37,7 @@
 | Event | Service |
 |-------|---------|
 | Nova Poshta sync / simulator | `DeliveryStatusService` → `OrderDeliveryStatusApplicationService` |
+| Manual delivery status change | `PATCH /orders/:orderId/delivery/status` → `DeliveryStatusService.changeDeliveryStatusForOrder` |
 | Manual delivery PATCH | `OrdersService.updateDeliveryInfo` → application service |
 | TTN removal | `NovaPoshtaWaybillService` → application service |
 | Payment webhook / sync / manual | `PaymentDomainService` → `OrderPaymentStatusApplicationService` |
@@ -45,7 +54,6 @@ Key format: `{sourceType}:{sourceStatus}:{immediate\|timed}:{statusChangedAt ISO
 Created inactive on workspace registration (`origin = MULTISALE_TEMPLATE`):
 
 - `delivery.delivered_to_completed`
-- `delivery.returned_to_returned`
 - `payment.paid_to_confirmed`
 
 ## Adding a new internal status
