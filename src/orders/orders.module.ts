@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Client,
   Conversation,
+  InstagramIntegration,
   Order,
   OrderDeliveryInfo,
   OrderEvent,
@@ -12,6 +13,7 @@ import {
   Product,
   ProductMedia,
   ProductVariant,
+  TelegramIntegration,
   User,
   Workspace,
 } from "../database/entities";
@@ -38,6 +40,8 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     TypeOrmModule.forFeature([
       Client,
       Conversation,
+      InstagramIntegration,
+      TelegramIntegration,
       OrderStatus,
       OrderStatusAutomation,
       Order,

@@ -36,6 +36,7 @@ import {
   OrderStatusAutomationResponseDto,
   OrderStatusAutomationsListResponseDto,
 } from "./dto/order-status-automation-response.dto";
+import { OrderStatusAutomationCriteriaResponseDto } from "./dto/order-status-automation-criteria-response.dto";
 import { OrderStatusAutomationsService } from "./order-status-automations.service";
 
 @ApiTags("order-status-automations")
@@ -55,6 +56,23 @@ export class OrderStatusAutomationsController {
     return this.automations.listForUser(
       this.requireUserId(req),
       query,
+      req.user?.role,
+    );
+  }
+
+  @Get("criteria")
+  @ApiOperation({
+    summary: "List automation rule builder criteria",
+    description:
+      "Returns delivery and payment status options for `conditions[].sourceStatus`. " +
+      "Use delivery/payment `id` values when creating or updating automations.",
+  })
+  @ApiOkResponse({ type: OrderStatusAutomationCriteriaResponseDto })
+  getCriteria(
+    @Req() req: { user?: AuthUser },
+  ): Promise<OrderStatusAutomationCriteriaResponseDto> {
+    return this.automations.getCriteriaForUser(
+      this.requireUserId(req),
       req.user?.role,
     );
   }

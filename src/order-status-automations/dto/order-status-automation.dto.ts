@@ -31,7 +31,8 @@ export class OrderStatusAutomationConditionDto {
     example: "at_branch",
     description:
       "Delivery: pending, waybill_created, shipped, at_branch, delivered, delivery_failed, returned. " +
-      "Payment: pending, paid, failed, refunded, canceled.",
+      "Payment: unpaid, partial, paid, overpaid, refunded. " +
+      "See GET /order-status-automations/criteria for labels.",
   })
   @IsString()
   @MinLength(1)

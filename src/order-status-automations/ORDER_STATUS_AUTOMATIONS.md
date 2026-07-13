@@ -7,6 +7,11 @@
 - `orders.payment_status_at` — when current `payment_status` was entered
 - `order_delivery_infos.delivery_status_at` — when current `delivery_status` was entered
 
+## Rule builder criteria
+
+`GET /order-status-automations/criteria` returns `delivery` and `payment` arrays of `{ id, name }`.
+Use `id` as `conditions[].sourceStatus` with the matching `sourceType` (`DELIVERY_STATUS` or `PAYMENT_STATUS`).
+
 ## Rule shape
 
 - `conditions[]` — OR trigger conditions (`sourceType` + `sourceStatus`, optional `durationValue` + `durationUnit` per condition)

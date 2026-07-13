@@ -61,7 +61,7 @@ export class OrdersController {
       "Single request to create an order. Provide exactly one of `customerId` (existing client) or `customerNew` (creates a client without social links). " +
       "Status is always the workspace default (`order_statuses.is_default`); use PATCH /orders/:orderId/status to change it later. " +
       "Order `id` is per-workspace and starts at 1001 (1002, 1003, …). " +
-      "Other optional fields: `conversationId`, `source`, `currency`, notes, `items`, `delivery`.",
+      "Other optional fields: `conversationId` (sets `integrationId` from the chat's integration), `source`, `currency`, notes, `items`, `delivery`.",
   })
   @HttpCode(HttpStatus.CREATED)
   async create(@Req() req: { user?: AuthUser }, @Body() dto: CreateOrderDto) {

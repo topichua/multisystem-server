@@ -26,6 +26,7 @@ import { ManualPaymentMethod } from "./manual-payment-method.entity";
 @Index("IDX_orders_workspace_id", ["workspaceId"])
 @Index("IDX_orders_customer_id", ["customerId"])
 @Index("IDX_orders_conversation_id", ["conversationId"])
+@Index("IDX_orders_integration_id", ["integrationId"])
 @Index("IDX_orders_status_id", ["statusId"])
 export class Order {
   @PrimaryColumn({ name: "workspace_id", type: "int" })
@@ -52,6 +53,14 @@ export class Order {
   @ManyToOne(() => Conversation, { onDelete: "SET NULL", nullable: true })
   @JoinColumn({ name: "conversation_id" })
   conversation: Conversation | null;
+
+  /**
+   * Instagram or Telegram integration that originated this order.
+   * Resolved from `conversation.external_source_id` when `conversationId` is set.
+   * No DB FK — `source` disambiguates which integration table `integration_id` refers to.
+   */
+  @Column({ name: "integration_id", type: "int", nullable: true })
+  integrationId: number | null;
 
   @Column({
     type: "enum",

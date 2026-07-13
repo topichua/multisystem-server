@@ -24,7 +24,9 @@ import type {
   UpdateOrderStatusAutomationDto,
 } from "./dto/order-status-automation.dto";
 import type { OrderStatusAutomationResponseDto } from "./dto/order-status-automation-response.dto";
+import type { OrderStatusAutomationCriteriaResponseDto } from "./dto/order-status-automation-criteria-response.dto";
 import { formatAutomationDuration } from "./logic/automation-duration.logic";
+import { buildAutomationRuleCriteria } from "./logic/automation-criteria.logic";
 import {
   buildConditionSignature,
   normalizeAutomationConditions,
@@ -43,6 +45,14 @@ export class OrderStatusAutomationsService {
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
   ) {}
+
+  async getCriteriaForUser(
+    userId: number,
+    appRole?: string,
+  ): Promise<OrderStatusAutomationCriteriaResponseDto> {
+    await this.requireView(userId, appRole);
+    return buildAutomationRuleCriteria();
+  }
 
   async listForUser(
     userId: number,

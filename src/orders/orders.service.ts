@@ -12,6 +12,7 @@ import {
   Client,
   Conversation,
   ConversationSource,
+  InstagramIntegration,
   Order,
   OrderDeliveryInfo,
   OrderEvent,
@@ -24,6 +25,7 @@ import {
   OrderStatusCategory,
   Product,
   ProductVariant,
+  TelegramIntegration,
   User,
 } from "../database/entities";
 import type { AddOrderItemDto } from "./dto/add-order-item.dto";
@@ -67,6 +69,7 @@ import {
   OrderStatusChangeSource,
   OrderStatusTransitionService,
 } from "./order-status-transition.service";
+import { resolveIntegrationIdFromConversation } from "./logic/resolve-order-integration.logic";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -115,6 +118,10 @@ export class OrdersService {
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
+    @InjectRepository(InstagramIntegration)
+    private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
+    @InjectRepository(TelegramIntegration)
+    private readonly telegramIntegrationRepo: Repository<TelegramIntegration>,
     @InjectRepository(OrderStatus)
     private readonly orderStatusRepo: Repository<OrderStatus>,
     @InjectRepository(Order)
@@ -168,6 +175,7 @@ export class OrdersService {
         ? rawConv
         : null;
     let source = dto.source;
+    let integrationId: number | null = null;
     if (conversationId != null) {
       const conv = await this.conversationRepo.findOne({
         where: { id: conversationId },
@@ -181,11 +189,19 @@ export class OrdersService {
           "Conversation does not belong to your workspace",
         );
       }
+      integrationId = await resolveIntegrationIdFromConversation(
+        conv,
+        workspaceId,
+        {
+          instagramRepo: this.instagramIntegrationRepo,
+          telegramRepo: this.telegramIntegrationRepo,
+        },
+      );
       if (source == null) {
         source =
           conv.source === ConversationSource.INSTAGRAM
             ? OrderSource.instagram
-            : OrderSource.manual;
+            : OrderSource.telegram;
       }
     } else {
       source = source ?? OrderSource.manual;
@@ -209,6 +225,7 @@ export class OrdersService {
         id: orderId,
         customerId,
         conversationId,
+        integrationId,
         source,
         statusId,
         customerNote: dto.customerNote?.trim() || null,
@@ -233,6 +250,7 @@ export class OrdersService {
           payload: {
             customerId: persisted.customerId,
             conversationId: persisted.conversationId,
+            integrationId: persisted.integrationId,
             source: persisted.source,
             statusId: persisted.statusId,
             currency: persisted.currency,

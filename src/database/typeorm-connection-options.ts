@@ -132,6 +132,7 @@ import { OrderStatusAutomations1744200000134 } from "./migrations/1744200000134-
 import { OrderStatusSystemStatusesOnly1744200000135 } from "./migrations/1744200000135-OrderStatusSystemStatusesOnly";
 import { OrderStatusAutomationConditions1744200000136 } from "./migrations/1744200000136-OrderStatusAutomationConditions";
 import { OrderStatusAutomationConditionDuration1744200000137 } from "./migrations/1744200000137-OrderStatusAutomationConditionDuration";
+import { OrdersIntegrationId1744200000138 } from "./migrations/1744200000138-OrdersIntegrationId";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -469,6 +470,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderStatusSystemStatusesOnly1744200000135,
       OrderStatusAutomationConditions1744200000136,
       OrderStatusAutomationConditionDuration1744200000137,
+      OrdersIntegrationId1744200000138,
     ],
   };
 }
