@@ -12,6 +12,7 @@ import {
   VersionColumn,
 } from "typeorm";
 import { AutomationActionType } from "./automation-action-type.enum";
+import { AutomationConditionType } from "./automation-condition-type.enum";
 import { AutomationOrigin } from "./automation-origin.enum";
 import { OrderStatus } from "./order-status.entity";
 import { OrderStatusAutomationCondition } from "./order-status-automation-condition.entity";
@@ -39,6 +40,16 @@ export class OrderStatusAutomation {
 
   @Column({ name: "is_active", type: "boolean", default: true })
   isActive: boolean;
+
+  /** How `conditions` combine: OR = any match; AND = all must match. */
+  @Column({
+    name: "condition_type",
+    type: "enum",
+    enum: AutomationConditionType,
+    enumName: "automation_condition_type_enum",
+    default: AutomationConditionType.or,
+  })
+  conditionType: AutomationConditionType;
 
   @OneToMany(
     () => OrderStatusAutomationCondition,

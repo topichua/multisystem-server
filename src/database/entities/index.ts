@@ -102,6 +102,7 @@ export { PaymentTransaction } from "./payment-transaction.entity";
 export { ManualPaymentMethodType } from "./manual-payment-method-type.enum";
 export { ManualPaymentMethod } from "./manual-payment-method.entity";
 export { AutomationActionType } from "./automation-action-type.enum";
+export { AutomationConditionType } from "./automation-condition-type.enum";
 export { AutomationDurationUnit } from "./automation-duration-unit.enum";
 export { AutomationExecutionStatus } from "./automation-execution-status.enum";
 export { AutomationOrigin } from "./automation-origin.enum";

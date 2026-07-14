@@ -138,6 +138,7 @@ import { NovaPoshtaDefaultParcelSettings1744200000140 } from "./migrations/17442
 import { WorkspaceWishlistEnabled1744200000141 } from "./migrations/1744200000141-WorkspaceWishlistEnabled";
 import { NovaPoshtaDefaultDeliveryDescriptionAndEstimatedPrice1744200000142 } from "./migrations/1744200000142-NovaPoshtaDefaultDeliveryDescriptionAndEstimatedPrice";
 import { OrderDeliveryInfoPayerTypeAndDeliveryPrice1744200000143 } from "./migrations/1744200000143-OrderDeliveryInfoPayerTypeAndDeliveryPrice";
+import { OrderStatusAutomationConditionType1744200000144 } from "./migrations/1744200000144-OrderStatusAutomationConditionType";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -481,6 +482,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceWishlistEnabled1744200000141,
       NovaPoshtaDefaultDeliveryDescriptionAndEstimatedPrice1744200000142,
       OrderDeliveryInfoPayerTypeAndDeliveryPrice1744200000143,
+      OrderStatusAutomationConditionType1744200000144,
     ],
   };
 }

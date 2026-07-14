@@ -9,6 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Repository } from "typeorm";
 import {
   AutomationActionType,
+  AutomationConditionType,
   AutomationOrigin,
   AutomationSourceType,
   OrderStatus,
@@ -144,10 +145,12 @@ export class OrderStatusAutomationsService {
       appRole,
     );
     const conditions = normalizeAutomationConditions(dto.conditions);
+    const conditionType = dto.condition_type ?? AutomationConditionType.or;
     this.validateActionType(dto.actionType);
     await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
     await this.assertNoDuplicate({
       workspaceId: workspace.id,
+      conditionType,
       conditions,
       targetOrderStatusId: dto.targetOrderStatusId,
     });
@@ -157,6 +160,7 @@ export class OrderStatusAutomationsService {
         workspaceId: workspace.id,
         name: dto.name.trim(),
         isActive: dto.isActive ?? true,
+        conditionType,
         actionType: AutomationActionType.change_order_status,
         targetOrderStatusId: dto.targetOrderStatusId,
         origin: AutomationOrigin.user,
@@ -187,6 +191,7 @@ export class OrderStatusAutomationsService {
       dto.conditions != null
         ? normalizeAutomationConditions(dto.conditions)
         : this.normalizePersistedConditions(row.conditions ?? []);
+    const nextConditionType = dto.condition_type ?? row.conditionType;
     const nextTargetStatusId =
       dto.targetOrderStatusId ?? row.targetOrderStatusId;
 
@@ -200,6 +205,7 @@ export class OrderStatusAutomationsService {
     await this.assertNoDuplicate(
       {
         workspaceId: workspace.id,
+        conditionType: nextConditionType,
         conditions: nextConditions,
         targetOrderStatusId: nextTargetStatusId,
       },
@@ -208,6 +214,7 @@ export class OrderStatusAutomationsService {
 
     if (dto.name != null) row.name = dto.name.trim();
     if (dto.isActive != null) row.isActive = dto.isActive;
+    if (dto.condition_type != null) row.conditionType = dto.condition_type;
     if (dto.targetOrderStatusId != null) {
       row.targetOrderStatusId = dto.targetOrderStatusId;
     }
@@ -328,6 +335,7 @@ export class OrderStatusAutomationsService {
   private async assertNoDuplicate(
     input: {
       workspaceId: number;
+      conditionType: AutomationConditionType;
       conditions: NormalizedAutomationCondition[];
       targetOrderStatusId: number;
     },
@@ -340,6 +348,7 @@ export class OrderStatusAutomationsService {
         isActive: true,
         deletedAt: IsNull(),
         targetOrderStatusId: input.targetOrderStatusId,
+        conditionType: input.conditionType,
       },
       relations: { conditions: true },
     });
@@ -353,7 +362,7 @@ export class OrderStatusAutomationsService {
       );
       if (rowSignature === signature) {
         throw new ConflictException(
-          "An active automation with the same OR conditions already exists",
+          "An active automation with the same conditions already exists",
         );
       }
     }
@@ -374,6 +383,7 @@ export class OrderStatusAutomationsService {
       workspaceId: row.workspaceId,
       name: row.name,
       isActive: row.isActive,
+      condition_type: row.conditionType ?? AutomationConditionType.or,
       conditions: conditions.map((condition) => ({
         id: condition.id,
         sourceType: condition.sourceType,

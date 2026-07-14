@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
+  AutomationConditionType,
   AutomationExecutionStatus,
   AutomationDurationUnit,
   AutomationSourceType,
@@ -53,20 +54,27 @@ export class OrderStatusAutomationExecutorService {
   ): Promise<void> {
     const rules = await this.automationRepo
       .createQueryBuilder("a")
-      .innerJoinAndSelect("a.conditions", "c")
+      .leftJoinAndSelect("a.conditions", "allConditions")
       .where("a.workspace_id = :workspaceId", {
         workspaceId: input.workspaceId,
       })
       .andWhere("a.is_active = true")
       .andWhere("a.deleted_at IS NULL")
-      .andWhere("c.duration_value IS NULL")
-      .andWhere("c.duration_unit IS NULL")
-      .andWhere("c.source_type = :sourceType", {
-        sourceType: input.sourceType,
-      })
-      .andWhere("c.source_status = :sourceStatus", {
-        sourceStatus: input.sourceStatus,
-      })
+      .andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM order_status_automation_conditions c
+          WHERE c.automation_id = a.id
+            AND c.duration_value IS NULL
+            AND c.duration_unit IS NULL
+            AND c.source_type = :sourceType
+            AND c.source_status = :sourceStatus
+        )`,
+        {
+          sourceType: input.sourceType,
+          sourceStatus: input.sourceStatus,
+        },
+      )
       .getMany();
 
     this.log.log(
@@ -105,14 +113,20 @@ export class OrderStatusAutomationExecutorService {
   }): Promise<number> {
     const rulesQb = this.automationRepo
       .createQueryBuilder("a")
-      .innerJoinAndSelect("a.conditions", "c")
+      .leftJoinAndSelect("a.conditions", "allConditions")
       .where("a.is_active = true")
       .andWhere("a.deleted_at IS NULL")
-      .andWhere("c.duration_value IS NOT NULL")
-      .andWhere("c.duration_unit IS NOT NULL")
-      .andWhere("c.source_type = :sourceType", {
-        sourceType: input.sourceType,
-      });
+      .andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM order_status_automation_conditions c
+          WHERE c.automation_id = a.id
+            AND c.duration_value IS NOT NULL
+            AND c.duration_unit IS NOT NULL
+            AND c.source_type = :sourceType
+        )`,
+        { sourceType: input.sourceType },
+      );
 
     if (input.workspaceId != null) {
       rulesQb.andWhere("a.workspace_id = :workspaceId", {
@@ -348,6 +362,34 @@ export class OrderStatusAutomationExecutorService {
       return;
     }
 
+    if (
+      (automation.conditionType ?? AutomationConditionType.or) ===
+      AutomationConditionType.and
+    ) {
+      const allMatched = await this.areAllConditionsSatisfied(
+        order,
+        automation.conditions ?? [],
+      );
+      if (!allMatched) {
+        await this.logSkippedExecution({
+          automation,
+          workspaceId,
+          orderId,
+          sourceType,
+          sourceStatus,
+          expectedStatusChangedAt,
+          timed,
+          reason: AutomationSkipReason.CONDITIONS_NOT_MATCHED,
+          targetOrderStatusId: automation.targetOrderStatusId,
+          automationName: automation.name,
+          durationValue,
+          durationUnit,
+          idempotencyKey,
+        });
+        return;
+      }
+    }
+
     if (timed) {
       if (durationValue == null || durationUnit == null) {
         await this.logSkippedExecution({
@@ -506,6 +548,51 @@ export class OrderStatusAutomationExecutorService {
         }
       }
     }
+  }
+
+  private async areAllConditionsSatisfied(
+    order: Order,
+    conditions: OrderStatusAutomationCondition[],
+  ): Promise<boolean> {
+    for (const condition of conditions) {
+      const satisfied = await this.isConditionSatisfied(order, condition);
+      if (!satisfied) {
+        return false;
+      }
+    }
+    return conditions.length > 0;
+  }
+
+  private async isConditionSatisfied(
+    order: Order,
+    condition: OrderStatusAutomationCondition,
+  ): Promise<boolean> {
+    const currentStatus = await this.resolveCurrentSourceStatus(
+      order,
+      condition.sourceType,
+    );
+    if (currentStatus !== condition.sourceStatus) {
+      return false;
+    }
+
+    if (!isTimedCondition(condition)) {
+      return true;
+    }
+
+    const changedAt = await this.resolveCurrentStatusChangedAt(
+      order,
+      condition.sourceType,
+    );
+    if (!changedAt) {
+      return false;
+    }
+
+    const dueAt = addDuration(
+      changedAt,
+      condition.durationValue!,
+      condition.durationUnit!,
+    );
+    return Date.now() >= dueAt.getTime();
   }
 
   private async resolveCurrentSourceStatus(

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { AutomationActionType } from "../../database/entities/automation-action-type.enum";
+import { AutomationConditionType } from "../../database/entities/automation-condition-type.enum";
 import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
 import { AutomationOrigin } from "../../database/entities/automation-origin.enum";
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
@@ -67,8 +68,15 @@ export class OrderStatusAutomationResponseDto {
   isActive!: boolean;
 
   @ApiProperty({
+    enum: AutomationConditionType,
+    description:
+      "How conditions combine: `OR` = at least one must pass; `AND` = all must pass.",
+  })
+  condition_type!: AutomationConditionType;
+
+  @ApiProperty({
     type: [OrderStatusAutomationConditionResponseDto],
-    description: "OR trigger conditions. Each may have its own delay.",
+    description: "Trigger conditions combined by `condition_type`.",
   })
   conditions!: OrderStatusAutomationConditionResponseDto[];
 
