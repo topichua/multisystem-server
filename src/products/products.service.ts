@@ -79,6 +79,8 @@ export type ProductVariantDto = {
   imageUrl: string | null;
   sku: string | null;
   status: ProductStatus;
+  /** Number of unique clients who wishlisted this variant. */
+  wishlistCount: number;
   createdAt: Date;
   updatedAt: Date;
   media: ProductMediaDto[];
@@ -343,6 +345,10 @@ export class ProductsService {
       workspace.id,
       productIds,
     );
+    const wishlistCountByVariantId = await this.loadWishlistCountByVariantId(
+      workspace.id,
+      variantIds,
+    );
 
     return {
       items: rows.map((row) => {
@@ -354,7 +360,13 @@ export class ProductsService {
             stockMap,
             wishlistCountByProductId,
           ),
-          variants: this.buildVariantDtos(p, fieldDefs, stockMap),
+          variants: this.buildVariantDtos(
+            p,
+            fieldDefs,
+            stockMap,
+            undefined,
+            wishlistCountByVariantId,
+          ),
         };
       }),
       total,
@@ -422,10 +434,20 @@ export class ProductsService {
       workspace.id,
       rows.map((v) => v.id),
     );
+    const wishlistCountByVariantId = await this.loadWishlistCountByVariantId(
+      workspace.id,
+      rows.map((v) => v.id),
+    );
 
     return {
       items: rows.map((v) =>
-        this.toCatalogVariantItem(v, fieldDefs, mainImageByProductId, stockMap),
+        this.toCatalogVariantItem(
+          v,
+          fieldDefs,
+          mainImageByProductId,
+          stockMap,
+          wishlistCountByVariantId,
+        ),
       ),
       total,
       page,
@@ -480,10 +502,20 @@ export class ProductsService {
       workspace.id,
       rows.map((v) => v.id),
     );
+    const wishlistCountByVariantId = await this.loadWishlistCountByVariantId(
+      workspace.id,
+      rows.map((v) => v.id),
+    );
 
     return {
       items: rows.map((v) =>
-        this.toVariantListItem(v, fieldDefs, mainImageByProductId, stockMap),
+        this.toVariantListItem(
+          v,
+          fieldDefs,
+          mainImageByProductId,
+          stockMap,
+          wishlistCountByVariantId,
+        ),
       ),
       total,
       page,
@@ -520,11 +552,16 @@ export class ProductsService {
       workspace.id,
       [product.id],
     );
+    const wishlistCountByVariantId = await this.loadWishlistCountByVariantId(
+      workspace.id,
+      (product.variants ?? []).map((v) => v.id),
+    );
     return this.toDetail(
       product,
       fieldDefs,
       stockMap,
       wishlistCountByProductId,
+      wishlistCountByVariantId,
     );
   }
 
@@ -1480,6 +1517,7 @@ export class ProductsService {
     fieldDefs: WorkspaceVariantCustomField[],
     mainImageByProductId: Map<number, string>,
     stockMap: Map<number, VariantStockDto>,
+    wishlistCountByVariantId?: Map<number, number>,
   ): CatalogVariantListResponseDto["items"][number] {
     const p = v.product;
     if (p == null) {
@@ -1506,6 +1544,7 @@ export class ProductsService {
       inStock: v.inStock ?? p.inStock,
       ...presentProductStockFields(stock),
       status: v.status,
+      wishlistCount: wishlistCountByVariantId?.get(v.id) ?? 0,
       label,
       product: {
         id: p.id,
@@ -1670,6 +1709,28 @@ export class ProductsService {
     );
   }
 
+  private async loadWishlistCountByVariantId(
+    workspaceId: number,
+    variantIds: number[],
+  ): Promise<Map<number, number>> {
+    if (variantIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.clientWishlistRepo
+      .createQueryBuilder("w")
+      .select("w.variant_id", "variantId")
+      .addSelect("COUNT(DISTINCT w.client_id)", "wishlistCount")
+      .where("w.workspace_id = :workspaceId", { workspaceId })
+      .andWhere("w.variant_id IN (:...variantIds)", { variantIds })
+      .groupBy("w.variant_id")
+      .getRawMany<{ variantId: string; wishlistCount: string }>();
+
+    return new Map(
+      rows.map((row) => [Number(row.variantId), Number(row.wishlistCount)]),
+    );
+  }
+
   private toProductParentSummary(
     p: Product,
     mainImageByProductId?: Map<number, string>,
@@ -1746,6 +1807,10 @@ export class ProductsService {
       workspace.id,
       productIds,
     );
+    const wishlistCountByVariantId = await this.loadWishlistCountByVariantId(
+      workspace.id,
+      allVariantIds,
+    );
 
     const items: InstagramReferencedProductListItemDto[] = [];
     for (const productId of [...refsByProductId.keys()].sort((a, b) => a - b)) {
@@ -1760,10 +1825,16 @@ export class ProductsService {
         if (ref.productVariantId == null) {
           continue;
         }
-        const [variant] = this.buildVariantDtos(p, fieldDefs, stockMap, {
-          includeAllVariants: false,
-          variantIds: new Set([ref.productVariantId]),
-        });
+        const [variant] = this.buildVariantDtos(
+          p,
+          fieldDefs,
+          stockMap,
+          {
+            includeAllVariants: false,
+            variantIds: new Set([ref.productVariantId]),
+          },
+          wishlistCountByVariantId,
+        );
         if (variant) {
           variantById.set(variant.id, {
             ...variant,
@@ -1776,7 +1847,13 @@ export class ProductsService {
         if (ref.productVariantId != null) {
           continue;
         }
-        for (const variant of this.buildVariantDtos(p, fieldDefs, stockMap)) {
+        for (const variant of this.buildVariantDtos(
+          p,
+          fieldDefs,
+          stockMap,
+          undefined,
+          wishlistCountByVariantId,
+        )) {
           if (!variantById.has(variant.id)) {
             variantById.set(variant.id, {
               ...variant,
@@ -1811,6 +1888,7 @@ export class ProductsService {
       includeAllVariants: boolean;
       variantIds: Set<number>;
     },
+    wishlistCountByVariantId?: Map<number, number>,
   ): ProductVariantDto[] {
     let variants = [...(p.variants ?? [])].sort((a, b) => a.id - b.id);
     if (variantFilter && !variantFilter.includeAllVariants) {
@@ -1841,6 +1919,7 @@ export class ProductsService {
         imageUrl: variantImage,
         sku: v.sku,
         status: v.status,
+        wishlistCount: wishlistCountByVariantId?.get(v.id) ?? 0,
         createdAt: v.createdAt,
         updatedAt: v.updatedAt,
         media: vMedia.map((m) => this.toMediaDto(m)),
@@ -1853,6 +1932,7 @@ export class ProductsService {
     fieldDefs: WorkspaceVariantCustomField[],
     mainImageByProductId: Map<number, string>,
     stockMap: Map<number, VariantStockDto>,
+    wishlistCountByVariantId?: Map<number, number>,
   ): ProductVariantListItemDto {
     const p = v.product;
     if (p == null) {
@@ -1873,6 +1953,7 @@ export class ProductsService {
       imageUrl: variantImage,
       sku: v.sku,
       status: v.status,
+      wishlistCount: wishlistCountByVariantId?.get(v.id) ?? 0,
       createdAt: v.createdAt,
       updatedAt: v.updatedAt,
       media: media.map((m) => this.toMediaDto(m)),
@@ -1985,6 +2066,7 @@ export class ProductsService {
     fieldDefs: WorkspaceVariantCustomField[],
     stockMap: Map<number, VariantStockDto>,
     wishlistCountByProductId?: Map<number, number>,
+    wishlistCountByVariantId?: Map<number, number>,
   ): ProductDetailDto {
     const allMedia = [...(p.media ?? [])];
     const productLevelMedia = allMedia
@@ -2006,7 +2088,13 @@ export class ProductsService {
       createdByUserId: p.createdByUserId,
       updatedByUserId: p.updatedByUserId,
       category: categorySummary,
-      variants: this.buildVariantDtos(p, fieldDefs, stockMap),
+      variants: this.buildVariantDtos(
+        p,
+        fieldDefs,
+        stockMap,
+        undefined,
+        wishlistCountByVariantId,
+      ),
       media: productLevelMedia.map((m) => this.toMediaDto(m)),
     };
   }

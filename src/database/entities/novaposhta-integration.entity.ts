@@ -217,6 +217,37 @@ export class NovaPoshtaIntegration {
   })
   paymentPurpose: string | null;
 
+  /** Default cargo description (Description) when creating a waybill. */
+  @Column({
+    name: "default_delivery_description",
+    type: "varchar",
+    length: 512,
+    nullable: true,
+  })
+  defaultDeliveryDescription: string | null;
+
+  /** Fixed declared parcel value when `estimatedDeliveryPriceTakeFromOrder` is false. */
+  @Column({
+    name: "estimated_delivery_price_fixed",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  estimatedDeliveryPriceFixed: number | null;
+
+  /** When true, declared value comes from order total on waybill create. */
+  @Column({
+    name: "estimated_delivery_price_take_from_order",
+    type: "boolean",
+    default: true,
+  })
+  estimatedDeliveryPriceTakeFromOrder: boolean;
+
   @Column({ name: "on_created_order_status_id", type: "int", nullable: true })
   onCreatedOrderStatusId: number | null;
 

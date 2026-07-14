@@ -258,6 +258,10 @@ export class NovaPoshtaIntegrationsService {
       dto.default_height_cm !== undefined ||
       dto.default_length_cm !== undefined ||
       dto.payment_purpose !== undefined ||
+      dto.default_delivery_description !== undefined ||
+      dto.defaultDeliveryDescription !== undefined ||
+      dto.estimated_delivery_price !== undefined ||
+      dto.estimatedDeliveryPrice !== undefined ||
       dto.on_created_order_status_id !== undefined ||
       dto.on_in_transit_order_status_id !== undefined ||
       dto.on_arrived_order_status_id !== undefined ||
@@ -342,6 +346,28 @@ export class NovaPoshtaIntegrationsService {
     if (dto.payment_purpose !== undefined) {
       row.paymentPurpose = this.trimOrNull(dto.payment_purpose);
     }
+    if (
+      dto.default_delivery_description !== undefined ||
+      dto.defaultDeliveryDescription !== undefined
+    ) {
+      row.defaultDeliveryDescription = this.trimOrNull(
+        dto.default_delivery_description ?? dto.defaultDeliveryDescription,
+      );
+    }
+    const estimatedDeliveryPrice =
+      dto.estimated_delivery_price ?? dto.estimatedDeliveryPrice;
+    if (estimatedDeliveryPrice !== undefined) {
+      if (estimatedDeliveryPrice == null) {
+        row.estimatedDeliveryPriceTakeFromOrder = true;
+        row.estimatedDeliveryPriceFixed = null;
+      } else {
+        row.estimatedDeliveryPriceTakeFromOrder =
+          estimatedDeliveryPrice.takeFromOrder;
+        row.estimatedDeliveryPriceFixed = estimatedDeliveryPrice.takeFromOrder
+          ? null
+          : estimatedDeliveryPrice.fixed ?? null;
+      }
+    }
     if (dto.on_created_order_status_id !== undefined) {
       row.onCreatedOrderStatusId = dto.on_created_order_status_id;
     }
@@ -371,6 +397,13 @@ export class NovaPoshtaIntegrationsService {
     return trimmed || null;
   }
 
+  private toEstimatedDeliveryPriceResponse(row: NovaPoshtaIntegration) {
+    return {
+      fixed: row.estimatedDeliveryPriceFixed,
+      takeFromOrder: row.estimatedDeliveryPriceTakeFromOrder ?? true,
+    };
+  }
+
   private toSenderSettingsResponse(row: NovaPoshtaIntegration) {
     return {
       sender_name: row.senderName,
@@ -394,6 +427,8 @@ export class NovaPoshtaIntegrationsService {
       default_height_cm: row.defaultHeightCm,
       default_length_cm: row.defaultLengthCm,
       payment_purpose: row.paymentPurpose,
+      default_delivery_description: row.defaultDeliveryDescription,
+      estimated_delivery_price: this.toEstimatedDeliveryPriceResponse(row),
       on_created_order_status_id: row.onCreatedOrderStatusId,
       on_in_transit_order_status_id: row.onInTransitOrderStatusId,
       on_arrived_order_status_id: row.onArrivedOrderStatusId,

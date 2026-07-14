@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
+  IsBoolean,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -8,6 +9,7 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from "class-validator";
 import {
   NovaPoshtaCodCommissionPayer,
@@ -17,6 +19,32 @@ import {
 } from "../../database/entities";
 import { NovaPoshtaOrderStatusMappingDto } from "./novaposhta-order-status-mapping.dto";
 import { NovaPoshtaOrderStatusMappingResponseDto } from "./novaposhta-order-status-mapping.dto";
+import {
+  NovaPoshtaEstimatedDeliveryPriceDto,
+  NovaPoshtaEstimatedDeliveryPriceResponseDto,
+} from "./novaposhta-estimated-delivery-price.dto";
+
+function pickEstimatedDeliveryPrice(
+  obj: Record<string, unknown>,
+): NovaPoshtaEstimatedDeliveryPriceDto | undefined {
+  const value = obj.estimated_delivery_price ?? obj.estimatedDeliveryPrice;
+  if (value === undefined) {
+    return undefined;
+  }
+  return value as NovaPoshtaEstimatedDeliveryPriceDto;
+}
+
+function pickDefaultDeliveryDescription(
+  obj: Record<string, unknown>,
+): string | null | undefined {
+  if (obj.default_delivery_description !== undefined) {
+    return obj.default_delivery_description as string | null;
+  }
+  if (obj.defaultDeliveryDescription !== undefined) {
+    return obj.defaultDeliveryDescription as string | null;
+  }
+  return undefined;
+}
 
 export class NovaPoshtaSenderSettingsDto extends NovaPoshtaOrderStatusMappingDto {
   @ApiPropertyOptional({ example: "ФОП Залуга А.П." })
@@ -184,6 +212,40 @@ export class NovaPoshtaSenderSettingsDto extends NovaPoshtaOrderStatusMappingDto
   @IsString()
   @MaxLength(255)
   payment_purpose?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Default cargo description for waybill create (Description). Also accepted as `defaultDeliveryDescription`.",
+  })
+  @IsOptional()
+  @Transform(({ obj }) =>
+    pickDefaultDeliveryDescription(obj as Record<string, unknown>),
+  )
+  @IsString()
+  @MaxLength(512)
+  default_delivery_description?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  defaultDeliveryDescription?: string | null;
+
+  @ApiPropertyOptional({
+    type: NovaPoshtaEstimatedDeliveryPriceDto,
+    description:
+      "Declared parcel value (оціночна ціна). Also accepted as `estimatedDeliveryPrice`.",
+  })
+  @IsOptional()
+  @Transform(({ obj }) => pickEstimatedDeliveryPrice(obj as Record<string, unknown>))
+  @ValidateNested()
+  @Type(() => NovaPoshtaEstimatedDeliveryPriceDto)
+  estimated_delivery_price?: NovaPoshtaEstimatedDeliveryPriceDto | null;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NovaPoshtaEstimatedDeliveryPriceDto)
+  estimatedDeliveryPrice?: NovaPoshtaEstimatedDeliveryPriceDto | null;
 }
 
 export class NovaPoshtaSenderSettingsResponseDto extends NovaPoshtaOrderStatusMappingResponseDto {
@@ -256,4 +318,16 @@ export class NovaPoshtaSenderSettingsResponseDto extends NovaPoshtaOrderStatusMa
     description: "Призначення платежу.",
   })
   payment_purpose: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Default cargo description for waybill create.",
+  })
+  default_delivery_description: string | null;
+
+  @ApiPropertyOptional({
+    type: NovaPoshtaEstimatedDeliveryPriceResponseDto,
+    description: "Declared parcel value (оціночна ціна посилки).",
+  })
+  estimated_delivery_price: NovaPoshtaEstimatedDeliveryPriceResponseDto;
 }

@@ -315,6 +315,10 @@ export class CategoriesService {
     row: ProductCategory,
     ownerId: number,
   ): Promise<void> {
+    await this.productRepo.update(
+      { categoryId: row.id, workspaceId: row.workspaceId },
+      { categoryId: null },
+    );
     row.deletedAt = new Date();
     row.deletedByUserId = ownerId;
     await this.categoryRepo.save(row);

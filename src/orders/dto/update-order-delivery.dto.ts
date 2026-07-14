@@ -14,6 +14,7 @@ import {
 import { OrderDeliveryDestinationType } from "../../database/entities/order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "../../database/entities/order-delivery-provider.enum";
 import { OrderDeliveryStatus } from "../../database/entities/order-delivery-status.enum";
+import { NovaPoshtaPayerType } from "../../database/entities/novaposhta-payer-type.enum";
 
 export class UpdateOrderDeliveryDto {
   @ApiProperty({ enum: OrderDeliveryProvider })
@@ -164,4 +165,14 @@ export class UpdateOrderDeliveryDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   cashOnDeliveryAmount?: number | null;
+
+  @ApiPropertyOptional({
+    enum: ["sender", "recipient", "third_person"],
+    nullable: true,
+    description:
+      "Who pays delivery. Used when creating Nova Poshta TTN unless overridden in the waybill request.",
+  })
+  @IsOptional()
+  @IsEnum(NovaPoshtaPayerType)
+  payerType?: NovaPoshtaPayerType | null;
 }

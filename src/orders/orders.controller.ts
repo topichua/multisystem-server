@@ -182,8 +182,8 @@ export class OrdersController {
   @ApiOperation({
     summary: "Create Nova Poshta TTN (waybill) for an order",
     description:
-      "Uses order delivery info (recipient) and workspace Nova Poshta integration (sender). " +
-      "Order must already have delivery set with provider `nova_poshta`, items, and warehouse refs. " +
+      "Recipient, COD, and address come from order `delivery_info`. Sender settings come from Nova Poshta integration. " +
+      "Request body accepts optional parcel overrides: `default_weight_kg`, `default_width_cm`, `default_height_cm`, `default_length_cm`, `payer_type`, `seats_amount`. " +
       "Writes `trackingNumber` and sets `deliveryStatus` to `waybill_created`.",
   })
   @ApiParam({ name: "orderId", type: Number })

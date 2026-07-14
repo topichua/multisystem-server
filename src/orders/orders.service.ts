@@ -1526,6 +1526,7 @@ export class OrdersService {
         dto.isCashOnDelivery === false
           ? null
           : (dto.cashOnDeliveryAmount ?? null),
+      payerType: dto.payerType ?? null,
     };
 
     if (!isCreate) {
@@ -1549,6 +1550,7 @@ export class OrdersService {
         "providerDocumentRef",
         "isCashOnDelivery",
         "cashOnDeliveryAmount",
+        "payerType",
       ] as const;
       for (const key of optionalKeys) {
         if (dto[key] === undefined) {

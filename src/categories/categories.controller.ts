@@ -76,6 +76,7 @@ export class CategoriesController {
     summary: "Delete subcategory",
     description:
       "Soft-deletes a subcategory under the given top-level parent. " +
+      "Products assigned to it get `categoryId: null` (uncategorized). " +
       "Use DELETE /categories/:id only for top-level categories (without subcategories).",
   })
   async removeSubcategory(
@@ -97,6 +98,7 @@ export class CategoriesController {
     summary: "Delete category",
     description:
       "Soft-deletes a category. Top-level categories must have no subcategories. " +
+      "Products assigned to it get `categoryId: null` (uncategorized). " +
       "Subcategories may also be removed via DELETE /categories/:parentId/subcategories/:subcategoryId.",
   })
   async remove(

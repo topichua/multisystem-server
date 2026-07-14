@@ -184,5 +184,7 @@ export type NovaPoshtaCreateWaybillInput = {
 export type NovaPoshtaCreateWaybillResult = {
   trackingNumber: string;
   documentRef: string;
+  /** Calculated shipping cost from Nova Poshta (`CostOnSite`), when returned. */
+  costOnSite: number | null;
   raw: Record<string, unknown>;
 };

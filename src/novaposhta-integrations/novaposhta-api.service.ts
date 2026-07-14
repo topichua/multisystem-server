@@ -862,7 +862,7 @@ export class NovaPoshtaApiService {
     }
 
     const payload = await this.request<
-      Array<{ IntDocNumber?: string; Ref?: string }>
+      Array<{ IntDocNumber?: string; Ref?: string; CostOnSite?: string | number }>
     >(apiKey, {
       modelName: "InternetDocument",
       calledMethod: "save",
@@ -877,9 +877,16 @@ export class NovaPoshtaApiService {
       );
     }
 
+    const costOnSiteRaw = Number(doc?.CostOnSite);
+    const costOnSite =
+      Number.isFinite(costOnSiteRaw) && costOnSiteRaw >= 0
+        ? costOnSiteRaw
+        : null;
+
     return {
       trackingNumber,
       documentRef: doc?.Ref?.trim() ?? "",
+      costOnSite,
       raw: (doc ?? {}) as Record<string, unknown>,
     };
   }

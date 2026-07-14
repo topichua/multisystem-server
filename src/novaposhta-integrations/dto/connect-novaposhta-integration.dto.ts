@@ -113,6 +113,17 @@ export class NovaPoshtaIntegrationResponseDto {
   payment_purpose: string | null;
 
   @ApiPropertyOptional({ nullable: true })
+  default_delivery_description: string | null;
+
+  @ApiPropertyOptional({
+    description: "Declared parcel value: { fixed?, takeFromOrder }.",
+  })
+  estimated_delivery_price: {
+    fixed: number | null;
+    takeFromOrder: boolean;
+  };
+
+  @ApiPropertyOptional({ nullable: true })
   on_created_order_status_id: number | null;
 
   @ApiPropertyOptional({ nullable: true })

@@ -94,11 +94,20 @@ export class NovaPoshtaWaybillService {
       where: { orderId: order.id },
       relations: { product: true },
     });
-    if (items.length === 0) {
-      throw new BadRequestException(
-        "Order has no items — add items before creating a waybill",
-      );
-    }
+
+    const recipientType =
+      delivery.deliveryType ?? OrderDeliveryDestinationType.WAREHOUSE;
+    const cityRecipient =
+      recipientType === OrderDeliveryDestinationType.ADDRESS
+        ? delivery.cityRef!.trim()
+        : await this.novaPoshtaApi.resolveRecipientCityRef(
+            integration.apiKey,
+            delivery.cityRef!,
+            delivery.warehouseRef!,
+          );
+
+    const resolvedPayerType =
+      dto.payer_type ?? delivery.payerType ?? integration.payerType ?? null;
 
     const input = this.buildWaybillInput(
       order,
@@ -106,11 +115,8 @@ export class NovaPoshtaWaybillService {
       integration,
       items,
       dto,
-      await this.novaPoshtaApi.resolveRecipientCityRef(
-        integration.apiKey,
-        delivery.cityRef!,
-        delivery.warehouseRef!,
-      ),
+      cityRecipient,
+      resolvedPayerType,
     );
     const created = await this.novaPoshtaApi.createInternetDocument(
       integration.apiKey,
@@ -119,6 +125,8 @@ export class NovaPoshtaWaybillService {
 
     delivery.trackingNumber = created.trackingNumber;
     delivery.providerDocumentRef = created.documentRef || null;
+    delivery.payerType = resolvedPayerType;
+    delivery.deliveryPrice = created.costOnSite;
     await this.deliveryRepo.save(delivery);
 
     try {
@@ -186,6 +194,7 @@ export class NovaPoshtaWaybillService {
     delivery.providerDocumentRef = null;
     delivery.providerStatusCode = null;
     delivery.providerStatusText = null;
+    delivery.deliveryPrice = null;
     await this.deliveryStatusApplication.applyDeliveryStatusChange({
       delivery,
       newDeliveryStatus: OrderDeliveryStatus.pending,
@@ -295,10 +304,26 @@ export class NovaPoshtaWaybillService {
       );
     }
     if (deliveryType === OrderDeliveryDestinationType.ADDRESS) {
-      throw new BadRequestException(
-        "Address delivery waybill is not supported yet — add streetRef to delivery first",
-      );
+      if (!delivery.streetRef?.trim()) {
+        throw new BadRequestException(
+          "Delivery streetRef is required when deliveryType is address",
+        );
+      }
+      if (!delivery.building?.trim()) {
+        throw new BadRequestException(
+          "Delivery building is required when deliveryType is address",
+        );
+      }
     }
+  }
+
+  private resolveRecipientAddressRef(delivery: OrderDeliveryInfo): string {
+    const deliveryType =
+      delivery.deliveryType ?? OrderDeliveryDestinationType.WAREHOUSE;
+    if (deliveryType === OrderDeliveryDestinationType.ADDRESS) {
+      return delivery.streetRef!.trim();
+    }
+    return delivery.warehouseRef!.trim();
   }
 
   private buildWaybillInput(
@@ -308,38 +333,28 @@ export class NovaPoshtaWaybillService {
     items: OrderItem[],
     dto: CreateNovaPoshtaWaybillRequestDto,
     cityRecipient: string,
+    resolvedPayerType: NovaPoshtaPayerType | null,
   ): NovaPoshtaCreateWaybillInput {
     const senderType = integration.senderType ?? NovaPoshtaSenderType.WAREHOUSE;
     const recipientType =
       delivery.deliveryType ?? OrderDeliveryDestinationType.WAREHOUSE;
 
     const weightGrams =
-      dto.weightGrams ??
-      this.calculateWeightGrams(items) ??
-      this.resolveDefaultWeightGrams(integration);
+      this.resolveWeightGrams(dto, integration, items);
     const weightKg = Math.max(0.1, weightGrams / 1000);
 
     const description =
-      dto.description?.trim() ||
-      items
-        .map((item) =>
-          [item.productTitleSnapshot, item.variantTitleSnapshot]
-            .filter(Boolean)
-            .join(" — "),
-        )
-        .filter(Boolean)
-        .join("; ")
-        .slice(0, 512) ||
-      "Goods";
+      integration.defaultDeliveryDescription?.trim()?.slice(0, 512) || "Goods";
 
-    const cost = dto.declaredCost ?? Number(order.totalAmount) ?? 0;
+    const cost = this.resolveDeclaredCost(integration, order, delivery);
     const seatsAmount = this.resolveSeatsAmount(dto);
     const optionsSeat = this.buildOptionsSeat(
       weightKg,
       seatsAmount,
+      dto,
       integration,
     );
-    const payerType = this.mapPayerType(integration.payerType);
+    const payerType = this.mapPayerType(resolvedPayerType);
     const paymentMethod = this.resolvePaymentMethod(integration, payerType);
 
     return {
@@ -357,7 +372,7 @@ export class NovaPoshtaWaybillService {
       contactSender: integration.senderContactRef!.trim(),
       sendersPhone: this.normalizePhone(integration.senderPhone!),
       cityRecipient,
-      recipientAddress: delivery.warehouseRef!.trim(),
+      recipientAddress: this.resolveRecipientAddressRef(delivery),
       recipientName: delivery.recipientName!.trim(),
       recipientsPhone: this.normalizePhone(delivery.phone!),
       additionalInformation: this.resolvePaymentPurpose(integration, order),
@@ -365,12 +380,58 @@ export class NovaPoshtaWaybillService {
     };
   }
 
-  private resolveDefaultWeightGrams(integration: NovaPoshtaIntegration): number {
+  private resolveWeightGrams(
+    dto: CreateNovaPoshtaWaybillRequestDto,
+    integration: NovaPoshtaIntegration,
+    items: OrderItem[],
+  ): number {
+    const fromRequest = Number(dto.default_weight_kg);
+    if (Number.isFinite(fromRequest) && fromRequest > 0) {
+      return Math.round(fromRequest * 1000);
+    }
+    return (
+      this.resolveDefaultWeightGrams(integration) ??
+      this.calculateWeightGrams(items) ??
+      DEFAULT_WEIGHT_GRAMS
+    );
+  }
+
+  private resolveDefaultWeightGrams(
+    integration: NovaPoshtaIntegration,
+  ): number | null {
     const kg = Number(integration.defaultWeightKg);
     if (Number.isFinite(kg) && kg > 0) {
       return Math.round(kg * 1000);
     }
-    return DEFAULT_WEIGHT_GRAMS;
+    return null;
+  }
+
+  private resolveDeclaredCost(
+    integration: NovaPoshtaIntegration,
+    order: Order,
+    delivery: OrderDeliveryInfo,
+  ): number {
+    if (delivery.isCashOnDelivery) {
+      const cod = Number(delivery.cashOnDeliveryAmount ?? 0);
+      if (Number.isFinite(cod) && cod >= 0) {
+        return cod;
+      }
+    }
+    return this.resolveEstimatedDeliveryPrice(integration, order);
+  }
+
+  private resolveEstimatedDeliveryPrice(
+    integration: NovaPoshtaIntegration,
+    order: Order,
+  ): number {
+    if (integration.estimatedDeliveryPriceTakeFromOrder !== false) {
+      return Number(order.totalAmount) || 0;
+    }
+    const fixed = Number(integration.estimatedDeliveryPriceFixed);
+    if (Number.isFinite(fixed) && fixed >= 0) {
+      return fixed;
+    }
+    return 0;
   }
 
   private resolvePaymentPurpose(
@@ -419,24 +480,27 @@ export class NovaPoshtaWaybillService {
   }
 
   private resolveSeatsAmount(dto: CreateNovaPoshtaWaybillRequestDto): number {
-    const seats = dto.seatsAmount ?? DEFAULT_SEATS;
+    const seats = dto.seats_amount ?? DEFAULT_SEATS;
     return Math.max(1, Math.floor(seats));
   }
 
   private buildOptionsSeat(
     totalWeightKg: number,
     seatsAmount: number,
+    dto: CreateNovaPoshtaWaybillRequestDto,
     integration: NovaPoshtaIntegration,
   ): NovaPoshtaOptionsSeat[] {
     const perSeatWeight = Math.max(0.1, totalWeightKg / seatsAmount);
     const weight = perSeatWeight.toFixed(3);
-    const widthCm = this.resolveOptionalDimensionCm(integration.defaultWidthCm);
-    const heightCm = this.resolveOptionalDimensionCm(
-      integration.defaultHeightCm,
-    );
-    const lengthCm = this.resolveOptionalDimensionCm(
-      integration.defaultLengthCm,
-    );
+    const widthCm =
+      this.resolveOptionalDimensionCm(dto.default_width_cm) ??
+      this.resolveOptionalDimensionCm(integration.defaultWidthCm);
+    const heightCm =
+      this.resolveOptionalDimensionCm(dto.default_height_cm) ??
+      this.resolveOptionalDimensionCm(integration.defaultHeightCm);
+    const lengthCm =
+      this.resolveOptionalDimensionCm(dto.default_length_cm) ??
+      this.resolveOptionalDimensionCm(integration.defaultLengthCm);
 
     const seat: NovaPoshtaOptionsSeat = { weight };
     if (widthCm != null && heightCm != null && lengthCm != null) {

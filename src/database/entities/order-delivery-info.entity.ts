@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import { NovaPoshtaPayerType } from "./novaposhta-payer-type.enum";
 import { OrderDeliveryDestinationType } from "./order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 import { OrderDeliveryStatus } from "./order-delivery-status.enum";
@@ -137,6 +138,24 @@ export class OrderDeliveryInfo {
     },
   })
   cashOnDeliveryAmount: number | null;
+
+  /** Who pays delivery (Nova Poshta PayerType). Set from request / integration when TTN is created. */
+  @Column({ name: "payer_type", type: "varchar", length: 32, nullable: true })
+  payerType: NovaPoshtaPayerType | null;
+
+  /** Calculated shipping cost from carrier after TTN creation (e.g. Nova Poshta CostOnSite). */
+  @Column({
+    name: "delivery_price",
+    type: "decimal",
+    precision: 14,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  deliveryPrice: number | null;
 
   /** Hydrated: true when TTN can be deleted via API (before `shipped`). Not a DB column. */
   canRemoveTracking?: boolean;

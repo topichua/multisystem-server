@@ -85,6 +85,11 @@ export class CatalogVariantItemDto {
   status: ProductStatus;
 
   @ApiProperty({
+    description: "Number of unique clients who wishlisted this variant.",
+  })
+  wishlistCount: number;
+
+  @ApiProperty({
     description: 'Display label, e.g. "Dress — black / M".',
   })
   label: string;

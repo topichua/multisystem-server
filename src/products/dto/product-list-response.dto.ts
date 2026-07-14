@@ -80,6 +80,11 @@ export class ProductListVariantDto {
   @ApiProperty({ enum: ProductStatus })
   status: ProductStatus;
 
+  @ApiProperty({
+    description: "Number of unique clients who wishlisted this variant.",
+  })
+  wishlistCount: number;
+
   @ApiProperty({ type: [ProductListMediaDto] })
   media: ProductListMediaDto[];
 }
