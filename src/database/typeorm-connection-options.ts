@@ -135,6 +135,7 @@ import { OrderStatusAutomationConditionDuration1744200000137 } from "./migration
 import { OrdersIntegrationId1744200000138 } from "./migrations/1744200000138-OrdersIntegrationId";
 import { NovaPoshtaCodCommissionPayer1744200000139 } from "./migrations/1744200000139-NovaPoshtaCodCommissionPayer";
 import { NovaPoshtaDefaultParcelSettings1744200000140 } from "./migrations/1744200000140-NovaPoshtaDefaultParcelSettings";
+import { WorkspaceWishlistEnabled1744200000141 } from "./migrations/1744200000141-WorkspaceWishlistEnabled";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -475,6 +476,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrdersIntegrationId1744200000138,
       NovaPoshtaCodCommissionPayer1744200000139,
       NovaPoshtaDefaultParcelSettings1744200000140,
+      WorkspaceWishlistEnabled1744200000141,
     ],
   };
 }

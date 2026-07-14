@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -19,6 +20,7 @@ import {
 import { OrdersService } from "../orders/orders.service";
 import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { WorkspaceSettingsService } from "../workspace-settings/workspace-settings.service";
 import type { AddClientWishlistRequestDto } from "./dto/add-client-wishlist-request.dto";
 import type { ClientWishlistItemResponseDto } from "./dto/client-wishlist-item-response.dto";
 import type { ClientWishlistProductsResponseDto } from "./dto/client-wishlist-products-response.dto";
@@ -72,6 +74,7 @@ export class ClientsService {
     @InjectRepository(TelegramUser)
     private readonly telegramUserRepo: Repository<TelegramUser>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly orders: OrdersService,
     private readonly products: ProductsService,
   ) {}
@@ -366,6 +369,7 @@ export class ClientsService {
   ): Promise<ClientWishlistItemResponseDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    await this.requireWishlistEnabled(workspaceId);
     const client = await this.clientRepo.findOne({
       where: { id: clientId, workspaceId },
     });
@@ -425,6 +429,7 @@ export class ClientsService {
   ): Promise<void> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    await this.requireWishlistEnabled(workspaceId);
     const client = await this.clientRepo.findOne({
       where: { id: clientId, workspaceId },
     });
@@ -446,6 +451,7 @@ export class ClientsService {
   ): Promise<ClientWishlistProductsResponseDto> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    await this.requireWishlistEnabled(workspaceId);
     const client = await this.clientRepo.findOne({
       where: { id: clientId, workspaceId },
     });
@@ -894,6 +900,14 @@ export class ClientsService {
       createdBy: row.createdById,
       conversationId: row.conversationId,
     };
+  }
+
+  private async requireWishlistEnabled(workspaceId: number): Promise<void> {
+    const enabled =
+      await this.workspaceSettings.isWishlistEnabledForWorkspace(workspaceId);
+    if (!enabled) {
+      throw new ForbiddenException("Wishlist is disabled for this workspace");
+    }
   }
 
   private escapePgIlikePattern(value: string): string {

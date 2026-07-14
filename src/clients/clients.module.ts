@@ -11,6 +11,7 @@ import {
 } from "../database/entities";
 import { OrdersModule } from "../orders/orders.module";
 import { ProductsModule } from "../products/products.module";
+import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
 import { ClientsController } from "./clients.controller";
 import { ClientLinksController } from "./client-links.controller";
 import { ClientWishlistController } from "./client-wishlist.controller";
@@ -29,6 +30,7 @@ import { ClientsService } from "./clients.service";
     ]),
     OrdersModule,
     ProductsModule,
+    WorkspaceSettingsModule,
   ],
   controllers: [
     ClientWishlistController,

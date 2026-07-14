@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -21,6 +22,18 @@ function pickInventoryMode(
   const snake = obj.inventory_mode;
   if (snake !== undefined && snake !== null && snake !== "") {
     return snake as InventoryMode;
+  }
+  return undefined;
+}
+
+function pickWishlistEnabled(
+  obj: Record<string, unknown>,
+): boolean | undefined {
+  if (obj.wishlistEnabled !== undefined) {
+    return obj.wishlistEnabled as boolean;
+  }
+  if (obj.wishlist_enabled !== undefined) {
+    return obj.wishlist_enabled as boolean;
   }
   return undefined;
 }
@@ -68,4 +81,18 @@ export class UpdateWorkspaceSettingsDto {
   )
   @IsEnum(WorkspaceLanguage)
   language?: WorkspaceLanguage;
+
+  @ApiPropertyOptional({
+    description:
+      "Enable client wishlist for this workspace. Also accepted as `wishlist_enabled`.",
+    example: false,
+  })
+  @IsOptional()
+  @Transform(({ obj }) => pickWishlistEnabled(obj as Record<string, unknown>))
+  @IsBoolean()
+  wishlistEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  wishlist_enabled?: boolean;
 }

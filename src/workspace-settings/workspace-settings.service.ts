@@ -34,10 +34,11 @@ export class WorkspaceSettingsService {
     if (
       dto.currency === undefined &&
       dto.inventoryMode === undefined &&
-      dto.language === undefined
+      dto.language === undefined &&
+      dto.wishlistEnabled === undefined
     ) {
       throw new BadRequestException(
-        "At least one of currency, inventoryMode (inventory_mode), or language must be provided",
+        "At least one of currency, inventoryMode (inventory_mode), language, or wishlistEnabled (wishlist_enabled) must be provided",
       );
     }
     const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
@@ -65,8 +66,20 @@ export class WorkspaceSettingsService {
       ws.language = dto.language;
     }
 
+    if (dto.wishlistEnabled !== undefined) {
+      ws.wishlistEnabled = dto.wishlistEnabled;
+    }
+
     await this.workspaceRepo.save(ws);
     return this.toDto(ws);
+  }
+
+  async isWishlistEnabledForWorkspace(workspaceId: number): Promise<boolean> {
+    const ws = await this.workspaceRepo.findOne({
+      where: { id: workspaceId },
+      select: { id: true, wishlistEnabled: true },
+    });
+    return ws?.wishlistEnabled ?? false;
   }
 
   async getDefaultCurrencyForOwner(ownerId: number): Promise<string> {
@@ -108,6 +121,7 @@ export class WorkspaceSettingsService {
       currency: (ws.defaultCurrency?.trim() || "UAH").slice(0, 8),
       inventoryMode: ws.inventoryMode ?? InventoryMode.simple,
       language: ws.language ?? WorkspaceLanguage.ua,
+      wishlistEnabled: ws.wishlistEnabled ?? false,
     };
   }
 }

@@ -51,6 +51,10 @@ export class Workspace {
   })
   language: WorkspaceLanguage;
 
+  /** Whether client wishlist is enabled for this workspace. */
+  @Column({ name: "wishlist_enabled", type: "boolean", default: false })
+  wishlistEnabled: boolean;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 

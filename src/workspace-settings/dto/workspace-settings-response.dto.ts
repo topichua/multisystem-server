@@ -26,4 +26,10 @@ export class WorkspaceSettingsResponseDto {
     description: "Workspace language: ua (Ukrainian) or en (English).",
   })
   language: WorkspaceLanguage;
+
+  @ApiProperty({
+    description: "Whether client wishlist is enabled for this workspace.",
+    example: false,
+  })
+  wishlistEnabled: boolean;
 }
