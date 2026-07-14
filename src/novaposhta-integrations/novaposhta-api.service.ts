@@ -821,35 +821,52 @@ export class NovaPoshtaApiService {
     apiKey: string,
     input: NovaPoshtaCreateWaybillInput,
   ): Promise<NovaPoshtaCreateWaybillResult> {
+    const methodProperties: Record<string, unknown> = {
+      PayerType: input.payerType,
+      PaymentMethod: input.paymentMethod,
+      DateTime: this.formatNovaPoshtaDateTime(new Date()),
+      CargoType: "Cargo",
+      Weight: input.weight,
+      ServiceType: input.serviceType,
+      SeatsAmount: input.seatsAmount,
+      OptionsSeat: input.optionsSeat,
+      VolumeGeneral: this.sumOptionsSeatVolume(input.optionsSeat),
+      Description: input.description,
+      Cost: input.cost,
+      CitySender: input.citySender,
+      Sender: input.sender,
+      SenderAddress: input.senderAddress,
+      ContactSender: input.contactSender,
+      SendersPhone: input.sendersPhone,
+      CityRecipient: input.cityRecipient,
+      RecipientAddress: input.recipientAddress,
+      RecipientName: input.recipientName,
+      RecipientsPhone: input.recipientsPhone,
+      RecipientType: "PrivatePerson",
+      NewAddress: "1",
+    };
+
+    if (input.additionalInformation?.trim()) {
+      methodProperties.AdditionalInformation =
+        input.additionalInformation.trim();
+    }
+
+    if (input.cashOnDelivery) {
+      methodProperties.BackwardDeliveryData = [
+        {
+          PayerType: input.cashOnDelivery.commissionPayer,
+          CargoType: "Money",
+          RedeliveryString: input.cashOnDelivery.amount,
+        },
+      ];
+    }
+
     const payload = await this.request<
       Array<{ IntDocNumber?: string; Ref?: string }>
     >(apiKey, {
       modelName: "InternetDocument",
       calledMethod: "save",
-      methodProperties: {
-        PayerType: input.payerType,
-        PaymentMethod: input.paymentMethod,
-        DateTime: this.formatNovaPoshtaDateTime(new Date()),
-        CargoType: "Cargo",
-        Weight: input.weight,
-        ServiceType: input.serviceType,
-        SeatsAmount: input.seatsAmount,
-        OptionsSeat: input.optionsSeat,
-        VolumeGeneral: this.sumOptionsSeatVolume(input.optionsSeat),
-        Description: input.description,
-        Cost: input.cost,
-        CitySender: input.citySender,
-        Sender: input.sender,
-        SenderAddress: input.senderAddress,
-        ContactSender: input.contactSender,
-        SendersPhone: input.sendersPhone,
-        CityRecipient: input.cityRecipient,
-        RecipientAddress: input.recipientAddress,
-        RecipientName: input.recipientName,
-        RecipientsPhone: input.recipientsPhone,
-        RecipientType: "PrivatePerson",
-        NewAddress: "1",
-      },
+      methodProperties,
     });
 
     const doc = payload[0];

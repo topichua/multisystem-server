@@ -86,6 +86,32 @@ export class NovaPoshtaIntegrationResponseDto {
   @ApiPropertyOptional({ nullable: true })
   payer_type: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Платник комісії післяплати: `recipient` (Отримувач) or `sender` (Відправник).",
+    enum: ["recipient", "sender"],
+  })
+  cod_commission_payer: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  default_weight_kg: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  default_width_cm: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  default_height_cm: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  default_length_cm: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Призначення платежу.",
+  })
+  payment_purpose: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   on_created_order_status_id: number | null;
 

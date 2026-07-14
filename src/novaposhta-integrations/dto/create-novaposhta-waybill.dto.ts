@@ -12,7 +12,7 @@ import {
 export class CreateNovaPoshtaWaybillRequestDto {
   @ApiPropertyOptional({
     description:
-      "Override cargo weight in grams (defaults to sum of product weights or 1000 g).",
+      "Override cargo weight in grams (defaults to sum of product weights, then integration `default_weight_kg`, then 1000 g).",
     minimum: 1,
   })
   @IsOptional()
@@ -30,16 +30,6 @@ export class CreateNovaPoshtaWaybillRequestDto {
   @IsInt()
   @Min(1)
   seatsAmount?: number;
-
-  @ApiPropertyOptional({
-    description: "Alias for `seatsAmount` (same meaning).",
-    minimum: 1,
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  seatsCount?: number;
 
   @ApiPropertyOptional({
     description: "Cargo description (defaults to order item titles).",

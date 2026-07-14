@@ -252,6 +252,12 @@ export class NovaPoshtaIntegrationsService {
       dto.sender_contact_ref !== undefined ||
       dto.payment_method !== undefined ||
       dto.payer_type !== undefined ||
+      dto.cod_commission_payer !== undefined ||
+      dto.default_weight_kg !== undefined ||
+      dto.default_width_cm !== undefined ||
+      dto.default_height_cm !== undefined ||
+      dto.default_length_cm !== undefined ||
+      dto.payment_purpose !== undefined ||
       dto.on_created_order_status_id !== undefined ||
       dto.on_in_transit_order_status_id !== undefined ||
       dto.on_arrived_order_status_id !== undefined ||
@@ -318,6 +324,24 @@ export class NovaPoshtaIntegrationsService {
     if (dto.payer_type !== undefined) {
       row.payerType = dto.payer_type;
     }
+    if (dto.cod_commission_payer !== undefined) {
+      row.codCommissionPayer = dto.cod_commission_payer;
+    }
+    if (dto.default_weight_kg !== undefined) {
+      row.defaultWeightKg = dto.default_weight_kg;
+    }
+    if (dto.default_width_cm !== undefined) {
+      row.defaultWidthCm = dto.default_width_cm;
+    }
+    if (dto.default_height_cm !== undefined) {
+      row.defaultHeightCm = dto.default_height_cm;
+    }
+    if (dto.default_length_cm !== undefined) {
+      row.defaultLengthCm = dto.default_length_cm;
+    }
+    if (dto.payment_purpose !== undefined) {
+      row.paymentPurpose = this.trimOrNull(dto.payment_purpose);
+    }
     if (dto.on_created_order_status_id !== undefined) {
       row.onCreatedOrderStatusId = dto.on_created_order_status_id;
     }
@@ -364,6 +388,12 @@ export class NovaPoshtaIntegrationsService {
       sender_contact_ref: row.senderContactRef,
       payment_method: row.paymentMethod,
       payer_type: row.payerType,
+      cod_commission_payer: row.codCommissionPayer,
+      default_weight_kg: row.defaultWeightKg,
+      default_width_cm: row.defaultWidthCm,
+      default_height_cm: row.defaultHeightCm,
+      default_length_cm: row.defaultLengthCm,
+      payment_purpose: row.paymentPurpose,
       on_created_order_status_id: row.onCreatedOrderStatusId,
       on_in_transit_order_status_id: row.onInTransitOrderStatusId,
       on_arrived_order_status_id: row.onArrivedOrderStatusId,

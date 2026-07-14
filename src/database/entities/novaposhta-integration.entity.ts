@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import { NovaPoshtaCodCommissionPayer } from "./novaposhta-cod-commission-payer.enum";
 import { NovaPoshtaPayerType } from "./novaposhta-payer-type.enum";
 import { NovaPoshtaPaymentMethod } from "./novaposhta-payment-method.enum";
 import { NovaPoshtaSenderType } from "./novaposhta-sender-type.enum";
@@ -138,6 +139,83 @@ export class NovaPoshtaIntegration {
 
   @Column({ name: "payer_type", type: "varchar", length: 32, nullable: true })
   payerType: NovaPoshtaPayerType | null;
+
+  /**
+   * COD commission payer («Платник комісії післяплати»).
+   * Used as `BackwardDeliveryData[].PayerType` when creating a waybill with cash on delivery.
+   */
+  @Column({
+    name: "cod_commission_payer",
+    type: "varchar",
+    length: 32,
+    nullable: true,
+  })
+  codCommissionPayer: NovaPoshtaCodCommissionPayer | null;
+
+  /** Optional default parcel weight in kg (UI: Вага). */
+  @Column({
+    name: "default_weight_kg",
+    type: "decimal",
+    precision: 8,
+    scale: 3,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  defaultWeightKg: number | null;
+
+  /** Optional default parcel width in cm (UI: Ширина). */
+  @Column({
+    name: "default_width_cm",
+    type: "decimal",
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  defaultWidthCm: number | null;
+
+  /** Optional default parcel height in cm (UI: Висота). */
+  @Column({
+    name: "default_height_cm",
+    type: "decimal",
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  defaultHeightCm: number | null;
+
+  /** Optional default parcel length in cm (UI: Довжина). */
+  @Column({
+    name: "default_length_cm",
+    type: "decimal",
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null) => v,
+      from: (v: string | null) => (v == null ? null : Number(v)),
+    },
+  })
+  defaultLengthCm: number | null;
+
+  /** Призначення платежу — sent as AdditionalInformation on waybill create. */
+  @Column({
+    name: "payment_purpose",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  paymentPurpose: string | null;
 
   @Column({ name: "on_created_order_status_id", type: "int", nullable: true })
   onCreatedOrderStatusId: number | null;

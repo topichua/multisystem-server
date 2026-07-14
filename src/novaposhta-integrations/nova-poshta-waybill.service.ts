@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
+  NovaPoshtaCodCommissionPayer,
   NovaPoshtaIntegration,
   NovaPoshtaPayerType,
   NovaPoshtaPaymentMethod,
@@ -315,7 +316,7 @@ export class NovaPoshtaWaybillService {
     const weightGrams =
       dto.weightGrams ??
       this.calculateWeightGrams(items) ??
-      DEFAULT_WEIGHT_GRAMS;
+      this.resolveDefaultWeightGrams(integration);
     const weightKg = Math.max(0.1, weightGrams / 1000);
 
     const description =
@@ -333,7 +334,11 @@ export class NovaPoshtaWaybillService {
 
     const cost = dto.declaredCost ?? Number(order.totalAmount) ?? 0;
     const seatsAmount = this.resolveSeatsAmount(dto);
-    const optionsSeat = this.buildOptionsSeat(weightKg, seatsAmount);
+    const optionsSeat = this.buildOptionsSeat(
+      weightKg,
+      seatsAmount,
+      integration,
+    );
     const payerType = this.mapPayerType(integration.payerType);
     const paymentMethod = this.resolvePaymentMethod(integration, payerType);
 
@@ -355,24 +360,106 @@ export class NovaPoshtaWaybillService {
       recipientAddress: delivery.warehouseRef!.trim(),
       recipientName: delivery.recipientName!.trim(),
       recipientsPhone: this.normalizePhone(delivery.phone!),
+      additionalInformation: this.resolvePaymentPurpose(integration, order),
+      cashOnDelivery: this.resolveCashOnDelivery(delivery, integration),
     };
   }
 
+  private resolveDefaultWeightGrams(integration: NovaPoshtaIntegration): number {
+    const kg = Number(integration.defaultWeightKg);
+    if (Number.isFinite(kg) && kg > 0) {
+      return Math.round(kg * 1000);
+    }
+    return DEFAULT_WEIGHT_GRAMS;
+  }
+
+  private resolvePaymentPurpose(
+    integration: NovaPoshtaIntegration,
+    order: Order,
+  ): string | null {
+    const raw = integration.paymentPurpose?.trim();
+    if (!raw) {
+      return null;
+    }
+    return raw
+      .replaceAll("{orderId}", String(order.id))
+      .replaceAll("{order_id}", String(order.id))
+      .slice(0, 255);
+  }
+
+  private resolveCashOnDelivery(
+    delivery: OrderDeliveryInfo,
+    integration: NovaPoshtaIntegration,
+  ): NovaPoshtaCreateWaybillInput["cashOnDelivery"] {
+    if (!delivery.isCashOnDelivery) {
+      return null;
+    }
+
+    const amount = Number(delivery.cashOnDeliveryAmount ?? 0);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new BadRequestException(
+        "cashOnDeliveryAmount is required when delivery is cash on delivery",
+      );
+    }
+
+    return {
+      amount: String(Math.round(amount)),
+      commissionPayer: this.mapCodCommissionPayer(
+        integration.codCommissionPayer,
+      ),
+    };
+  }
+
+  private mapCodCommissionPayer(
+    payer: NovaPoshtaCodCommissionPayer | null,
+  ): "Sender" | "Recipient" {
+    return payer === NovaPoshtaCodCommissionPayer.SENDER
+      ? "Sender"
+      : "Recipient";
+  }
+
   private resolveSeatsAmount(dto: CreateNovaPoshtaWaybillRequestDto): number {
-    const seats = dto.seatsAmount ?? dto.seatsCount ?? DEFAULT_SEATS;
+    const seats = dto.seatsAmount ?? DEFAULT_SEATS;
     return Math.max(1, Math.floor(seats));
   }
 
   private buildOptionsSeat(
     totalWeightKg: number,
     seatsAmount: number,
+    integration: NovaPoshtaIntegration,
   ): NovaPoshtaOptionsSeat[] {
     const perSeatWeight = Math.max(0.1, totalWeightKg / seatsAmount);
     const weight = perSeatWeight.toFixed(3);
-    return Array.from({ length: seatsAmount }, () => ({
-      weight,
-      volumetricVolume: "0.0004",
-    }));
+    const widthCm = this.resolveOptionalDimensionCm(integration.defaultWidthCm);
+    const heightCm = this.resolveOptionalDimensionCm(
+      integration.defaultHeightCm,
+    );
+    const lengthCm = this.resolveOptionalDimensionCm(
+      integration.defaultLengthCm,
+    );
+
+    const seat: NovaPoshtaOptionsSeat = { weight };
+    if (widthCm != null && heightCm != null && lengthCm != null) {
+      seat.volumetricWidth = String(widthCm);
+      seat.volumetricHeight = String(heightCm);
+      seat.volumetricLength = String(lengthCm);
+      seat.volumetricVolume = (
+        (widthCm * heightCm * lengthCm) /
+        1_000_000
+      ).toFixed(4);
+    }
+
+    return Array.from({ length: seatsAmount }, () => ({ ...seat }));
+  }
+
+  private resolveOptionalDimensionCm(
+    value: number | null | undefined,
+  ): number | null {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) {
+      return n;
+    }
+    return null;
   }
 
   private resolveSenderAddress(

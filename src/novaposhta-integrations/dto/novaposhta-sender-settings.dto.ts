@@ -1,6 +1,16 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
+import { Type } from "class-transformer";
 import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from "class-validator";
+import {
+  NovaPoshtaCodCommissionPayer,
   NovaPoshtaPayerType,
   NovaPoshtaPaymentMethod,
   NovaPoshtaSenderType,
@@ -106,6 +116,74 @@ export class NovaPoshtaSenderSettingsDto extends NovaPoshtaOrderStatusMappingDto
   @IsOptional()
   @IsEnum(NovaPoshtaPayerType)
   payer_type?: NovaPoshtaPayerType | null;
+
+  @ApiPropertyOptional({
+    enum: NovaPoshtaCodCommissionPayer,
+    description:
+      "Платник комісії післяплати: `recipient` (Отримувач) or `sender` (Відправник). " +
+      "Used when creating a COD waybill (`isCashOnDelivery`). Defaults to `recipient` when omitted.",
+  })
+  @IsOptional()
+  @IsEnum(NovaPoshtaCodCommissionPayer)
+  cod_commission_payer?: NovaPoshtaCodCommissionPayer | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Default parcel weight in kg (Вага). Used when creating a waybill if set.",
+    minimum: 0.1,
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.1)
+  default_weight_kg?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Default parcel width in cm (Ширина).",
+    minimum: 0.1,
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.1)
+  default_width_cm?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Default parcel height in cm (Висота).",
+    minimum: 0.1,
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.1)
+  default_height_cm?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Default parcel length in cm (Довжина).",
+    minimum: 0.1,
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.1)
+  default_length_cm?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Призначення платежу — sent as Nova Poshta `AdditionalInformation` on waybill create.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  payment_purpose?: string | null;
 }
 
 export class NovaPoshtaSenderSettingsResponseDto extends NovaPoshtaOrderStatusMappingResponseDto {
@@ -153,4 +231,29 @@ export class NovaPoshtaSenderSettingsResponseDto extends NovaPoshtaOrderStatusMa
 
   @ApiPropertyOptional({ enum: NovaPoshtaPayerType, nullable: true })
   payer_type: NovaPoshtaPayerType | null;
+
+  @ApiPropertyOptional({
+    enum: NovaPoshtaCodCommissionPayer,
+    nullable: true,
+    description: "Платник комісії післяплати: Отримувач (`recipient`) або Відправник (`sender`).",
+  })
+  cod_commission_payer: NovaPoshtaCodCommissionPayer | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Default weight (Вага), kg." })
+  default_weight_kg: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Default width (Ширина), cm." })
+  default_width_cm: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Default height (Висота), cm." })
+  default_height_cm: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "Default length (Довжина), cm." })
+  default_length_cm: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Призначення платежу.",
+  })
+  payment_purpose: string | null;
 }

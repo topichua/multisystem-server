@@ -171,6 +171,14 @@ export type NovaPoshtaCreateWaybillInput = {
   recipientAddress: string;
   recipientName: string;
   recipientsPhone: string;
+  /** Призначення платежу → AdditionalInformation */
+  additionalInformation?: string | null;
+  /** Cash on delivery (післяплата) — when set, sent as BackwardDeliveryData. */
+  cashOnDelivery?: {
+    amount: string;
+    /** Платник комісії післяплати */
+    commissionPayer: "Sender" | "Recipient";
+  } | null;
 };
 
 export type NovaPoshtaCreateWaybillResult = {
