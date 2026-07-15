@@ -88,6 +88,13 @@ export class NovaPoshtaIntegrationResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    enum: ["cargo", "documents", "tires_wheels", "pallet"],
+    description: "Shipment type (Тип відправлення) → Nova Poshta `CargoType`.",
+  })
+  delivery_type: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
     description:
       "Платник комісії післяплати: `recipient` (Отримувач) or `sender` (Відправник).",
     enum: ["recipient", "sender"],
@@ -122,22 +129,4 @@ export class NovaPoshtaIntegrationResponseDto {
     fixed: number | null;
     takeFromOrder: boolean;
   };
-
-  @ApiPropertyOptional({ nullable: true })
-  on_created_order_status_id: number | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  on_in_transit_order_status_id: number | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  on_arrived_order_status_id: number | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  on_delivered_order_status_id: number | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  on_returned_order_status_id: number | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  on_delivery_failed_order_status_id: number | null;
 }

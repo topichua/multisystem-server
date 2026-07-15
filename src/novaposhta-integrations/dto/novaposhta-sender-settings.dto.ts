@@ -13,26 +13,27 @@ import {
 } from "class-validator";
 import {
   NovaPoshtaCodCommissionPayer,
+  NovaPoshtaDeliveryType,
   NovaPoshtaPayerType,
   NovaPoshtaPaymentMethod,
   NovaPoshtaSenderType,
 } from "../../database/entities";
-import { NovaPoshtaOrderStatusMappingDto } from "./novaposhta-order-status-mapping.dto";
-import { NovaPoshtaOrderStatusMappingResponseDto } from "./novaposhta-order-status-mapping.dto";
+
+function pickDeliveryType(
+  obj: Record<string, unknown>,
+): NovaPoshtaDeliveryType | null | undefined {
+  if (obj.delivery_type !== undefined) {
+    return obj.delivery_type as NovaPoshtaDeliveryType | null;
+  }
+  if (obj.deliveryType !== undefined) {
+    return obj.deliveryType as NovaPoshtaDeliveryType | null;
+  }
+  return undefined;
+}
 import {
   NovaPoshtaEstimatedDeliveryPriceDto,
   NovaPoshtaEstimatedDeliveryPriceResponseDto,
 } from "./novaposhta-estimated-delivery-price.dto";
-
-function pickEstimatedDeliveryPrice(
-  obj: Record<string, unknown>,
-): NovaPoshtaEstimatedDeliveryPriceDto | undefined {
-  const value = obj.estimated_delivery_price ?? obj.estimatedDeliveryPrice;
-  if (value === undefined) {
-    return undefined;
-  }
-  return value as NovaPoshtaEstimatedDeliveryPriceDto;
-}
 
 function pickDefaultDeliveryDescription(
   obj: Record<string, unknown>,
@@ -46,7 +47,7 @@ function pickDefaultDeliveryDescription(
   return undefined;
 }
 
-export class NovaPoshtaSenderSettingsDto extends NovaPoshtaOrderStatusMappingDto {
+export class NovaPoshtaSenderSettingsDto {
   @ApiPropertyOptional({ example: "ФОП Залуга А.П." })
   @IsOptional()
   @IsString()
@@ -146,6 +147,20 @@ export class NovaPoshtaSenderSettingsDto extends NovaPoshtaOrderStatusMappingDto
   payer_type?: NovaPoshtaPayerType | null;
 
   @ApiPropertyOptional({
+    enum: NovaPoshtaDeliveryType,
+    nullable: true,
+    description:
+      "Shipment type (Тип відправлення) → Nova Poshta `CargoType`. " +
+      "`cargo` = Посилка (default). Also accepted as `deliveryType`.",
+    example: NovaPoshtaDeliveryType.CARGO,
+  })
+  @IsOptional()
+  @Transform(({ obj }) => pickDeliveryType(obj as Record<string, unknown>))
+  @ValidateIf((_, v) => v != null)
+  @IsEnum(NovaPoshtaDeliveryType)
+  delivery_type?: NovaPoshtaDeliveryType | null;
+
+  @ApiPropertyOptional({
     enum: NovaPoshtaCodCommissionPayer,
     description:
       "Платник комісії післяплати: `recipient` (Отримувач) or `sender` (Відправник). " +
@@ -237,18 +252,21 @@ export class NovaPoshtaSenderSettingsDto extends NovaPoshtaOrderStatusMappingDto
       "Declared parcel value (оціночна ціна). Also accepted as `estimatedDeliveryPrice`.",
   })
   @IsOptional()
-  @Transform(({ obj }) => pickEstimatedDeliveryPrice(obj as Record<string, unknown>))
   @ValidateNested()
   @Type(() => NovaPoshtaEstimatedDeliveryPriceDto)
   estimated_delivery_price?: NovaPoshtaEstimatedDeliveryPriceDto | null;
 
+  @ApiPropertyOptional({
+    type: NovaPoshtaEstimatedDeliveryPriceDto,
+    description: "CamelCase alias for `estimated_delivery_price`.",
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => NovaPoshtaEstimatedDeliveryPriceDto)
   estimatedDeliveryPrice?: NovaPoshtaEstimatedDeliveryPriceDto | null;
 }
 
-export class NovaPoshtaSenderSettingsResponseDto extends NovaPoshtaOrderStatusMappingResponseDto {
+export class NovaPoshtaSenderSettingsResponseDto {
   @ApiPropertyOptional({ nullable: true })
   sender_name: string | null;
 
@@ -293,6 +311,13 @@ export class NovaPoshtaSenderSettingsResponseDto extends NovaPoshtaOrderStatusMa
 
   @ApiPropertyOptional({ enum: NovaPoshtaPayerType, nullable: true })
   payer_type: NovaPoshtaPayerType | null;
+
+  @ApiPropertyOptional({
+    enum: NovaPoshtaDeliveryType,
+    nullable: true,
+    description: "Shipment type (Тип відправлення) → Nova Poshta `CargoType`.",
+  })
+  delivery_type: NovaPoshtaDeliveryType | null;
 
   @ApiPropertyOptional({
     enum: NovaPoshtaCodCommissionPayer,

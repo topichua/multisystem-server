@@ -252,6 +252,7 @@ export class NovaPoshtaIntegrationsService {
       dto.sender_contact_ref !== undefined ||
       dto.payment_method !== undefined ||
       dto.payer_type !== undefined ||
+      dto.delivery_type !== undefined ||
       dto.cod_commission_payer !== undefined ||
       dto.default_weight_kg !== undefined ||
       dto.default_width_cm !== undefined ||
@@ -261,13 +262,7 @@ export class NovaPoshtaIntegrationsService {
       dto.default_delivery_description !== undefined ||
       dto.defaultDeliveryDescription !== undefined ||
       dto.estimated_delivery_price !== undefined ||
-      dto.estimatedDeliveryPrice !== undefined ||
-      dto.on_created_order_status_id !== undefined ||
-      dto.on_in_transit_order_status_id !== undefined ||
-      dto.on_arrived_order_status_id !== undefined ||
-      dto.on_delivered_order_status_id !== undefined ||
-      dto.on_returned_order_status_id !== undefined ||
-      dto.on_delivery_failed_order_status_id !== undefined
+      dto.estimatedDeliveryPrice !== undefined
     );
   }
 
@@ -328,6 +323,9 @@ export class NovaPoshtaIntegrationsService {
     if (dto.payer_type !== undefined) {
       row.payerType = dto.payer_type;
     }
+    if (dto.delivery_type !== undefined) {
+      row.deliveryType = dto.delivery_type;
+    }
     if (dto.cod_commission_payer !== undefined) {
       row.codCommissionPayer = dto.cod_commission_payer;
     }
@@ -361,31 +359,12 @@ export class NovaPoshtaIntegrationsService {
         row.estimatedDeliveryPriceTakeFromOrder = true;
         row.estimatedDeliveryPriceFixed = null;
       } else {
-        row.estimatedDeliveryPriceTakeFromOrder =
-          estimatedDeliveryPrice.takeFromOrder;
-        row.estimatedDeliveryPriceFixed = estimatedDeliveryPrice.takeFromOrder
+        const takeFromOrder = estimatedDeliveryPrice.takeFromOrder ?? true;
+        row.estimatedDeliveryPriceTakeFromOrder = takeFromOrder;
+        row.estimatedDeliveryPriceFixed = takeFromOrder
           ? null
           : estimatedDeliveryPrice.fixed ?? null;
       }
-    }
-    if (dto.on_created_order_status_id !== undefined) {
-      row.onCreatedOrderStatusId = dto.on_created_order_status_id;
-    }
-    if (dto.on_in_transit_order_status_id !== undefined) {
-      row.onInTransitOrderStatusId = dto.on_in_transit_order_status_id;
-    }
-    if (dto.on_arrived_order_status_id !== undefined) {
-      row.onArrivedOrderStatusId = dto.on_arrived_order_status_id;
-    }
-    if (dto.on_delivered_order_status_id !== undefined) {
-      row.onDeliveredOrderStatusId = dto.on_delivered_order_status_id;
-    }
-    if (dto.on_returned_order_status_id !== undefined) {
-      row.onReturnedOrderStatusId = dto.on_returned_order_status_id;
-    }
-    if (dto.on_delivery_failed_order_status_id !== undefined) {
-      row.onDeliveryFailedOrderStatusId =
-        dto.on_delivery_failed_order_status_id;
     }
   }
 
@@ -421,6 +400,7 @@ export class NovaPoshtaIntegrationsService {
       sender_contact_ref: row.senderContactRef,
       payment_method: row.paymentMethod,
       payer_type: row.payerType,
+      delivery_type: row.deliveryType,
       cod_commission_payer: row.codCommissionPayer,
       default_weight_kg: row.defaultWeightKg,
       default_width_cm: row.defaultWidthCm,
@@ -429,12 +409,6 @@ export class NovaPoshtaIntegrationsService {
       payment_purpose: row.paymentPurpose,
       default_delivery_description: row.defaultDeliveryDescription,
       estimated_delivery_price: this.toEstimatedDeliveryPriceResponse(row),
-      on_created_order_status_id: row.onCreatedOrderStatusId,
-      on_in_transit_order_status_id: row.onInTransitOrderStatusId,
-      on_arrived_order_status_id: row.onArrivedOrderStatusId,
-      on_delivered_order_status_id: row.onDeliveredOrderStatusId,
-      on_returned_order_status_id: row.onReturnedOrderStatusId,
-      on_delivery_failed_order_status_id: row.onDeliveryFailedOrderStatusId,
     };
   }
 

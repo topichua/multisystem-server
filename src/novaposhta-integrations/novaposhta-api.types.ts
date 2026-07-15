@@ -153,9 +153,16 @@ export type NovaPoshtaOptionsSeat = {
   volumetricHeight?: string;
 };
 
+export type NovaPoshtaCargoType =
+  | "Cargo"
+  | "Documents"
+  | "TiresWheels"
+  | "Pallet";
+
 export type NovaPoshtaCreateWaybillInput = {
   payerType: "Sender" | "Recipient" | "ThirdPerson";
   paymentMethod: "Cash" | "NonCash";
+  cargoType: NovaPoshtaCargoType;
   serviceType: NovaPoshtaWaybillServiceType;
   weight: string;
   seatsAmount: string;

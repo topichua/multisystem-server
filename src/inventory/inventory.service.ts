@@ -59,6 +59,7 @@ import {
   applyReturn,
   applySimpleQuantitySet,
   applySimpleSale,
+  applySupply,
   assertAdvancedMode,
   assertSimpleMode,
   assertStockInitialized,
@@ -255,7 +256,7 @@ export class InventoryService {
           ctx.workspaceId,
           item.productVariantId,
         );
-        const result = applyPurchase(
+        const result = applySupply(
           this.toSnapshot(stock),
           item.quantity,
           item.buyPrice,

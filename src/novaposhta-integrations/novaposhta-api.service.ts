@@ -825,7 +825,7 @@ export class NovaPoshtaApiService {
       PayerType: input.payerType,
       PaymentMethod: input.paymentMethod,
       DateTime: this.formatNovaPoshtaDateTime(new Date()),
-      CargoType: "Cargo",
+      CargoType: input.cargoType,
       Weight: input.weight,
       ServiceType: input.serviceType,
       SeatsAmount: input.seatsAmount,

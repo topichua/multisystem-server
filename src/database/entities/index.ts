@@ -87,6 +87,7 @@ export { NovaPoshtaSenderType } from "./novaposhta-sender-type.enum";
 export { NovaPoshtaPaymentMethod } from "./novaposhta-payment-method.enum";
 export { NovaPoshtaPayerType } from "./novaposhta-payer-type.enum";
 export { NovaPoshtaCodCommissionPayer } from "./novaposhta-cod-commission-payer.enum";
+export { NovaPoshtaDeliveryType } from "./novaposhta-delivery-type.enum";
 export { WebhookEvent } from "./webhook-event.entity";
 export { WebhookEventStatus } from "./webhook-event-status.enum";
 export { PaymentProvider, PAYMENT_PROVIDERS } from "./payment-provider.enum";

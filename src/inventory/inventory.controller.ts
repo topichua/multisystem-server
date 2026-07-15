@@ -93,7 +93,8 @@ export class InventoryController {
   @ApiOperation({
     summary: "Record stock supply / delivery batch (advanced mode)",
     description:
-      "Creates one supply record and stock movements of type `supply` for each line item.",
+      "Creates one supply record and stock movements of type `supply` for each line item. " +
+      "Allowed before initial stock; each affected variant is marked `stockInitialized: true`.",
   })
   @ApiCreatedResponse({ type: CreateStockSupplyResponseDto })
   createStockSupply(

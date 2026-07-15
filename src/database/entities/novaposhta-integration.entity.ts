@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { NovaPoshtaCodCommissionPayer } from "./novaposhta-cod-commission-payer.enum";
+import { NovaPoshtaDeliveryType } from "./novaposhta-delivery-type.enum";
 import { NovaPoshtaPayerType } from "./novaposhta-payer-type.enum";
 import { NovaPoshtaPaymentMethod } from "./novaposhta-payment-method.enum";
 import { NovaPoshtaSenderType } from "./novaposhta-sender-type.enum";
@@ -140,6 +141,10 @@ export class NovaPoshtaIntegration {
   @Column({ name: "payer_type", type: "varchar", length: 32, nullable: true })
   payerType: NovaPoshtaPayerType | null;
 
+  /** Nova Poshta waybill `CargoType` (Тип відправлення). */
+  @Column({ name: "delivery_type", type: "varchar", length: 32, nullable: true })
+  deliveryType: NovaPoshtaDeliveryType | null;
+
   /**
    * COD commission payer («Платник комісії післяплати»).
    * Used as `BackwardDeliveryData[].PayerType` when creating a waybill with cash on delivery.
@@ -247,32 +252,6 @@ export class NovaPoshtaIntegration {
     default: true,
   })
   estimatedDeliveryPriceTakeFromOrder: boolean;
-
-  @Column({ name: "on_created_order_status_id", type: "int", nullable: true })
-  onCreatedOrderStatusId: number | null;
-
-  @Column({
-    name: "on_in_transit_order_status_id",
-    type: "int",
-    nullable: true,
-  })
-  onInTransitOrderStatusId: number | null;
-
-  @Column({ name: "on_arrived_order_status_id", type: "int", nullable: true })
-  onArrivedOrderStatusId: number | null;
-
-  @Column({ name: "on_delivered_order_status_id", type: "int", nullable: true })
-  onDeliveredOrderStatusId: number | null;
-
-  @Column({ name: "on_returned_order_status_id", type: "int", nullable: true })
-  onReturnedOrderStatusId: number | null;
-
-  @Column({
-    name: "on_delivery_failed_order_status_id",
-    type: "int",
-    nullable: true,
-  })
-  onDeliveryFailedOrderStatusId: number | null;
 
   @Column({ name: "connected_at", type: "timestamptz" })
   connectedAt: Date;

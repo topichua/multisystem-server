@@ -8,6 +8,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
   NovaPoshtaCodCommissionPayer,
+  NovaPoshtaDeliveryType,
   NovaPoshtaIntegration,
   NovaPoshtaPayerType,
   NovaPoshtaPaymentMethod,
@@ -360,6 +361,7 @@ export class NovaPoshtaWaybillService {
     return {
       payerType,
       paymentMethod,
+      cargoType: this.mapDeliveryTypeToCargoType(integration.deliveryType),
       serviceType: this.resolveServiceType(senderType, recipientType),
       weight: weightKg.toFixed(3),
       seatsAmount: String(seatsAmount),
@@ -547,6 +549,22 @@ export class NovaPoshtaWaybillService {
         ? "Warehouse"
         : "Doors";
     return `${sender}${recipient}` as NovaPoshtaCreateWaybillInput["serviceType"];
+  }
+
+  private mapDeliveryTypeToCargoType(
+    deliveryType: NovaPoshtaDeliveryType | null | undefined,
+  ): NovaPoshtaCreateWaybillInput["cargoType"] {
+    switch (deliveryType) {
+      case NovaPoshtaDeliveryType.DOCUMENTS:
+        return "Documents";
+      case NovaPoshtaDeliveryType.TIRES_WHEELS:
+        return "TiresWheels";
+      case NovaPoshtaDeliveryType.PALLET:
+        return "Pallet";
+      case NovaPoshtaDeliveryType.CARGO:
+      default:
+        return "Cargo";
+    }
   }
 
   private mapPayerType(

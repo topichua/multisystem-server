@@ -120,6 +120,32 @@ export function applyPurchase(
       "Initial stock must be recorded before purchases",
     );
   }
+  return applyInboundPurchaseCost(before, quantity, purchasePrice);
+}
+
+/**
+ * Supply / delivery batch: same cost math as purchase, but allowed before
+ * initial stock — and always marks `stockInitialized` true afterwards.
+ */
+export function applySupply(
+  before: StockSnapshot,
+  quantity: number,
+  purchasePrice: number,
+): { after: StockSnapshot; quantityChange: number; totalCostChange: number } {
+  if (quantity <= 0) {
+    throw new BadRequestException("quantity must be greater than 0");
+  }
+  if (purchasePrice < 0) {
+    throw new BadRequestException("purchasePrice must be >= 0");
+  }
+  return applyInboundPurchaseCost(before, quantity, purchasePrice);
+}
+
+function applyInboundPurchaseCost(
+  before: StockSnapshot,
+  quantity: number,
+  purchasePrice: number,
+): { after: StockSnapshot; quantityChange: number; totalCostChange: number } {
   const purchaseCost = roundMoney(quantity * purchasePrice);
   const newQuantity = before.quantity + quantity;
   const oldTotalCost = before.totalCost ?? 0;

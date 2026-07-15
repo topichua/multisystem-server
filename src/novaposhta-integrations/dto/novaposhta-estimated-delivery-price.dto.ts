@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   IsBoolean,
   IsNumber,
@@ -7,6 +7,16 @@ import {
   Min,
   ValidateIf,
 } from "class-validator";
+
+function pickTakeFromOrder(obj: Record<string, unknown>): boolean | undefined {
+  if (obj.takeFromOrder !== undefined) {
+    return obj.takeFromOrder as boolean;
+  }
+  if (obj.take_from_order !== undefined) {
+    return obj.take_from_order as boolean;
+  }
+  return undefined;
+}
 
 export class NovaPoshtaEstimatedDeliveryPriceDto {
   @ApiPropertyOptional({
@@ -21,13 +31,17 @@ export class NovaPoshtaEstimatedDeliveryPriceDto {
   @Min(0)
   fixed?: number | null;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      "When true, use order total as declared value. When false, use `fixed`.",
+      "When true, use order total as declared value. When false, use `fixed`. " +
+      "Also accepted as `take_from_order`. Defaults to `true` when omitted.",
     example: true,
+    default: true,
   })
+  @IsOptional()
+  @Transform(({ obj }) => pickTakeFromOrder(obj as Record<string, unknown>))
   @IsBoolean()
-  takeFromOrder!: boolean;
+  takeFromOrder?: boolean;
 }
 
 export class NovaPoshtaEstimatedDeliveryPriceResponseDto {
