@@ -157,6 +157,14 @@ export class OrderDeliveryInfo {
   })
   deliveryPrice: number | null;
 
+  /** True when delivery was created/replaced via manual tracking number lookup. */
+  @Column({
+    name: "synced_from_tracking_manually",
+    type: "boolean",
+    default: false,
+  })
+  syncedFromTrackingManually: boolean;
+
   /** Hydrated: true when TTN can be deleted via API (before `shipped`). Not a DB column. */
   canRemoveTracking?: boolean;
 

@@ -808,9 +808,8 @@ export class OrdersService {
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const order = await this.requireOrderForWorkspace(orderId, workspace.id);
 
-    if (order.deliveryId != null) {
-      throw new ConflictException("Order already has delivery info");
-    }
+    const previousDelivery = await this.findDeliveryForOrder(order);
+    const replacedDeliveryInfoId = previousDelivery?.id ?? null;
 
     const trackingNumber = dto.trackingNumber.trim();
     const phone = await this.resolveDeliveryTrackingPhone(order, dto.phone);
@@ -846,6 +845,7 @@ export class OrdersService {
             providerStatusText: mapped.providerStatusText,
             deliveryStatus: mapped.deliveryStatus,
             deliveryStatusAt: now,
+            syncedFromTrackingManually: true,
           }),
         );
 
@@ -853,6 +853,10 @@ export class OrdersService {
         order.deliveryType = OrderDeliveryProvider.nova_poshta;
         order.updatedById = ownerId;
         await this.orderRepo.save(order);
+
+        if (previousDelivery) {
+          await this.orderDeliveryRepo.delete(previousDelivery.id);
+        }
 
         await this.deliveryStatusApplication.applyDeliveryStatusChange({
           delivery: row,
@@ -869,12 +873,14 @@ export class OrdersService {
           ownerId,
           {
             deliveryInfoId: row.id,
+            replacedDeliveryInfoId,
             provider: row.provider,
             deliveryStatus: row.deliveryStatus,
             trackingNumber: row.trackingNumber,
             providerStatusCode: row.providerStatusCode,
             providerStatusText: row.providerStatusText,
-            source: "TRACKING_LOOKUP",
+            syncedFromTrackingManually: true,
+            source: "MANUAL_TRACKING_SYNC",
           },
         );
         break;

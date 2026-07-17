@@ -141,6 +141,7 @@ import { OrderDeliveryInfoPayerTypeAndDeliveryPrice1744200000143 } from "./migra
 import { OrderStatusAutomationConditionType1744200000144 } from "./migrations/1744200000144-OrderStatusAutomationConditionType";
 import { NovaPoshtaDropOrderStatusMapping1744200000145 } from "./migrations/1744200000145-NovaPoshtaDropOrderStatusMapping";
 import { NovaPoshtaIntegrationDeliveryType1744200000146 } from "./migrations/1744200000146-NovaPoshtaIntegrationDeliveryType";
+import { OrderDeliveryInfoSyncedFromTrackingManually1744200000147 } from "./migrations/1744200000147-OrderDeliveryInfoSyncedFromTrackingManually";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -487,6 +488,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderStatusAutomationConditionType1744200000144,
       NovaPoshtaDropOrderStatusMapping1744200000145,
       NovaPoshtaIntegrationDeliveryType1744200000146,
+      OrderDeliveryInfoSyncedFromTrackingManually1744200000147,
     ],
   };
 }

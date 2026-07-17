@@ -141,9 +141,11 @@ export class OrdersController {
   @Post(":orderId/delivery/tracking")
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: "Add delivery info from carrier tracking number",
+    summary: "Sync delivery info from carrier tracking number",
     description:
-      "Creates delivery info on an order that has none yet. " +
+      "Looks up a carrier tracking number and creates or replaces order delivery info. " +
+      "When delivery info already exists, the previous record is removed and replaced with the lookup result. " +
+      "The new delivery row is marked with `syncedFromTrackingManually: true`. " +
       "For Nova Poshta, calls `TrackingDocument.getStatusDocuments` and fills recipient, city, warehouse, warehouse ref, address parts, status, and tracking fields. " +
       "Phone defaults to the order customer phone when omitted.",
   })
