@@ -21,6 +21,7 @@ import { OrderDeliveryInfo } from "./order-delivery-info.entity";
 import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 import { OrderEvent } from "./order-event.entity";
 import { ManualPaymentMethod } from "./manual-payment-method.entity";
+import type { PaymentTransaction } from "./payment-transaction.entity";
 
 @Entity("orders")
 @Index("IDX_orders_workspace_id", ["workspaceId"])
@@ -227,6 +228,20 @@ export class Order {
 
   /** Hydrated: true when line items can be edited (status category is `new`). */
   canEditItems?: boolean;
+
+  /** Hydrated payment summary for order responses (not a DB column). */
+  payment?: {
+    status: OrderPaymentStatus;
+    statusAt: Date | null;
+    paidAt: Date | null;
+    reference: string | null;
+    manualPaymentMethodId: number | null;
+    paidAmount: number;
+    remainingAmount: number;
+    payments: Array<
+      PaymentTransaction & { method: "online_payment" | "manual" }
+    >;
+  };
 
   @OneToMany(() => OrderEvent, (e) => e.order)
   events: OrderEvent[];

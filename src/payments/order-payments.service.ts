@@ -8,9 +8,11 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
   Order,
+  OrderPaymentStatus,
   PaymentRequest,
   PaymentRequestStatus,
   PaymentTransaction,
+  PaymentTransactionSource,
 } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
@@ -19,10 +21,14 @@ import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
 import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
-import { calculateRemainingAmount } from "./logic/order-payment-status.logic";
+import {
+  calculatePendingChargeAmount,
+  calculateRemainingAmount,
+} from "./logic/order-payment-status.logic";
 import { resolveManualPaymentKind } from "./logic/manual-payment-kind";
 import type { CreateOrderPaymentLinkDto } from "./dto/create-order-payment-link.dto";
 import type { CreateManualPaymentDto } from "./dto/create-manual-payment.dto";
+import type { ConfirmManualPaymentDto } from "./dto/confirm-manual-payment.dto";
 import type { ManualPaymentResponseDto } from "./dto/manual-payment-response.dto";
 import type { SetOrderManualPaymentMethodDto } from "./dto/set-order-manual-payment-method.dto";
 import type { OrderPaymentRequestResponseDto } from "./dto/order-payment-request-response.dto";
@@ -121,22 +127,7 @@ export class OrderPaymentsService {
     });
     return {
       orderId: order.id,
-      transactions: transactions.map((t) => ({
-        id: t.id,
-        paymentId: t.paymentId,
-        provider: t.provider,
-        type: t.type,
-        amount: t.amount,
-        currency: t.currency,
-        status: t.status,
-        source: t.source,
-        externalTransactionId: t.externalTransactionId,
-        note: t.note,
-        manualPaymentMethodId: t.manualPaymentMethodId,
-        manualPaymentKind: resolveManualPaymentKind(t.manualPaymentMethodId),
-        occurredAt: t.occurredAt.toISOString(),
-        createdAt: t.createdAt.toISOString(),
-      })),
+      transactions: transactions.map((t) => this.toTransactionDto(t)),
     };
   }
 
@@ -157,15 +148,21 @@ export class OrderPaymentsService {
       order.workspaceId,
       order.id,
     );
+    const existingTransactions = await this.transactionRepo.find({
+      where: { workspaceId: order.workspaceId, orderId: order.id },
+    });
+    const pendingReserved = calculatePendingChargeAmount(existingTransactions);
     const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
-    const amount = dto.amount ?? remaining;
+    const available =
+      Math.round((remaining - pendingReserved + Number.EPSILON) * 100) / 100;
+    const amount = dto.amount ?? available;
 
     if (amount <= 0) {
       throw new BadRequestException("Amount must be greater than zero");
     }
-    if (amount > remaining) {
+    if (amount > available) {
       throw new BadRequestException(
-        `Amount exceeds remaining balance (${remaining})`,
+        `Amount exceeds available balance (${available}) after pending payments`,
       );
     }
     if (order.currency.toUpperCase() !== "UAH") {
@@ -213,6 +210,16 @@ export class OrderPaymentsService {
     savedDraft.expiresAt = linkResult.expiresAt;
     savedDraft.status = PaymentRequestStatus.pending;
     const saved = await this.paymentRepo.save(savedDraft);
+
+    await this.domain.createPendingOnlineChargeTransaction({
+      workspaceId: saved.workspaceId,
+      orderId: saved.orderId,
+      paymentId: saved.id,
+      provider: saved.provider,
+      amount: saved.amount,
+      currency: saved.currency,
+    });
+
     return this.toPaymentDto(saved);
   }
 
@@ -286,38 +293,108 @@ export class OrderPaymentsService {
       orderId: order.id,
       amount: dto.amount,
       currency: order.currency,
-      confirmedById: userId,
       note: dto.note,
       reference: dto.reference,
       occurredAt,
       manualPaymentMethodId,
     });
 
-    return {
+    return this.toManualPaymentResponse(order.id, result);
+  }
+
+  async confirmManualPayment(
+    userId: number,
+    orderId: number,
+    transactionId: number,
+    dto: ConfirmManualPaymentDto,
+    appRole?: string,
+  ): Promise<ManualPaymentResponseDto> {
+    await this.requireManualPayment(userId, appRole);
+    const order = await this.requireOrder(userId, orderId, appRole);
+
+    const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : undefined;
+    if (occurredAt && Number.isNaN(occurredAt.getTime())) {
+      throw new BadRequestException("occurredAt is invalid");
+    }
+
+    const result = await this.domain.confirmManualPayment({
+      workspaceId: order.workspaceId,
       orderId: order.id,
+      transactionId,
+      confirmedById: userId,
+      occurredAt,
+      note: dto.note,
+    });
+
+    return this.toManualPaymentResponse(order.id, result);
+  }
+
+  async deletePendingPayment(
+    userId: number,
+    orderId: number,
+    paymentId: number,
+    appRole?: string,
+  ): Promise<{ deleted: true; id: number }> {
+    await this.requireManualPayment(userId, appRole);
+    const order = await this.requireOrder(userId, orderId, appRole);
+    const result = await this.domain.deletePendingPayment({
+      workspaceId: order.workspaceId,
+      orderId: order.id,
+      paymentId,
+    });
+    return { deleted: true, id: result.deletedId };
+  }
+
+  private toManualPaymentResponse(
+    orderId: number,
+    result: {
+      transaction: PaymentTransaction;
+      paymentStatus: OrderPaymentStatus;
+      totalAmount: number;
+      paidAmount: number;
+      remainingAmount: number;
+    },
+  ): ManualPaymentResponseDto {
+    return {
+      orderId,
       paymentStatus: result.paymentStatus,
       totalAmount: result.totalAmount,
       paidAmount: result.paidAmount,
       remainingAmount: result.remainingAmount,
-      transaction: {
-        id: result.transaction.id,
-        paymentId: result.transaction.paymentId,
-        provider: result.transaction.provider,
-        type: result.transaction.type,
-        amount: result.transaction.amount,
-        currency: result.transaction.currency,
-        status: result.transaction.status,
-        source: result.transaction.source,
-        externalTransactionId: result.transaction.externalTransactionId,
-        note: result.transaction.note,
-        manualPaymentMethodId: result.transaction.manualPaymentMethodId,
-        manualPaymentKind: resolveManualPaymentKind(
-          result.transaction.manualPaymentMethodId,
-        ),
-        occurredAt: result.transaction.occurredAt.toISOString(),
-        createdAt: result.transaction.createdAt.toISOString(),
-      },
+      transaction: this.toTransactionDto(result.transaction),
     };
+  }
+
+  private toTransactionDto(t: PaymentTransaction) {
+    return {
+      id: t.id,
+      paymentId: t.paymentId,
+      provider: t.provider,
+      type: t.type,
+      method: this.resolvePaymentMethod(t),
+      amount: t.amount,
+      currency: t.currency,
+      status: t.status,
+      source: t.source,
+      externalTransactionId: t.externalTransactionId,
+      note: t.note,
+      manualPaymentMethodId: t.manualPaymentMethodId,
+      manualPaymentKind: resolveManualPaymentKind(t.manualPaymentMethodId),
+      occurredAt: t.occurredAt.toISOString(),
+      createdAt: t.createdAt.toISOString(),
+    };
+  }
+
+  private resolvePaymentMethod(
+    t: PaymentTransaction,
+  ): "online_payment" | "manual" {
+    if (
+      t.source === PaymentTransactionSource.online_payment ||
+      t.paymentId != null
+    ) {
+      return "online_payment";
+    }
+    return "manual";
   }
 
   async cancelPaymentLink(
@@ -342,6 +419,11 @@ export class OrderPaymentsService {
 
     payment.status = PaymentRequestStatus.cancelled;
     const saved = await this.paymentRepo.save(payment);
+    await this.domain.cancelPendingOnlineChargeForPayment({
+      workspaceId: order.workspaceId,
+      orderId: order.id,
+      paymentId: payment.id,
+    });
     return this.toPaymentDto(saved);
   }
 

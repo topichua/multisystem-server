@@ -42,6 +42,15 @@ import { ProductSuggestionItemDto } from "./dto/http/conversation-product-sugges
 import { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
 import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
 import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
+import { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
+import { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
+import { ConversationChannelCriteriaResponseDto } from "./dto/http/conversations-channel-criteria-response.dto";
+import { ConversationGroupingBy } from "./dto/http/conversation-grouping-by.enum";
+import { ConversationsGroupsResponseDto } from "./dto/http/conversations-groups-response.dto";
+import {
+  isConversationCreatedAtBucket,
+  type ConversationCreatedAtBucket,
+} from "./conversation-created-at-bucket.logic";
 
 type UploadedConversationMessageFile = {
   buffer: Buffer;
@@ -49,9 +58,6 @@ type UploadedConversationMessageFile = {
   originalname?: string;
   size?: number;
 };
-import { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
-import { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
-import { ConversationChannelCriteriaResponseDto } from "./dto/http/conversations-channel-criteria-response.dto";
 
 @ApiTags("admin — conversations")
 @ApiBearerAuth("bearer")
@@ -72,6 +78,7 @@ export class ConversationsController {
       "Optional `show_without_responsible_only=true`: only unassigned chats (`responsible_member_id` null) you can access (takeable queue / unassigned inbox). " +
       "Optional `channel_ids`: comma-separated integration ids from GET /conversations/criteria (e.g. `1,2`). " +
       "Optional `responsible_user_ids`: comma-separated workspace member ids from GET /conversations/criteria `responsibleUsers` (e.g. `5,7`). " +
+      "Optional `created_at_bucket`: `today` | `last_week` | `last_month` | `long_ago` (Europe/Kyiv calendar windows from GET /conversations/groups?by=createdAt). " +
       "Optional `keyword`: search in participant Instagram/Telegram name or username and linked CRM client first/last name (case-insensitive). " +
       "Optional `unread_only=true`: return only conversations where `isUnread` is true in the list payload. " +
       "Response includes `counters` (total, unread, withoutResponsible) for the shared filters above, excluding list-only filters.",
@@ -106,6 +113,14 @@ export class ConversationsController {
     example: true,
   })
   @ApiQuery({
+    name: "created_at_bucket",
+    required: false,
+    enum: ["today", "last_week", "last_month", "long_ago"],
+    description:
+      "Filter by conversation creation-time bucket (Europe/Kyiv). Keys match GET /conversations/groups?by=createdAt.",
+    example: "today",
+  })
+  @ApiQuery({
     name: "keyword",
     required: false,
     description:
@@ -128,6 +143,7 @@ export class ConversationsController {
     @Query("responsible_user_ids") responsibleUserIdsRaw?: string | string[],
     @Query("show_without_responsible_only")
     showWithoutResponsibleOnlyRaw?: string,
+    @Query("created_at_bucket") createdAtBucketRaw?: string,
     @Query("keyword") keywordRaw?: string,
     @Query("unread_only") unreadOnlyRaw?: string,
   ): Promise<ConversationsListResponseDto> {
@@ -152,6 +168,8 @@ export class ConversationsController {
       showWithoutResponsibleOnlyRaw,
       "show_without_responsible_only",
     );
+    const createdAtBucket =
+      this.parseOptionalCreatedAtBucketQuery(createdAtBucketRaw);
     const keyword = this.parseOptionalKeywordQuery(keywordRaw);
     const unreadOnly = this.parseOptionalBooleanQuery(
       unreadOnlyRaw,
@@ -163,8 +181,45 @@ export class ConversationsController {
       channelIds,
       responsibleUserIds,
       showWithoutResponsibleOnly,
+      createdAtBucket,
       keyword,
       unreadOnly,
+      appRole: req.user?.role,
+    });
+  }
+
+  @Get("groups")
+  @ApiOperation({
+    summary: "Aggregate conversations into grouping buckets",
+    description:
+      "Returns bucket keys, labels, and counts for one grouping dimension. " +
+      "Required `by`: `responsible` | `status` | `createdAt` | `channel`. " +
+      "Spam chats are excluded. For `responsible`, `createdAt`, and `channel`, archived is also excluded " +
+      "(same base as GET /conversations without groupIds). For `by=status`, only spam is excluded. " +
+      "Use returned keys with existing list filters: `responsible_user_ids` / `show_without_responsible_only`, " +
+      "`groupIds`, `created_at_bucket`, `channel_ids`.",
+  })
+  @ApiQuery({
+    name: "by",
+    required: true,
+    enum: ConversationGroupingBy,
+    description: "Grouping dimension.",
+    example: ConversationGroupingBy.responsible,
+  })
+  @ApiOkResponse({ type: ConversationsGroupsResponseDto })
+  async getGroups(
+    @Req() req: { user?: AuthUser },
+    @Query("by") byRaw?: string,
+  ): Promise<ConversationsGroupsResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
+    const by = this.parseConversationGroupingByQuery(byRaw);
+    return this.conversationsService.listConversationGroupsBy(ownerId, {
+      sessionWorkspaceId,
+      by,
       appRole: req.user?.role,
     });
   }
@@ -221,6 +276,40 @@ export class ConversationsController {
       return false;
     }
     throw new BadRequestException(`${paramName} must be true or false`);
+  }
+
+  private parseOptionalCreatedAtBucketQuery(
+    raw?: string,
+  ): ConversationCreatedAtBucket | undefined {
+    if (raw == null || raw.trim() === "") {
+      return undefined;
+    }
+    const value = raw.trim();
+    if (!isConversationCreatedAtBucket(value)) {
+      throw new BadRequestException(
+        "created_at_bucket must be one of: today, last_week, last_month, long_ago",
+      );
+    }
+    return value;
+  }
+
+  private parseConversationGroupingByQuery(raw?: string): ConversationGroupingBy {
+    if (raw == null || raw.trim() === "") {
+      throw new BadRequestException(
+        "by is required (responsible | status | createdAt | channel)",
+      );
+    }
+    const value = raw.trim();
+    if (
+      !Object.values(ConversationGroupingBy).includes(
+        value as ConversationGroupingBy,
+      )
+    ) {
+      throw new BadRequestException(
+        "by must be one of: responsible, status, createdAt, channel",
+      );
+    }
+    return value as ConversationGroupingBy;
   }
 
   private parseOptionalPositiveIntIdsQuery(

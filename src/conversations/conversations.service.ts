@@ -26,6 +26,7 @@ import {
   ConversationMessage,
   ConversationMessageType,
   ConversationSource,
+  ConversationGroupSystemKey,
   CONVERSATION_GROUP_SYSTEM_KEYS_HIDDEN_FROM_DEFAULT_LIST,
   InstagramUser,
   TelegramUser,
@@ -89,6 +90,18 @@ import type { ProductSuggestionItemDto } from "./dto/http/conversation-product-s
 import type { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
 import type { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
 import type { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
+import { ConversationGroupingBy } from "./dto/http/conversation-grouping-by.enum";
+import type {
+  ConversationGroupBucketItemDto,
+  ConversationsGroupsResponseDto,
+} from "./dto/http/conversations-groups-response.dto";
+import {
+  applyCreatedAtBucketToQuery,
+  CONVERSATION_CREATED_AT_BUCKET_LABELS,
+  CONVERSATION_CREATED_AT_BUCKETS,
+  resolveConversationCreatedAtBucket,
+  type ConversationCreatedAtBucket,
+} from "./conversation-created-at-bucket.logic";
 type InstagramErrorResponse = {
   error?: {
     message?: string;
@@ -189,6 +202,87 @@ export class ConversationsService {
     return { channels, responsibleUsers };
   }
 
+  /**
+   * Aggregate accessible conversations into buckets for one grouping dimension.
+   * Spam is always excluded. For non-status dimensions, archived is also excluded
+   * (same default list base as GET /conversations without groupIds).
+   */
+  async listConversationGroupsBy(
+    ownerId: number,
+    filters: {
+      sessionWorkspaceId: number;
+      by: ConversationGroupingBy;
+      appRole?: string;
+    },
+  ): Promise<ConversationsGroupsResponseDto> {
+    const workspaceId = await this.resolveWorkspaceIdForConversationList(
+      ownerId,
+      filters.sessionWorkspaceId,
+    );
+    await this.conversationGroupDefaults.ensureSystemGroups(workspaceId);
+
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      ownerId,
+      filters.appRole,
+      workspaceId,
+    );
+
+    const groupFilter =
+      filters.by === ConversationGroupingBy.status
+        ? {
+            excludeGroupIds:
+              await this.conversationGroupDefaults.resolveSystemGroupIds(
+                workspaceId,
+                [ConversationGroupSystemKey.SPAM],
+              ),
+          }
+        : await this.resolveListGroupFilter(workspaceId, undefined);
+
+    const rows =
+      permissions.isOwner || permissions.conversations.fullAccess
+        ? await this.findConversationsForWorkspace(workspaceId, groupFilter)
+        : await this.findConversationsForIntegrationGrants(
+            workspaceId,
+            ownerId,
+            permissions.integrationGrants,
+            groupFilter,
+          );
+
+    switch (filters.by) {
+      case ConversationGroupingBy.responsible:
+        return {
+          by: filters.by,
+          ...(await this.aggregateConversationsByResponsible(
+            workspaceId,
+            rows,
+          )),
+        };
+      case ConversationGroupingBy.status:
+        return {
+          by: filters.by,
+          ...(await this.aggregateConversationsByStatus(workspaceId, rows)),
+        };
+      case ConversationGroupingBy.createdAt:
+        return {
+          by: filters.by,
+          ...this.aggregateConversationsByCreatedAt(rows),
+        };
+      case ConversationGroupingBy.channel:
+        return {
+          by: filters.by,
+          ...(await this.aggregateConversationsByChannel(
+            workspaceId,
+            permissions,
+            rows,
+          )),
+        };
+      default:
+        throw new BadRequestException(
+          `Unsupported conversations groups by=${String(filters.by)}`,
+        );
+    }
+  }
+
   /** Accessible conversation counts per `group_id` (owners / full_access / grants). */
   async getConversationDistributionByGroupForUser(
     userId: number,
@@ -256,6 +350,7 @@ export class ConversationsService {
       showWithoutResponsibleOnly?: boolean;
       unreadOnly?: boolean;
       keyword?: string;
+      createdAtBucket?: ConversationCreatedAtBucket;
       appRole?: string;
     },
   ): Promise<{
@@ -330,6 +425,7 @@ export class ConversationsService {
             channelFilter,
             undefined,
             participantIds,
+            filters.createdAtBucket,
           )
         : await this.findConversationsForIntegrationGrants(
             workspaceId,
@@ -340,6 +436,7 @@ export class ConversationsService {
             channelFilter,
             undefined,
             participantIds,
+            filters.createdAtBucket,
           );
 
     const listAccessContext =
@@ -473,6 +570,7 @@ export class ConversationsService {
         row = this.conversationRepo.create({
           externalSourceId: pageId,
           externalId,
+          createdAt: new Date(),
           instUpdatedAt,
           readAt: null,
           participantId,
@@ -1733,6 +1831,225 @@ export class ConversationsService {
     return fullName || user.email;
   }
 
+  private async aggregateConversationsByResponsible(
+    workspaceId: number,
+    rows: Conversation[],
+  ): Promise<{ total: number; items: ConversationGroupBucketItemDto[] }> {
+    const counts = new Map<number | "unassigned", number>();
+    for (const row of rows) {
+      const key =
+        row.responsibleMemberId == null
+          ? "unassigned"
+          : row.responsibleMemberId;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const memberIds = [...counts.keys()].filter(
+      (key): key is number => typeof key === "number",
+    );
+    const members =
+      memberIds.length > 0
+        ? await this.workspaceMemberRepo.find({
+            where: { workspaceId, id: In(memberIds) },
+            relations: ["user"],
+          })
+        : [];
+    const memberById = new Map(members.map((member) => [member.id, member]));
+
+    const items: ConversationGroupBucketItemDto[] = [];
+    for (const memberId of memberIds.sort((a, b) => a - b)) {
+      const member = memberById.get(memberId);
+      const label = member?.user
+        ? this.resolveResponsibleUserDisplayName(member.user)
+        : `Member #${memberId}`;
+      items.push({
+        key: String(memberId),
+        label,
+        count: counts.get(memberId) ?? 0,
+        meta: { responsibleMemberId: memberId },
+      });
+    }
+
+    items.push({
+      key: "unassigned",
+      label: "Без відповідального",
+      count: counts.get("unassigned") ?? 0,
+      meta: { responsibleMemberId: null },
+    });
+
+    return {
+      total: rows.length,
+      items,
+    };
+  }
+
+  private async aggregateConversationsByStatus(
+    workspaceId: number,
+    rows: Conversation[],
+  ): Promise<{ total: number; items: ConversationGroupBucketItemDto[] }> {
+    const groups = await this.conversationGroupRepo.find({
+      where: { workspaceId },
+      order: { sortOrder: "ASC", id: "ASC" },
+    });
+    const nonSpamGroups = groups.filter(
+      (group) => group.systemKey !== ConversationGroupSystemKey.SPAM,
+    );
+
+    const counts = new Map<number | "ungrouped", number>();
+    for (const row of rows) {
+      const key = row.groupId == null ? "ungrouped" : row.groupId;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const items: ConversationGroupBucketItemDto[] = nonSpamGroups.map(
+      (group) => ({
+        key: String(group.id),
+        label: group.name,
+        count: counts.get(group.id) ?? 0,
+        meta: {
+          groupId: group.id,
+          systemKey: group.systemKey,
+          color: group.color,
+        },
+      }),
+    );
+
+    items.push({
+      key: "ungrouped",
+      label: "Без статусу",
+      count: counts.get("ungrouped") ?? 0,
+      meta: { groupId: null, systemKey: null, color: null },
+    });
+
+    const total = items.reduce((sum, item) => sum + item.count, 0);
+    return { total, items };
+  }
+
+  private aggregateConversationsByCreatedAt(
+    rows: Conversation[],
+  ): { total: number; items: ConversationGroupBucketItemDto[] } {
+    const counts = new Map<ConversationCreatedAtBucket, number>(
+      CONVERSATION_CREATED_AT_BUCKETS.map((bucket) => [bucket, 0]),
+    );
+    const now = new Date();
+    for (const row of rows) {
+      const bucket = resolveConversationCreatedAtBucket(row.createdAt, now);
+      counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+    }
+
+    return {
+      total: rows.length,
+      items: CONVERSATION_CREATED_AT_BUCKETS.map((bucket) => ({
+        key: bucket,
+        label: CONVERSATION_CREATED_AT_BUCKET_LABELS[bucket],
+        count: counts.get(bucket) ?? 0,
+        meta: { createdAtBucket: bucket },
+      })),
+    };
+  }
+
+  private async aggregateConversationsByChannel(
+    workspaceId: number,
+    permissions: Pick<
+      ResolvedUserPermissions,
+      "isOwner" | "conversations" | "integrationGrants"
+    >,
+    rows: Conversation[],
+  ): Promise<{ total: number; items: ConversationGroupBucketItemDto[] }> {
+    const channels = await this.resolveAccessibleConversationChannels(
+      workspaceId,
+      permissions,
+    );
+    const channelFilter = await this.buildChannelFilter(
+      workspaceId,
+      permissions,
+      channels.map((channel) => channel.integrationId),
+    );
+
+    const counts = new Map<string, number>();
+    for (const channel of channels) {
+      counts.set(`${channel.type}:${channel.integrationId}`, 0);
+    }
+
+    for (const row of rows) {
+      const matched = this.matchConversationChannel(row, channelFilter);
+      if (matched == null) {
+        continue;
+      }
+      const key = `${matched.type}:${matched.integrationId}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const items: ConversationGroupBucketItemDto[] = channels.map((channel) => {
+      const key = `${channel.type}:${channel.integrationId}`;
+      return {
+        key,
+        label: channel.name,
+        count: counts.get(key) ?? 0,
+        meta: {
+          channel: {
+            integrationId: channel.integrationId,
+            type: channel.type,
+            name: channel.name,
+          },
+        },
+      };
+    });
+
+    const total = items.reduce((sum, item) => sum + item.count, 0);
+    return { total, items };
+  }
+
+  private matchConversationChannel(
+    conversation: Conversation,
+    channelFilter: {
+      instagram: InstagramIntegration[];
+      telegram: TelegramIntegration[];
+    },
+  ): {
+    integrationId: number;
+    type: "instagram" | "telegram";
+    name: string;
+  } | null {
+    const externalSourceId = conversation.externalSourceId?.trim();
+    if (!externalSourceId) {
+      return null;
+    }
+
+    if (conversation.source === ConversationSource.TELEGRAM) {
+      const integration = channelFilter.telegram.find(
+        (row) => String(row.id) === externalSourceId,
+      );
+      if (!integration) {
+        return null;
+      }
+      return {
+        integrationId: integration.id,
+        type: "telegram",
+        name: this.resolveTelegramChannelName(integration),
+      };
+    }
+
+    if (conversation.source === ConversationSource.INSTAGRAM) {
+      const integration = channelFilter.instagram.find((row) => {
+        const ids = [row.pageId, row.instagramAccountId]
+          .map((value) => value?.trim())
+          .filter((value): value is string => Boolean(value));
+        return ids.includes(externalSourceId);
+      });
+      if (!integration) {
+        return null;
+      }
+      return {
+        integrationId: integration.id,
+        type: "instagram",
+        name: this.resolveInstagramChannelName(integration),
+      };
+    }
+
+    return null;
+  }
+
   private async resolveAccessibleResponsibleUsers(
     workspaceId: number,
     userId: number,
@@ -2124,13 +2441,15 @@ export class ConversationsService {
     },
     responsibleMemberIds?: number[],
     participantIds?: string[],
+    createdAtBucket?: ConversationCreatedAtBucket,
   ): Promise<Conversation[]> {
     const useQueryBuilder =
       channelFilter != null ||
       (responsibleMemberIds != null && responsibleMemberIds.length > 0) ||
       (participantIds != null && participantIds.length > 0) ||
       (groupFilter.excludeGroupIds != null &&
-        groupFilter.excludeGroupIds.length > 0);
+        groupFilter.excludeGroupIds.length > 0) ||
+      createdAtBucket != null;
 
     if (!useQueryBuilder) {
       const where: FindOptionsWhere<Conversation> =
@@ -2164,6 +2483,9 @@ export class ConversationsService {
     }
     if (channelFilter != null) {
       this.applyChannelFilterToQuery(qb, channelFilter);
+    }
+    if (createdAtBucket != null) {
+      applyCreatedAtBucketToQuery(qb, createdAtBucket);
     }
     qb.orderBy("c.inst_updated_at", "DESC");
     return qb.getMany();
@@ -2361,6 +2683,7 @@ export class ConversationsService {
     },
     responsibleMemberIds?: number[],
     participantIds?: string[],
+    createdAtBucket?: ConversationCreatedAtBucket,
   ): Promise<Conversation[]> {
     const context = await this.prepareIntegrationGrantListContext(
       workspaceId,
@@ -2394,6 +2717,10 @@ export class ConversationsService {
 
     if (channelFilter != null) {
       this.applyChannelFilterToQuery(qb, channelFilter);
+    }
+
+    if (createdAtBucket != null) {
+      applyCreatedAtBucketToQuery(qb, createdAtBucket);
     }
 
     qb.andWhere(

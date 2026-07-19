@@ -13,7 +13,8 @@ import {
 export class CreateManualPaymentDto {
   @ApiProperty({
     description:
-      "Amount received. Backend validates against order remaining balance.",
+      "Amount to collect. Creates a pending manual charge; confirm later to mark paid. " +
+      "Backend validates against remaining balance minus other pending charges.",
   })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -21,7 +22,7 @@ export class CreateManualPaymentDto {
   amount!: number;
 
   @ApiPropertyOptional({
-    description: "When the payment was received (defaults to now)",
+    description: "When the payment is expected / recorded (defaults to now)",
   })
   @IsOptional()
   @IsDateString()

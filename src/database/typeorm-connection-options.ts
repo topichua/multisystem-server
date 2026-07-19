@@ -142,6 +142,9 @@ import { OrderStatusAutomationConditionType1744200000144 } from "./migrations/17
 import { NovaPoshtaDropOrderStatusMapping1744200000145 } from "./migrations/1744200000145-NovaPoshtaDropOrderStatusMapping";
 import { NovaPoshtaIntegrationDeliveryType1744200000146 } from "./migrations/1744200000146-NovaPoshtaIntegrationDeliveryType";
 import { OrderDeliveryInfoSyncedFromTrackingManually1744200000147 } from "./migrations/1744200000147-OrderDeliveryInfoSyncedFromTrackingManually";
+import { ConversationCreatedAt1744200000148 } from "./migrations/1744200000148-ConversationCreatedAt";
+import { PaymentTransactionSourceOnlinePayment1744200000149 } from "./migrations/1744200000149-PaymentTransactionSourceOnlinePayment";
+import { BackfillPendingOnlinePaymentTransactions1744200000150 } from "./migrations/1744200000150-BackfillPendingOnlinePaymentTransactions";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -344,6 +347,7 @@ export function getTypeOrmModuleOptions(env: DatabaseEnv) {
 export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
   return {
     ...baseOptions(env),
+    migrationsTransactionMode: "each",
     migrations: [
       InitialSchema1744200000001,
       ConversationParticipantString1744200000002,
@@ -489,6 +493,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       NovaPoshtaDropOrderStatusMapping1744200000145,
       NovaPoshtaIntegrationDeliveryType1744200000146,
       OrderDeliveryInfoSyncedFromTrackingManually1744200000147,
+      ConversationCreatedAt1744200000148,
+      PaymentTransactionSourceOnlinePayment1744200000149,
+      BackfillPendingOnlinePaymentTransactions1744200000150,
     ],
   };
 }

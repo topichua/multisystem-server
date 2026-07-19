@@ -237,7 +237,9 @@ export class OrdersController {
   @ApiOperation({
     summary: "List orders",
     description:
-      "Paginated orders for the workspace. Each item includes `createdBy` with creator id and name. Optional `clientId` limits to that customer; `statusId` filters by status. `keyword` searches customer first/last name, phone, tracking number, and order number.",
+      "Paginated orders for the workspace. Each item includes `createdBy` and a `payment` object with status, paid amount, remaining amount, and all financial transactions. " +
+      "Payment fields are nested under `payment` rather than returned at the order root. Optional `clientId` limits to that customer; `statusId` filters by status. " +
+      "`keyword` searches customer first/last name, phone, tracking number, and order number.",
   })
   async list(
     @Req() req: { user?: AuthUser },
@@ -354,7 +356,8 @@ export class OrdersController {
   @ApiOperation({
     summary: "Get order by id",
     description:
-      "Includes `createdBy` (creator id and name), `canEditItems` (true when status category is `new`), and `canRemoveTracking` on delivery when applicable.",
+      "Includes `createdBy`, `canEditItems`, delivery tracking flags, and a `payment` object with status, paid amount, remaining amount, and all financial transactions. " +
+      "Payment fields are nested under `payment` rather than returned at the order root.",
   })
   async getById(
     @Req() req: { user?: AuthUser },

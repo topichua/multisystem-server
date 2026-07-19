@@ -876,6 +876,7 @@ export class ConversationsAllocationService {
       row = this.conversationRepo.create({
         externalSourceId: businessInstagramId,
         externalId: graphConversationId,
+        createdAt: new Date(),
         instUpdatedAt: updatedTime,
         readAt: null,
         participantId,

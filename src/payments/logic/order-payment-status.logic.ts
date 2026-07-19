@@ -50,6 +50,22 @@ export function calculateRemainingAmount(
   return roundMoney(Math.max(0, totalAmount - paidAmount));
 }
 
+/** Sum of pending charge amounts (reserved but not yet counted as paid). */
+export function calculatePendingChargeAmount(
+  transactions: PaymentTransactionAmountRow[],
+): number {
+  let pending = 0;
+  for (const row of transactions) {
+    if (
+      row.status === PaymentTransactionStatus.pending &&
+      row.type === PaymentTransactionType.charge
+    ) {
+      pending += row.amount;
+    }
+  }
+  return roundMoney(pending);
+}
+
 function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -15,6 +16,7 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -24,6 +26,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { CreateOrderPaymentLinkDto } from "./dto/create-order-payment-link.dto";
 import { CreateManualPaymentDto } from "./dto/create-manual-payment.dto";
+import { ConfirmManualPaymentDto } from "./dto/confirm-manual-payment.dto";
 import { SetOrderManualPaymentMethodDto } from "./dto/set-order-manual-payment-method.dto";
 import { ManualPaymentResponseDto } from "./dto/manual-payment-response.dto";
 import {
@@ -112,9 +115,12 @@ export class OrderPaymentsController {
   @Post("manual")
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: "Record manual payment (card transfer, FOP, cash, etc.)",
+    summary: "Create pending manual payment",
     description:
-      "Creates a charge transaction with source=manual. Omit manualPaymentMethodId for cash; pass method id for IBAN/card transfer.",
+      "Creates a manual charge transaction with status `pending`. " +
+      "It does not change order paid amount until confirmed. " +
+      "Omit manualPaymentMethodId for cash; pass method id for IBAN/card transfer. " +
+      "Confirm with POST /orders/:orderId/payments/transactions/:transactionId/confirm.",
   })
   @ApiParam({ name: "orderId", type: Number })
   @ApiCreatedResponse({ type: ManualPaymentResponseDto })
@@ -127,6 +133,59 @@ export class OrderPaymentsController {
       this.requireUserId(req),
       orderId,
       dto,
+      req.user?.role,
+    );
+  }
+
+  @Post("transactions/:transactionId/confirm")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Confirm pending manual payment as paid",
+    description:
+      "Marks a pending manual charge transaction as `succeeded`, then recalculates order payment status / remaining amount.",
+  })
+  @ApiParam({ name: "orderId", type: Number })
+  @ApiParam({ name: "transactionId", type: Number })
+  @ApiOkResponse({ type: ManualPaymentResponseDto })
+  confirmManual(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+    @Param("transactionId", ParseIntPipe) transactionId: number,
+    @Body() dto: ConfirmManualPaymentDto,
+  ): Promise<ManualPaymentResponseDto> {
+    return this.payments.confirmManualPayment(
+      this.requireUserId(req),
+      orderId,
+      transactionId,
+      dto ?? {},
+      req.user?.role,
+    );
+  }
+
+  @Delete(":paymentId")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Delete pending order payment",
+    description:
+      "Deletes a payment transaction only when its status is `pending`. " +
+      "Succeeded / failed payments cannot be deleted.",
+  })
+  @ApiParam({ name: "orderId", type: Number })
+  @ApiParam({
+    name: "paymentId",
+    type: Number,
+    description: "Payment transaction id from order `payment.payments[]`.",
+  })
+  @ApiNoContentResponse({ description: "Pending payment deleted." })
+  async deletePending(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+    @Param("paymentId", ParseIntPipe) paymentId: number,
+  ): Promise<void> {
+    await this.payments.deletePendingPayment(
+      this.requireUserId(req),
+      orderId,
+      paymentId,
       req.user?.role,
     );
   }

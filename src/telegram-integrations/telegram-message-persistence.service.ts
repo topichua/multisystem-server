@@ -720,6 +720,7 @@ export class TelegramMessagePersistenceService {
     row = this.conversationRepo.create({
       externalSourceId: String(integration.id),
       externalId: externalConversationId,
+      createdAt: new Date(),
       instUpdatedAt: messageDate,
       readAt: null,
       participantId,

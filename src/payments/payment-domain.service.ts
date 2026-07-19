@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -21,6 +22,7 @@ import {
 import {
   calculateOrderPaymentStatus,
   calculatePaidAmount,
+  calculatePendingChargeAmount,
   calculateRemainingAmount,
 } from "./logic/order-payment-status.logic";
 import { PaymentProviderFactory } from "./providers/payment-provider.factory";
@@ -86,13 +88,16 @@ export class PaymentDomainService {
 
       if (event.localStatus === PaymentRequestStatus.succeeded) {
         await this.createChargeTransactionIfNeeded(manager, payment, event, {
-          source:
-            source === "provider_webhook"
-              ? PaymentTransactionSource.provider_webhook
-              : PaymentTransactionSource.system,
+          source: PaymentTransactionSource.online_payment,
           confirmedById: confirmedById ?? null,
           chargeAmount: payment.amount,
         });
+      } else if (
+        event.localStatus === PaymentRequestStatus.failed ||
+        event.localStatus === PaymentRequestStatus.cancelled ||
+        event.localStatus === PaymentRequestStatus.expired
+      ) {
+        await this.markPendingOnlineChargeFailed(manager, payment, event);
       }
 
       const paymentStatusResult =
@@ -139,7 +144,6 @@ export class PaymentDomainService {
     orderId: number;
     amount: number;
     currency: string;
-    confirmedById: number;
     note?: string | null;
     reference?: string | null;
     occurredAt?: Date;
@@ -155,6 +159,84 @@ export class PaymentDomainService {
       throw new BadRequestException("Amount must be greater than zero");
     }
 
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager
+        .getRepository(Order)
+        .createQueryBuilder("o")
+        .setLock("pessimistic_write")
+        .where("o.workspace_id = :workspaceId AND o.id = :orderId", {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+        })
+        .getOne();
+
+      if (!order) {
+        throw new NotFoundException("Order not found");
+      }
+
+      const existingTransactions = await manager
+        .getRepository(PaymentTransaction)
+        .find({
+          where: { workspaceId: input.workspaceId, orderId: input.orderId },
+        });
+      const paidAmount = calculatePaidAmount(existingTransactions);
+      const pendingReserved = calculatePendingChargeAmount(existingTransactions);
+      const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
+      const available =
+        Math.round((remaining - pendingReserved + Number.EPSILON) * 100) / 100;
+
+      if (input.amount > available) {
+        throw new BadRequestException(
+          `Amount exceeds available balance (${available}) after pending payments`,
+        );
+      }
+
+      const occurredAt = input.occurredAt ?? new Date();
+      const reference = input.reference?.trim() || null;
+      const note = input.note?.trim() || null;
+
+      const tx = manager.getRepository(PaymentTransaction).create({
+        workspaceId: input.workspaceId,
+        orderId: input.orderId,
+        paymentId: null,
+        provider: null,
+        type: PaymentTransactionType.charge,
+        amount: input.amount,
+        currency: input.currency,
+        status: PaymentTransactionStatus.pending,
+        source: PaymentTransactionSource.manual,
+        externalTransactionId: reference,
+        note,
+        confirmedById: null,
+        occurredAt,
+        manualPaymentMethodId: input.manualPaymentMethodId ?? null,
+      });
+      const saved = await manager.getRepository(PaymentTransaction).save(tx);
+
+      return {
+        transaction: saved,
+        paymentStatus: order.paymentStatus,
+        totalAmount: order.totalAmount,
+        paidAmount,
+        remainingAmount: remaining,
+      };
+    });
+  }
+
+  async confirmManualPayment(input: {
+    workspaceId: number;
+    orderId: number;
+    transactionId: number;
+    confirmedById: number;
+    occurredAt?: Date;
+    note?: string | null;
+  }): Promise<{
+    transaction: PaymentTransaction;
+    paymentStatus: OrderPaymentStatus;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
+  }> {
     return this.dataSource
       .transaction(async (manager) => {
         const order = await manager
@@ -171,43 +253,62 @@ export class PaymentDomainService {
           throw new NotFoundException("Order not found");
         }
 
+        const tx = await manager.getRepository(PaymentTransaction).findOne({
+          where: {
+            id: input.transactionId,
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+          },
+        });
+        if (!tx) {
+          throw new NotFoundException("Payment transaction not found");
+        }
+        if (tx.source !== PaymentTransactionSource.manual) {
+          throw new BadRequestException(
+            tx.source === PaymentTransactionSource.online_payment
+              ? "Online payments cannot be confirmed manually by a manager"
+              : "Only manual payment transactions can be confirmed this way",
+          );
+        }
+        if (tx.type !== PaymentTransactionType.charge) {
+          throw new BadRequestException(
+            "Only charge transactions can be confirmed as paid",
+          );
+        }
+        if (tx.status === PaymentTransactionStatus.succeeded) {
+          throw new ConflictException("Manual payment is already paid");
+        }
+        if (tx.status !== PaymentTransactionStatus.pending) {
+          throw new BadRequestException(
+            `Manual payment cannot be confirmed from status "${tx.status}"`,
+          );
+        }
+
         const existingTransactions = await manager
           .getRepository(PaymentTransaction)
           .find({
             where: { workspaceId: input.workspaceId, orderId: input.orderId },
           });
-        const paidAmount = calculatePaidAmount(existingTransactions);
+        const others = existingTransactions.filter((row) => row.id !== tx.id);
+        const paidAmount = calculatePaidAmount(others);
         const remaining = calculateRemainingAmount(
           order.totalAmount,
           paidAmount,
         );
-
-        if (input.amount > remaining) {
+        if (tx.amount > remaining) {
           throw new BadRequestException(
             `Amount exceeds remaining balance (${remaining})`,
           );
         }
 
-        const occurredAt = input.occurredAt ?? new Date();
-        const reference = input.reference?.trim() || null;
-        const note = input.note?.trim() || null;
-
-        const tx = manager.getRepository(PaymentTransaction).create({
-          workspaceId: input.workspaceId,
-          orderId: input.orderId,
-          paymentId: null,
-          provider: null,
-          type: PaymentTransactionType.charge,
-          amount: input.amount,
-          currency: input.currency,
-          status: PaymentTransactionStatus.succeeded,
-          source: PaymentTransactionSource.manual,
-          externalTransactionId: reference,
-          note,
-          confirmedById: input.confirmedById,
-          occurredAt,
-          manualPaymentMethodId: input.manualPaymentMethodId ?? null,
-        });
+        if (input.occurredAt) {
+          tx.occurredAt = input.occurredAt;
+        }
+        if (input.note !== undefined) {
+          tx.note = input.note?.trim() || null;
+        }
+        tx.status = PaymentTransactionStatus.succeeded;
+        tx.confirmedById = input.confirmedById;
         const saved = await manager.getRepository(PaymentTransaction).save(tx);
 
         const paymentStatusResult =
@@ -217,10 +318,7 @@ export class PaymentDomainService {
             input.orderId,
           );
 
-        const updatedPaidAmount = calculatePaidAmount([
-          ...existingTransactions,
-          saved,
-        ]);
+        const updatedPaidAmount = calculatePaidAmount([...others, saved]);
 
         return {
           transaction: saved,
@@ -250,6 +348,129 @@ export class PaymentDomainService {
       });
   }
 
+  async deletePendingPayment(input: {
+    workspaceId: number;
+    orderId: number;
+    paymentId: number;
+  }): Promise<{ deletedId: number }> {
+    return this.dataSource.transaction(async (manager) => {
+      const tx = await manager.getRepository(PaymentTransaction).findOne({
+        where: {
+          id: input.paymentId,
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+        },
+      });
+      if (!tx) {
+        throw new NotFoundException("Payment not found");
+      }
+      if (tx.status !== PaymentTransactionStatus.pending) {
+        throw new ConflictException(
+          `Only pending payments can be deleted (current status: "${tx.status}")`,
+        );
+      }
+
+      if (
+        tx.source === PaymentTransactionSource.online_payment &&
+        tx.paymentId != null
+      ) {
+        const payment = await manager.getRepository(PaymentRequest).findOne({
+          where: {
+            id: tx.paymentId,
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+          },
+        });
+        if (payment) {
+          if (payment.status === PaymentRequestStatus.succeeded) {
+            throw new ConflictException(
+              "Cannot delete a payment linked to a succeeded online payment request",
+            );
+          }
+          // Remove the ledger row first (FK RESTRICT on payment_id).
+          await manager.getRepository(PaymentTransaction).delete(tx.id);
+          await manager.getRepository(PaymentRequest).delete(payment.id);
+          return { deletedId: tx.id };
+        }
+      }
+
+      await manager.getRepository(PaymentTransaction).delete(tx.id);
+      return { deletedId: tx.id };
+    });
+  }
+
+  /** Creates a pending online charge row linked to a payment request (listed in transactions). */
+  async createPendingOnlineChargeTransaction(input: {
+    workspaceId: number;
+    orderId: number;
+    paymentId: number;
+    provider: PaymentRequest["provider"];
+    amount: number;
+    currency: string;
+  }): Promise<PaymentTransaction> {
+    const tx = this.transactionRepo.create({
+      workspaceId: input.workspaceId,
+      orderId: input.orderId,
+      paymentId: input.paymentId,
+      provider: input.provider,
+      type: PaymentTransactionType.charge,
+      amount: input.amount,
+      currency: input.currency,
+      status: PaymentTransactionStatus.pending,
+      source: PaymentTransactionSource.online_payment,
+      externalTransactionId: null,
+      note: null,
+      confirmedById: null,
+      occurredAt: new Date(),
+      manualPaymentMethodId: null,
+    });
+    return this.transactionRepo.save(tx);
+  }
+
+  async cancelPendingOnlineChargeForPayment(input: {
+    workspaceId: number;
+    orderId: number;
+    paymentId: number;
+  }): Promise<void> {
+    const pending = await this.transactionRepo.findOne({
+      where: {
+        workspaceId: input.workspaceId,
+        orderId: input.orderId,
+        paymentId: input.paymentId,
+        status: PaymentTransactionStatus.pending,
+        type: PaymentTransactionType.charge,
+        source: PaymentTransactionSource.online_payment,
+      },
+    });
+    if (!pending) {
+      return;
+    }
+    pending.status = PaymentTransactionStatus.failed;
+    await this.transactionRepo.save(pending);
+  }
+
+  private async markPendingOnlineChargeFailed(
+    manager: EntityManager,
+    payment: PaymentRequest,
+    event: ParsedWebhookEvent,
+  ): Promise<void> {
+    const pending = await manager.getRepository(PaymentTransaction).findOne({
+      where: {
+        paymentId: payment.id,
+        status: PaymentTransactionStatus.pending,
+        type: PaymentTransactionType.charge,
+      },
+    });
+    if (!pending) {
+      return;
+    }
+    pending.status = PaymentTransactionStatus.failed;
+    if (event.failureReason) {
+      pending.note = event.failureReason;
+    }
+    await manager.getRepository(PaymentTransaction).save(pending);
+  }
+
   private async createChargeTransactionIfNeeded(
     manager: EntityManager,
     payment: PaymentRequest,
@@ -263,16 +484,37 @@ export class PaymentDomainService {
     const externalTransactionId =
       event.externalTransactionId ?? `${payment.externalPaymentId}:success`;
 
-    const existing = await manager.getRepository(PaymentTransaction).findOne({
-      where: {
-        provider: payment.provider,
-        externalTransactionId,
-      },
-    });
-    if (existing) {
+    const existingByExternal = await manager
+      .getRepository(PaymentTransaction)
+      .findOne({
+        where: {
+          provider: payment.provider,
+          externalTransactionId,
+        },
+      });
+    if (existingByExternal) {
       this.logger.log(
         `Charge transaction already exists externalTransactionId=${externalTransactionId}`,
       );
+      return;
+    }
+
+    const pending = await manager.getRepository(PaymentTransaction).findOne({
+      where: {
+        paymentId: payment.id,
+        status: PaymentTransactionStatus.pending,
+        type: PaymentTransactionType.charge,
+      },
+    });
+    if (pending) {
+      pending.status = PaymentTransactionStatus.succeeded;
+      pending.source = options.source;
+      pending.amount = options.chargeAmount;
+      pending.currency = event.currency;
+      pending.externalTransactionId = externalTransactionId;
+      pending.confirmedById = options.confirmedById;
+      pending.occurredAt = event.paidAt ?? new Date();
+      await manager.getRepository(PaymentTransaction).save(pending);
       return;
     }
 

@@ -19,10 +19,13 @@ import {
   OrderItem,
   OrderDeliveryProvider,
   OrderDeliveryStatus,
+  OrderPaymentStatus,
   OrderSource,
   OrderStatus,
   OrderStatusAutomation,
   OrderStatusCategory,
+  PaymentTransaction,
+  PaymentTransactionSource,
   Product,
   ProductVariant,
   TelegramIntegration,
@@ -72,6 +75,10 @@ import {
   OrderStatusTransitionService,
 } from "./order-status-transition.service";
 import { resolveIntegrationIdFromConversation } from "./logic/resolve-order-integration.logic";
+import {
+  calculatePaidAmount,
+  calculateRemainingAmount,
+} from "../payments/logic/order-payment-status.logic";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -111,6 +118,19 @@ type OrderDeliverySummary = {
   deliveryStatusText: string | null;
 };
 
+type OrderPaymentSummary = {
+  status: OrderPaymentStatus;
+  statusAt: Date | null;
+  paidAt: Date | null;
+  reference: string | null;
+  manualPaymentMethodId: number | null;
+  paidAmount: number;
+  remainingAmount: number;
+  payments: Array<
+    PaymentTransaction & { method: "online_payment" | "manual" }
+  >;
+};
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -134,6 +154,8 @@ export class OrdersService {
     private readonly orderDeliveryRepo: Repository<OrderDeliveryInfo>,
     @InjectRepository(OrderEvent)
     private readonly orderEventRepo: Repository<OrderEvent>,
+    @InjectRepository(PaymentTransaction)
+    private readonly paymentTransactionRepo: Repository<PaymentTransaction>,
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
     @InjectRepository(ProductVariant)
@@ -1034,6 +1056,7 @@ export class OrdersService {
     order.canEditItems = order.status?.category === OrderStatusCategory.new;
     this.hydrateOrdersDelivery([order]);
     await this.hydrateOrdersCreatedBy([order]);
+    await this.hydrateOrdersPayment([order]);
     this.stripCircularOrderRefs(order);
     return order;
   }
@@ -1176,7 +1199,10 @@ export class OrdersService {
     const [items, total] = await qb.take(pageSize).skip(skip).getManyAndCount();
 
     this.hydrateOrdersDelivery(items);
-    await this.hydrateOrdersCreatedBy(items);
+    await Promise.all([
+      this.hydrateOrdersCreatedBy(items),
+      this.hydrateOrdersPayment(items),
+    ]);
 
     return { items, total, page, pageSize };
   }
@@ -1927,6 +1953,65 @@ export class OrdersService {
         deliveryStatusCode: info.providerStatusCode?.trim() || null,
         deliveryStatusText: info.providerStatusText?.trim() || null,
       };
+    }
+  }
+
+  private async hydrateOrdersPayment(orders: Order[]): Promise<void> {
+    if (orders.length === 0) {
+      return;
+    }
+
+    const orderIds = orders.map((order) => order.id);
+    const transactions = await this.paymentTransactionRepo.find({
+      where: {
+        workspaceId: orders[0].workspaceId,
+        orderId: In(orderIds),
+      },
+      order: { occurredAt: "DESC", id: "DESC" },
+    });
+    const paymentsByOrderId = new Map<number, PaymentTransaction[]>();
+    for (const transaction of transactions) {
+      const payments = paymentsByOrderId.get(transaction.orderId) ?? [];
+      payments.push(transaction);
+      paymentsByOrderId.set(transaction.orderId, payments);
+    }
+
+    for (const order of orders) {
+      const payments = (paymentsByOrderId.get(order.id) ?? []).map(
+        (transaction) =>
+          Object.assign(transaction, {
+            method:
+              transaction.source === PaymentTransactionSource.online_payment ||
+              transaction.paymentId != null
+                ? ("online_payment" as const)
+                : ("manual" as const),
+          }),
+      );
+      const paidAmount = calculatePaidAmount(payments);
+      const payment: OrderPaymentSummary = {
+        status: order.paymentStatus,
+        statusAt: order.paymentStatusAt,
+        paidAt: order.paidAt,
+        reference: order.paymentReference,
+        manualPaymentMethodId: order.manualPaymentMethodId,
+        paidAmount,
+        remainingAmount: calculateRemainingAmount(
+          order.totalAmount,
+          paidAmount,
+        ),
+        payments,
+      };
+      (order as unknown as { payment: OrderPaymentSummary }).payment = payment;
+
+      delete (order as unknown as { paymentStatus?: OrderPaymentStatus })
+        .paymentStatus;
+      delete (order as unknown as { paymentStatusAt?: Date | null })
+        .paymentStatusAt;
+      delete (order as unknown as { paidAt?: Date | null }).paidAt;
+      delete (order as unknown as { paymentReference?: string | null })
+        .paymentReference;
+      delete (order as unknown as { manualPaymentMethodId?: number | null })
+        .manualPaymentMethodId;
     }
   }
 

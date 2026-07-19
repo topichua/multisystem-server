@@ -18,6 +18,7 @@ import { WorkspaceMember } from "./workspace-member.entity";
 @Index("IDX_conversations_group_id", ["groupId"])
 @Index("IDX_conversations_responsible_member_id", ["responsibleMemberId"])
 @Index("IDX_conversations_workspace_id", ["workspaceId"])
+@Index("IDX_conversations_workspace_created_at", ["workspaceId", "createdAt"])
 @Check(`"source" IN (1, 2)`)
 export class Conversation {
   @PrimaryGeneratedColumn({ name: "id" })
@@ -28,6 +29,14 @@ export class Conversation {
 
   @Column({ name: "external_id", type: "varchar", length: 255 })
   externalId: string;
+
+  /** When the conversation row was first created (not last activity). */
+  @Column({
+    name: "created_at",
+    type: "timestamptz",
+    default: () => "now()",
+  })
+  createdAt: Date;
 
   @Column({ name: "inst_updated_at", type: "timestamptz" })
   instUpdatedAt: Date;

@@ -14,6 +14,13 @@ export class ManualPaymentTransactionDto {
   @ApiProperty()
   type!: string;
 
+  @ApiProperty({
+    enum: ["online_payment", "manual"],
+    description:
+      "`online_payment` for provider payment links; `manual` for cash/transfer. Online payments cannot be confirmed manually.",
+  })
+  method!: "online_payment" | "manual";
+
   @ApiProperty()
   amount!: number;
 
