@@ -55,6 +55,7 @@ import {
 } from "./products.service";
 import type { ProductMedia } from "../database/entities";
 import { ProductMediaType } from "../database/entities/product-media-type.enum";
+import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
 
 type UploadedImageFile = {
   buffer: Buffer;
@@ -73,6 +74,7 @@ export class ProductsController {
     private readonly productMedia: ProductMediaService,
     private readonly uploadMedia: UploadMediaService,
     private readonly inventory: InventoryService,
+    private readonly productAuthz: ProductAuthorizationService,
   ) {}
 
   @Get()
@@ -149,6 +151,11 @@ export class ProductsController {
     @UploadedFile() image?: UploadedImageFile,
   ): Promise<UploadMediaResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireWrite(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     if (!image) {
       throw new BadRequestException("Multipart field `image` is required.");
     }
@@ -168,6 +175,11 @@ export class ProductsController {
     @Param("id", ParseIntPipe) id: number,
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireWrite(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     await this.uploadMedia.deleteForWorkspace(workspaceId, id);
   }
@@ -179,6 +191,11 @@ export class ProductsController {
     @Query("variantId") variantIdRaw?: string,
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireRead(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     const variantId = this.parseOptionalVariantId(variantIdRaw);
     return this.productMedia.getEffectiveMedia(workspaceId, id, variantId);
@@ -190,6 +207,11 @@ export class ProductsController {
     @Param("id", ParseIntPipe) id: number,
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireRead(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     return this.productMedia.getProductMedia(workspaceId, id);
   }
@@ -201,6 +223,11 @@ export class ProductsController {
     @Body() dto: ReplaceProductMediaRequestDto,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireWrite(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     await this.productMedia.replaceMedia(workspaceId, ownerId, id, dto.items);
     return this.products.findOneForOwner(ownerId, id);
@@ -213,6 +240,11 @@ export class ProductsController {
     @Param("variantId", ParseIntPipe) variantId: number,
   ): Promise<ProductMedia[]> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireRead(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     return this.productMedia.getVariantMedia(workspaceId, id, variantId);
   }
@@ -225,6 +257,11 @@ export class ProductsController {
     @Body() dto: ReplaceProductMediaRequestDto,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireWrite(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     const workspaceId = await this.products.getWorkspaceIdForOwner(ownerId);
     await this.productMedia.replaceVariantMedia(
       workspaceId,
@@ -429,6 +466,11 @@ export class ProductsController {
     @UploadedFile() image?: UploadedImageFile,
   ): Promise<ProductDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
+    await this.productAuthz.requireWrite(
+      ownerId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
     const headers = req.headers as Record<
       string,
       string | string[] | undefined

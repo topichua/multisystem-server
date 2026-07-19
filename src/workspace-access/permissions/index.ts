@@ -1,4 +1,8 @@
-export { PERMISSION_KEYS, type PermissionKey } from "./permission-keys";
+export {
+  PRODUCT_CHILD_PERMISSION_KEYS,
+  PERMISSION_KEYS,
+  type PermissionKey,
+} from "./permission-keys";
 export {
   PERMISSION_OPTION_KEYS,
   type PermissionOptionKey,
@@ -10,6 +14,7 @@ export {
 } from "./integration-grant-permissions";
 export {
   canAssignConversationResponsibility,
+  canManageProductReferences,
   canTakeChat,
   getIntegrationGrant,
   hasBooleanPermission,
@@ -19,6 +24,7 @@ export {
 } from "./permissions-resolver";
 export type {
   ResolvedIntegrationGrant,
+  ResolvedProductReferenceGrant,
   ResolvedUserPermissions,
   VisibilityScope,
 } from "./resolved-permissions.type";

@@ -8,6 +8,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Not, Repository } from "typeorm";
 import { Product, ProductCategory } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
 import type { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
 import type { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
@@ -66,9 +67,11 @@ export class CategoriesService {
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly productAuthz: ProductAuthorizationService,
   ) {}
 
   async findTreeForOwner(ownerId: number): Promise<CategoryTreeNodeDto[]> {
+    await this.productAuthz.requireRead(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const rows = await this.categoryRepo.find({
@@ -173,6 +176,7 @@ export class CategoriesService {
     ownerId: number,
     dto: CreateCategoryRequestDto,
   ): Promise<CategoryDetailDto> {
+    await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const name = dto.name.trim();
@@ -211,6 +215,7 @@ export class CategoriesService {
     id: number,
     dto: UpdateCategoryRequestDto,
   ): Promise<CategoryDetailDto> {
+    await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
@@ -266,6 +271,7 @@ export class CategoriesService {
   }
 
   async removeForOwner(ownerId: number, id: number): Promise<void> {
+    await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({

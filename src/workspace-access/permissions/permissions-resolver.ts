@@ -1,8 +1,14 @@
 import type { IntegrationType } from "../../integrations/integration-type";
-import type { PermissionKey } from "./permission-keys";
+import {
+  PRODUCT_CHILD_PERMISSION_KEYS,
+  type PermissionKey,
+} from "./permission-keys";
 import type { PermissionOptionKey } from "./permission-option-keys";
 import { getPermissionOptionValue } from "./permission-options.util";
-import type { ResolvedIntegrationGrant } from "./resolved-permissions.type";
+import type {
+  ResolvedIntegrationGrant,
+  ResolvedProductReferenceGrant,
+} from "./resolved-permissions.type";
 import type {
   ResolvedUserPermissions,
   VisibilityScope,
@@ -13,10 +19,15 @@ export type RawRolePermissions = {
   permissionOptions: Record<string, string> | null | undefined;
   permissionOptionLists: Record<string, string[]> | null | undefined;
   integrationGrants?: ResolvedIntegrationGrant[];
+  productReferenceGrants?: ResolvedProductReferenceGrant[];
 };
 
 function hasKey(keys: Set<string>, key: PermissionKey): boolean {
   return keys.has(key);
+}
+
+function hasAnyProductChildKey(keys: Set<string>): boolean {
+  return PRODUCT_CHILD_PERMISSION_KEYS.some((key) => keys.has(key));
 }
 
 function optionValue(
@@ -37,10 +48,12 @@ function visibilityScope(
 /** Workspace owners bypass role restrictions. */
 export function resolveOwnerPermissions(
   integrationGrants: ResolvedIntegrationGrant[] = [],
+  productReferenceGrants: ResolvedProductReferenceGrant[] = [],
 ): ResolvedUserPermissions {
   return {
     isOwner: true,
     products: {
+      enabled: true,
       view: true,
       createAndEdit: true,
       customFieldsManagement: true,
@@ -48,6 +61,7 @@ export function resolveOwnerPermissions(
       aiImport: true,
       inventoryView: true,
       inventoryManage: true,
+      referencesManagement: true,
     },
     orders: {
       view: true,
@@ -81,6 +95,7 @@ export function resolveOwnerPermissions(
       manualMethodsManage: true,
     },
     integrationGrants,
+    productReferenceGrants,
   };
 }
 
@@ -88,17 +103,28 @@ export function resolveRolePermissions(
   raw: RawRolePermissions,
 ): ResolvedUserPermissions {
   const keys = new Set((raw.permissions ?? []).map((k) => k.trim()));
+  const enabled =
+    hasKey(keys, "products.enabled") || hasAnyProductChildKey(keys);
+  const inventoryManage =
+    enabled && hasKey(keys, "products.inventory.manage");
+  const inventoryView =
+    enabled &&
+    (hasKey(keys, "products.inventory.view") || inventoryManage);
 
   return {
     isOwner: false,
     products: {
-      view: hasKey(keys, "products.read"),
-      createAndEdit: hasKey(keys, "products.write"),
-      customFieldsManagement: hasKey(keys, "products.custom_fields"),
-      categoryManagement: hasKey(keys, "products.category"),
-      aiImport: hasKey(keys, "products.ai_import"),
-      inventoryView: hasKey(keys, "products.inventory.view"),
-      inventoryManage: hasKey(keys, "products.inventory.manage"),
+      enabled,
+      view: enabled && hasKey(keys, "products.read"),
+      createAndEdit: enabled && hasKey(keys, "products.write"),
+      customFieldsManagement:
+        enabled && hasKey(keys, "products.custom_fields"),
+      categoryManagement: enabled && hasKey(keys, "products.category"),
+      aiImport: enabled && hasKey(keys, "products.ai_import"),
+      inventoryView,
+      inventoryManage,
+      referencesManagement:
+        enabled && hasKey(keys, "products.references.manage"),
     },
     orders: {
       view: hasKey(keys, "orders.read"),
@@ -144,6 +170,7 @@ export function resolveRolePermissions(
       manualMethodsManage: hasKey(keys, "payments.manual_methods.manage"),
     },
     integrationGrants: raw.integrationGrants ?? [],
+    productReferenceGrants: raw.productReferenceGrants ?? [],
   };
 }
 
@@ -195,6 +222,30 @@ export function canTakeChat(
   );
 }
 
+export function canManageProductReferences(
+  resolved: ResolvedUserPermissions,
+  integrationType: IntegrationType,
+  integrationId: number,
+): boolean {
+  if (resolved.isOwner) {
+    return true;
+  }
+  if (
+    !resolved.products.enabled ||
+    !resolved.products.referencesManagement
+  ) {
+    return false;
+  }
+  return (
+    resolved.productReferenceGrants.find(
+      (grant) =>
+        grant.integrationType === integrationType &&
+        grant.integrationId === integrationId &&
+        grant.canManage,
+    ) != null
+  );
+}
+
 export function hasBooleanPermission(
   resolved: ResolvedUserPermissions,
   key: PermissionKey,
@@ -203,6 +254,8 @@ export function hasBooleanPermission(
     return true;
   }
   switch (key) {
+    case "products.enabled":
+      return resolved.products.enabled;
     case "products.read":
       return resolved.products.view;
     case "products.write":
@@ -217,6 +270,8 @@ export function hasBooleanPermission(
       return resolved.products.inventoryView;
     case "products.inventory.manage":
       return resolved.products.inventoryManage;
+    case "products.references.manage":
+      return resolved.products.referencesManagement;
     case "orders.read":
       return resolved.orders.view;
     case "orders.create":

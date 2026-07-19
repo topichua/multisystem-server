@@ -10,9 +10,20 @@ export class PermissionOptionItemDto {
 
 export class PermissionCatalogNodeDto {
   @ApiProperty({
-    enum: ["boolean", "option", "group", "integration_grants"],
+    enum: [
+      "boolean",
+      "option",
+      "group",
+      "integration_grants",
+      "product_reference_grants",
+    ],
   })
-  type: "boolean" | "option" | "group" | "integration_grants";
+  type:
+    | "boolean"
+    | "option"
+    | "group"
+    | "integration_grants"
+    | "product_reference_grants";
 
   @ApiProperty({ example: "orders.read" })
   key: string;
@@ -24,10 +35,19 @@ export class PermissionCatalogNodeDto {
   label?: string;
 
   @ApiPropertyOptional({
-    enum: ["permissions", "permissionOptions", "integrationGrants"],
+    enum: [
+      "permissions",
+      "permissionOptions",
+      "integrationGrants",
+      "productReferenceGrants",
+    ],
     description: "Where this field is persisted when saving a role.",
   })
-  storage?: "permissions" | "permissionOptions" | "integrationGrants";
+  storage?:
+    | "permissions"
+    | "permissionOptions"
+    | "integrationGrants"
+    | "productReferenceGrants";
 
   @ApiPropertyOptional({
     description:
@@ -65,9 +85,17 @@ export class PermissionCatalogNodeDto {
 
   @ApiPropertyOptional({
     example: "/workspace/roles/:roleId/integration-grants",
-    description: "API endpoint for type `integration_grants`.",
+    description:
+      "API endpoint for type `integration_grants` or `product_reference_grants`.",
   })
   manageEndpoint?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: "Permission keys that must be enabled for this node.",
+    example: ["products.enabled", "products.references.manage"],
+  })
+  requires?: string[];
 }
 
 export class PermissionModuleDto {
@@ -101,10 +129,13 @@ export class PermissionCatalogStorageDto {
 
   @ApiProperty({ type: PermissionCatalogStorageFieldDto })
   integrationGrants: PermissionCatalogStorageFieldDto;
+
+  @ApiProperty({ type: PermissionCatalogStorageFieldDto })
+  productReferenceGrants: PermissionCatalogStorageFieldDto;
 }
 
 export class PermissionCatalogSchemaDto {
-  @ApiProperty({ example: 1 })
+  @ApiProperty({ example: 2 })
   version: number;
 
   @ApiProperty({ type: [PermissionModuleDto] })

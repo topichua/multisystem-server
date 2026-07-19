@@ -4,6 +4,7 @@ import {
   Product,
   ProductInstagramReference,
   ProductVariant,
+  InstagramIntegration,
 } from "../database/entities";
 import { ProductsModule } from "../products/products.module";
 import { ProductInstagramReferencesByAccountController } from "./product-instagram-references-by-account.controller";
@@ -17,6 +18,7 @@ import { ProductInstagramReferencesService } from "./product-instagram-reference
       ProductInstagramReference,
       Product,
       ProductVariant,
+      InstagramIntegration,
     ]),
   ],
   controllers: [

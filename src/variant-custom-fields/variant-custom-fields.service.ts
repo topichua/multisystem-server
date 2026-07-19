@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -10,13 +9,10 @@ import { Repository, type EntityManager } from "typeorm";
 import {
   ProductVariantCustomFieldValue,
   VariantCustomFieldType,
-  Workspace,
-  WorkspaceMember,
-  WorkspaceMemberStatus,
   WorkspaceVariantCustomField,
   WorkspaceVariantCustomFieldOption,
 } from "../database/entities";
-import type { PermissionKey } from "../workspace-access/permissions/permission-keys";
+import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type {
   CreateVariantCustomFieldDto,
@@ -70,16 +66,14 @@ export class VariantCustomFieldsService {
     private readonly optionRepo: Repository<WorkspaceVariantCustomFieldOption>,
     @InjectRepository(ProductVariantCustomFieldValue)
     private readonly valueRepo: Repository<ProductVariantCustomFieldValue>,
-    @InjectRepository(Workspace)
-    private readonly workspaceRepo: Repository<Workspace>,
-    @InjectRepository(WorkspaceMember)
-    private readonly memberRepo: Repository<WorkspaceMember>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly productAuthz: ProductAuthorizationService,
   ) {}
 
   async listForOwner(
     ownerId: number,
   ): Promise<VariantCustomFieldsListResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.ensureDefaults(workspace.id);
@@ -111,10 +105,10 @@ export class VariantCustomFieldsService {
   ): Promise<VariantCustomFieldDefinitionDto> {
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    await this.assertWorkspacePermission(
+    await this.productAuthz.requireCharacteristicsManage(
       ownerId,
+      undefined,
       workspace.id,
-      "products.custom_fields",
     );
     this.validateOptionsForType(dto.type, dto.options);
 
@@ -148,6 +142,11 @@ export class VariantCustomFieldsService {
     dto: UpdateVariantCustomFieldDto,
   ): Promise<VariantCustomFieldDefinitionDto> {
     const row = await this.requireOwnedField(ownerId, fieldId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      row.workspaceId,
+    );
 
     if (dto.label !== undefined) {
       row.label = dto.label;
@@ -170,6 +169,11 @@ export class VariantCustomFieldsService {
 
   async deleteForOwner(ownerId: number, fieldId: number): Promise<void> {
     const row = await this.requireOwnedField(ownerId, fieldId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      row.workspaceId,
+    );
     await this.fieldRepo.remove(row);
   }
 
@@ -192,10 +196,10 @@ export class VariantCustomFieldsService {
       return existing;
     }
 
-    await this.assertWorkspacePermission(
+    await this.productAuthz.requireCharacteristicsManage(
       ownerId,
+      undefined,
       field.workspaceId,
-      "products.custom_fields",
     );
 
     return this.optionRepo.save(
@@ -210,6 +214,11 @@ export class VariantCustomFieldsService {
     label: string,
   ): Promise<WorkspaceVariantCustomFieldOption> {
     const field = await this.requireOwnedField(ownerId, fieldId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      field.workspaceId,
+    );
     if (field.type !== VariantCustomFieldType.options) {
       throw new BadRequestException("Field is not an options type");
     }
@@ -243,6 +252,11 @@ export class VariantCustomFieldsService {
     optionId: number,
   ): Promise<void> {
     const field = await this.requireOwnedField(ownerId, fieldId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      field.workspaceId,
+    );
     if (field.type !== VariantCustomFieldType.options) {
       throw new BadRequestException("Field is not an options type");
     }
@@ -596,10 +610,10 @@ export class VariantCustomFieldsService {
       return existing;
     }
 
-    await this.assertWorkspacePermission(
+    await this.productAuthz.requireCharacteristicsManage(
       ownerId,
+      undefined,
       workspaceId,
-      "products.custom_fields",
     );
 
     const storageType = apiTypeToStorageType(apiType);
@@ -644,10 +658,10 @@ export class VariantCustomFieldsService {
       return existing;
     }
 
-    await this.assertWorkspacePermission(
+    await this.productAuthz.requireCharacteristicsManage(
       ownerId,
+      undefined,
       workspaceId,
-      "products.custom_fields",
     );
 
     return optionRepo.save(
@@ -737,38 +751,6 @@ export class VariantCustomFieldsService {
       .where("o.field_id = :fieldId", { fieldId })
       .andWhere("lower(btrim(o.label)) = :normalized", { normalized })
       .getOne();
-  }
-
-  private async assertWorkspacePermission(
-    userId: number,
-    workspaceId: number,
-    permission: PermissionKey,
-  ): Promise<void> {
-    const workspace = await this.workspaceRepo.findOne({
-      where: { id: workspaceId },
-    });
-    if (!workspace) {
-      throw new NotFoundException("Workspace not found");
-    }
-    if (workspace.ownerId === userId) {
-      return;
-    }
-
-    const member = await this.memberRepo.findOne({
-      where: {
-        workspaceId,
-        userId,
-        status: WorkspaceMemberStatus.ACTIVE,
-      },
-      relations: { role: true },
-    });
-    const permissions = member?.role?.permissions ?? [];
-    if (
-      !permissions.includes(permission) &&
-      !permissions.includes("products.custom_fields")
-    ) {
-      throw new ForbiddenException(`Missing permission: ${permission}`);
-    }
   }
 
   private async requireOwnedField(

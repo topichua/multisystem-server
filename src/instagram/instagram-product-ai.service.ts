@@ -27,6 +27,7 @@ import {
   buildProductFromInstagramUserText,
 } from "./prompts/product-from-instagram-media.prompt";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
+import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 
 function pickVisualAssetUrl(detail: InstagramGraphMediaDetail): string | null {
@@ -126,12 +127,14 @@ export class InstagramProductAiService {
     private readonly categories: CategoriesService,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly variantFields: VariantCustomFieldsService,
+    private readonly productAuthz: ProductAuthorizationService,
   ) {}
 
   async analyzeProductPreviewFromMedia(
     ownerId: number,
     instagramMediaId: string,
   ): Promise<InstagramAnalyzeProductPreviewDto> {
+    await this.productAuthz.requireAiImport(ownerId);
     const { parsed, detail } = await this.runOpenAiProductAnalysis(
       ownerId,
       instagramMediaId,

@@ -72,6 +72,7 @@ import { InstagramUsersService } from "../instagram/instagram-users.service";
 import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
+import { resolveWorkspaceMemberColor } from "../workspace-access/workspace-member-color.util";
 import {
   canAssignConversationResponsibility,
   canTakeChat,
@@ -87,6 +88,7 @@ import type {
 } from "./dto/http/conversations-list-response.dto";
 import type { User } from "../database/entities/user.entity";
 import type { ConversationEventsListResponseDto } from "./dto/http/conversation-events-list-response.dto";
+import type { ConversationResponsibleMembersResponseDto } from "./dto/http/conversation-responsible-members-response.dto";
 import type { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import type { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import type { ProductSuggestionItemDto } from "./dto/http/conversation-product-suggestions-response.dto";
@@ -1031,6 +1033,95 @@ export class ConversationsService {
       workspaceId,
       permissions,
     );
+  }
+
+  /**
+   * Active workspace members who may be assigned as responsible for this chat
+   * (owner / conversations.full_access / matching integration `canTakeChat`).
+   * Caller must be allowed to assign responsibility on this conversation.
+   */
+  async listAssignableResponsibleMembersForConversation(
+    actorUserId: number,
+    conversationId: number,
+    context: { sessionWorkspaceId: number; appRole?: string },
+  ): Promise<ConversationResponsibleMembersResponseDto> {
+    const workspaceId = await this.resolveWorkspaceIdForConversationList(
+      actorUserId,
+      context.sessionWorkspaceId,
+    );
+    const conversation = await this.loadConversationInWorkspace(
+      workspaceId,
+      String(conversationId),
+    );
+    if (!conversation) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    await this.assertCanAssignConversationResponsibility(
+      actorUserId,
+      conversation,
+      workspaceId,
+    );
+
+    const integration = await this.resolveConversationIntegration(
+      conversation,
+      workspaceId,
+    );
+    if (integration == null) {
+      throw new BadRequestException(
+        "Conversation integration could not be resolved for assignment eligibility",
+      );
+    }
+
+    const members = await this.workspaceMemberRepo.find({
+      where: {
+        workspaceId,
+        status: WorkspaceMemberStatus.ACTIVE,
+      },
+      relations: ["user"],
+      order: { id: "ASC" },
+    });
+
+    const items: ConversationResponsibleMembersResponseDto["items"] = [];
+    for (const member of members) {
+      if (!member.user) {
+        continue;
+      }
+      const permissions = await this.workspacePermissions.getResolvedForUser(
+        member.userId,
+        undefined,
+        workspaceId,
+      );
+      const eligible =
+        permissions.isOwner ||
+        permissions.conversations.fullAccess ||
+        canTakeChat(
+          permissions,
+          integration.integrationType,
+          integration.integrationId,
+        );
+      if (!eligible) {
+        continue;
+      }
+
+      const color = resolveWorkspaceMemberColor(
+        member.userId,
+        workspaceId,
+        member.user.avatarSrc,
+        member.color,
+      );
+      items.push({
+        id: member.id,
+        userId: member.userId,
+        name: this.resolveResponsibleUserDisplayName(member.user),
+        email: member.user.email,
+        avatar: member.user.avatarSrc ?? null,
+        ...(color ? { color } : {}),
+        work_status: member.workStatus,
+      });
+    }
+
+    return { items };
   }
 
   async listConversationEventsForOwner(

@@ -78,6 +78,7 @@ export {
   WorkspaceRoleIntegrationGrant,
   type WorkspaceRoleIntegrationGrantType,
 } from "./workspace-role-integration-grant.entity";
+export { WorkspaceRoleProductReferenceGrant } from "./workspace-role-product-reference-grant.entity";
 export { WorkspaceMember } from "./workspace-member.entity";
 export { WorkspaceMemberStatus } from "./workspace-member-status.enum";
 export { WorkspaceMemberWorkStatus } from "./workspace-member-work-status.enum";

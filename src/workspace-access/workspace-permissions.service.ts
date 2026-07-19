@@ -11,6 +11,7 @@ import {
 import type { ResolvedUserPermissions } from "./permissions/resolved-permissions.type";
 import { WorkspaceAccessContextService } from "./workspace-access-context.service";
 import { WorkspaceRoleIntegrationGrantsService } from "./workspace-role-integration-grants.service";
+import { WorkspaceRoleProductReferenceGrantsService } from "./workspace-role-product-reference-grants.service";
 
 @Injectable()
 export class WorkspacePermissionsService {
@@ -19,6 +20,7 @@ export class WorkspacePermissionsService {
     private readonly memberRepo: Repository<WorkspaceMember>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly integrationGrants: WorkspaceRoleIntegrationGrantsService,
+    private readonly productReferenceGrants: WorkspaceRoleProductReferenceGrantsService,
   ) {}
 
   async getResolvedForUser(
@@ -34,6 +36,9 @@ export class WorkspacePermissionsService {
     if (workspace.ownerId === userId) {
       return resolveOwnerPermissions(
         await this.integrationGrants.listResolvedGrantsForWorkspace(
+          workspace.id,
+        ),
+        await this.productReferenceGrants.listResolvedGrantsForWorkspace(
           workspace.id,
         ),
       );
@@ -53,6 +58,7 @@ export class WorkspacePermissionsService {
         permissionOptions: {},
         permissionOptionLists: {},
         integrationGrants: [],
+        productReferenceGrants: [],
       });
     }
 
@@ -71,6 +77,10 @@ export class WorkspacePermissionsService {
           workspace.id,
           member.role.id,
           member.role.permissions,
+        ),
+      productReferenceGrants:
+        await this.productReferenceGrants.listResolvedGrantsForRole(
+          member.role.id,
         ),
     });
   }

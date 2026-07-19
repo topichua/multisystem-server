@@ -59,11 +59,22 @@ export type PermissionCatalogIntegrationGrantsItem = {
   items: PermissionCatalogIntegrationGrantField[];
 };
 
+export type PermissionCatalogProductReferenceGrantsItem = {
+  type: "product_reference_grants";
+  key: "product_reference_grants";
+  label: string;
+  description: string;
+  storage: "productReferenceGrants";
+  manageEndpoint: "/workspace/roles/:roleId/product-reference-grants";
+  requires: PermissionKey[];
+};
+
 export type PermissionCatalogNode =
   | PermissionCatalogBooleanItem
   | PermissionCatalogOptionItem
   | PermissionCatalogGroupItem
-  | PermissionCatalogIntegrationGrantsItem;
+  | PermissionCatalogIntegrationGrantsItem
+  | PermissionCatalogProductReferenceGrantsItem;
 
 export type PermissionModuleDefinition = {
   module: string;
@@ -108,10 +119,10 @@ function integrationGrantsSchema(): PermissionCatalogIntegrationGrantsItem {
   return {
     type: "integration_grants",
     key: "integration_grants",
-    label: "By integration",
+    label: "За інтеграцією",
     description:
-      "Grant access per Instagram/Telegram integration with conversation permissions. " +
-      "New integrations are denied until granted.",
+      "Доступ до розмов по кожній інтеграції Instagram/Telegram. " +
+      "Нові інтеграції заборонені, доки їх не надано.",
     storage: "integrationGrants",
     manageEndpoint: "/workspace/roles/:roleId/integration-grants",
     items: INTEGRATION_GRANT_PERMISSION_CATALOG.map((field) => ({
@@ -128,51 +139,76 @@ function integrationGrantsSchema(): PermissionCatalogIntegrationGrantsItem {
   };
 }
 
+function productReferenceGrantsSchema(): PermissionCatalogProductReferenceGrantsItem {
+  return {
+    type: "product_reference_grants",
+    key: "product_reference_grants",
+    label: "За каналом",
+    description:
+      "Керування референсами по інтеграціях робочого простору (Instagram, Telegram, Nova Poshta тощо). " +
+      "Потрібне право «Керування референсами».",
+    storage: "productReferenceGrants",
+    manageEndpoint: "/workspace/roles/:roleId/product-reference-grants",
+    requires: ["products.enabled", "products.references.manage"],
+  };
+}
+
 /** Static catalog for API + role validation (not stored in DB). */
 export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
   {
     module: "products",
-    label: "Product",
+    label: "Товари",
     items: [
-      booleanPermission("products.read", "View products"),
-      booleanPermission("products.write", "Create and edit products"),
-      booleanPermission("products.custom_fields", "Custom fields management"),
-      booleanPermission("products.category", "Category management"),
-      booleanPermission("products.ai_import", "AI product import"),
+      booleanPermission("products.enabled", "Товари"),
+      booleanPermission("products.read", "Перегляд товарів"),
       booleanPermission(
-        "products.inventory.view",
-        "View inventory stock and movements",
+        "products.write",
+        "Створення та редагування товарів",
       ),
       booleanPermission(
-        "products.inventory.manage",
-        "Manage inventory movements",
+        "products.custom_fields",
+        "Керування характеристиками",
       ),
+      booleanPermission("products.category", "Керування категоріями"),
+      booleanPermission("products.inventory.manage", "Керування інвентарем"),
+      booleanPermission(
+        "products.references.manage",
+        "Керування референсами",
+      ),
+      productReferenceGrantsSchema(),
     ],
   },
   {
     module: "orders",
-    label: "Order",
+    label: "Замовлення",
     items: [
-      booleanPermission("orders.read", "View orders"),
+      booleanPermission("orders.read", "Перегляд замовлень"),
       {
         type: "group",
         key: "orders.scope",
-        label: "Visibility",
-        scope: optionPermission("orders.visibility", "Order visibility scope", {
-          all: "All",
-          mine: "Mine",
-        }),
+        label: "Видимість",
+        scope: optionPermission(
+          "orders.visibility",
+          "Обсяг видимості замовлень",
+          {
+            all: "Усі",
+            mine: "Мої",
+          },
+        ),
         items: [
-          booleanPermission("orders.create", "Create order"),
-          booleanPermission("orders.edit_status", "Edit order status"),
-          booleanPermission("orders.edit", "Edit order"),
+          booleanPermission("orders.create", "Створення замовлення"),
+          booleanPermission(
+            "orders.edit_status",
+            "Редагування статусу замовлення",
+          ),
+          booleanPermission("orders.edit", "Редагування замовлення"),
           booleanPermission(
             "orders.automations.view",
-            "View order status automations",
+            "Перегляд автоматизацій статусів",
           ),
           booleanPermission(
             "orders.automations.manage",
-            "Manage order status automations",
+            "Керування автоматизаціями статусів",
           ),
         ],
       },
@@ -180,66 +216,78 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
   },
   {
     module: "conversations",
-    label: "Conversations",
+    label: "Розмови",
     items: [
       booleanPermission(
         "conversations.full_access",
-        "Full access to all integrations (read, write, Instagram comments). Ignores per-integration grants.",
+        "Повний доступ до всіх інтеграцій (читання, запис, коментарі Instagram). Ігнорує права по інтеграціях.",
       ),
       integrationGrantsSchema(),
     ],
   },
   {
     module: "clients",
-    label: "Clients",
-    items: [booleanPermission("clients.read", "View client list")],
+    label: "Клієнти",
+    items: [booleanPermission("clients.read", "Перегляд списку клієнтів")],
   },
   {
     module: "workspace",
-    label: "Workspace",
+    label: "Робочий простір",
     items: [
-      booleanPermission("workspace.chat_groups", "Chat groups management"),
-      booleanPermission("workspace.templates", "Templates management"),
-      booleanPermission("workspace.integrations", "Integrations"),
-      booleanPermission("workspace.roles", "Roles management"),
-      booleanPermission("workspace.members.read", "View members"),
-      booleanPermission("workspace.members.invite", "Invite members"),
-      booleanPermission("workspace.members.delete", "Delete members"),
+      booleanPermission(
+        "workspace.chat_groups",
+        "Керування групами чатів",
+      ),
+      booleanPermission("workspace.templates", "Керування шаблонами"),
+      booleanPermission("workspace.integrations", "Інтеграції"),
+      booleanPermission("workspace.roles", "Керування ролями"),
+      booleanPermission("workspace.members.read", "Перегляд учасників"),
+      booleanPermission("workspace.members.invite", "Запрошення учасників"),
+      booleanPermission("workspace.members.delete", "Видалення учасників"),
     ],
   },
   {
     module: "payments",
-    label: "Payments",
+    label: "Платежі",
     items: [
       booleanPermission(
         "payments.integrations.view",
-        "View payment integrations",
+        "Перегляд платіжних інтеграцій",
       ),
       booleanPermission(
         "payments.integrations.manage",
-        "Manage payment integrations and credentials",
+        "Керування платіжними інтеграціями та обліковими даними",
       ),
-      booleanPermission("payments.links.create", "Create payment links"),
-      booleanPermission("payments.links.cancel", "Cancel payment links"),
-      booleanPermission("payments.view", "View payments and transactions"),
+      booleanPermission(
+        "payments.links.create",
+        "Створення платіжних посилань",
+      ),
+      booleanPermission(
+        "payments.links.cancel",
+        "Скасування платіжних посилань",
+      ),
+      booleanPermission(
+        "payments.view",
+        "Перегляд платежів і транзакцій",
+      ),
       booleanPermission(
         "payments.manual.create",
-        "Record manual/offline payments",
+        "Запис ручних / офлайн-платежів",
       ),
       booleanPermission(
         "payments.manual_methods.view",
-        "View manual payment methods (IBAN / card)",
+        "Перегляд ручних способів оплати (IBAN / картка)",
       ),
       booleanPermission(
         "payments.manual_methods.manage",
-        "Manage manual payment methods",
+        "Керування ручними способами оплати",
       ),
     ],
   },
   {
     module: "analytics",
-    label: "Analytics",
-    items: [booleanPermission("analytics.read", "View analytics")],
+    label: "Аналітика",
+    items: [booleanPermission("analytics.read", "Перегляд аналітики")],
   },
 ];
 
@@ -250,19 +298,20 @@ export type PermissionCatalogStorageFieldSchema = {
 };
 
 export type PermissionCatalogSchema = {
-  version: 1;
+  version: 2;
   modules: PermissionModuleDefinition[];
   storage: {
     permissions: PermissionCatalogStorageFieldSchema;
     permissionOptions: PermissionCatalogStorageFieldSchema;
     integrationGrants: PermissionCatalogStorageFieldSchema;
+    productReferenceGrants: PermissionCatalogStorageFieldSchema;
   };
 };
 
 /** Full permission schema for GET /permissions/catalog. */
 export function getPermissionCatalogSchema(): PermissionCatalogSchema {
   return {
-    version: 1,
+    version: 2,
     modules: PERMISSION_MODULES,
     storage: {
       permissions: {
@@ -278,6 +327,12 @@ export function getPermissionCatalogSchema(): PermissionCatalogSchema {
         description:
           "Per-integration grants with nested conversation permissions.",
         endpoint: "/workspace/roles/:roleId/integration-grants",
+      },
+      productReferenceGrants: {
+        type: "array",
+        description:
+          "Per-integration grants for product reference management.",
+        endpoint: "/workspace/roles/:roleId/product-reference-grants",
       },
     },
   };

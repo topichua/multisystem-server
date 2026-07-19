@@ -46,6 +46,17 @@ function toCatalogNodeDto(
       })),
     };
   }
+  if (node.type === "product_reference_grants") {
+    return {
+      type: "product_reference_grants",
+      key: node.key,
+      label: node.label,
+      description: node.description,
+      storage: node.storage,
+      manageEndpoint: node.manageEndpoint,
+      requires: [...node.requires],
+    };
+  }
   if (node.type === "option") {
     return {
       type: "option",
@@ -75,7 +86,7 @@ export class PermissionsCatalogController {
     summary: "Permission schema for role builder UI",
     description:
       "Returns PERMISSION_MODULES as a versioned schema with storage hints " +
-      "(permissions, permissionOptions, integrationGrants).",
+      "(permissions, permissionOptions, integrationGrants, productReferenceGrants).",
   })
   @ApiOkResponse({ type: PermissionsCatalogResponseDto })
   getCatalog(): PermissionsCatalogResponseDto {

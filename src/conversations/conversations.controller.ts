@@ -38,6 +38,7 @@ import { InstagramMessagesResponseDto } from "./dto/http/instagram-messages-resp
 import { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
 import { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import { ConversationEventsListResponseDto } from "./dto/http/conversation-events-list-response.dto";
+import { ConversationResponsibleMembersResponseDto } from "./dto/http/conversation-responsible-members-response.dto";
 import { ProductSuggestionItemDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
 import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-message-request.dto";
@@ -648,6 +649,48 @@ export class ConversationsController {
       ownerId,
       numericId,
       dto,
+    );
+  }
+
+  @Get(":id/responsible-members")
+  @ApiOperation({
+    summary: "List members assignable as responsible for a conversation",
+    description:
+      "Returns active workspace members who can be assigned as responsible for this conversation, " +
+      "based on conversation source/integration and each member's effective grants " +
+      "(`canTakeChat`, or owner / conversations.full_access). " +
+      "Caller must have `assignResponsibility` on the conversation integration (or owner / full_access).",
+  })
+  @ApiOkResponse({ type: ConversationResponsibleMembersResponseDto })
+  async listResponsibleMembers(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ConversationResponsibleMembersResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    return this.conversationsService.listAssignableResponsibleMembersForConversation(
+      ownerId,
+      numericId,
+      {
+        sessionWorkspaceId,
+        appRole: req.user?.role,
+      },
     );
   }
 

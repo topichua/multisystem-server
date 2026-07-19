@@ -148,6 +148,7 @@ import { BackfillPendingOnlinePaymentTransactions1744200000150 } from "./migrati
 import { BackfillConversationCreatedEvents1744200000151 } from "./migrations/1744200000151-BackfillConversationCreatedEvents";
 import { WorkspaceMemberWorkStatus1744200000152 } from "./migrations/1744200000152-WorkspaceMemberWorkStatus";
 import { DropWorkspaceMemberCanBeAssignedToChat1744200000153 } from "./migrations/1744200000153-DropWorkspaceMemberCanBeAssignedToChat";
+import { ProductPermissionsAndReferenceGrants1744200000154 } from "./migrations/1744200000154-ProductPermissionsAndReferenceGrants";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -183,6 +184,7 @@ import {
   WorkspaceMember,
   WorkspaceRole,
   WorkspaceRoleIntegrationGrant,
+  WorkspaceRoleProductReferenceGrant,
   WebhookEvent,
   NovaPoshtaIntegration,
   RegistrationToken,
@@ -259,6 +261,7 @@ const entities = [
   Workspace,
   WorkspaceRole,
   WorkspaceRoleIntegrationGrant,
+  WorkspaceRoleProductReferenceGrant,
   WorkspaceMember,
   WorkspaceInvitation,
   InstagramIntegration,
@@ -502,6 +505,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       BackfillConversationCreatedEvents1744200000151,
       WorkspaceMemberWorkStatus1744200000152,
       DropWorkspaceMemberCanBeAssignedToChat1744200000153,
+      ProductPermissionsAndReferenceGrants1744200000154,
     ],
   };
 }

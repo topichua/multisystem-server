@@ -49,6 +49,7 @@ import { ProductMediaService } from "./product-media.service";
 import { mediaSort, pickMainMediaUrl } from "./product-media.util";
 import { UploadMediaService } from "./upload-media.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
 import {
   buildVariantTitleFromFields,
@@ -259,6 +260,7 @@ export class ProductsService {
     private readonly variantCustomFields: VariantCustomFieldsService,
     private readonly workspaceSettings: WorkspaceSettingsService,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly productAuthz: ProductAuthorizationService,
     private readonly inventory: InventoryService,
   ) {}
 
@@ -270,6 +272,7 @@ export class ProductsService {
     ownerId: number,
     query: ListProductsQueryDto,
   ): Promise<ProductListResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const pageSize = query.pageSize ?? query.limit ?? 50;
@@ -389,6 +392,7 @@ export class ProductsService {
     ownerId: number,
     query: ListCatalogVariantsQueryDto,
   ): Promise<CatalogVariantListResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const pageSize = query.pageSize ?? 50;
@@ -459,6 +463,7 @@ export class ProductsService {
     ownerId: number,
     query: ListProductsQueryDto,
   ): Promise<ProductVariantListResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const pageSize = query.pageSize ?? query.limit ?? 50;
@@ -529,6 +534,7 @@ export class ProductsService {
     ownerId: number,
     productId: number,
   ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
@@ -566,6 +572,7 @@ export class ProductsService {
   }
 
   async createForOwner(ownerId: number, dto: CreateProductDto): Promise<void> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const defaultCurrency =
@@ -685,6 +692,7 @@ export class ProductsService {
     productId: number,
     dto: UpdateProductDto,
   ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
@@ -712,6 +720,7 @@ export class ProductsService {
     productId: number,
     dto: UpdateProductDto,
   ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
@@ -765,6 +774,7 @@ export class ProductsService {
   }
 
   async removeForOwner(ownerId: number, productId: number): Promise<void> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.productRepo.findOne({
@@ -793,6 +803,7 @@ export class ProductsService {
     productId: number,
     dto: CreateProductVariantDto,
   ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.requireProduct(workspace.id, productId);
@@ -847,6 +858,7 @@ export class ProductsService {
     variantId: number,
     dto: UpdateProductVariantDto,
   ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
@@ -916,6 +928,7 @@ export class ProductsService {
     productId: number,
     variantId: number,
   ): Promise<void> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
@@ -942,6 +955,7 @@ export class ProductsService {
     productId: number,
     dto: CreateProductMediaDto,
   ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.productMedia.addMedia(workspace.id, ownerId, {
@@ -961,6 +975,7 @@ export class ProductsService {
     mediaId: number,
     dto: UpdateProductMediaDto,
   ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
@@ -995,6 +1010,7 @@ export class ProductsService {
     productId: number,
     mediaId: number,
   ): Promise<void> {
+    await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);

@@ -2,6 +2,11 @@ import { ApiProperty } from "@nestjs/swagger";
 import { INTEGRATION_TYPES } from "../../../integrations/integration-type";
 
 export class ResolvedProductsPermissionsDto {
+  @ApiProperty({
+    description: "Hard parent gate for all Products features.",
+  })
+  enabled: boolean;
+
   @ApiProperty()
   view: boolean;
 
@@ -22,6 +27,11 @@ export class ResolvedProductsPermissionsDto {
 
   @ApiProperty()
   inventoryManage: boolean;
+
+  @ApiProperty({
+    description: "Whether the role may manage product references at all.",
+  })
+  referencesManagement: boolean;
 }
 
 export class ResolvedOrdersPermissionsDto {
@@ -113,6 +123,17 @@ export class ResolvedIntegrationGrantItemDto {
   instagramCommentsWrite: boolean;
 }
 
+export class ResolvedProductReferenceGrantItemDto {
+  @ApiProperty({ enum: INTEGRATION_TYPES })
+  integrationType: string;
+
+  @ApiProperty()
+  integrationId: number;
+
+  @ApiProperty()
+  canManage: boolean;
+}
+
 export class ResolvedUserPermissionsResponseDto {
   @ApiProperty()
   isOwner: boolean;
@@ -141,4 +162,11 @@ export class ResolvedUserPermissionsResponseDto {
       "Per-integration grants with conversation permissions. Missing integration = no access.",
   })
   integrationGrants: ResolvedIntegrationGrantItemDto[];
+
+  @ApiProperty({
+    type: [ResolvedProductReferenceGrantItemDto],
+    description:
+      "Per-integration grants for product reference management. Missing integration = denied.",
+  })
+  productReferenceGrants: ResolvedProductReferenceGrantItemDto[];
 }

@@ -8,6 +8,12 @@ export type ResolvedIntegrationGrant = {
   integrationId: number;
 } & IntegrationGrantConversationPermissions;
 
+export type ResolvedProductReferenceGrant = {
+  integrationType: IntegrationType;
+  integrationId: number;
+  canManage: boolean;
+};
+
 /**
  * Fully resolved workspace permissions for the current user.
  * Use this type in services/controllers to access permission flags and scopes.
@@ -15,6 +21,7 @@ export type ResolvedIntegrationGrant = {
 export type ResolvedUserPermissions = {
   isOwner: boolean;
   products: {
+    enabled: boolean;
     view: boolean;
     createAndEdit: boolean;
     customFieldsManagement: boolean;
@@ -22,6 +29,7 @@ export type ResolvedUserPermissions = {
     aiImport: boolean;
     inventoryView: boolean;
     inventoryManage: boolean;
+    referencesManagement: boolean;
   };
   orders: {
     view: boolean;
@@ -68,4 +76,9 @@ export type ResolvedUserPermissions = {
    * Missing integration = no access. New integrations are denied until granted.
    */
   integrationGrants: ResolvedIntegrationGrant[];
+  /**
+   * Per-integration grants for product reference management.
+   * Missing integration = cannot manage references for that channel.
+   */
+  productReferenceGrants: ResolvedProductReferenceGrant[];
 };

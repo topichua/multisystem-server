@@ -2,11 +2,13 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
+  InstagramIntegration,
   Product,
   ProductInstagramReference,
   ProductVariant,
 } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
 import type { CreateProductInstagramReferenceDto } from "./dto/create-product-instagram-reference.dto";
 import type { InstagramPostProductVariantsResponseDto } from "../instagram/dto/instagram-post-product-variants-response.dto";
 import { ProductsService } from "../products/products.service";
@@ -25,7 +27,10 @@ export class ProductInstagramReferencesService {
     private readonly productRepo: Repository<Product>,
     @InjectRepository(ProductVariant)
     private readonly variantRepo: Repository<ProductVariant>,
+    @InjectRepository(InstagramIntegration)
+    private readonly instagramRepo: Repository<InstagramIntegration>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly productAuthz: ProductAuthorizationService,
     private readonly products: ProductsService,
   ) {}
 
@@ -34,6 +39,7 @@ export class ProductInstagramReferencesService {
     instagramAccountId: string,
     workspaceIdParam?: number,
   ): Promise<ProductInstagramReferenceProductIdsResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
       undefined,
@@ -72,6 +78,7 @@ export class ProductInstagramReferencesService {
     postId: string,
     integrationId: number,
   ): Promise<InstagramPostProductVariantsResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const {
       postId: trimmedPostId,
       businessAccountId,
@@ -94,14 +101,17 @@ export class ProductInstagramReferencesService {
     referenceId: number,
     integrationId: number,
   ): Promise<void> {
-    const { postId: trimmedPostId, businessAccountId } =
+    const { postId: trimmedPostId, businessAccountId, workspaceId } =
       await this.resolvePostScope(ownerId, postId, integrationId);
-    const workspace =
-      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    await this.requireReferenceManageForAccount(
+      ownerId,
+      workspaceId,
+      businessAccountId,
+    );
     const ref = await this.referenceRepo.findOne({
       where: {
         id: referenceId,
-        workspaceId: workspace.id,
+        workspaceId,
         postId: trimmedPostId,
         instagramAccountId: businessAccountId,
       },
@@ -186,6 +196,7 @@ export class ProductInstagramReferencesService {
     instagramAccountId: string,
     workspaceIdParam?: number,
   ): Promise<ProductInstagramReferenceListResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace = await this.workspaceContext.requireWorkspaceForOwner(
       ownerId,
       undefined,
@@ -205,6 +216,7 @@ export class ProductInstagramReferencesService {
     ownerId: number,
     productId: number,
   ): Promise<ProductInstagramReferenceListResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
@@ -224,6 +236,11 @@ export class ProductInstagramReferencesService {
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
     const businessAccountId = dto.businessAccountId.trim();
+    await this.requireReferenceManageForAccount(
+      ownerId,
+      workspace.id,
+      businessAccountId,
+    );
     const productVariantId = await this.resolveVariantId(
       productId,
       dto.productVariantId,
@@ -249,17 +266,48 @@ export class ProductInstagramReferencesService {
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     await this.requireProduct(workspace.id, productId);
-    const ref = await this.referenceRepo.findOne({
+    const row = await this.referenceRepo.findOne({
       where: {
         id: referenceId,
-        productId,
         workspaceId: workspace.id,
+        productId,
       },
     });
-    if (!ref) {
-      throw new NotFoundException("Instagram reference not found");
+    if (!row) {
+      throw new NotFoundException("Product Instagram reference not found");
     }
-    await this.referenceRepo.remove(ref);
+    await this.requireReferenceManageForAccount(
+      ownerId,
+      workspace.id,
+      row.instagramAccountId,
+    );
+    await this.referenceRepo.delete({ id: row.id });
+  }
+
+  private async requireReferenceManageForAccount(
+    ownerId: number,
+    workspaceId: number,
+    businessAccountId: string,
+  ): Promise<void> {
+    const accountId = businessAccountId.trim();
+    const integrations = await this.instagramRepo.find({
+      where: { workspaceId },
+    });
+    const integration = integrations.find(
+      (row) =>
+        row.instagramAccountId?.trim() === accountId ||
+        row.pageId?.trim() === accountId,
+    );
+    if (!integration) {
+      throw new NotFoundException(
+        "Instagram integration not found for business account",
+      );
+    }
+    await this.productAuthz.requireReferenceChannelManage(
+      ownerId,
+      "instagram",
+      integration.id,
+    );
   }
 
   private async requireProduct(

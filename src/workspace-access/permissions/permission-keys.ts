@@ -1,8 +1,11 @@
 /**
  * Boolean permission keys. Stored in `workspace_roles.permissions` (jsonb array).
  * Per-integration conversation permissions live on `workspace_role_integration_grants`.
+ * Per-integration product reference permissions live on
+ * `workspace_role_product_reference_grants`.
  */
 export const PERMISSION_KEYS = [
+  "products.enabled",
   "products.read",
   "products.write",
   "products.custom_fields",
@@ -10,6 +13,7 @@ export const PERMISSION_KEYS = [
   "products.ai_import",
   "products.inventory.view",
   "products.inventory.manage",
+  "products.references.manage",
   "orders.read",
   "orders.create",
   "orders.edit_status",
@@ -37,3 +41,15 @@ export const PERMISSION_KEYS = [
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
+
+/** Product child keys used for legacy `products.enabled` backfill/compat. */
+export const PRODUCT_CHILD_PERMISSION_KEYS = [
+  "products.read",
+  "products.write",
+  "products.custom_fields",
+  "products.category",
+  "products.ai_import",
+  "products.inventory.view",
+  "products.inventory.manage",
+  "products.references.manage",
+] as const satisfies readonly PermissionKey[];
