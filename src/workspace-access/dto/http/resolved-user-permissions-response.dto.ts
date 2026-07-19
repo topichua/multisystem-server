@@ -38,8 +38,8 @@ export class ResolvedOrdersPermissionsDto {
   @ApiProperty()
   view: boolean;
 
-  @ApiProperty({ enum: ["all", "mine"] })
-  visibility: "all" | "mine";
+  @ApiProperty({ enum: ["none", "mine", "all"] })
+  visibility: "none" | "mine" | "all";
 
   @ApiProperty()
   create: boolean;

@@ -11,8 +11,8 @@ export type PermissionOptionListKey =
 
 export const PERMISSION_OPTION_DEFINITIONS = {
   "orders.visibility": {
-    values: ["all", "mine"] as const,
-    default: "mine" as const,
+    values: ["none", "mine", "all"] as const,
+    default: "none" as const,
   },
 } as const satisfies Record<
   PermissionOptionKey,

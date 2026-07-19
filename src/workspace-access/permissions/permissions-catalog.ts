@@ -182,33 +182,24 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
     module: "orders",
     label: "Замовлення",
     items: [
-      booleanPermission("orders.read", "Перегляд замовлень"),
       {
         type: "group",
         key: "orders.scope",
-        label: "Видимість",
+        label: "Доступ",
         scope: optionPermission(
           "orders.visibility",
-          "Обсяг видимості замовлень",
+          "Доступ до замовлень",
           {
+            none: "Немає",
+            mine: "Лише свої",
             all: "Усі",
-            mine: "Мої",
           },
         ),
         items: [
-          booleanPermission("orders.create", "Створення замовлення"),
+          booleanPermission("orders.create", "Створення замовлень"),
           booleanPermission(
-            "orders.edit_status",
-            "Редагування статусу замовлення",
-          ),
-          booleanPermission("orders.edit", "Редагування замовлення"),
-          booleanPermission(
-            "orders.automations.view",
-            "Перегляд автоматизацій статусів",
-          ),
-          booleanPermission(
-            "orders.automations.manage",
-            "Керування автоматизаціями статусів",
+            "orders.edit",
+            "Редагування та зміна статусу",
           ),
         ],
       },

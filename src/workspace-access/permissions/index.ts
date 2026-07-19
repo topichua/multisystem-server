@@ -26,6 +26,7 @@ export type {
   ResolvedIntegrationGrant,
   ResolvedProductReferenceGrant,
   ResolvedUserPermissions,
+  OrderVisibilityScope,
   VisibilityScope,
 } from "./resolved-permissions.type";
 export {

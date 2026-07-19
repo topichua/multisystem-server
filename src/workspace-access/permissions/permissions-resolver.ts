@@ -10,8 +10,8 @@ import type {
   ResolvedProductReferenceGrant,
 } from "./resolved-permissions.type";
 import type {
+  OrderVisibilityScope,
   ResolvedUserPermissions,
-  VisibilityScope,
 } from "./resolved-permissions.type";
 
 export type RawRolePermissions = {
@@ -40,9 +40,12 @@ function optionValue(
 function visibilityScope(
   raw: RawRolePermissions,
   key: PermissionOptionKey,
-): VisibilityScope {
+): OrderVisibilityScope {
   const value = optionValue(raw, key);
-  return value === "all" ? "all" : "mine";
+  if (value === "all" || value === "mine") {
+    return value;
+  }
+  return "none";
 }
 
 /** Workspace owners bypass role restrictions. */
@@ -110,6 +113,9 @@ export function resolveRolePermissions(
   const inventoryView =
     enabled &&
     (hasKey(keys, "products.inventory.view") || inventoryManage);
+  const ordersVisibility = visibilityScope(raw, "orders.visibility");
+  const ordersEdit =
+    hasKey(keys, "orders.edit") || hasKey(keys, "orders.edit_status");
 
   return {
     isOwner: false,
@@ -127,11 +133,11 @@ export function resolveRolePermissions(
         enabled && hasKey(keys, "products.references.manage"),
     },
     orders: {
-      view: hasKey(keys, "orders.read"),
-      visibility: visibilityScope(raw, "orders.visibility"),
+      view: ordersVisibility !== "none",
+      visibility: ordersVisibility,
       create: hasKey(keys, "orders.create"),
-      editStatus: hasKey(keys, "orders.edit_status"),
-      edit: hasKey(keys, "orders.edit"),
+      editStatus: ordersEdit,
+      edit: ordersEdit,
       automationsView: hasKey(keys, "orders.automations.view"),
       automationsManage: hasKey(keys, "orders.automations.manage"),
     },

@@ -1,7 +1,8 @@
 import type { IntegrationType } from "../../integrations/integration-type";
 import type { IntegrationGrantConversationPermissions } from "./integration-grant-permissions";
 
-export type VisibilityScope = "all" | "mine";
+export type VisibilityScope = "mine" | "all";
+export type OrderVisibilityScope = "none" | VisibilityScope;
 
 export type ResolvedIntegrationGrant = {
   integrationType: IntegrationType;
@@ -33,7 +34,7 @@ export type ResolvedUserPermissions = {
   };
   orders: {
     view: boolean;
-    visibility: VisibilityScope;
+    visibility: OrderVisibilityScope;
     create: boolean;
     editStatus: boolean;
     edit: boolean;

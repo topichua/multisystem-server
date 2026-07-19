@@ -149,6 +149,7 @@ import { BackfillConversationCreatedEvents1744200000151 } from "./migrations/174
 import { WorkspaceMemberWorkStatus1744200000152 } from "./migrations/1744200000152-WorkspaceMemberWorkStatus";
 import { DropWorkspaceMemberCanBeAssignedToChat1744200000153 } from "./migrations/1744200000153-DropWorkspaceMemberCanBeAssignedToChat";
 import { ProductPermissionsAndReferenceGrants1744200000154 } from "./migrations/1744200000154-ProductPermissionsAndReferenceGrants";
+import { RedesignOrderPermissions1744200000155 } from "./migrations/1744200000155-RedesignOrderPermissions";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -506,6 +507,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceMemberWorkStatus1744200000152,
       DropWorkspaceMemberCanBeAssignedToChat1744200000153,
       ProductPermissionsAndReferenceGrants1744200000154,
+      RedesignOrderPermissions1744200000155,
     ],
   };
 }
