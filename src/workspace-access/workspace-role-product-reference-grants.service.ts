@@ -7,12 +7,11 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
-  INTEGRATION_TYPES,
-  type IntegrationType,
+  PRODUCT_REFERENCE_INTEGRATION_TYPES,
+  type ProductReferenceIntegrationType,
 } from "../integrations/integration-type";
 import {
   InstagramIntegration,
-  NovaPoshtaIntegration,
   TelegramIntegration,
   WorkspaceMember,
   WorkspaceMemberStatus,
@@ -31,7 +30,7 @@ import type { ResolvedProductReferenceGrant } from "./permissions/resolved-permi
 import { WorkspaceAccessContextService } from "./workspace-access-context.service";
 
 type NormalizedGrantInput = {
-  integrationType: IntegrationType;
+  integrationType: ProductReferenceIntegrationType;
   integrationId: number;
   canManage: boolean;
 };
@@ -49,8 +48,6 @@ export class WorkspaceRoleProductReferenceGrantsService {
     private readonly instagramRepo: Repository<InstagramIntegration>,
     @InjectRepository(TelegramIntegration)
     private readonly telegramRepo: Repository<TelegramIntegration>,
-    @InjectRepository(NovaPoshtaIntegration)
-    private readonly novaPoshtaRepo: Repository<NovaPoshtaIntegration>,
     private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
@@ -197,10 +194,14 @@ export class WorkspaceRoleProductReferenceGrantsService {
     const out: NormalizedGrantInput[] = [];
     const seen = new Set<string>();
     for (const grant of grants) {
-      const integrationType = grant.integrationType as IntegrationType;
-      if (!INTEGRATION_TYPES.includes(integrationType)) {
+      const integrationType =
+        grant.integrationType as ProductReferenceIntegrationType;
+      if (
+        !PRODUCT_REFERENCE_INTEGRATION_TYPES.includes(integrationType)
+      ) {
         throw new BadRequestException(
-          `Unsupported integrationType: ${grant.integrationType}`,
+          `Unsupported integrationType: ${grant.integrationType}. ` +
+            "Product reference grants support only instagram and telegram.",
         );
       }
       if (!Number.isInteger(grant.integrationId) || grant.integrationId <= 0) {
@@ -263,21 +264,17 @@ export class WorkspaceRoleProductReferenceGrantsService {
 
   private async listWorkspaceChannels(workspaceId: number): Promise<
     Array<{
-      integrationType: IntegrationType;
+      integrationType: ProductReferenceIntegrationType;
       integrationId: number;
       integrationName: string;
     }>
   > {
-    const [instagram, telegram, novaPoshta] = await Promise.all([
+    const [instagram, telegram] = await Promise.all([
       this.instagramRepo.find({
         where: { workspaceId },
         order: { id: "ASC" },
       }),
       this.telegramRepo.find({
-        where: { workspaceId },
-        order: { id: "ASC" },
-      }),
-      this.novaPoshtaRepo.find({
         where: { workspaceId },
         order: { id: "ASC" },
       }),
@@ -299,11 +296,6 @@ export class WorkspaceRoleProductReferenceGrantsService {
           row.name?.trim() ||
           row.telegramUsername?.trim() ||
           `Telegram #${row.id}`,
-      })),
-      ...novaPoshta.map((row) => ({
-        integrationType: "novaposhta" as const,
-        integrationId: row.id,
-        integrationName: row.name?.trim() || `Nova Poshta #${row.id}`,
       })),
     ];
   }

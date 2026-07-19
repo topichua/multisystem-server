@@ -2,7 +2,6 @@ import { Global, Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   InstagramIntegration,
-  NovaPoshtaIntegration,
   TelegramIntegration,
   User,
   Workspace,
@@ -36,7 +35,6 @@ import { WorkspaceRolesService } from "./workspace-roles.service";
     TypeOrmModule.forFeature([
       InstagramIntegration,
       TelegramIntegration,
-      NovaPoshtaIntegration,
       Workspace,
       WorkspaceRole,
       WorkspaceRoleIntegrationGrant,

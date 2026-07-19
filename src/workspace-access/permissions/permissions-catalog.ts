@@ -145,7 +145,7 @@ function productReferenceGrantsSchema(): PermissionCatalogProductReferenceGrants
     key: "product_reference_grants",
     label: "За каналом",
     description:
-      "Керування референсами по інтеграціях робочого простору (Instagram, Telegram, Nova Poshta тощо). " +
+      "Керування референсами по інтеграціях робочого простору (Instagram, Telegram). " +
       "Потрібне право «Керування референсами».",
     storage: "productReferenceGrants",
     manageEndpoint: "/workspace/roles/:roleId/product-reference-grants",

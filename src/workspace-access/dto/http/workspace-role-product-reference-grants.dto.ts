@@ -9,10 +9,10 @@ import {
   IsPositive,
   ValidateNested,
 } from "class-validator";
-import { INTEGRATION_TYPES } from "../../../integrations/integration-type";
+import { PRODUCT_REFERENCE_INTEGRATION_TYPES } from "../../../integrations/integration-type";
 
 export class WorkspaceRoleProductReferenceGrantItemDto {
-  @ApiProperty({ enum: INTEGRATION_TYPES })
+  @ApiProperty({ enum: PRODUCT_REFERENCE_INTEGRATION_TYPES })
   integrationType!: string;
 
   @ApiProperty()
@@ -36,8 +36,8 @@ export class WorkspaceRoleProductReferenceGrantsResponseDto {
 }
 
 export class WorkspaceRoleProductReferenceGrantInputDto {
-  @ApiProperty({ enum: INTEGRATION_TYPES })
-  @IsIn([...INTEGRATION_TYPES])
+  @ApiProperty({ enum: PRODUCT_REFERENCE_INTEGRATION_TYPES })
+  @IsIn([...PRODUCT_REFERENCE_INTEGRATION_TYPES])
   integrationType!: string;
 
   @ApiProperty()
