@@ -77,6 +77,7 @@ import { ConversationsService } from "./conversations.service";
     ConversationsService,
     ConversationsAllocationService,
     ConversationGroupsService,
+    ConversationEventsService,
     ConversationMessageNotifyService,
     ConversationMediaArchiveService,
     ConversationWorkflowService,

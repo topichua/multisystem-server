@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -27,6 +28,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { InviteWorkspaceMemberRequestDto } from "./dto/http/invite-workspace-member-request.dto";
 import { ListWorkspaceMembersQueryDto } from "./dto/http/list-workspace-members-query.dto";
+import { UpdateMyWorkStatusRequestDto } from "./dto/http/update-my-work-status-request.dto";
 import { UpdateWorkspaceMemberRequestDto } from "./dto/http/update-workspace-member-request.dto";
 import {
   InviteWorkspaceMemberResponseDto,
@@ -47,7 +49,8 @@ export class WorkspaceMembersController {
     summary: "List workspace members",
     description:
       "Returns active and inactive (pending invitation) members. " +
-      "Optional filter: `can_be_assigned_to_chat=true` returns assignable active members only (includes owner).",
+      "Optional filter: `can_be_assigned_to_chat=true` returns active members " +
+      "whose effective integration permissions allow taking chats (includes owner).",
   })
   @ApiOkResponse({ type: WorkspaceMembersListResponseDto })
   async list(
@@ -59,9 +62,30 @@ export class WorkspaceMembersController {
     return { items };
   }
 
+  @Patch("me/work-status")
+  @ApiOperation({
+    summary: "Update my workspace member work status",
+    description:
+      "Updates only the authenticated member in the active workspace.",
+  })
+  @ApiBody({ type: UpdateMyWorkStatusRequestDto })
+  @ApiOkResponse({ type: WorkspaceMemberResponseDto })
+  async updateMyWorkStatus(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: UpdateMyWorkStatusRequestDto,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const { ownerId, appRole, workspaceId } = this.auth(req);
+    return this.members.updateMyWorkStatus(
+      ownerId,
+      dto.work_status,
+      appRole,
+      workspaceId,
+    );
+  }
+
   @Put(":memberId")
   @ApiOperation({
-    summary: "Update workspace member role and assignment settings",
+    summary: "Update workspace member role",
   })
   @ApiParam({ name: "memberId", type: Number })
   @ApiBody({ type: UpdateWorkspaceMemberRequestDto })
@@ -164,6 +188,7 @@ export class WorkspaceMembersController {
   private auth(req: { user?: AuthUser }): {
     ownerId: number;
     appRole: string | undefined;
+    workspaceId: number | undefined;
   } {
     const ownerId = Number(req.user?.userId);
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
@@ -171,7 +196,11 @@ export class WorkspaceMembersController {
         "Current authorized user does not contain numeric owner id",
       );
     }
-    return { ownerId, appRole: req.user?.role };
+    return {
+      ownerId,
+      appRole: req.user?.role,
+      workspaceId: req.user?.workspaceId,
+    };
   }
 
   private parsePositiveInt(raw: string, label: string): number {

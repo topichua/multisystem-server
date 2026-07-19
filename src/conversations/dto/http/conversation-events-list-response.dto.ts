@@ -8,7 +8,8 @@ export class ConversationEventResponseDto {
   conversationId: number;
 
   @ApiProperty({
-    description: "Event type, e.g. group_changed, responsible_changed",
+    description:
+      "Event type: conversation_created, group_changed, responsible_changed, order_created",
   })
   type: string;
 

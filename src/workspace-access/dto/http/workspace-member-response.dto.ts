@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { WorkspaceMemberWorkStatus } from "../../../database/entities";
 
 export class WorkspaceMemberUserDto {
   @ApiProperty()
@@ -42,16 +43,17 @@ export class WorkspaceMemberResponseDto {
   @ApiProperty()
   status: string;
 
+  @ApiProperty({
+    enum: WorkspaceMemberWorkStatus,
+    description: "Member-selected availability for handling new chats.",
+  })
+  work_status: WorkspaceMemberWorkStatus;
+
   @ApiProperty()
   joinedAt: string;
 
   @ApiProperty()
   updated_at: string;
-
-  @ApiProperty({
-    description: "Whether this member can be assigned to conversations.",
-  })
-  can_be_assigned_to_chat: boolean;
 
   @ApiPropertyOptional({
     nullable: true,

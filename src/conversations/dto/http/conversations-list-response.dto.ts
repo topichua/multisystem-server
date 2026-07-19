@@ -89,8 +89,8 @@ export class ConversationRowDto {
 export class ConversationsListCountersDto {
   @ApiProperty({
     description:
-      "Total accessible conversations matching shared filters (groupIds, channel_ids, keyword). " +
-      "When `groupIds` is omitted, archived and spam are excluded. " +
+      "Total accessible conversations matching shared filters (groupIds/grouping_*, channel_ids, keyword). " +
+      "When `groupIds` and status `grouping_id` are omitted, archived and spam are excluded. " +
       "Excludes list-only filters (unread_only, responsible_user_ids, show_without_responsible_only).",
   })
   total: number;

@@ -50,8 +50,8 @@ export class ConversationGroupBucketMetaDto {
 export class ConversationGroupBucketItemDto {
   @ApiProperty({
     description:
-      "Stable key for this bucket. Use with the matching GET /conversations filter " +
-      "(responsible_user_ids / show_without_responsible_only, groupIds, created_at_bucket, channel_ids).",
+      "Stable key for this bucket. Pass as `grouping_id` with matching `grouping_by` on GET /conversations. " +
+      "Conversation-group ids can still be filtered with `groupIds`.",
     example: "12",
   })
   key!: string;

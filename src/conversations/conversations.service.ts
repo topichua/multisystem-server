@@ -72,7 +72,10 @@ import { InstagramUsersService } from "../instagram/instagram-users.service";
 import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
-import { canAssignConversationResponsibility } from "../workspace-access/permissions/permissions-resolver";
+import {
+  canAssignConversationResponsibility,
+  canTakeChat,
+} from "../workspace-access/permissions/permissions-resolver";
 import type { IntegrationType } from "../integrations/integration-type";
 import type {
   ResolvedIntegrationGrant,
@@ -99,6 +102,7 @@ import {
   applyCreatedAtBucketToQuery,
   CONVERSATION_CREATED_AT_BUCKET_LABELS,
   CONVERSATION_CREATED_AT_BUCKETS,
+  isConversationCreatedAtBucket,
   resolveConversationCreatedAtBucket,
   type ConversationCreatedAtBucket,
 } from "./conversation-created-at-bucket.logic";
@@ -345,6 +349,8 @@ export class ConversationsService {
     filters: {
       sessionWorkspaceId: number;
       groupIds?: number[];
+      groupingBy?: ConversationGroupingBy;
+      groupingId?: string;
       channelIds?: number[];
       responsibleUserIds?: number[];
       showWithoutResponsibleOnly?: boolean;
@@ -373,26 +379,61 @@ export class ConversationsService {
       workspaceId,
     );
 
+    const resolved = this.resolveGroupingBucketFilters(
+      filters.groupingBy,
+      filters.groupingId,
+    );
+    const groupIds = [
+      ...new Set([...(filters.groupIds ?? []), ...(resolved.groupIds ?? [])]),
+    ];
+    const channelIdsInput = [
+      ...new Set([
+        ...(filters.channelIds ?? []),
+        ...(resolved.channelIds ?? []),
+      ]),
+    ];
+    const responsibleUserIds = [
+      ...new Set([
+        ...(filters.responsibleUserIds ?? []),
+        ...(resolved.responsibleUserIds ?? []),
+      ]),
+    ];
+    const showWithoutResponsibleOnly =
+      filters.showWithoutResponsibleOnly === true ||
+      resolved.showWithoutResponsibleOnly === true;
+    const createdAtBucket = filters.createdAtBucket ?? resolved.createdAtBucket;
+    if (
+      filters.createdAtBucket != null &&
+      resolved.createdAtBucket != null &&
+      filters.createdAtBucket !== resolved.createdAtBucket
+    ) {
+      throw new BadRequestException(
+        "created_at_bucket conflicts with grouping_id for createdAt",
+      );
+    }
+    if (resolved.onlyUngrouped && groupIds.length > 0) {
+      throw new BadRequestException(
+        "grouping_id=ungrouped cannot be combined with groupIds",
+      );
+    }
+
     const groupFilter = await this.resolveListGroupFilter(
       workspaceId,
-      filters.groupIds,
+      groupIds.length > 0 ? groupIds : undefined,
+      resolved.onlyUngrouped,
     );
     const channelIds = await this.validateOptionalChannelIds(
       workspaceId,
       permissions,
-      filters.channelIds,
+      channelIdsInput.length > 0 ? channelIdsInput : undefined,
     );
     const responsibleMemberIds = await this.validateOptionalResponsibleUserIds(
       workspaceId,
       ownerId,
       permissions,
-      filters.responsibleUserIds,
+      responsibleUserIds.length > 0 ? responsibleUserIds : undefined,
     );
-    if (
-      filters.showWithoutResponsibleOnly &&
-      responsibleMemberIds != null &&
-      responsibleMemberIds.length > 0
-    ) {
+    if (showWithoutResponsibleOnly && responsibleMemberIds != null) {
       throw new BadRequestException(
         "show_without_responsible_only cannot be used together with responsible_user_ids",
       );
@@ -425,7 +466,7 @@ export class ConversationsService {
             channelFilter,
             undefined,
             participantIds,
-            filters.createdAtBucket,
+            createdAtBucket,
           )
         : await this.findConversationsForIntegrationGrants(
             workspaceId,
@@ -436,7 +477,7 @@ export class ConversationsService {
             channelFilter,
             undefined,
             participantIds,
-            filters.createdAtBucket,
+            createdAtBucket,
           );
 
     const listAccessContext =
@@ -487,7 +528,7 @@ export class ConversationsService {
     };
 
     let items = allItems;
-    if (filters.showWithoutResponsibleOnly) {
+    if (showWithoutResponsibleOnly) {
       items = items.filter((item) => item.responsibleMemberId == null);
     }
     if (responsibleMemberIds != null && responsibleMemberIds.length > 0) {
@@ -701,11 +742,11 @@ export class ConversationsService {
             "Workspace member not found or does not belong to this workspace",
           );
         }
-        if (!member.canBeAssignedToChat) {
-          throw new BadRequestException(
-            "Workspace member is not eligible for chat assignment",
-          );
-        }
+        await this.assertMemberCanReceiveConversation(
+          member.userId,
+          conv,
+          workspaceId,
+        );
         conv.responsibleMemberId = member.id;
         conv.responsibleMemberSetAt = new Date();
       }
@@ -749,6 +790,38 @@ export class ConversationsService {
     ) {
       throw new ForbiddenException(
         "Missing permission: assignResponsibility on this integration",
+      );
+    }
+  }
+
+  private async assertMemberCanReceiveConversation(
+    userId: number,
+    conversation: Conversation,
+    workspaceId: number,
+  ): Promise<void> {
+    const permissions = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      undefined,
+      workspaceId,
+    );
+    if (permissions.isOwner || permissions.conversations.fullAccess) {
+      return;
+    }
+
+    const integration = await this.resolveConversationIntegration(
+      conversation,
+      workspaceId,
+    );
+    if (
+      integration == null ||
+      !canTakeChat(
+        permissions,
+        integration.integrationType,
+        integration.integrationId,
+      )
+    ) {
+      throw new BadRequestException(
+        "Workspace member lacks permission to take this chat",
       );
     }
   }
@@ -835,12 +908,6 @@ export class ConversationsService {
     if (!member) {
       throw new ForbiddenException("Workspace membership required");
     }
-    if (!member.canBeAssignedToChat) {
-      throw new BadRequestException(
-        "Workspace member is not eligible for chat assignment",
-      );
-    }
-
     if (
       conversation.responsibleMemberId != null &&
       conversation.responsibleMemberId !== member.id
@@ -1029,7 +1096,7 @@ export class ConversationsService {
     ownerId: number,
     dto: CreateProductSuggestionRequestDto,
   ): Promise<ProductSuggestionItemDto> {
-    const conv = await this.requireConversationInWorkspace(ownerId, {
+    await this.requireConversationInWorkspace(ownerId, {
       id: dto.conversationId,
     });
 
@@ -1417,10 +1484,15 @@ export class ConversationsService {
   private async resolveListGroupFilter(
     workspaceId: number,
     groupIdsRaw?: number[],
+    onlyUngrouped?: boolean,
   ): Promise<{
     includeGroupIds?: number[];
     excludeGroupIds?: number[];
+    onlyUngrouped?: boolean;
   }> {
+    if (onlyUngrouped) {
+      return { onlyUngrouped: true };
+    }
     const explicit = await this.validateOptionalGroupIds(
       workspaceId,
       groupIdsRaw,
@@ -1436,10 +1508,80 @@ export class ConversationsService {
     return { excludeGroupIds };
   }
 
+  private resolveGroupingBucketFilters(
+    groupingBy?: ConversationGroupingBy,
+    groupingId?: string,
+  ): {
+    groupIds?: number[];
+    onlyUngrouped?: boolean;
+    channelIds?: number[];
+    responsibleUserIds?: number[];
+    showWithoutResponsibleOnly?: boolean;
+    createdAtBucket?: ConversationCreatedAtBucket;
+  } {
+    if (groupingBy == null || groupingId == null) {
+      return {};
+    }
+
+    switch (groupingBy) {
+      case ConversationGroupingBy.status: {
+        if (groupingId === "ungrouped") {
+          return { onlyUngrouped: true };
+        }
+        if (!/^\d+$/.test(groupingId)) {
+          throw new BadRequestException(
+            "grouping_id for status must be a conversation group id or ungrouped",
+          );
+        }
+        return { groupIds: [Number(groupingId)] };
+      }
+      case ConversationGroupingBy.responsible: {
+        if (groupingId === "unassigned") {
+          return { showWithoutResponsibleOnly: true };
+        }
+        if (!/^\d+$/.test(groupingId)) {
+          throw new BadRequestException(
+            "grouping_id for responsible must be a member id or unassigned",
+          );
+        }
+        return { responsibleUserIds: [Number(groupingId)] };
+      }
+      case ConversationGroupingBy.createdAt: {
+        if (!isConversationCreatedAtBucket(groupingId)) {
+          throw new BadRequestException(
+            "grouping_id for createdAt must be one of: today, last_week, last_month, long_ago",
+          );
+        }
+        return { createdAtBucket: groupingId };
+      }
+      case ConversationGroupingBy.channel: {
+        const match = /^(instagram|telegram):(\d+)$/.exec(groupingId);
+        if (!match) {
+          throw new BadRequestException(
+            "grouping_id for channel must look like instagram:1 or telegram:2",
+          );
+        }
+        return { channelIds: [Number(match[2])] };
+      }
+      default:
+        throw new BadRequestException(
+          `Unsupported grouping_by=${String(groupingBy)}`,
+        );
+    }
+  }
+
   private applyConversationGroupListFilter(
     qb: SelectQueryBuilder<Conversation>,
-    filter: { includeGroupIds?: number[]; excludeGroupIds?: number[] },
+    filter: {
+      includeGroupIds?: number[];
+      excludeGroupIds?: number[];
+      onlyUngrouped?: boolean;
+    },
   ): void {
+    if (filter.onlyUngrouped) {
+      qb.andWhere("c.group_id IS NULL");
+      return;
+    }
     if (filter.includeGroupIds != null && filter.includeGroupIds.length > 0) {
       qb.andWhere("c.group_id IN (:...includeGroupIds)", {
         includeGroupIds: filter.includeGroupIds,
@@ -1925,9 +2067,10 @@ export class ConversationsService {
     return { total, items };
   }
 
-  private aggregateConversationsByCreatedAt(
-    rows: Conversation[],
-  ): { total: number; items: ConversationGroupBucketItemDto[] } {
+  private aggregateConversationsByCreatedAt(rows: Conversation[]): {
+    total: number;
+    items: ConversationGroupBucketItemDto[];
+  } {
     const counts = new Map<ConversationCreatedAtBucket, number>(
       CONVERSATION_CREATED_AT_BUCKETS.map((bucket) => [bucket, 0]),
     );
@@ -2433,6 +2576,7 @@ export class ConversationsService {
     groupFilter: {
       includeGroupIds?: number[];
       excludeGroupIds?: number[];
+      onlyUngrouped?: boolean;
     } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {
@@ -2449,6 +2593,7 @@ export class ConversationsService {
       (participantIds != null && participantIds.length > 0) ||
       (groupFilter.excludeGroupIds != null &&
         groupFilter.excludeGroupIds.length > 0) ||
+      groupFilter.onlyUngrouped === true ||
       createdAtBucket != null;
 
     if (!useQueryBuilder) {
@@ -2675,6 +2820,7 @@ export class ConversationsService {
     groupFilter: {
       includeGroupIds?: number[];
       excludeGroupIds?: number[];
+      onlyUngrouped?: boolean;
     } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {

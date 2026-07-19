@@ -18,6 +18,7 @@ import {
   User,
   Workspace,
 } from "../database/entities";
+import { ConversationsModule } from "../conversations/conversations.module";
 import { DeliveryModule } from "../delivery/delivery.module";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
 import { InventoryModule } from "../inventory/inventory.module";
@@ -35,6 +36,7 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     VariantCustomFieldsModule,
     InventoryModule,
     WorkspaceSettingsModule,
+    ConversationsModule,
     forwardRef(() => NovaPoshtaIntegrationsModule),
     OrderStatusDefaultsModule,
     forwardRef(() => DeliveryModule),

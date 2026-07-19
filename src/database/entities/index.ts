@@ -80,6 +80,7 @@ export {
 } from "./workspace-role-integration-grant.entity";
 export { WorkspaceMember } from "./workspace-member.entity";
 export { WorkspaceMemberStatus } from "./workspace-member-status.enum";
+export { WorkspaceMemberWorkStatus } from "./workspace-member-work-status.enum";
 export { WorkspaceInvitation } from "./workspace-invitation.entity";
 export { WorkspaceInvitationStatus } from "./workspace-invitation-status.enum";
 export { NovaPoshtaIntegration } from "./novaposhta-integration.entity";

@@ -145,6 +145,9 @@ import { OrderDeliveryInfoSyncedFromTrackingManually1744200000147 } from "./migr
 import { ConversationCreatedAt1744200000148 } from "./migrations/1744200000148-ConversationCreatedAt";
 import { PaymentTransactionSourceOnlinePayment1744200000149 } from "./migrations/1744200000149-PaymentTransactionSourceOnlinePayment";
 import { BackfillPendingOnlinePaymentTransactions1744200000150 } from "./migrations/1744200000150-BackfillPendingOnlinePaymentTransactions";
+import { BackfillConversationCreatedEvents1744200000151 } from "./migrations/1744200000151-BackfillConversationCreatedEvents";
+import { WorkspaceMemberWorkStatus1744200000152 } from "./migrations/1744200000152-WorkspaceMemberWorkStatus";
+import { DropWorkspaceMemberCanBeAssignedToChat1744200000153 } from "./migrations/1744200000153-DropWorkspaceMemberCanBeAssignedToChat";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -496,6 +499,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationCreatedAt1744200000148,
       PaymentTransactionSourceOnlinePayment1744200000149,
       BackfillPendingOnlinePaymentTransactions1744200000150,
+      BackfillConversationCreatedEvents1744200000151,
+      WorkspaceMemberWorkStatus1744200000152,
+      DropWorkspaceMemberCanBeAssignedToChat1744200000153,
     ],
   };
 }

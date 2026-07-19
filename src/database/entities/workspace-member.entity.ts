@@ -11,6 +11,7 @@ import {
 } from "typeorm";
 import { User } from "./user.entity";
 import { WorkspaceMemberStatus } from "./workspace-member-status.enum";
+import { WorkspaceMemberWorkStatus } from "./workspace-member-work-status.enum";
 import { WorkspaceRole } from "./workspace-role.entity";
 import { Workspace } from "./workspace.entity";
 
@@ -51,6 +52,14 @@ export class WorkspaceMember {
   })
   status: WorkspaceMemberStatus;
 
+  @Column({
+    name: "work_status",
+    type: "varchar",
+    length: 32,
+    default: WorkspaceMemberWorkStatus.ACCEPTING_NEW_CHATS,
+  })
+  workStatus: WorkspaceMemberWorkStatus;
+
   @Column({ name: "invited_by_user_id", type: "int", nullable: true })
   invitedByUserId: number | null;
 
@@ -60,9 +69,6 @@ export class WorkspaceMember {
 
   @Column({ name: "joined_at", type: "timestamptz" })
   joinedAt: Date;
-
-  @Column({ name: "can_be_assigned_to_chat", type: "boolean", default: true })
-  canBeAssignedToChat: boolean;
 
   /** Fallback avatar color when the user has no `avatar_src`. */
   @Column({ name: "color", type: "varchar", length: 64, nullable: true })

@@ -74,7 +74,9 @@ export class ConversationsController {
       "Owners and roles with `conversations.full_access` see all chats. " +
       "Otherwise, results are built from the role's integration grants: each grant matches conversations by integration source and `external_source_id`; `read=all` returns all chats on that integration, `read=mine` only chats where you are responsible. " +
       "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace. " +
-      "Omit `groupIds` to list all active groups (excludes archived and spam). " +
+      "Optional `grouping_by` and `grouping_id`: pass `by` and an item `key` returned by GET /conversations/groups. " +
+      "This supports responsible, status, createdAt, and channel buckets. " +
+      "Existing `groupIds` conversation-group filtering remains supported. " +
       "Optional `show_without_responsible_only=true`: only unassigned chats (`responsible_member_id` null) you can access (takeable queue / unassigned inbox). " +
       "Optional `channel_ids`: comma-separated integration ids from GET /conversations/criteria (e.g. `1,2`). " +
       "Optional `responsible_user_ids`: comma-separated workspace member ids from GET /conversations/criteria `responsibleUsers` (e.g. `5,7`). " +
@@ -89,6 +91,21 @@ export class ConversationsController {
     description:
       "Comma-separated conversation group ids, e.g. `1,2`. Omit for all active groups (excludes archived and spam).",
     example: "1,2",
+  })
+  @ApiQuery({
+    name: "grouping_by",
+    required: false,
+    enum: ConversationGroupingBy,
+    description:
+      "Grouping dimension used for GET /conversations/groups. Required with grouping_id.",
+    example: ConversationGroupingBy.status,
+  })
+  @ApiQuery({
+    name: "grouping_id",
+    required: false,
+    description:
+      "Bucket `key` returned by GET /conversations/groups?by=<grouping_by>. Required with grouping_by.",
+    example: "12",
   })
   @ApiQuery({
     name: "channel_ids",
@@ -139,6 +156,8 @@ export class ConversationsController {
   async getAll(
     @Req() req: { user?: AuthUser },
     @Query("groupIds") groupIdsRaw?: string | string[],
+    @Query("grouping_by") groupingByRaw?: string,
+    @Query("grouping_id") groupingIdRaw?: string,
     @Query("channel_ids") channelIdsRaw?: string | string[],
     @Query("responsible_user_ids") responsibleUserIdsRaw?: string | string[],
     @Query("show_without_responsible_only")
@@ -156,6 +175,14 @@ export class ConversationsController {
       groupIdsRaw,
       "groupIds",
     );
+    const groupingBy =
+      this.parseOptionalConversationGroupingByQuery(groupingByRaw);
+    const groupingId = this.parseOptionalKeywordQuery(groupingIdRaw);
+    if ((groupingBy == null) !== (groupingId == null)) {
+      throw new BadRequestException(
+        "grouping_by and grouping_id must be provided together",
+      );
+    }
     const channelIds = this.parseOptionalPositiveIntIdsQuery(
       channelIdsRaw,
       "channel_ids",
@@ -178,6 +205,8 @@ export class ConversationsController {
     return this.conversationsService.listConversationsForOwner(ownerId, {
       sessionWorkspaceId,
       groupIds,
+      groupingBy,
+      groupingId,
       channelIds,
       responsibleUserIds,
       showWithoutResponsibleOnly,
@@ -197,7 +226,7 @@ export class ConversationsController {
       "Spam chats are excluded. For `responsible`, `createdAt`, and `channel`, archived is also excluded " +
       "(same base as GET /conversations without groupIds). For `by=status`, only spam is excluded. " +
       "Use returned keys with existing list filters: `responsible_user_ids` / `show_without_responsible_only`, " +
-      "`groupIds`, `created_at_bucket`, `channel_ids`.",
+      "or pass `grouping_by` and the returned item `key` as `grouping_id` to GET /conversations.",
   })
   @ApiQuery({
     name: "by",
@@ -293,11 +322,11 @@ export class ConversationsController {
     return value;
   }
 
-  private parseConversationGroupingByQuery(raw?: string): ConversationGroupingBy {
+  private parseOptionalConversationGroupingByQuery(
+    raw?: string,
+  ): ConversationGroupingBy | undefined {
     if (raw == null || raw.trim() === "") {
-      throw new BadRequestException(
-        "by is required (responsible | status | createdAt | channel)",
-      );
+      return undefined;
     }
     const value = raw.trim();
     if (
@@ -306,10 +335,22 @@ export class ConversationsController {
       )
     ) {
       throw new BadRequestException(
-        "by must be one of: responsible, status, createdAt, channel",
+        "grouping_by must be one of: responsible, status, createdAt, channel",
       );
     }
     return value as ConversationGroupingBy;
+  }
+
+  private parseConversationGroupingByQuery(
+    raw?: string,
+  ): ConversationGroupingBy {
+    const value = this.parseOptionalConversationGroupingByQuery(raw);
+    if (value == null) {
+      throw new BadRequestException(
+        "by is required (responsible | status | createdAt | channel)",
+      );
+    }
+    return value;
   }
 
   private parseOptionalPositiveIntIdsQuery(
@@ -580,7 +621,7 @@ export class ConversationsController {
     description:
       "Set `groupId` (status column: new / processing / archived or custom) and/or `responsible_member_id`. " +
       "`responsible_member_id` requires `assignResponsibility` on the conversation integration grant. " +
-      "Member must be active in the workspace and `can_be_assigned_to_chat`. Pass null to clear responsible assignment.",
+      "Member must be active in the workspace and have permission to take chats for this integration. Pass null to clear responsible assignment.",
   })
   @ApiBody({ type: UpdateConversationRequestDto })
   @ApiOkResponse({ type: ConversationRowDto })

@@ -35,6 +35,19 @@ export class ConversationWorkflowService {
     conversation: Conversation,
     actorId?: number | null,
   ): Promise<void> {
+    await this.events.append(
+      conversation.id,
+      ConversationEventType.CONVERSATION_CREATED,
+      actorId ?? null,
+      {
+        workspaceId: conversation.workspaceId,
+        source: conversation.source,
+        externalSourceId: conversation.externalSourceId,
+        externalId: conversation.externalId,
+        conversationCreatedAt: conversation.createdAt.toISOString(),
+      },
+    );
+
     await this.setSystemGroup(conversation, ConversationGroupSystemKey.NEW, {
       actorId: actorId ?? null,
       trigger: "created",

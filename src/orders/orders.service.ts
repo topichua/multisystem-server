@@ -11,6 +11,7 @@ import { In, Repository } from "typeorm";
 import {
   Client,
   Conversation,
+  ConversationEventType,
   ConversationSource,
   InstagramIntegration,
   Order,
@@ -74,6 +75,7 @@ import {
   OrderStatusChangeSource,
   OrderStatusTransitionService,
 } from "./order-status-transition.service";
+import { ConversationEventsService } from "../conversations/conversation-events.service";
 import { resolveIntegrationIdFromConversation } from "./logic/resolve-order-integration.logic";
 import {
   calculatePaidAmount,
@@ -171,6 +173,7 @@ export class OrdersService {
     private readonly orderStatusTransition: OrderStatusTransitionService,
     private readonly deliveryStatus: DeliveryStatusService,
     private readonly deliveryStatusApplication: OrderDeliveryStatusApplicationService,
+    private readonly conversationEvents: ConversationEventsService,
     @InjectRepository(OrderStatusAutomation)
     private readonly automationRepo: Repository<OrderStatusAutomation>,
   ) {}
@@ -330,6 +333,18 @@ export class OrdersService {
 
       return persisted;
     });
+
+    if (saved.conversationId != null) {
+      await this.conversationEvents.append(
+        saved.conversationId,
+        ConversationEventType.ORDER_CREATED,
+        ownerId,
+        {
+          orderId: saved.id,
+          orderCreatedAt: saved.createdAt.toISOString(),
+        },
+      );
+    }
 
     return this.getOrderById(ownerId, saved.id);
   }

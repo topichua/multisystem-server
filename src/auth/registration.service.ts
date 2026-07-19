@@ -183,7 +183,6 @@ export class RegistrationService {
           status: WorkspaceMemberStatus.ACTIVE,
           invitedByUserId: null,
           joinedAt: now,
-          canBeAssignedToChat: true,
           color: null,
           integrationScopes: null,
         }),
