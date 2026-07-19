@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -48,6 +49,8 @@ import type { ClientOrderStatsResponseDto } from "../clients/dto/client-order-st
 import type { ClientLastOrderResponseDto } from "../clients/dto/client-last-order-response.dto";
 import type { ClientOrderStatDto } from "../clients/dto/client-order-stat.dto";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { hasBooleanPermission } from "../workspace-access/permissions";
+import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
 import { VariantCustomFieldsService } from "../variant-custom-fields/variant-custom-fields.service";
 import { InventoryService } from "../inventory/inventory.service";
 import { InventoryMode } from "../database/entities/inventory-mode.enum";
@@ -137,6 +140,7 @@ type OrderPaymentSummary = {
 export class OrdersService {
   constructor(
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly workspacePermissions: WorkspacePermissionsService,
     private readonly variantCustomFields: VariantCustomFieldsService,
     @InjectRepository(Client)
     private readonly clientRepo: Repository<Client>,
@@ -504,7 +508,9 @@ export class OrdersService {
   async setOrderStatusesOrderForOwner(
     ownerId: number,
     dto: SetOrderStatusesOrderDto,
+    appRole?: string,
   ): Promise<OrderStatusResponseDto[]> {
+    await this.requireOrderStatusesManagement(ownerId, appRole);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
@@ -554,7 +560,9 @@ export class OrdersService {
   async createOrderStatusDefinitionForOwner(
     ownerId: number,
     dto: CreateOrderStatusDefinitionDto,
+    appRole?: string,
   ): Promise<OrderStatusResponseDto> {
+    await this.requireOrderStatusesManagement(ownerId, appRole);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
@@ -596,7 +604,9 @@ export class OrdersService {
     ownerId: number,
     statusId: number,
     dto: UpdateOrderStatusDefinitionDto,
+    appRole?: string,
   ): Promise<OrderStatusResponseDto> {
+    await this.requireOrderStatusesManagement(ownerId, appRole);
     if (
       dto.name === undefined &&
       dto.color === undefined &&
@@ -668,7 +678,9 @@ export class OrdersService {
   async deleteOrderStatusDefinitionForOwner(
     ownerId: number,
     statusId: number,
+    appRole?: string,
   ): Promise<void> {
+    await this.requireOrderStatusesManagement(ownerId, appRole);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const workspaceId = workspace.id;
@@ -2042,6 +2054,21 @@ export class OrdersService {
       );
     }
     return defaultStatus.id;
+  }
+
+  private async requireOrderStatusesManagement(
+    userId: number,
+    appRole?: string,
+  ): Promise<void> {
+    const resolved = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      appRole,
+    );
+    if (!hasBooleanPermission(resolved, "workspace.order_statuses")) {
+      throw new ForbiddenException(
+        "Missing workspace.order_statuses permission",
+      );
+    }
   }
 
   private toOrderStatusDto(row: OrderStatus): OrderStatusResponseDto {

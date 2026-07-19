@@ -49,6 +49,9 @@ export class ResolvedOrdersPermissionsDto {
 
   @ApiProperty()
   edit: boolean;
+
+  @ApiProperty()
+  paymentsManage: boolean;
 }
 
 export class ResolvedConversationsPermissionsDto {
@@ -83,6 +86,9 @@ export class ResolvedWorkspacePermissionsDto {
   templatesManagement: boolean;
 
   @ApiProperty()
+  orderStatusesManagement: boolean;
+
+  @ApiProperty()
   integrations: boolean;
 
   @ApiProperty()
@@ -90,6 +96,9 @@ export class ResolvedWorkspacePermissionsDto {
 
   @ApiProperty({ type: ResolvedWorkspaceMembersPermissionsDto })
   members: ResolvedWorkspaceMembersPermissionsDto;
+
+  @ApiProperty()
+  settingsManagement: boolean;
 }
 
 export class ResolvedAnalyticsPermissionsDto {

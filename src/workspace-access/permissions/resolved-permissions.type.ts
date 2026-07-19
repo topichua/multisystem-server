@@ -38,6 +38,7 @@ export type ResolvedUserPermissions = {
     create: boolean;
     editStatus: boolean;
     edit: boolean;
+    paymentsManage: boolean;
     automationsView: boolean;
     automationsManage: boolean;
   };
@@ -51,8 +52,10 @@ export type ResolvedUserPermissions = {
   workspace: {
     chatGroupsManagement: boolean;
     templatesManagement: boolean;
+    orderStatusesManagement: boolean;
     integrations: boolean;
     rolesManagement: boolean;
+    settingsManagement: boolean;
     members: {
       view: boolean;
       invite: boolean;

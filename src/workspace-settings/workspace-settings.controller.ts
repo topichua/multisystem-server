@@ -37,7 +37,10 @@ export class WorkspaceSettingsController {
   async get(
     @Req() req: { user?: AuthUser },
   ): Promise<WorkspaceSettingsResponseDto> {
-    return this.settings.getForOwner(this.requireNumericOwnerId(req));
+    return this.settings.getForOwner(
+      this.requireNumericOwnerId(req),
+      req.user?.role,
+    );
   }
 
   @Patch()
@@ -48,7 +51,11 @@ export class WorkspaceSettingsController {
     @Req() req: { user?: AuthUser },
     @Body() dto: UpdateWorkspaceSettingsDto,
   ): Promise<WorkspaceSettingsResponseDto> {
-    return this.settings.updateForOwner(this.requireNumericOwnerId(req), dto);
+    return this.settings.updateForOwner(
+      this.requireNumericOwnerId(req),
+      dto,
+      req.user?.role,
+    );
   }
 
   private requireNumericOwnerId(req: { user?: AuthUser }): number {

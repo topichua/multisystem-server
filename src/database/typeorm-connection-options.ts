@@ -150,6 +150,7 @@ import { WorkspaceMemberWorkStatus1744200000152 } from "./migrations/17442000001
 import { DropWorkspaceMemberCanBeAssignedToChat1744200000153 } from "./migrations/1744200000153-DropWorkspaceMemberCanBeAssignedToChat";
 import { ProductPermissionsAndReferenceGrants1744200000154 } from "./migrations/1744200000154-ProductPermissionsAndReferenceGrants";
 import { RedesignOrderPermissions1744200000155 } from "./migrations/1744200000155-RedesignOrderPermissions";
+import { WorkspaceManagementPermissions1744200000156 } from "./migrations/1744200000156-WorkspaceManagementPermissions";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -508,6 +509,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       DropWorkspaceMemberCanBeAssignedToChat1744200000153,
       ProductPermissionsAndReferenceGrants1744200000154,
       RedesignOrderPermissions1744200000155,
+      WorkspaceManagementPermissions1744200000156,
     ],
   };
 }

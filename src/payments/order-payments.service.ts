@@ -502,8 +502,13 @@ export class OrderPaymentsService {
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (!hasBooleanPermission(resolved, "payments.view")) {
-      throw new ForbiddenException("Missing payments.view permission");
+    if (
+      !hasBooleanPermission(resolved, "orders.payments.manage") &&
+      !hasBooleanPermission(resolved, "payments.view")
+    ) {
+      throw new ForbiddenException(
+        "Missing orders.payments.manage permission",
+      );
     }
   }
 
@@ -512,8 +517,13 @@ export class OrderPaymentsService {
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (!hasBooleanPermission(resolved, "payments.links.create")) {
-      throw new ForbiddenException("Missing payments.links.create permission");
+    if (
+      !hasBooleanPermission(resolved, "orders.payments.manage") &&
+      !hasBooleanPermission(resolved, "payments.links.create")
+    ) {
+      throw new ForbiddenException(
+        "Missing orders.payments.manage permission",
+      );
     }
   }
 
@@ -522,8 +532,13 @@ export class OrderPaymentsService {
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (!hasBooleanPermission(resolved, "payments.manual.create")) {
-      throw new ForbiddenException("Missing payments.manual.create permission");
+    if (
+      !hasBooleanPermission(resolved, "orders.payments.manage") &&
+      !hasBooleanPermission(resolved, "payments.manual.create")
+    ) {
+      throw new ForbiddenException(
+        "Missing orders.payments.manage permission",
+      );
     }
   }
 
@@ -532,8 +547,13 @@ export class OrderPaymentsService {
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (!hasBooleanPermission(resolved, "payments.links.cancel")) {
-      throw new ForbiddenException("Missing payments.links.cancel permission");
+    if (
+      !hasBooleanPermission(resolved, "orders.payments.manage") &&
+      !hasBooleanPermission(resolved, "payments.links.cancel")
+    ) {
+      throw new ForbiddenException(
+        "Missing orders.payments.manage permission",
+      );
     }
   }
 

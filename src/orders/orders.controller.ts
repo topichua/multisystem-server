@@ -276,7 +276,11 @@ export class OrdersController {
     @Body() dto: SetOrderStatusesOrderDto,
   ): Promise<OrderStatusResponseDto[]> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.orders.setOrderStatusesOrderForOwner(ownerId, dto);
+    return this.orders.setOrderStatusesOrderForOwner(
+      ownerId,
+      dto,
+      req.user?.role,
+    );
   }
 
   @Post("statuses")
@@ -293,7 +297,11 @@ export class OrdersController {
     @Body() dto: CreateOrderStatusDefinitionDto,
   ): Promise<OrderStatusResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.orders.createOrderStatusDefinitionForOwner(ownerId, dto);
+    return this.orders.createOrderStatusDefinitionForOwner(
+      ownerId,
+      dto,
+      req.user?.role,
+    );
   }
 
   @Patch("statuses/:statusId")
@@ -316,6 +324,7 @@ export class OrdersController {
       ownerId,
       statusId,
       dto,
+      req.user?.role,
     );
   }
 
@@ -333,7 +342,11 @@ export class OrdersController {
     @Param("statusId", ParseIntPipe) statusId: number,
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
-    await this.orders.deleteOrderStatusDefinitionForOwner(ownerId, statusId);
+    await this.orders.deleteOrderStatusDefinitionForOwner(
+      ownerId,
+      statusId,
+      req.user?.role,
+    );
   }
 
   @Get(":orderId/events")

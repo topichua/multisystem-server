@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
@@ -9,6 +13,8 @@ import {
 } from "../database/entities";
 import { resetAdvancedStockOnModeSwitch } from "../inventory/stock.logic";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
+import { hasBooleanPermission } from "../workspace-access/permissions";
+import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
 import type { UpdateWorkspaceSettingsDto } from "./dto/update-workspace-settings.dto";
 import type { WorkspaceSettingsResponseDto } from "./dto/workspace-settings-response.dto";
 
@@ -20,9 +26,14 @@ export class WorkspaceSettingsService {
     @InjectRepository(VariantStock)
     private readonly stockRepo: Repository<VariantStock>,
     private readonly workspaceContext: WorkspaceAccessContextService,
+    private readonly workspacePermissions: WorkspacePermissionsService,
   ) {}
 
-  async getForOwner(ownerId: number): Promise<WorkspaceSettingsResponseDto> {
+  async getForOwner(
+    ownerId: number,
+    appRole?: string,
+  ): Promise<WorkspaceSettingsResponseDto> {
+    await this.requireSettingsManagement(ownerId, appRole);
     const ws = await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     return this.toDto(ws);
   }
@@ -30,7 +41,9 @@ export class WorkspaceSettingsService {
   async updateForOwner(
     ownerId: number,
     dto: UpdateWorkspaceSettingsDto,
+    appRole?: string,
   ): Promise<WorkspaceSettingsResponseDto> {
+    await this.requireSettingsManagement(ownerId, appRole);
     if (
       dto.currency === undefined &&
       dto.inventoryMode === undefined &&
@@ -112,6 +125,19 @@ export class WorkspaceSettingsService {
     }
     if (rows.length > 0) {
       await this.stockRepo.save(rows);
+    }
+  }
+
+  private async requireSettingsManagement(
+    userId: number,
+    appRole?: string,
+  ): Promise<void> {
+    const resolved = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      appRole,
+    );
+    if (!hasBooleanPermission(resolved, "workspace.settings")) {
+      throw new ForbiddenException("Missing workspace.settings permission");
     }
   }
 

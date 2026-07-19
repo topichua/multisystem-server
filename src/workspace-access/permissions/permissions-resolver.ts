@@ -72,6 +72,7 @@ export function resolveOwnerPermissions(
       create: true,
       editStatus: true,
       edit: true,
+      paymentsManage: true,
       automationsView: true,
       automationsManage: true,
     },
@@ -82,8 +83,10 @@ export function resolveOwnerPermissions(
     workspace: {
       chatGroupsManagement: true,
       templatesManagement: true,
+      orderStatusesManagement: true,
       integrations: true,
       rolesManagement: true,
+      settingsManagement: true,
       members: { view: true, invite: true, delete: true },
     },
     analytics: { view: true },
@@ -138,7 +141,10 @@ export function resolveRolePermissions(
       create: hasKey(keys, "orders.create"),
       editStatus: ordersEdit,
       edit: ordersEdit,
-      automationsView: hasKey(keys, "orders.automations.view"),
+      paymentsManage: hasKey(keys, "orders.payments.manage"),
+      automationsView:
+        hasKey(keys, "orders.automations.view") ||
+        hasKey(keys, "orders.automations.manage"),
       automationsManage: hasKey(keys, "orders.automations.manage"),
     },
     conversations: {
@@ -150,8 +156,10 @@ export function resolveRolePermissions(
     workspace: {
       chatGroupsManagement: hasKey(keys, "workspace.chat_groups"),
       templatesManagement: hasKey(keys, "workspace.templates"),
+      orderStatusesManagement: hasKey(keys, "workspace.order_statuses"),
       integrations: hasKey(keys, "workspace.integrations"),
       rolesManagement: hasKey(keys, "workspace.roles"),
+      settingsManagement: hasKey(keys, "workspace.settings"),
       members: {
         view: hasKey(keys, "workspace.members.read"),
         invite: hasKey(keys, "workspace.members.invite"),
@@ -286,6 +294,8 @@ export function hasBooleanPermission(
       return resolved.orders.editStatus;
     case "orders.edit":
       return resolved.orders.edit;
+    case "orders.payments.manage":
+      return resolved.orders.paymentsManage;
     case "orders.automations.view":
       return resolved.orders.automationsView;
     case "orders.automations.manage":
@@ -298,6 +308,8 @@ export function hasBooleanPermission(
       return resolved.workspace.chatGroupsManagement;
     case "workspace.templates":
       return resolved.workspace.templatesManagement;
+    case "workspace.order_statuses":
+      return resolved.workspace.orderStatusesManagement;
     case "workspace.integrations":
       return resolved.workspace.integrations;
     case "workspace.roles":
@@ -308,6 +320,8 @@ export function hasBooleanPermission(
       return resolved.workspace.members.invite;
     case "workspace.members.delete":
       return resolved.workspace.members.delete;
+    case "workspace.settings":
+      return resolved.workspace.settingsManagement;
     case "analytics.read":
       return resolved.analytics.view;
     case "payments.integrations.view":

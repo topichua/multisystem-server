@@ -201,6 +201,10 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
             "orders.edit",
             "Редагування та зміна статусу",
           ),
+          booleanPermission(
+            "orders.payments.manage",
+            "Керування платежами",
+          ),
         ],
       },
     ],
@@ -230,11 +234,22 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
         "Керування групами чатів",
       ),
       booleanPermission("workspace.templates", "Керування шаблонами"),
-      booleanPermission("workspace.integrations", "Інтеграції"),
-      booleanPermission("workspace.roles", "Керування ролями"),
-      booleanPermission("workspace.members.read", "Перегляд учасників"),
+      booleanPermission(
+        "workspace.order_statuses",
+        "Керування статусами замовлень",
+      ),
+      booleanPermission(
+        "orders.automations.manage",
+        "Керування автоматизацією",
+      ),
+      booleanPermission("workspace.integrations", "Керування інтеграціями"),
+      booleanPermission(
+        "workspace.roles",
+        "Керування ролями та доступами",
+      ),
       booleanPermission("workspace.members.invite", "Запрошення учасників"),
       booleanPermission("workspace.members.delete", "Видалення учасників"),
+      booleanPermission("workspace.settings", "Налаштування системи"),
     ],
   },
   {
@@ -273,6 +288,13 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
         "payments.manual_methods.manage",
         "Керування ручними способами оплати",
       ),
+    ],
+  },
+  {
+    module: "ai",
+    label: "ШІ",
+    items: [
+      booleanPermission("products.ai_import", "ШІ імпорт товарів"),
     ],
   },
   {
