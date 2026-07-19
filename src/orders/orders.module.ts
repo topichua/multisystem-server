@@ -16,9 +16,8 @@ import {
   ProductVariant,
   TelegramIntegration,
   User,
-  Workspace,
 } from "../database/entities";
-import { ConversationsModule } from "../conversations/conversations.module";
+import { ConversationEventsModule } from "../conversations/conversation-events.module";
 import { DeliveryModule } from "../delivery/delivery.module";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
 import { InventoryModule } from "../inventory/inventory.module";
@@ -36,7 +35,7 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     VariantCustomFieldsModule,
     InventoryModule,
     WorkspaceSettingsModule,
-    ConversationsModule,
+    ConversationEventsModule,
     forwardRef(() => NovaPoshtaIntegrationsModule),
     OrderStatusDefaultsModule,
     forwardRef(() => DeliveryModule),

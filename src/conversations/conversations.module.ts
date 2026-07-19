@@ -22,9 +22,9 @@ import { ProductsModule } from "../products/products.module";
 import { StorageModule } from "../storage/storage.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
 import { ConversationGroupDefaultsModule } from "./conversation-group-defaults.module";
+import { ConversationEventsModule } from "./conversation-events.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
 import { ConversationGroupsService } from "./conversation-groups.service";
-import { ConversationEventsService } from "./conversation-events.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
@@ -42,6 +42,7 @@ import { ConversationsService } from "./conversations.service";
     ProductsModule,
     StorageModule,
     ConversationGroupDefaultsModule,
+    ConversationEventsModule,
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
       InstagramIntegration,
@@ -65,7 +66,6 @@ import { ConversationsService } from "./conversations.service";
     ConversationsService,
     ConversationsAllocationService,
     ConversationGroupsService,
-    ConversationEventsService,
     ConversationWorkflowService,
     ConversationMessagePresenterService,
     ConversationMediaArchiveService,
@@ -77,7 +77,7 @@ import { ConversationsService } from "./conversations.service";
     ConversationsService,
     ConversationsAllocationService,
     ConversationGroupsService,
-    ConversationEventsService,
+    ConversationEventsModule,
     ConversationMessageNotifyService,
     ConversationMediaArchiveService,
     ConversationWorkflowService,
