@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -29,6 +30,11 @@ import { INTEGRATION_TYPES } from "./integration-type";
 import { CreateIntegrationRequestDto } from "./dto/http/create-integration-request.dto";
 import { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import { IntegrationsListResponseDto } from "./dto/http/integrations-list-response.dto";
+import {
+  ConfirmInstagramIntegrationRequestDto,
+  ConfirmInstagramIntegrationResponseDto,
+  InstagramOAuthPendingPollResponseDto,
+} from "./dto/http/instagram-oauth-pending.dto";
 import { IntegrationsService } from "./integrations.service";
 
 @ApiTags("integrations")
@@ -82,8 +88,9 @@ export class IntegrationsController {
   @ApiOperation({
     summary: "Start connecting an integration (returns OAuth URL)",
     description:
-      "For `instagram`, returns a Facebook Login URL to open in a new browser window. " +
-      "After OAuth completes, call GET /integrations to see `connectedAt`.",
+      "For `instagram`, returns Facebook Login `url` + correlation `sessionId`. " +
+      "Open `url` (popup/new tab). Poll GET /integrations/instagram/oauth/pages?sessionId=… " +
+      "every few seconds until `status` is `select_page`, then POST /integrations/instagram/oauth/confirm.",
   })
   @ApiCreatedResponse({ type: CreateIntegrationResponseDto })
   async create(
@@ -99,13 +106,60 @@ export class IntegrationsController {
     return this.integrations.startForOwner(ownerId, dto);
   }
 
+  @Get("instagram/oauth/pages")
+  @ApiOperation({
+    summary: "Poll Instagram OAuth pending session (pages ready?)",
+    description:
+      "Client should poll with the `sessionId` from POST /integrations. " +
+      "`awaiting_facebook` → keep polling. `select_page` → show `pages`. `failed` → restart connect.",
+  })
+  @ApiQuery({ name: "sessionId", required: true, format: "uuid" })
+  @ApiOkResponse({ type: InstagramOAuthPendingPollResponseDto })
+  async listInstagramOAuthPages(
+    @Req() req: { user?: AuthUser },
+    @Query("sessionId") sessionId: string,
+  ): Promise<InstagramOAuthPendingPollResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.integrations.listInstagramOAuthPagesForOwner(
+      ownerId,
+      sessionId,
+    );
+  }
+
+  @Post("instagram/oauth/confirm")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Confirm Instagram integration for a selected Facebook Page",
+    description:
+      "Step 3: creates/updates `instagram_integration` for the chosen Page from a pending OAuth session.",
+  })
+  @ApiBody({ type: ConfirmInstagramIntegrationRequestDto })
+  @ApiOkResponse({ type: ConfirmInstagramIntegrationResponseDto })
+  async confirmInstagramOAuth(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: ConfirmInstagramIntegrationRequestDto,
+  ): Promise<ConfirmInstagramIntegrationResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.integrations.confirmInstagramOAuthForOwner(ownerId, dto);
+  }
+
   @Delete(":type/:id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: "Disconnect an integration",
     description:
       "**Instagram:** revokes Meta app permissions (best effort) and deletes the `instagram_integration` row. " +
-      "Reconnect with `POST /integrations` (row is created on OAuth success). " +
+      "Reconnect with `POST /integrations` → Facebook Login → select Page → confirm. " +
       "**Telegram:** detaches the live session and removes the `telegram_integrations` row.",
   })
   @ApiParam({ name: "type", enum: INTEGRATION_TYPES })

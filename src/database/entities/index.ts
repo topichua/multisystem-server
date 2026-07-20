@@ -3,6 +3,12 @@ export { ClientLink } from "./client-link.entity";
 export { ClientWishlistItem } from "./client-wishlist-item.entity";
 export { ClientLinkProvider } from "./client-link-provider.enum";
 export { InstagramIntegration } from "./instagram-integration.entity";
+export {
+  InstagramOAuthPendingSession,
+  INSTAGRAM_OAUTH_PENDING_STATUSES,
+  type InstagramOAuthPendingPage,
+  type InstagramOAuthPendingStatus,
+} from "./instagram-oauth-pending-session.entity";
 export { TelegramIntegration } from "./telegram-integration.entity";
 export { TelegramIntegrationLock } from "./telegram-integration-lock.entity";
 export { TelegramIntegrationStatus } from "./telegram-integration-status.enum";

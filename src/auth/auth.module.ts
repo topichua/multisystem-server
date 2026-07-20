@@ -11,6 +11,7 @@ import {
   Workspace,
   WorkspaceMember,
   WorkspaceRole,
+  InstagramOAuthPendingSession,
 } from "../database/entities";
 import { ProductsModule } from "../products/products.module";
 import { SendgridModule } from "../sendgrid/sendgrid.module";
@@ -42,6 +43,7 @@ import { PasswordResetService } from "./password-reset.service";
       User,
       Workspace,
       InstagramIntegration,
+      InstagramOAuthPendingSession,
       WorkspaceMember,
       WorkspaceRole,
       RegistrationToken,

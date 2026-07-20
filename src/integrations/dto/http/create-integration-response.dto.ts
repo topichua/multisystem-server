@@ -24,6 +24,14 @@ export class CreateIntegrationResponseDto {
   url: string;
 
   @ApiPropertyOptional({
+    format: "uuid",
+    description:
+      "Correlation id for Instagram OAuth. Poll GET /integrations/instagram/oauth/pages?sessionId=… " +
+      "until status is `select_page`, then confirm.",
+  })
+  sessionId?: string;
+
+  @ApiPropertyOptional({
     description:
       "ISO 8601 if already connected before starting a new OAuth flow",
   })

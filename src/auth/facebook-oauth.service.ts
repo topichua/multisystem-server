@@ -12,8 +12,17 @@ import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { InstagramIntegration, Workspace } from "../database/entities";
+import {
+  InstagramOAuthPendingSession,
+  type InstagramOAuthPendingPage,
+} from "../database/entities/instagram-oauth-pending-session.entity";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
 import type { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
+import type {
+  ConfirmInstagramIntegrationResponseDto,
+  InstagramOAuthPageOptionDto,
+  InstagramOAuthPendingPollResponseDto,
+} from "../integrations/dto/http/instagram-oauth-pending.dto";
 const TOKEN_STATUS_ACTIVE = "active";
 
 const GRAPH_VERSION = "v25.0";
@@ -38,11 +47,13 @@ const DEFAULT_OAUTH_SCOPES = [
 ];
 
 const STATE_TTL_SECONDS = 15 * 60;
+const PENDING_SESSION_TTL_MS = 30 * 60 * 1000;
 
 type OAuthStatePayload = {
   sub: "facebook-oauth";
   userId: number;
   workspaceId: number;
+  sessionId: string;
 };
 
 type MetaErrorBody = {
@@ -78,6 +89,8 @@ export class FacebookOAuthService {
     private readonly workspaceRepo: Repository<Workspace>,
     @InjectRepository(InstagramIntegration)
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
+    @InjectRepository(InstagramOAuthPendingSession)
+    private readonly pendingSessionRepo: Repository<InstagramOAuthPendingSession>,
   ) {}
 
   private maskToken(t: string): string {
@@ -127,12 +140,13 @@ export class FacebookOAuthService {
   }
 
   /**
-   * Facebook Login URL for the owner's workspace (creates `instagram_integration` only after OAuth succeeds).
+   * Facebook Login URL for the owner's workspace.
+   * Creates a correlation `sessionId` the client should poll until pages are ready.
    */
-  async buildAuthorizeUrlForOwnerId(
+  async startInstagramOAuthForOwner(
     ownerId: number,
     workspaceId?: number,
-  ): Promise<string> {
+  ): Promise<{ url: string; sessionId: string; expiresAt: string }> {
     const appId = this.requireEnvEither("FACEBOOK_APP_ID", "FB_APP_ID");
     const redirectUri = this.requireEnvEither(
       "FACEBOOK_REDIRECT_URI",
@@ -141,36 +155,78 @@ export class FacebookOAuthService {
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException("owner id must be a positive integer");
     }
-    return this.buildAuthorizeUrlForUser(
+
+    const workspace =
+      workspaceId != null
+        ? await this.requireWorkspaceForOwner(ownerId, workspaceId)
+        : await this.requireWorkspaceForOwner(ownerId);
+
+    await this.pendingSessionRepo.delete({
+      workspaceId: workspace.id,
+      userId: ownerId,
+    });
+
+    const expiresAt = new Date(Date.now() + PENDING_SESSION_TTL_MS);
+    const session = await this.pendingSessionRepo.save(
+      this.pendingSessionRepo.create({
+        workspaceId: workspace.id,
+        userId: ownerId,
+        status: "awaiting_facebook",
+        userAccessToken: null,
+        pages: [],
+        errorMessage: null,
+        expiresAt,
+      }),
+    );
+
+    const url = await this.buildAuthorizeUrlForSession(
       ownerId,
+      workspace.id,
+      session.id,
       appId,
       redirectUri,
-      workspaceId,
     );
+
+    return {
+      url,
+      sessionId: session.id,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
-  private async buildAuthorizeUrlForUser(
+  /**
+   * @deprecated Prefer `startInstagramOAuthForOwner` which returns a pollable sessionId.
+   */
+  async buildAuthorizeUrlForOwnerId(
+    ownerId: number,
+    workspaceId?: number,
+  ): Promise<string> {
+    const started = await this.startInstagramOAuthForOwner(
+      ownerId,
+      workspaceId,
+    );
+    return started.url;
+  }
+
+  private async buildAuthorizeUrlForSession(
     userId: number,
+    workspaceId: number,
+    sessionId: string,
     appId: string,
     redirectUri: string,
-    workspaceIdParam?: number,
   ): Promise<string> {
-    const workspace =
-      workspaceIdParam != null
-        ? await this.requireWorkspaceForOwner(userId, workspaceIdParam)
-        : await this.requireWorkspaceForOwner(userId);
-
     const state = this.jwtService.sign(
       {
         sub: "facebook-oauth",
         userId,
-        workspaceId: workspace.id,
+        workspaceId,
+        sessionId,
       } satisfies OAuthStatePayload,
       { expiresIn: STATE_TTL_SECONDS },
     );
 
     this.log.log(
-      `Facebook OAuth start workspaceId=${workspace.id} userId=${userId} state=${state.slice(0, 8)}…`,
+      `Facebook OAuth start workspaceId=${workspaceId} userId=${userId} sessionId=${sessionId} state=${state.slice(0, 8)}…`,
     );
 
     const u = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`);
@@ -181,6 +237,19 @@ export class FacebookOAuthService {
     u.searchParams.set("scope", this.getOAuthScopeQueryValue());
 
     return u.toString();
+  }
+
+  private async buildAuthorizeUrlForUser(
+    userId: number,
+    appId: string,
+    redirectUri: string,
+    workspaceIdParam?: number,
+  ): Promise<string> {
+    const started = await this.startInstagramOAuthForOwner(
+      userId,
+      workspaceIdParam,
+    );
+    return started.url;
   }
 
   /** Comma-separated scope string for the OAuth dialog. */
@@ -222,41 +291,43 @@ export class FacebookOAuthService {
     state: string | undefined,
     oauthError: string | undefined,
     oauthErrorDescription: string | undefined,
-  ): Promise<{
-    ok: true;
-    pageId: string;
-    pageName: string;
-    instagramAccountId: string;
-    tokenConnectedAt: string;
-    tokenStatus: string;
-  }> {
+  ): Promise<{ ok: true; sessionId: string; status: "select_page" | "failed" }> {
+    let pending: OAuthStatePayload | null = null;
+    if (state?.trim()) {
+      try {
+        const decoded = this.jwtService.verify<OAuthStatePayload>(state.trim());
+        if (decoded.sub === "facebook-oauth" && decoded.sessionId) {
+          pending = decoded;
+        }
+      } catch {
+        pending = null;
+      }
+    }
+
     if (oauthError) {
+      const message =
+        oauthErrorDescription ?? oauthError ?? "Facebook OAuth failed";
       this.log.warn(
         `Facebook OAuth error from provider error=${oauthError} description=${oauthErrorDescription ?? ""}`,
       );
-      throw new BadRequestException(
-        oauthErrorDescription ?? oauthError ?? "Facebook OAuth failed",
-      );
+      if (pending?.sessionId) {
+        await this.markPendingFailed(pending.sessionId, pending.userId, message);
+        return {
+          ok: true,
+          sessionId: pending.sessionId,
+          status: "failed",
+        };
+      }
+      throw new BadRequestException(message);
     }
 
     if (!code?.trim()) {
       throw new BadRequestException("Missing authorization code");
     }
-    if (!state?.trim()) {
-      throw new BadRequestException("Missing state parameter");
-    }
-
-    let pending: OAuthStatePayload;
-    try {
-      const decoded = this.jwtService.verify<OAuthStatePayload>(state.trim());
-      if (decoded.sub !== "facebook-oauth") {
-        throw new Error("unexpected state subject");
-      }
-      pending = decoded;
-    } catch {
+    if (!pending) {
       this.log.warn("Facebook OAuth invalid or expired state");
       throw new BadRequestException(
-        "Invalid or expired state; start again from GET /auth/facebook",
+        "Invalid or expired state; start again from POST /integrations",
       );
     }
 
@@ -271,60 +342,153 @@ export class FacebookOAuthService {
     );
 
     this.log.log(
-      `Facebook OAuth callback exchanging code (workspaceId=${pending.workspaceId} userId=${pending.userId})`,
+      `Facebook OAuth callback exchanging code (workspaceId=${pending.workspaceId} userId=${pending.userId} sessionId=${pending.sessionId})`,
     );
 
-    const shortLived = await this.exchangeCodeForShortLivedUserToken(
-      appId,
-      appSecret,
-      redirectUri,
-      code.trim(),
-    );
-    this.log.log(
-      `Short-lived user token received ${this.maskToken(shortLived)}`,
-    );
+    try {
+      const shortLived = await this.exchangeCodeForShortLivedUserToken(
+        appId,
+        appSecret,
+        redirectUri,
+        code.trim(),
+      );
+      this.log.log(
+        `Short-lived user token received ${this.maskToken(shortLived)}`,
+      );
 
-    const longLived = await this.exchangeForLongLivedUserToken(
-      appId,
-      appSecret,
-      shortLived,
+      const longLived = await this.exchangeForLongLivedUserToken(
+        appId,
+        appSecret,
+        shortLived,
+      );
+      this.log.log(
+        `Long-lived user token received ${this.maskToken(longLived)}`,
+      );
+
+      const pages = await this.listPagesWithInstagramBusinessAccount(longLived);
+      const session = await this.requirePendingSessionForOwner(
+        pending.userId,
+        pending.sessionId,
+        { allowAwaiting: true },
+      );
+
+      session.userAccessToken = longLived;
+      session.pages = pages;
+      session.status = "select_page";
+      session.errorMessage = null;
+      session.expiresAt = new Date(Date.now() + PENDING_SESSION_TTL_MS);
+      await this.pendingSessionRepo.save(session);
+
+      this.log.log(
+        `Facebook OAuth pending session=${session.id} ready pages=${pages.length}`,
+      );
+
+      return {
+        ok: true,
+        sessionId: session.id,
+        status: "select_page",
+      };
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Facebook OAuth failed";
+      await this.markPendingFailed(
+        pending.sessionId,
+        pending.userId,
+        message,
+      );
+      throw err;
+    }
+  }
+
+  async pollPendingSessionForOwner(
+    ownerId: number,
+    sessionId: string,
+  ): Promise<InstagramOAuthPendingPollResponseDto> {
+    const session = await this.requirePendingSessionForOwner(
+      ownerId,
+      sessionId,
+      { allowAwaiting: true, allowFailed: true },
     );
-    this.log.log(`Long-lived user token received ${this.maskToken(longLived)}`);
+    return {
+      sessionId: session.id,
+      status: session.status,
+      pages:
+        session.status === "select_page"
+          ? session.pages.map((page) => this.toPageOptionDto(page))
+          : [],
+      expiresAt: session.expiresAt.toISOString(),
+      ...(session.status === "failed"
+        ? { error: session.errorMessage }
+        : { error: null }),
+    };
+  }
 
-    const page = await this.findPageWithInstagramBusinessAccount(longLived);
-    const igId = page.instagram_business_account!.id!.trim();
+  /** @deprecated Use pollPendingSessionForOwner */
+  async listPendingPagesForOwner(
+    ownerId: number,
+    sessionId: string,
+  ): Promise<InstagramOAuthPendingPollResponseDto> {
+    return this.pollPendingSessionForOwner(ownerId, sessionId);
+  }
 
-    const pageId = page.id!.trim();
-    const pageName = page.name?.trim() ?? "";
+  async confirmPendingSessionForOwner(
+    ownerId: number,
+    sessionId: string,
+    pageIdRaw: string,
+  ): Promise<ConfirmInstagramIntegrationResponseDto> {
+    const pageId = pageIdRaw.trim();
+    if (!pageId) {
+      throw new BadRequestException("pageId is required");
+    }
 
-    this.log.log(
-      `Selected Page pageId=${pageId} pageName=${pageName} instagramAccountId=${igId}`,
+    const session = await this.requirePendingSessionForOwner(
+      ownerId,
+      sessionId,
     );
+    if (session.status !== "select_page") {
+      throw new BadRequestException(
+        "Facebook Login is not finished yet. Keep polling until status is select_page.",
+      );
+    }
+    if (!session.userAccessToken) {
+      throw new BadRequestException(
+        "Pending OAuth session is missing user token; start again from POST /integrations",
+      );
+    }
+
+    const selected = session.pages.find((page) => page.pageId === pageId);
+    if (!selected) {
+      throw new BadRequestException(
+        "pageId is not available in this OAuth session. Pick a page from the poll response.",
+      );
+    }
 
     const workspace = await this.requireWorkspaceForOwner(
-      pending.userId,
-      pending.workspaceId,
+      ownerId,
+      session.workspaceId,
     );
     const integration = await this.saveConnectedInstagramIntegration({
       workspace,
-      pageId,
-      pageName,
-      igId,
-      longLivedUserToken: longLived,
-      pageAccessToken: page.access_token!.trim(),
+      pageId: selected.pageId,
+      pageName: selected.pageName,
+      igId: selected.instagramAccountId,
+      longLivedUserToken: session.userAccessToken,
+      pageAccessToken: selected.pageAccessToken,
     });
-    const now = integration.tokenConnectedAt!;
+
+    await this.pendingSessionRepo.delete({ id: session.id });
 
     this.log.log(
-      `Facebook OAuth completed workspaceId=${workspace.id} integrationId=${integration.id} pageId=${pageId} igBiz=${igId}`,
+      `Instagram integration confirmed workspaceId=${workspace.id} integrationId=${integration.id} pageId=${selected.pageId}`,
     );
 
     return {
       ok: true,
-      pageId,
-      pageName,
-      instagramAccountId: igId,
-      tokenConnectedAt: now.toISOString(),
+      id: integration.id,
+      pageId: selected.pageId,
+      pageName: selected.pageName,
+      instagramAccountId: selected.instagramAccountId,
+      tokenConnectedAt: integration.tokenConnectedAt!.toISOString(),
       tokenStatus: TOKEN_STATUS_ACTIVE,
     };
   }
@@ -498,12 +662,12 @@ export class FacebookOAuthService {
   }
 
   /**
-   * Calls Graph `me/accounts` with the long-lived **user** token (`access_token` query param),
-   * picks the first Page with `instagram_business_account`, and returns the Page node.
+   * Calls Graph `me/accounts` with the long-lived **user** token and returns every
+   * Page that has an Instagram Business account (for user page selection).
    */
-  private async findPageWithInstagramBusinessAccount(
+  private async listPagesWithInstagramBusinessAccount(
     userAccessToken: string,
-  ): Promise<PageWithIg> {
+  ): Promise<InstagramOAuthPendingPage[]> {
     const fields = "id,name,access_token,instagram_business_account{id}";
     let nextUrl: string | null =
       `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts` +
@@ -527,20 +691,95 @@ export class FacebookOAuthService {
       );
     }
 
-    const withIg = all.find(
-      (p) => p.instagram_business_account?.id && p.id && p.access_token,
-    );
-    if (!withIg) {
+    const withIg: InstagramOAuthPendingPage[] = [];
+    for (const page of all) {
+      const pageId = page.id?.trim();
+      const pageAccessToken = page.access_token?.trim();
+      const instagramAccountId = page.instagram_business_account?.id?.trim();
+      if (!pageId || !pageAccessToken || !instagramAccountId) {
+        continue;
+      }
+      withIg.push({
+        pageId,
+        pageName: page.name?.trim() ?? "",
+        pageAccessToken,
+        instagramAccountId,
+      });
+    }
+
+    if (withIg.length === 0) {
       throw new BadRequestException(
         "No Instagram Business account connected to any Facebook Page. Connect Instagram to a Page in Meta Business Suite.",
       );
     }
 
-    this.log.log(
-      `Selected Page with Instagram Business account token=${this.maskToken(withIg.access_token!.trim())}`,
-    );
-
     return withIg;
+  }
+
+  private async requirePendingSessionForOwner(
+    ownerId: number,
+    sessionId: string,
+    options?: { allowAwaiting?: boolean; allowFailed?: boolean },
+  ): Promise<InstagramOAuthPendingSession> {
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException("owner id must be a positive integer");
+    }
+    const id = sessionId?.trim();
+    if (!id) {
+      throw new BadRequestException("sessionId is required");
+    }
+
+    const session = await this.pendingSessionRepo.findOne({ where: { id } });
+    if (!session || session.userId !== ownerId) {
+      throw new NotFoundException("Instagram OAuth session not found");
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      await this.pendingSessionRepo.delete({ id: session.id });
+      throw new BadRequestException(
+        "Instagram OAuth session expired; start again from POST /integrations",
+      );
+    }
+    if (
+      session.status === "awaiting_facebook" &&
+      options?.allowAwaiting !== true
+    ) {
+      throw new BadRequestException(
+        "Facebook Login is not finished yet. Keep polling until status is select_page.",
+      );
+    }
+    if (session.status === "failed" && options?.allowFailed !== true) {
+      throw new BadRequestException(
+        session.errorMessage ??
+          "Facebook Login failed; start again from POST /integrations",
+      );
+    }
+    return session;
+  }
+
+  private async markPendingFailed(
+    sessionId: string,
+    userId: number,
+    message: string,
+  ): Promise<void> {
+    const session = await this.pendingSessionRepo.findOne({
+      where: { id: sessionId, userId },
+    });
+    if (!session) {
+      return;
+    }
+    session.status = "failed";
+    session.errorMessage = message.slice(0, 2000);
+    await this.pendingSessionRepo.save(session);
+  }
+
+  private toPageOptionDto(
+    page: InstagramOAuthPendingPage,
+  ): InstagramOAuthPageOptionDto {
+    return {
+      pageId: page.pageId,
+      pageName: page.pageName,
+      instagramAccountId: page.instagramAccountId,
+    };
   }
 
   /** Removes this app's permissions for the user token (Meta `DELETE /me/permissions`). */

@@ -21,6 +21,11 @@ import type { CreateIntegrationRequestDto } from "./dto/http/create-integration-
 import type { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import type { IntegrationListItemDto } from "./dto/http/integration-list-item.dto";
 import type { IntegrationsListResponseDto } from "./dto/http/integrations-list-response.dto";
+import type {
+  ConfirmInstagramIntegrationRequestDto,
+  ConfirmInstagramIntegrationResponseDto,
+  InstagramOAuthPendingPollResponseDto,
+} from "./dto/http/instagram-oauth-pending.dto";
 import { InstagramIntegrationProfileService } from "../instagram/instagram-integration-profile.service";
 
 @Injectable()
@@ -57,7 +62,7 @@ export class IntegrationsService {
       },
       order: { id: "DESC" },
     });
-    const url = await this.facebookOAuth.buildAuthorizeUrlForOwnerId(
+    const started = await this.facebookOAuth.startInstagramOAuthForOwner(
       ownerId,
       workspace.id,
     );
@@ -72,7 +77,8 @@ export class IntegrationsService {
         type: "instagram",
         id: existing.id,
         name,
-        url,
+        url: started.url,
+        sessionId: started.sessionId,
         ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
           ? { connectedAt: connectedAt.toISOString() }
           : {}),
@@ -82,8 +88,27 @@ export class IntegrationsService {
     return {
       type: "instagram",
       name: workspace.name,
-      url,
+      url: started.url,
+      sessionId: started.sessionId,
     };
+  }
+
+  async listInstagramOAuthPagesForOwner(
+    ownerId: number,
+    sessionId: string,
+  ): Promise<InstagramOAuthPendingPollResponseDto> {
+    return this.facebookOAuth.pollPendingSessionForOwner(ownerId, sessionId);
+  }
+
+  async confirmInstagramOAuthForOwner(
+    ownerId: number,
+    dto: ConfirmInstagramIntegrationRequestDto,
+  ): Promise<ConfirmInstagramIntegrationResponseDto> {
+    return this.facebookOAuth.confirmPendingSessionForOwner(
+      ownerId,
+      dto.sessionId,
+      dto.pageId,
+    );
   }
 
   async listForOwner(

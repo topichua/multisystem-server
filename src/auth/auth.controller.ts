@@ -284,6 +284,11 @@ export class AuthController {
   @Get("facebook/callback")
   @ApiOperation({
     summary: "Facebook OAuth redirect URI (Meta calls this with ?code=&state=)",
+    description:
+      "Completes Facebook Login against the correlation `sessionId` embedded in `state`. " +
+      "Does not create the integration. Client should already be polling " +
+      "GET /integrations/instagram/oauth/pages?sessionId=… until status becomes `select_page`. " +
+      "This endpoint returns a simple HTML page so a popup window can be closed.",
   })
   @ApiQuery({ name: "code", required: false })
   @ApiQuery({ name: "state", required: false })
@@ -294,13 +299,43 @@ export class AuthController {
     @Query("state") state: string | undefined,
     @Query("error") error: string | undefined,
     @Query("error_description") errorDescription: string | undefined,
-  ) {
-    return this.facebookOAuth.handleCallback(
-      code,
-      state,
-      error,
-      errorDescription,
-    );
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const result = await this.facebookOAuth.handleCallback(
+        code,
+        state,
+        error,
+        errorDescription,
+      );
+      const title =
+        result.status === "failed"
+          ? "Facebook Login failed"
+          : "Facebook Login complete";
+      const body =
+        result.status === "failed"
+          ? "Login failed. You can close this window and try again in the app."
+          : "You can close this window and continue in the app.";
+      res
+        .status(HttpStatus.OK)
+        .type("html")
+        .send(
+          `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
+            `<body><p>${body}</p>` +
+            `<script>window.close();</script></body></html>`,
+        );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Facebook OAuth failed";
+      res
+        .status(HttpStatus.BAD_REQUEST)
+        .type("html")
+        .send(
+          `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Facebook Login failed</title></head>` +
+            `<body><p>${message}</p>` +
+            `<script>window.close();</script></body></html>`,
+        );
+    }
   }
 
   @Get("facebook/status")

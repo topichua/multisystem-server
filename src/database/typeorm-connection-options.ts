@@ -151,12 +151,15 @@ import { DropWorkspaceMemberCanBeAssignedToChat1744200000153 } from "./migration
 import { ProductPermissionsAndReferenceGrants1744200000154 } from "./migrations/1744200000154-ProductPermissionsAndReferenceGrants";
 import { RedesignOrderPermissions1744200000155 } from "./migrations/1744200000155-RedesignOrderPermissions";
 import { WorkspaceManagementPermissions1744200000156 } from "./migrations/1744200000156-WorkspaceManagementPermissions";
+import { InstagramOAuthPendingSessions1744200000157 } from "./migrations/1744200000157-InstagramOAuthPendingSessions";
+import { InstagramOAuthPendingPollStatus1744200000158 } from "./migrations/1744200000158-InstagramOAuthPendingPollStatus";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
   ClientLink,
   ClientWishlistItem,
   InstagramIntegration,
+  InstagramOAuthPendingSession,
   Conversation,
   ConversationEvent,
   ConversationGroup,
@@ -267,6 +270,7 @@ const entities = [
   WorkspaceMember,
   WorkspaceInvitation,
   InstagramIntegration,
+  InstagramOAuthPendingSession,
   TelegramIntegration,
   TelegramIntegrationLock,
   NovaPoshtaIntegration,
@@ -510,6 +514,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductPermissionsAndReferenceGrants1744200000154,
       RedesignOrderPermissions1744200000155,
       WorkspaceManagementPermissions1744200000156,
+      InstagramOAuthPendingSessions1744200000157,
+      InstagramOAuthPendingPollStatus1744200000158,
     ],
   };
 }
