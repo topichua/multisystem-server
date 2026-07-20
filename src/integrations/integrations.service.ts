@@ -54,36 +54,10 @@ export class IntegrationsService {
 
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    const existing = await this.instagramIntegrationRepo.findOne({
-      where: {
-        workspaceId: workspace.id,
-        ownerId: workspace.ownerId,
-        accessToken: Not(IsNull()),
-      },
-      order: { id: "DESC" },
-    });
     const started = await this.facebookOAuth.startInstagramOAuthForOwner(
       ownerId,
       workspace.id,
     );
-
-    if (existing) {
-      const name =
-        existing.facebookPageName?.trim() ||
-        existing.name?.trim() ||
-        `Instagram #${existing.id}`;
-      const connectedAt = existing.tokenConnectedAt;
-      return {
-        type: "instagram",
-        id: existing.id,
-        name,
-        url: started.url,
-        sessionId: started.sessionId,
-        ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
-          ? { connectedAt: connectedAt.toISOString() }
-          : {}),
-      };
-    }
 
     return {
       type: "instagram",

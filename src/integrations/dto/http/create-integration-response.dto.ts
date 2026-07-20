@@ -10,7 +10,7 @@ export class CreateIntegrationResponseDto {
 
   @ApiPropertyOptional({
     description:
-      "`instagram_integration.id` when already connected; omitted until OAuth completes",
+      "`instagram_integration.id` when reconnecting an existing Page; omitted for a new Page connection",
   })
   id?: number;
 
@@ -19,7 +19,8 @@ export class CreateIntegrationResponseDto {
 
   @ApiProperty({
     description:
-      "URL to open in a new window to complete Facebook Login (Instagram / Page tokens)",
+      "URL to open in a new window to complete Facebook Login (Instagram / Page tokens). " +
+      "A workspace may have multiple Instagram integrations (one per Facebook Page).",
   })
   url: string;
 

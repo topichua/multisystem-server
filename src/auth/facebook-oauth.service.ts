@@ -577,13 +577,18 @@ export class FacebookOAuthService {
     const existing = await this.instagramIntegrationRepo.findOne({
       where: {
         workspaceId: params.workspace.id,
-        ownerId: params.workspace.ownerId,
+        pageId: params.pageId,
       },
       order: { id: "DESC" },
     });
 
+    const displayName =
+      params.pageName.length > 0
+        ? params.pageName
+        : `Instagram ${params.pageId}`;
+
     if (existing) {
-      existing.pageId = params.pageId;
+      existing.name = displayName;
       existing.userAccessToken = params.longLivedUserToken;
       existing.accessToken = params.pageAccessToken;
       existing.instagramAccountId = params.igId;
@@ -596,7 +601,7 @@ export class FacebookOAuthService {
 
     return this.instagramIntegrationRepo.save(
       this.instagramIntegrationRepo.create({
-        name: params.workspace.name,
+        name: displayName,
         pageId: params.pageId,
         userAccessToken: params.longLivedUserToken,
         accessToken: params.pageAccessToken,

@@ -153,6 +153,7 @@ import { RedesignOrderPermissions1744200000155 } from "./migrations/174420000015
 import { WorkspaceManagementPermissions1744200000156 } from "./migrations/1744200000156-WorkspaceManagementPermissions";
 import { InstagramOAuthPendingSessions1744200000157 } from "./migrations/1744200000157-InstagramOAuthPendingSessions";
 import { InstagramOAuthPendingPollStatus1744200000158 } from "./migrations/1744200000158-InstagramOAuthPendingPollStatus";
+import { InstagramIntegrationWorkspacePageUnique1744200000159 } from "./migrations/1744200000159-InstagramIntegrationWorkspacePageUnique";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -516,6 +517,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceManagementPermissions1744200000156,
       InstagramOAuthPendingSessions1744200000157,
       InstagramOAuthPendingPollStatus1744200000158,
+      InstagramIntegrationWorkspacePageUnique1744200000159,
     ],
   };
 }
