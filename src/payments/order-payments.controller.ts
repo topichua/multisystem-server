@@ -44,7 +44,12 @@ export class OrderPaymentsController {
   constructor(private readonly payments: OrderPaymentsService) {}
 
   @Get()
-  @ApiOperation({ summary: "List payment links (requests) for order" })
+  @ApiOperation({
+    summary: "List payment links (requests) for order",
+    description:
+      "Returns payment requests for the order. Pending/processing online payments " +
+      "are synced from the provider before the response is returned.",
+  })
   @ApiParam({ name: "orderId", type: Number })
   @ApiOkResponse({ type: OrderPaymentRequestsListResponseDto })
   list(
@@ -167,14 +172,18 @@ export class OrderPaymentsController {
   @ApiOperation({
     summary: "Delete pending order payment",
     description:
-      "Deletes a payment transaction only when its status is `pending`. " +
-      "Succeeded / failed payments cannot be deleted.",
+      "Deletes a pending payment. Accepts either a payment **transaction** id " +
+      "(from `order.payment.payments[]`) or an online payment **request** id " +
+      "(from `GET /orders/:orderId/payments` / create-link response). " +
+      "For online payments, also removes the linked payment request and cancels " +
+      "the provider invoice when possible. Succeeded payments cannot be deleted.",
   })
   @ApiParam({ name: "orderId", type: Number })
   @ApiParam({
     name: "paymentId",
     type: Number,
-    description: "Payment transaction id from order `payment.payments[]`.",
+    description:
+      "Pending payment transaction id, or online payment request id.",
   })
   @ApiNoContentResponse({ description: "Pending payment deleted." })
   async deletePending(

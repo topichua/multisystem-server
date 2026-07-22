@@ -22,7 +22,6 @@ import {
 import {
   calculateOrderPaymentStatus,
   calculatePaidAmount,
-  calculatePendingChargeAmount,
   calculateRemainingAmount,
 } from "./logic/order-payment-status.logic";
 import { PaymentProviderFactory } from "./providers/payment-provider.factory";
@@ -174,23 +173,6 @@ export class PaymentDomainService {
         throw new NotFoundException("Order not found");
       }
 
-      const existingTransactions = await manager
-        .getRepository(PaymentTransaction)
-        .find({
-          where: { workspaceId: input.workspaceId, orderId: input.orderId },
-        });
-      const paidAmount = calculatePaidAmount(existingTransactions);
-      const pendingReserved = calculatePendingChargeAmount(existingTransactions);
-      const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
-      const available =
-        Math.round((remaining - pendingReserved + Number.EPSILON) * 100) / 100;
-
-      if (input.amount > available) {
-        throw new BadRequestException(
-          `Amount exceeds available balance (${available}) after pending payments`,
-        );
-      }
-
       const occurredAt = input.occurredAt ?? new Date();
       const reference = input.reference?.trim() || null;
       const note = input.note?.trim() || null;
@@ -212,6 +194,14 @@ export class PaymentDomainService {
         manualPaymentMethodId: input.manualPaymentMethodId ?? null,
       });
       const saved = await manager.getRepository(PaymentTransaction).save(tx);
+
+      const existingTransactions = await manager
+        .getRepository(PaymentTransaction)
+        .find({
+          where: { workspaceId: input.workspaceId, orderId: input.orderId },
+        });
+      const paidAmount = calculatePaidAmount(existingTransactions);
+      const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
 
       return {
         transaction: saved,
@@ -352,7 +342,7 @@ export class PaymentDomainService {
     workspaceId: number;
     orderId: number;
     paymentId: number;
-  }): Promise<{ deletedId: number }> {
+  }): Promise<{ deletedId: number; paymentRequestId: number | null }> {
     return this.dataSource.transaction(async (manager) => {
       const tx = await manager.getRepository(PaymentTransaction).findOne({
         where: {
@@ -361,42 +351,100 @@ export class PaymentDomainService {
           orderId: input.orderId,
         },
       });
-      if (!tx) {
+
+      if (tx) {
+        if (tx.status !== PaymentTransactionStatus.pending) {
+          throw new ConflictException(
+            `Only pending payments can be deleted (current status: "${tx.status}")`,
+          );
+        }
+
+        if (
+          tx.source === PaymentTransactionSource.online_payment &&
+          tx.paymentId != null
+        ) {
+          const payment = await manager.getRepository(PaymentRequest).findOne({
+            where: {
+              id: tx.paymentId,
+              workspaceId: input.workspaceId,
+              orderId: input.orderId,
+            },
+          });
+          if (payment) {
+            await this.deleteOnlinePaymentRequest(manager, payment);
+            return {
+              deletedId: tx.id,
+              paymentRequestId: payment.id,
+            };
+          }
+        }
+
+        await manager.getRepository(PaymentTransaction).delete(tx.id);
+        return { deletedId: tx.id, paymentRequestId: null };
+      }
+
+      // Clients often pass the payment-request id (same as sync/cancel), not the
+      // transaction id from order.payment.payments[].
+      const payment = await manager.getRepository(PaymentRequest).findOne({
+        where: {
+          id: input.paymentId,
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+        },
+      });
+      if (!payment) {
         throw new NotFoundException("Payment not found");
       }
-      if (tx.status !== PaymentTransactionStatus.pending) {
-        throw new ConflictException(
-          `Only pending payments can be deleted (current status: "${tx.status}")`,
-        );
-      }
 
-      if (
-        tx.source === PaymentTransactionSource.online_payment &&
-        tx.paymentId != null
-      ) {
-        const payment = await manager.getRepository(PaymentRequest).findOne({
-          where: {
-            id: tx.paymentId,
-            workspaceId: input.workspaceId,
-            orderId: input.orderId,
-          },
-        });
-        if (payment) {
-          if (payment.status === PaymentRequestStatus.succeeded) {
-            throw new ConflictException(
-              "Cannot delete a payment linked to a succeeded online payment request",
-            );
-          }
-          // Remove the ledger row first (FK RESTRICT on payment_id).
-          await manager.getRepository(PaymentTransaction).delete(tx.id);
-          await manager.getRepository(PaymentRequest).delete(payment.id);
-          return { deletedId: tx.id };
-        }
-      }
-
-      await manager.getRepository(PaymentTransaction).delete(tx.id);
-      return { deletedId: tx.id };
+      const pendingTx = await manager.getRepository(PaymentTransaction).findOne({
+        where: {
+          paymentId: payment.id,
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+          status: PaymentTransactionStatus.pending,
+          type: PaymentTransactionType.charge,
+        },
+      });
+      await this.deleteOnlinePaymentRequest(manager, payment);
+      return {
+        deletedId: pendingTx?.id ?? payment.id,
+        paymentRequestId: payment.id,
+      };
     });
+  }
+
+  private async deleteOnlinePaymentRequest(
+    manager: EntityManager,
+    payment: PaymentRequest,
+  ): Promise<void> {
+    if (payment.status === PaymentRequestStatus.succeeded) {
+      throw new ConflictException(
+        "Cannot delete a succeeded online payment request",
+      );
+    }
+    const linked = await manager.getRepository(PaymentTransaction).find({
+      where: {
+        paymentId: payment.id,
+        workspaceId: payment.workspaceId,
+        orderId: payment.orderId,
+      },
+    });
+    if (
+      linked.some((row) => row.status === PaymentTransactionStatus.succeeded)
+    ) {
+      throw new ConflictException(
+        "Cannot delete a payment linked to a succeeded online charge",
+      );
+    }
+    // Remove ledger rows first (FK RESTRICT on payment_id).
+    if (linked.length > 0) {
+      await manager.getRepository(PaymentTransaction).delete({
+        paymentId: payment.id,
+        workspaceId: payment.workspaceId,
+        orderId: payment.orderId,
+      });
+    }
+    await manager.getRepository(PaymentRequest).delete(payment.id);
   }
 
   /** Creates a pending online charge row linked to a payment request (listed in transactions). */

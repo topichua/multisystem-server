@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -21,10 +22,7 @@ import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
 import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
-import {
-  calculatePendingChargeAmount,
-  calculateRemainingAmount,
-} from "./logic/order-payment-status.logic";
+import { calculateRemainingAmount } from "./logic/order-payment-status.logic";
 import { resolveManualPaymentKind } from "./logic/manual-payment-kind";
 import type { CreateOrderPaymentLinkDto } from "./dto/create-order-payment-link.dto";
 import type { CreateManualPaymentDto } from "./dto/create-manual-payment.dto";
@@ -37,6 +35,8 @@ import type { OrderPaymentRequestsListResponseDto } from "./dto/order-payment-re
 
 @Injectable()
 export class OrderPaymentsService {
+  private readonly logger = new Logger(OrderPaymentsService.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
@@ -58,11 +58,42 @@ export class OrderPaymentsService {
     appRole?: string,
   ): Promise<OrderPaymentRequestsListResponseDto> {
     await this.requireViewPayments(userId, appRole);
-    const order = await this.requireOrder(userId, orderId, appRole);
-    const payments = await this.paymentRepo.find({
+    let order = await this.requireOrder(userId, orderId, appRole);
+    let payments = await this.paymentRepo.find({
       where: { workspaceId: order.workspaceId, orderId: order.id },
       order: { createdAt: "DESC" },
+      relations: { integration: true },
     });
+
+    const openPayments = payments.filter(
+      (p) =>
+        p.externalPaymentId &&
+        (p.status === PaymentRequestStatus.pending ||
+          p.status === PaymentRequestStatus.processing),
+    );
+    if (openPayments.length > 0) {
+      await Promise.all(
+        openPayments.map(async (payment) => {
+          try {
+            await this.syncPaymentFromProvider(payment, userId);
+          } catch (error) {
+            this.logger.warn(
+              `Failed to sync payment ${payment.id} for order ${order.id}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }),
+      );
+      order = (await this.orderRepo.findOne({
+        where: { workspaceId: order.workspaceId, id: order.id },
+      }))!;
+      payments = await this.paymentRepo.find({
+        where: { workspaceId: order.workspaceId, orderId: order.id },
+        order: { createdAt: "DESC" },
+      });
+    }
+
     const paidAmount = await this.domain.getPaidAmountForOrder(
       order.workspaceId,
       order.id,
@@ -148,22 +179,11 @@ export class OrderPaymentsService {
       order.workspaceId,
       order.id,
     );
-    const existingTransactions = await this.transactionRepo.find({
-      where: { workspaceId: order.workspaceId, orderId: order.id },
-    });
-    const pendingReserved = calculatePendingChargeAmount(existingTransactions);
     const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
-    const available =
-      Math.round((remaining - pendingReserved + Number.EPSILON) * 100) / 100;
-    const amount = dto.amount ?? available;
+    const amount = dto.amount ?? remaining;
 
     if (amount <= 0) {
       throw new BadRequestException("Amount must be greater than zero");
-    }
-    if (amount > available) {
-      throw new BadRequestException(
-        `Amount exceeds available balance (${available}) after pending payments`,
-      );
     }
     if (order.currency.toUpperCase() !== "UAH") {
       throw new BadRequestException(
@@ -236,6 +256,18 @@ export class OrderPaymentsService {
       throw new BadRequestException("Payment has no external payment id");
     }
 
+    const updated = await this.syncPaymentFromProvider(payment, userId);
+    return this.toPaymentDto(updated);
+  }
+
+  private async syncPaymentFromProvider(
+    payment: PaymentRequest,
+    userId?: number,
+  ): Promise<PaymentRequest> {
+    if (!payment.externalPaymentId) {
+      throw new BadRequestException("Payment has no external payment id");
+    }
+
     const provider = this.domain.resolveProviderForIntegration(
       payment.integration ??
         (await this.integrations.getIntegrationById(
@@ -244,7 +276,7 @@ export class OrderPaymentsService {
         )),
     );
     const status = await provider.getPaymentStatus(payment.externalPaymentId);
-    const updated = await this.domain.applyProviderEvent(
+    return this.domain.applyProviderEvent(
       payment.id,
       {
         externalPaymentId: status.externalPaymentId,
@@ -262,7 +294,6 @@ export class OrderPaymentsService {
       "manual_sync",
       userId,
     );
-    return this.toPaymentDto(updated);
   }
 
   async recordManualPayment(
@@ -337,6 +368,66 @@ export class OrderPaymentsService {
   ): Promise<{ deleted: true; id: number }> {
     await this.requireManualPayment(userId, appRole);
     const order = await this.requireOrder(userId, orderId, appRole);
+
+    const existingTx = await this.transactionRepo.findOne({
+      where: {
+        id: paymentId,
+        workspaceId: order.workspaceId,
+        orderId: order.id,
+      },
+    });
+
+    let paymentRequestId: number | null = null;
+    if (
+      existingTx?.source === PaymentTransactionSource.online_payment &&
+      existingTx.paymentId != null
+    ) {
+      paymentRequestId = existingTx.paymentId;
+    } else if (!existingTx) {
+      paymentRequestId =
+        (
+          await this.paymentRepo.findOne({
+            where: {
+              id: paymentId,
+              workspaceId: order.workspaceId,
+              orderId: order.id,
+            },
+            select: { id: true },
+          })
+        )?.id ?? null;
+    }
+
+    if (paymentRequestId != null) {
+      const payment = await this.paymentRepo.findOne({
+        where: {
+          id: paymentRequestId,
+          workspaceId: order.workspaceId,
+          orderId: order.id,
+        },
+      });
+      if (
+        payment &&
+        payment.status !== PaymentRequestStatus.succeeded &&
+        payment.externalPaymentId
+      ) {
+        try {
+          this.domain.assertPaymentCancellable(payment);
+          const integration = await this.integrations.getIntegrationById(
+            order.workspaceId,
+            payment.integrationId,
+          );
+          const provider =
+            this.domain.resolveProviderForIntegration(integration);
+          await provider.cancelPayment(payment.externalPaymentId);
+        } catch (error) {
+          // Best-effort provider cancel; domain still blocks succeeded payments.
+          if (!(error instanceof BadRequestException)) {
+            throw error;
+          }
+        }
+      }
+    }
+
     const result = await this.domain.deletePendingPayment({
       workspaceId: order.workspaceId,
       orderId: order.id,
