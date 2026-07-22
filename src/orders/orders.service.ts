@@ -2,13 +2,15 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
+  forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import type { EntityManager } from "typeorm";
-import { In, Repository } from "typeorm";
+import { DataSource, In, Repository } from "typeorm";
 import {
   Client,
   Conversation,
@@ -84,6 +86,7 @@ import {
   calculatePaidAmount,
   calculateRemainingAmount,
 } from "../payments/logic/order-payment-status.logic";
+import { OrderPaymentStatusApplicationService } from "../payments/order-payment-status-application.service";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -98,6 +101,10 @@ export const OrderEventType = {
   PAYMENT_CREATED: "order.payment_created",
   PAYMENT_CANCELLED: "order.payment_cancelled",
   PAYMENT_SUCCEEDED: "order.payment_succeeded",
+  PAYMENT_REFUND_REQUESTED: "order.payment_refund_requested",
+  PAYMENT_REFUNDED: "order.payment_refunded",
+  PAYMENT_REFUND_REJECTED: "order.payment_refund_rejected",
+  PAYMENT_REFUND_CANCELLED: "order.payment_refund_cancelled",
 } as const;
 
 function roundMoney(n: number): number {
@@ -183,6 +190,9 @@ export class OrdersService {
     private readonly conversationEvents: ConversationEventsService,
     @InjectRepository(OrderStatusAutomation)
     private readonly automationRepo: Repository<OrderStatusAutomation>,
+    private readonly dataSource: DataSource,
+    @Inject(forwardRef(() => OrderPaymentStatusApplicationService))
+    private readonly paymentStatusApplication: OrderPaymentStatusApplicationService,
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
@@ -1758,6 +1768,44 @@ export class OrdersService {
         totalAmount: order.totalAmount,
       },
       manager,
+    );
+
+    await this.syncPaymentStatusAfterTotalsChange(
+      workspaceId,
+      orderId,
+      manager,
+    );
+  }
+
+  /**
+   * Recompute unpaid/partial/paid/overpaid from succeeded charges vs new total.
+   * Adding items can move paid → partial; removing can move partial → paid/overpaid.
+   */
+  private async syncPaymentStatusAfterTotalsChange(
+    workspaceId: number,
+    orderId: number,
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (manager) {
+      await this.paymentStatusApplication.updateOrderPaymentStatus(
+        manager,
+        workspaceId,
+        orderId,
+      );
+      return;
+    }
+
+    const result = await this.dataSource.transaction(async (em) =>
+      this.paymentStatusApplication.updateOrderPaymentStatus(
+        em,
+        workspaceId,
+        orderId,
+      ),
+    );
+    await this.paymentStatusApplication.notifyPaymentStatusChangeIfNeeded(
+      workspaceId,
+      orderId,
+      result,
     );
   }
 

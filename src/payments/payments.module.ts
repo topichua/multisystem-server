@@ -4,6 +4,7 @@ import {
   ManualPaymentMethod,
   Order,
   OrderEvent,
+  OrderRefund,
   PaymentIntegration,
   PaymentRequest,
   PaymentTransaction,
@@ -17,6 +18,8 @@ import { MonobankOrderPaymentWebhookController } from "./monobank-order-payment-
 import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { OrderPaymentsController } from "./order-payments.controller";
 import { OrderPaymentsService } from "./order-payments.service";
+import { OrderRefundsController } from "./order-refunds.controller";
+import { OrderRefundsService } from "./order-refunds.service";
 import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsController } from "./payment-integrations.controller";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
@@ -32,6 +35,7 @@ import { OrderPaymentStatusApplicationService } from "./order-payment-status-app
       ManualPaymentMethod,
       Order,
       OrderEvent,
+      OrderRefund,
     ]),
     forwardRef(() => WorkspaceAccessModule),
     forwardRef(() => OrderStatusAutomationsModule),
@@ -40,6 +44,7 @@ import { OrderPaymentStatusApplicationService } from "./order-payment-status-app
     PaymentIntegrationsController,
     ManualPaymentMethodsController,
     OrderPaymentsController,
+    OrderRefundsController,
     MonobankOrderPaymentWebhookController,
   ],
   providers: [
@@ -51,11 +56,13 @@ import { OrderPaymentStatusApplicationService } from "./order-payment-status-app
     PaymentIntegrationsService,
     ManualPaymentMethodsService,
     OrderPaymentsService,
+    OrderRefundsService,
   ],
   exports: [
     PaymentIntegrationsService,
     ManualPaymentMethodsService,
     OrderPaymentsService,
+    OrderRefundsService,
     PaymentDomainService,
     OrderPaymentStatusApplicationService,
   ],

@@ -23,6 +23,7 @@ import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-cust
 import { InventoryModule } from "../inventory/inventory.module";
 import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
 import { NovaPoshtaIntegrationsModule } from "../novaposhta-integrations/novaposhta-integrations.module";
+import { PaymentsModule } from "../payments/payments.module";
 import { OrderStatusesController } from "./order-statuses.controller";
 import { OrderStatusDefaultsModule } from "./order-status-defaults.module";
 import { OrderIdAllocationService } from "./order-id-allocation.service";
@@ -39,6 +40,7 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     forwardRef(() => NovaPoshtaIntegrationsModule),
     OrderStatusDefaultsModule,
     forwardRef(() => DeliveryModule),
+    forwardRef(() => PaymentsModule),
     TypeOrmModule.forFeature([
       Client,
       Conversation,

@@ -154,6 +154,7 @@ import { WorkspaceManagementPermissions1744200000156 } from "./migrations/174420
 import { InstagramOAuthPendingSessions1744200000157 } from "./migrations/1744200000157-InstagramOAuthPendingSessions";
 import { InstagramOAuthPendingPollStatus1744200000158 } from "./migrations/1744200000158-InstagramOAuthPendingPollStatus";
 import { InstagramIntegrationWorkspacePageUnique1744200000159 } from "./migrations/1744200000159-InstagramIntegrationWorkspacePageUnique";
+import { OrderRefunds1744200000160 } from "./migrations/1744200000160-OrderRefunds";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -208,6 +209,7 @@ import {
   PaymentRequest,
   PaymentTransaction,
   ManualPaymentMethod,
+  OrderRefund,
   OrderStatusAutomation,
   OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
@@ -316,6 +318,7 @@ const entities = [
   PaymentRequest,
   PaymentTransaction,
   ManualPaymentMethod,
+  OrderRefund,
   OrderStatusAutomation,
   OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
@@ -518,6 +521,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       InstagramOAuthPendingSessions1744200000157,
       InstagramOAuthPendingPollStatus1744200000158,
       InstagramIntegrationWorkspacePageUnique1744200000159,
+      OrderRefunds1744200000160,
     ],
   };
 }

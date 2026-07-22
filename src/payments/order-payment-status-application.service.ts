@@ -54,9 +54,15 @@ export class OrderPaymentStatusApplicationService {
 
     const paidAmount = calculatePaidAmount(transactions);
     const previousPaymentStatus = order.paymentStatus;
+    const hasSucceededRefunds = transactions.some(
+      (t) =>
+        t.type === PaymentTransactionType.refund &&
+        t.status === PaymentTransactionStatus.succeeded,
+    );
     const paymentStatus = calculateOrderPaymentStatus(
       order.totalAmount,
       paidAmount,
+      { hasSucceededRefunds },
     );
     const changed = paymentStatus !== previousPaymentStatus;
 
@@ -79,7 +85,10 @@ export class OrderPaymentStatusApplicationService {
           .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())[0];
         order.paidAt = latestCharge?.occurredAt ?? new Date();
       }
-    } else if (paymentStatus === OrderPaymentStatus.unpaid) {
+    } else if (
+      paymentStatus === OrderPaymentStatus.unpaid ||
+      paymentStatus === OrderPaymentStatus.refunded
+    ) {
       order.paidAt = null;
     }
 
