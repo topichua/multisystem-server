@@ -417,16 +417,31 @@ export class PaymentDomainService {
     manager: EntityManager,
     payment: PaymentRequest,
   ): Promise<void> {
-    if (payment.status === PaymentRequestStatus.succeeded) {
+    // Lock payment first so concurrent sync/delete share a consistent lock order
+    // (payment → transactions) and avoid deadlocks.
+    const locked = await manager
+      .getRepository(PaymentRequest)
+      .createQueryBuilder("p")
+      .setLock("pessimistic_write")
+      .where("p.id = :id", { id: payment.id })
+      .andWhere("p.workspace_id = :workspaceId", {
+        workspaceId: payment.workspaceId,
+      })
+      .andWhere("p.order_id = :orderId", { orderId: payment.orderId })
+      .getOne();
+    if (!locked) {
+      throw new NotFoundException("Payment not found");
+    }
+    if (locked.status === PaymentRequestStatus.succeeded) {
       throw new ConflictException(
         "Cannot delete a succeeded online payment request",
       );
     }
     const linked = await manager.getRepository(PaymentTransaction).find({
       where: {
-        paymentId: payment.id,
-        workspaceId: payment.workspaceId,
-        orderId: payment.orderId,
+        paymentId: locked.id,
+        workspaceId: locked.workspaceId,
+        orderId: locked.orderId,
       },
     });
     if (
@@ -439,12 +454,12 @@ export class PaymentDomainService {
     // Remove ledger rows first (FK RESTRICT on payment_id).
     if (linked.length > 0) {
       await manager.getRepository(PaymentTransaction).delete({
-        paymentId: payment.id,
-        workspaceId: payment.workspaceId,
-        orderId: payment.orderId,
+        paymentId: locked.id,
+        workspaceId: locked.workspaceId,
+        orderId: locked.orderId,
       });
     }
-    await manager.getRepository(PaymentRequest).delete(payment.id);
+    await manager.getRepository(PaymentRequest).delete(locked.id);
   }
 
   /** Creates a pending online charge row linked to a payment request (listed in transactions). */

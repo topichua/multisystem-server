@@ -72,19 +72,17 @@ export class OrderPaymentsService {
           p.status === PaymentRequestStatus.processing),
     );
     if (openPayments.length > 0) {
-      await Promise.all(
-        openPayments.map(async (payment) => {
-          try {
-            await this.syncPaymentFromProvider(payment, userId);
-          } catch (error) {
-            this.logger.warn(
-              `Failed to sync payment ${payment.id} for order ${order.id}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-          }
-        }),
-      );
+      for (const payment of openPayments) {
+        try {
+          await this.syncPaymentFromProvider(payment, userId);
+        } catch (error) {
+          this.logger.warn(
+            `Failed to sync payment ${payment.id} for order ${order.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
       order = (await this.orderRepo.findOne({
         where: { workspaceId: order.workspaceId, id: order.id },
       }))!;
