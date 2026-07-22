@@ -103,7 +103,6 @@ export const OrderEventType = {
   PAYMENT_SUCCEEDED: "order.payment_succeeded",
   PAYMENT_REFUND_REQUESTED: "order.payment_refund_requested",
   PAYMENT_REFUNDED: "order.payment_refunded",
-  PAYMENT_REFUND_REJECTED: "order.payment_refund_rejected",
   PAYMENT_REFUND_CANCELLED: "order.payment_refund_cancelled",
 } as const;
 

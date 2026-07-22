@@ -23,7 +23,7 @@ import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
 import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
-import { calculateRemainingAmount } from "./logic/order-payment-status.logic";
+import { calculatePaidAmount, calculateRemainingAmount } from "./logic/order-payment-status.logic";
 import { resolveManualPaymentKind } from "./logic/manual-payment-kind";
 import {
   appendOrderPaymentEvent,
@@ -36,7 +36,7 @@ import type { ManualPaymentResponseDto } from "./dto/manual-payment-response.dto
 import type { SetOrderManualPaymentMethodDto } from "./dto/set-order-manual-payment-method.dto";
 import type { OrderPaymentRequestResponseDto } from "./dto/order-payment-request-response.dto";
 import type { OrderPaymentTransactionsListResponseDto } from "./dto/order-payment-transactions-list-response.dto";
-import type { OrderPaymentRequestsListResponseDto } from "./dto/order-payment-requests-list-response.dto";
+import type { OrderPaymentSummaryResponseDto } from "./dto/order-payment-summary-response.dto";
 
 @Injectable()
 export class OrderPaymentsService {
@@ -63,16 +63,16 @@ export class OrderPaymentsService {
     userId: number,
     orderId: number,
     appRole?: string,
-  ): Promise<OrderPaymentRequestsListResponseDto> {
+  ): Promise<OrderPaymentSummaryResponseDto> {
     await this.requireViewPayments(userId, appRole);
     let order = await this.requireOrder(userId, orderId, appRole);
-    let payments = await this.paymentRepo.find({
+    const paymentRequests = await this.paymentRepo.find({
       where: { workspaceId: order.workspaceId, orderId: order.id },
       order: { createdAt: "DESC" },
       relations: { integration: true },
     });
 
-    const openPayments = payments.filter(
+    const openPayments = paymentRequests.filter(
       (p) =>
         p.externalPaymentId &&
         (p.status === PaymentRequestStatus.pending ||
@@ -93,37 +93,52 @@ export class OrderPaymentsService {
       order = (await this.orderRepo.findOne({
         where: { workspaceId: order.workspaceId, id: order.id },
       }))!;
-      payments = await this.paymentRepo.find({
-        where: { workspaceId: order.workspaceId, orderId: order.id },
-        order: { createdAt: "DESC" },
-      });
     }
 
-    const paidAmount = await this.domain.getPaidAmountForOrder(
-      order.workspaceId,
-      order.id,
-    );
-    let selectedManualPaymentMethod = null;
-    const selectedManualPaymentKind = resolveManualPaymentKind(
-      order.manualPaymentMethodId,
-    );
-    if (order.manualPaymentMethodId) {
-      const method =
-        await this.manualPaymentMethods.requireOwnedMethodForWorkspace(
-          order.workspaceId,
-          order.manualPaymentMethodId,
-        );
-      selectedManualPaymentMethod = this.manualPaymentMethods.toDto(method);
-    }
+    return this.buildOrderPaymentSummary(order);
+  }
+
+  private async buildOrderPaymentSummary(
+    order: Order,
+  ): Promise<OrderPaymentSummaryResponseDto> {
+    const transactions = await this.transactionRepo.find({
+      where: { workspaceId: order.workspaceId, orderId: order.id },
+      order: { occurredAt: "DESC", id: "DESC" },
+    });
+    const payments = transactions.map((transaction) => ({
+      ...this.toOrderPaymentEntry(transaction),
+    }));
+    const paidAmount = calculatePaidAmount(transactions);
+
     return {
-      orderId: order.id,
-      totalAmount: order.totalAmount,
+      status: order.paymentStatus,
+      statusAt: order.paymentStatusAt?.toISOString() ?? null,
+      paidAt: order.paidAt?.toISOString() ?? null,
+      reference: order.paymentReference,
+      manualPaymentMethodId: order.manualPaymentMethodId,
       paidAmount,
       remainingAmount: calculateRemainingAmount(order.totalAmount, paidAmount),
-      paymentStatus: order.paymentStatus,
-      payments: payments.map((p) => this.toPaymentDto(p)),
-      selectedManualPaymentMethod,
-      selectedManualPaymentKind,
+      payments,
+    };
+  }
+
+  private toOrderPaymentEntry(t: PaymentTransaction) {
+    return {
+      id: t.id,
+      paymentId: t.paymentId,
+      provider: t.provider,
+      manualPaymentMethodId: t.manualPaymentMethodId,
+      type: t.type,
+      method: this.resolvePaymentMethod(t),
+      amount: t.amount,
+      currency: t.currency,
+      status: t.status,
+      source: t.source,
+      externalTransactionId: t.externalTransactionId,
+      note: t.note,
+      confirmedById: t.confirmedById,
+      occurredAt: t.occurredAt.toISOString(),
+      createdAt: t.createdAt.toISOString(),
     };
   }
 

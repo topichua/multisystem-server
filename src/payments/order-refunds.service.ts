@@ -275,46 +275,7 @@ export class OrderRefundsService {
     };
   }
 
-  async rejectRefund(
-    userId: number,
-    orderId: number,
-    refundId: number,
-    dto: ReviewOrderRefundDto,
-    appRole?: string,
-  ): Promise<OrderRefundResponseDto> {
-    await this.requireManagePayments(userId, appRole);
-    const order = await this.requireOrder(userId, orderId, appRole);
-    const refund = await this.requirePendingRefund(
-      order.workspaceId,
-      order.id,
-      refundId,
-    );
-
-    if (dto.note !== undefined) {
-      refund.note = dto.note?.trim() || null;
-    }
-    refund.status = OrderRefundStatus.rejected;
-    refund.reviewedById = userId;
-    refund.reviewedAt = new Date();
-    const saved = await this.refundRepo.save(refund);
-
-    await appendOrderPaymentEvent(this.refundRepo.manager, {
-      workspaceId: order.workspaceId,
-      orderId: order.id,
-      type: OrderPaymentEventType.PAYMENT_REFUND_REJECTED,
-      actorId: userId,
-      payload: {
-        refundId: saved.id,
-        amount: saved.amount,
-        currency: saved.currency,
-        status: saved.status,
-      },
-    });
-
-    return this.toDto(saved);
-  }
-
-  async cancelRefund(
+  async deletePendingRefund(
     userId: number,
     orderId: number,
     refundId: number,
@@ -328,10 +289,7 @@ export class OrderRefundsService {
       refundId,
     );
 
-    refund.status = OrderRefundStatus.cancelled;
-    refund.reviewedById = userId;
-    refund.reviewedAt = new Date();
-    await this.refundRepo.save(refund);
+    await this.refundRepo.delete(refund.id);
 
     await appendOrderPaymentEvent(this.refundRepo.manager, {
       workspaceId: order.workspaceId,
@@ -342,7 +300,7 @@ export class OrderRefundsService {
         refundId: refund.id,
         amount: refund.amount,
         currency: refund.currency,
-        status: refund.status,
+        action: "deleted",
       },
     });
   }

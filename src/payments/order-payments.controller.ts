@@ -31,9 +31,9 @@ import { SetOrderManualPaymentMethodDto } from "./dto/set-order-manual-payment-m
 import { ManualPaymentResponseDto } from "./dto/manual-payment-response.dto";
 import {
   OrderPaymentRequestResponseDto,
-  OrderPaymentRequestsListResponseDto,
   OrderPaymentTransactionsListResponseDto,
 } from "./dto/order-payment-request-response.dto";
+import { OrderPaymentSummaryResponseDto } from "./dto/order-payment-summary-response.dto";
 import { OrderPaymentsService } from "./order-payments.service";
 
 @ApiTags("orders")
@@ -45,17 +45,17 @@ export class OrderPaymentsController {
 
   @Get()
   @ApiOperation({
-    summary: "List payment links (requests) for order",
+    summary: "Get order payment summary",
     description:
-      "Returns payment requests for the order. Pending/processing online payments " +
-      "are synced from the provider before the response is returned.",
+      "Same shape as `payment` on GET /orders/:orderId. " +
+      "Pending/processing online payments are synced from the provider first.",
   })
   @ApiParam({ name: "orderId", type: Number })
-  @ApiOkResponse({ type: OrderPaymentRequestsListResponseDto })
+  @ApiOkResponse({ type: OrderPaymentSummaryResponseDto })
   list(
     @Req() req: { user?: AuthUser },
     @Param("orderId", ParseIntPipe) orderId: number,
-  ): Promise<OrderPaymentRequestsListResponseDto> {
+  ): Promise<OrderPaymentSummaryResponseDto> {
     return this.payments.listPaymentRequestsForOrder(
       this.requireUserId(req),
       orderId,
@@ -103,12 +103,12 @@ export class OrderPaymentsController {
       "Stores which IBAN/card details should be sent to the client. Pass null for cash.",
   })
   @ApiParam({ name: "orderId", type: Number })
-  @ApiOkResponse({ type: OrderPaymentRequestsListResponseDto })
+  @ApiOkResponse({ type: OrderPaymentSummaryResponseDto })
   setManualMethod(
     @Req() req: { user?: AuthUser },
     @Param("orderId", ParseIntPipe) orderId: number,
     @Body() dto: SetOrderManualPaymentMethodDto,
-  ): Promise<OrderPaymentRequestsListResponseDto> {
+  ): Promise<OrderPaymentSummaryResponseDto> {
     return this.payments.setOrderManualPaymentMethod(
       this.requireUserId(req),
       orderId,

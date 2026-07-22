@@ -103,39 +103,18 @@ export class OrderRefundsController {
     );
   }
 
-  @Post(":refundId/reject")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Reject pending refund" })
-  @ApiParam({ name: "orderId", type: Number })
-  @ApiParam({ name: "refundId", type: Number })
-  @ApiOkResponse({ type: OrderRefundResponseDto })
-  reject(
-    @Req() req: { user?: AuthUser },
-    @Param("orderId", ParseIntPipe) orderId: number,
-    @Param("refundId", ParseIntPipe) refundId: number,
-    @Body() dto: ReviewOrderRefundDto,
-  ): Promise<OrderRefundResponseDto> {
-    return this.refunds.rejectRefund(
-      this.requireUserId(req),
-      orderId,
-      refundId,
-      dto ?? {},
-      req.user?.role,
-    );
-  }
-
   @Delete(":refundId")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Cancel pending refund" })
+  @ApiOperation({ summary: "Delete pending refund" })
   @ApiParam({ name: "orderId", type: Number })
   @ApiParam({ name: "refundId", type: Number })
-  @ApiNoContentResponse({ description: "Pending refund cancelled." })
-  async cancel(
+  @ApiNoContentResponse({ description: "Pending refund deleted." })
+  async remove(
     @Req() req: { user?: AuthUser },
     @Param("orderId", ParseIntPipe) orderId: number,
     @Param("refundId", ParseIntPipe) refundId: number,
   ): Promise<void> {
-    await this.refunds.cancelRefund(
+    await this.refunds.deletePendingRefund(
       this.requireUserId(req),
       orderId,
       refundId,
