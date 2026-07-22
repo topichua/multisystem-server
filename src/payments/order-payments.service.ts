@@ -9,6 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
   Order,
+  OrderEvent,
   OrderPaymentStatus,
   PaymentRequest,
   PaymentRequestStatus,
@@ -24,6 +25,10 @@ import { PaymentIntegrationsService } from "./payment-integrations.service";
 import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
 import { calculateRemainingAmount } from "./logic/order-payment-status.logic";
 import { resolveManualPaymentKind } from "./logic/manual-payment-kind";
+import {
+  appendOrderPaymentEvent,
+  OrderPaymentEventType,
+} from "./order-payment-events";
 import type { CreateOrderPaymentLinkDto } from "./dto/create-order-payment-link.dto";
 import type { CreateManualPaymentDto } from "./dto/create-manual-payment.dto";
 import type { ConfirmManualPaymentDto } from "./dto/confirm-manual-payment.dto";
@@ -44,6 +49,8 @@ export class OrderPaymentsService {
     private readonly paymentRepo: Repository<PaymentRequest>,
     @InjectRepository(PaymentTransaction)
     private readonly transactionRepo: Repository<PaymentTransaction>,
+    @InjectRepository(OrderEvent)
+    private readonly orderEventRepo: Repository<OrderEvent>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
     private readonly integrations: PaymentIntegrationsService,
@@ -238,6 +245,22 @@ export class OrderPaymentsService {
       currency: saved.currency,
     });
 
+    await appendOrderPaymentEvent(this.orderEventRepo, {
+      workspaceId: saved.workspaceId,
+      orderId: saved.orderId,
+      type: OrderPaymentEventType.PAYMENT_CREATED,
+      actorId: userId,
+      payload: {
+        method: "online_payment",
+        paymentId: saved.id,
+        provider: saved.provider,
+        amount: saved.amount,
+        currency: saved.currency,
+        externalPaymentId: saved.externalPaymentId,
+        paymentUrl: saved.paymentUrl,
+      },
+    });
+
     return this.toPaymentDto(saved);
   }
 
@@ -328,6 +351,21 @@ export class OrderPaymentsService {
       manualPaymentMethodId,
     });
 
+    await appendOrderPaymentEvent(this.orderEventRepo, {
+      workspaceId: order.workspaceId,
+      orderId: order.id,
+      type: OrderPaymentEventType.PAYMENT_CREATED,
+      actorId: userId,
+      payload: {
+        method: "manual",
+        transactionId: result.transaction.id,
+        amount: result.transaction.amount,
+        currency: result.transaction.currency,
+        manualPaymentMethodId: result.transaction.manualPaymentMethodId,
+        note: result.transaction.note,
+      },
+    });
+
     return this.toManualPaymentResponse(order.id, result);
   }
 
@@ -353,6 +391,22 @@ export class OrderPaymentsService {
       confirmedById: userId,
       occurredAt,
       note: dto.note,
+    });
+
+    await appendOrderPaymentEvent(this.orderEventRepo, {
+      workspaceId: order.workspaceId,
+      orderId: order.id,
+      type: OrderPaymentEventType.PAYMENT_SUCCEEDED,
+      actorId: userId,
+      payload: {
+        method: "manual",
+        transactionId: result.transaction.id,
+        amount: result.transaction.amount,
+        currency: result.transaction.currency,
+        paymentStatus: result.paymentStatus,
+        paidAmount: result.paidAmount,
+        remainingAmount: result.remainingAmount,
+      },
     });
 
     return this.toManualPaymentResponse(order.id, result);
@@ -431,6 +485,21 @@ export class OrderPaymentsService {
       orderId: order.id,
       paymentId,
     });
+
+    await appendOrderPaymentEvent(this.orderEventRepo, {
+      workspaceId: order.workspaceId,
+      orderId: order.id,
+      type: OrderPaymentEventType.PAYMENT_CANCELLED,
+      actorId: userId,
+      payload: {
+        action: "deleted",
+        paymentId: result.paymentRequestId,
+        transactionId: result.deletedId,
+        method:
+          result.paymentRequestId != null ? "online_payment" : "manual",
+      },
+    });
+
     return { deleted: true, id: result.deletedId };
   }
 
@@ -513,6 +582,23 @@ export class OrderPaymentsService {
       orderId: order.id,
       paymentId: payment.id,
     });
+
+    await appendOrderPaymentEvent(this.orderEventRepo, {
+      workspaceId: order.workspaceId,
+      orderId: order.id,
+      type: OrderPaymentEventType.PAYMENT_CANCELLED,
+      actorId: userId,
+      payload: {
+        action: "cancelled",
+        method: "online_payment",
+        paymentId: saved.id,
+        provider: saved.provider,
+        amount: saved.amount,
+        currency: saved.currency,
+        externalPaymentId: saved.externalPaymentId,
+      },
+    });
+
     return this.toPaymentDto(saved);
   }
 

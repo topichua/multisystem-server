@@ -28,6 +28,10 @@ import { PaymentProviderFactory } from "./providers/payment-provider.factory";
 import type { ParsedWebhookEvent } from "./providers/payment-provider.types";
 import { canMonobankCancelPaymentLink } from "./providers/monobank/monobank.status-mapper";
 import { OrderPaymentStatusApplicationService } from "./order-payment-status-application.service";
+import {
+  appendOrderPaymentEvent,
+  OrderPaymentEventType,
+} from "./order-payment-events";
 
 @Injectable()
 export class PaymentDomainService {
@@ -72,9 +76,10 @@ export class PaymentDomainService {
         this.logger.log(
           `Payment ${payment.id} already succeeded — skipping duplicate provider event`,
         );
-        return { payment, paymentStatusResult: null };
+        return { payment, paymentStatusResult: null, timelineEvent: null };
       }
 
+      const previousStatus = payment.status;
       payment.status = event.localStatus;
       if (event.failureReason) {
         payment.failureReason = event.failureReason;
@@ -106,7 +111,64 @@ export class PaymentDomainService {
           payment.orderId,
         );
 
-      return { payment, paymentStatusResult };
+      const wasOpen =
+        previousStatus === PaymentRequestStatus.pending ||
+        previousStatus === PaymentRequestStatus.processing;
+
+      let timelineEvent: {
+        type: (typeof OrderPaymentEventType)[keyof typeof OrderPaymentEventType];
+        payload: Record<string, unknown>;
+      } | null = null;
+
+      if (
+        event.localStatus === PaymentRequestStatus.succeeded &&
+        previousStatus !== PaymentRequestStatus.succeeded
+      ) {
+        timelineEvent = {
+          type: OrderPaymentEventType.PAYMENT_SUCCEEDED,
+          payload: {
+            method: "online_payment",
+            paymentId: payment.id,
+            provider: payment.provider,
+            amount: payment.amount,
+            currency: payment.currency,
+            externalPaymentId: payment.externalPaymentId,
+            source,
+            paymentStatus: paymentStatusResult.paymentStatus,
+          },
+        };
+      } else if (
+        wasOpen &&
+        (event.localStatus === PaymentRequestStatus.cancelled ||
+          event.localStatus === PaymentRequestStatus.expired)
+      ) {
+        timelineEvent = {
+          type: OrderPaymentEventType.PAYMENT_CANCELLED,
+          payload: {
+            action: event.localStatus,
+            method: "online_payment",
+            paymentId: payment.id,
+            provider: payment.provider,
+            amount: payment.amount,
+            currency: payment.currency,
+            externalPaymentId: payment.externalPaymentId,
+            source,
+            failureReason: event.failureReason,
+          },
+        };
+      }
+
+      if (timelineEvent) {
+        await appendOrderPaymentEvent(manager, {
+          workspaceId: payment.workspaceId,
+          orderId: payment.orderId,
+          type: timelineEvent.type,
+          actorId: confirmedById ?? null,
+          payload: timelineEvent.payload,
+        });
+      }
+
+      return { payment, paymentStatusResult, timelineEvent };
     });
 
     if (txResult.paymentStatusResult) {

@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   ManualPaymentMethod,
   Order,
+  OrderEvent,
   PaymentIntegration,
   PaymentRequest,
   PaymentTransaction,
@@ -30,6 +31,7 @@ import { OrderPaymentStatusApplicationService } from "./order-payment-status-app
       PaymentTransaction,
       ManualPaymentMethod,
       Order,
+      OrderEvent,
     ]),
     forwardRef(() => WorkspaceAccessModule),
     forwardRef(() => OrderStatusAutomationsModule),

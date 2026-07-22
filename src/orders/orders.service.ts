@@ -95,6 +95,9 @@ export const OrderEventType = {
   WAYBILL_REMOVED: "order.waybill_removed",
   TOTALS_UPDATED: "order.totals_updated",
   DISCOUNT_APPLIED: "order.discount_applied",
+  PAYMENT_CREATED: "order.payment_created",
+  PAYMENT_CANCELLED: "order.payment_cancelled",
+  PAYMENT_SUCCEEDED: "order.payment_succeeded",
 } as const;
 
 function roundMoney(n: number): number {

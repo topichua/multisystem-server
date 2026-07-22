@@ -52,12 +52,22 @@ export class CredentialsEncryptionService implements OnModuleInit {
     const iv = Buffer.from(ivB64, "base64");
     const authTag = Buffer.from(tagB64, "base64");
     const encrypted = Buffer.from(dataB64, "base64");
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAuthTag(authTag);
-    return Buffer.concat([
-      decipher.update(encrypted),
-      decipher.final(),
-    ]).toString("utf8");
+    try {
+      const decipher = createDecipheriv(ALGORITHM, key, iv);
+      decipher.setAuthTag(authTag);
+      return Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final(),
+      ]).toString("utf8");
+    } catch {
+      throw new InternalServerErrorException(
+        "Failed to decrypt payment credentials. " +
+          "PAYMENT_CREDENTIALS_ENCRYPTION_KEY (or JWT_SECRET fallback) " +
+          "does not match the key used when the integration was connected. " +
+          "Reconnect the Monobank integration on this environment, " +
+          "or restore the original encryption key.",
+      );
+    }
   }
 
   maskSecret(value: string | undefined | null): string {
