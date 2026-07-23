@@ -238,8 +238,12 @@ export class Order {
     manualPaymentMethodId: number | null;
     paidAmount: number;
     remainingAmount: number;
+    canCreatePayment: boolean;
+    canRefund: boolean;
     payments: Array<
-      PaymentTransaction & { method: "online_payment" | "manual" }
+      PaymentTransaction & {
+        method: "online_payment" | "manual" | "nova_poshta_payment";
+      }
     >;
   };
 

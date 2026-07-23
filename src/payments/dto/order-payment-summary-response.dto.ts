@@ -21,8 +21,8 @@ export class OrderPaymentEntryDto {
   @ApiProperty()
   type!: string;
 
-  @ApiProperty({ enum: ["online_payment", "manual"] })
-  method!: "online_payment" | "manual";
+  @ApiProperty({ enum: ["online_payment", "manual", "nova_poshta_payment"] })
+  method!: "online_payment" | "manual" | "nova_poshta_payment";
 
   @ApiProperty()
   amount!: number;
@@ -76,6 +76,17 @@ export class OrderPaymentSummaryResponseDto {
 
   @ApiProperty()
   remainingAmount!: number;
+
+  @ApiProperty({
+    description:
+      "True when payment status is not paid/overpaid and there is no pending charge.",
+  })
+  canCreatePayment!: boolean;
+
+  @ApiProperty({
+    description: "True when there is paid amount available to refund.",
+  })
+  canRefund!: boolean;
 
   @ApiProperty({ type: [OrderPaymentEntryDto] })
   payments!: OrderPaymentEntryDto[];

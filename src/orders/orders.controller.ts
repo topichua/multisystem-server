@@ -35,6 +35,10 @@ import { SetOrderStatusesOrderDto } from "./dto/set-order-statuses-order.dto";
 import { OrderStatusResponseDto } from "./dto/order-status-response.dto";
 import { UpdateOrderDeliveryDto } from "./dto/update-order-delivery.dto";
 import { AddOrderDeliveryFromTrackingDto } from "./dto/add-order-delivery-from-tracking.dto";
+import {
+  CreateOrderDeliveryPaymentDto,
+  CreateOrderDeliveryPaymentResponseDto,
+} from "./dto/create-order-delivery-payment.dto";
 import { UpdateOrderDto } from "./dto/update-order.dto";
 import { UpdateOrderStatusDefinitionDto } from "./dto/update-order-status-definition.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
@@ -46,6 +50,7 @@ import {
   ChangeDeliveryStatusDto,
   ChangeDeliveryStatusResultDto,
 } from "../delivery/dto/change-delivery-status.dto";
+import { OrderPaymentSummaryResponseDto } from "../payments/dto/order-payment-summary-response.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("orders")
@@ -177,6 +182,33 @@ export class OrdersController {
   ): Promise<ChangeDeliveryStatusResultDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.orders.changeOrderDeliveryStatus(ownerId, orderId, dto);
+  }
+
+  @Post(":orderId/delivery/payment")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Create Nova Poshta COD payment for order delivery",
+    description:
+      "Creates a pending payment with type/source `nova_poshta_payment` and stores its id on `delivery_info.payment_id` " +
+      "(nullable until created). Amount defaults to `cashOnDeliveryAmount`. " +
+      "This payment cannot be approved via POST /orders/:orderId/payments/transactions/:id/confirm — " +
+      "use `OrdersService.confirmDeliveryPaymentReceived` / `PaymentDomainService.confirmNovaPoshtaDeliveryPayment` when COD money is received.",
+  })
+  @ApiBody({ type: CreateOrderDeliveryPaymentDto, required: false })
+  @ApiParam({ name: "orderId", type: Number })
+  @ApiCreatedResponse({ type: CreateOrderDeliveryPaymentResponseDto })
+  createDeliveryPayment(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+    @Body() dto?: CreateOrderDeliveryPaymentDto,
+  ): Promise<CreateOrderDeliveryPaymentResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.createDeliveryPayment(
+      ownerId,
+      orderId,
+      dto ?? {},
+      req.user?.role,
+    );
   }
 
   @Post(":orderId/novaposhta/waybill")
@@ -363,6 +395,23 @@ export class OrdersController {
   ): Promise<OrderEventsListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.orders.listOrderEventsForOwner(ownerId, orderId);
+  }
+
+  @Get(":orderId/payment")
+  @ApiOperation({
+    summary: "Get order payment summary",
+    description:
+      "Returns the same `payment` object as nested on GET /orders/:orderId " +
+      "(status, amounts, capability flags, and transactions). Useful when loading payment separately.",
+  })
+  @ApiParam({ name: "orderId", type: Number })
+  @ApiOkResponse({ type: OrderPaymentSummaryResponseDto })
+  async getPayment(
+    @Req() req: { user?: AuthUser },
+    @Param("orderId", ParseIntPipe) orderId: number,
+  ) {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orders.getOrderPayment(ownerId, orderId);
   }
 
   @Get(":orderId")

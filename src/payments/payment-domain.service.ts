@@ -9,6 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, EntityManager, Repository } from "typeorm";
 import {
   Order,
+  OrderDeliveryInfo,
   OrderPaymentStatus,
   PaymentIntegration,
   PaymentIntegrationStatus,
@@ -19,6 +20,7 @@ import {
   PaymentTransactionStatus,
   PaymentTransactionType,
 } from "../database/entities";
+import { OrderDeliveryProvider } from "../database/entities/order-delivery-provider.enum";
 import {
   calculateOrderPaymentStatus,
   calculatePaidAmount,
@@ -319,7 +321,9 @@ export class PaymentDomainService {
           throw new BadRequestException(
             tx.source === PaymentTransactionSource.online_payment
               ? "Online payments cannot be confirmed manually by a manager"
-              : "Only manual payment transactions can be confirmed this way",
+              : tx.source === PaymentTransactionSource.nova_poshta_payment
+                ? "Nova Poshta COD payments cannot be confirmed via manual approve"
+                : "Only manual payment transactions can be confirmed this way",
           );
         }
         if (tx.type !== PaymentTransactionType.charge) {
@@ -361,6 +365,262 @@ export class PaymentDomainService {
         }
         tx.status = PaymentTransactionStatus.succeeded;
         tx.confirmedById = input.confirmedById;
+        const saved = await manager.getRepository(PaymentTransaction).save(tx);
+
+        const paymentStatusResult =
+          await this.paymentStatusApplication.updateOrderPaymentStatus(
+            manager,
+            input.workspaceId,
+            input.orderId,
+          );
+
+        const updatedPaidAmount = calculatePaidAmount([...others, saved]);
+
+        return {
+          transaction: saved,
+          paymentStatus: paymentStatusResult.paymentStatus,
+          paymentStatusResult,
+          totalAmount: order.totalAmount,
+          paidAmount: updatedPaidAmount,
+          remainingAmount: calculateRemainingAmount(
+            order.totalAmount,
+            updatedPaidAmount,
+          ),
+        };
+      })
+      .then(async (result) => {
+        await this.paymentStatusApplication.notifyPaymentStatusChangeIfNeeded(
+          input.workspaceId,
+          input.orderId,
+          result.paymentStatusResult,
+        );
+        return {
+          transaction: result.transaction,
+          paymentStatus: result.paymentStatus,
+          totalAmount: result.totalAmount,
+          paidAmount: result.paidAmount,
+          remainingAmount: result.remainingAmount,
+        };
+      });
+  }
+
+  /**
+   * Creates a pending Nova Poshta COD charge and links it on `order_delivery_infos.payment_id`.
+   * Cannot be approved via `confirmManualPayment` — use `confirmNovaPoshtaDeliveryPayment`.
+   */
+  async createNovaPoshtaDeliveryPayment(input: {
+    workspaceId: number;
+    orderId: number;
+    deliveryInfoId: number;
+    amount?: number;
+    note?: string | null;
+    occurredAt?: Date;
+  }): Promise<{
+    transaction: PaymentTransaction;
+    paymentStatus: OrderPaymentStatus;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
+  }> {
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager
+        .getRepository(Order)
+        .createQueryBuilder("o")
+        .setLock("pessimistic_write")
+        .where("o.workspace_id = :workspaceId AND o.id = :orderId", {
+          workspaceId: input.workspaceId,
+          orderId: input.orderId,
+        })
+        .getOne();
+
+      if (!order) {
+        throw new NotFoundException("Order not found");
+      }
+
+      const delivery = await manager.getRepository(OrderDeliveryInfo).findOne({
+        where: { id: input.deliveryInfoId },
+      });
+      if (!delivery) {
+        throw new NotFoundException("Delivery info not found");
+      }
+      if (order.deliveryId !== delivery.id) {
+        throw new BadRequestException(
+          "Delivery info is not linked to this order",
+        );
+      }
+      if (delivery.provider !== OrderDeliveryProvider.nova_poshta) {
+        throw new BadRequestException(
+          "Nova Poshta COD payment requires nova_poshta delivery",
+        );
+      }
+      if (!delivery.isCashOnDelivery) {
+        throw new BadRequestException(
+          "Delivery is not marked as cash on delivery",
+        );
+      }
+
+      if (delivery.paymentId != null) {
+        const existing = await manager
+          .getRepository(PaymentTransaction)
+          .findOne({
+            where: {
+              id: delivery.paymentId,
+              workspaceId: input.workspaceId,
+              orderId: input.orderId,
+            },
+          });
+        if (existing) {
+          throw new ConflictException(
+            "Delivery already has a linked Nova Poshta payment",
+          );
+        }
+      }
+
+      const amount =
+        input.amount != null
+          ? input.amount
+          : (delivery.cashOnDeliveryAmount ?? 0);
+      if (!(amount > 0)) {
+        throw new BadRequestException(
+          "COD amount must be greater than zero (set cashOnDeliveryAmount or pass amount)",
+        );
+      }
+
+      const existingTransactions = await manager
+        .getRepository(PaymentTransaction)
+        .find({
+          where: { workspaceId: input.workspaceId, orderId: input.orderId },
+        });
+      const paidAmount = calculatePaidAmount(existingTransactions);
+      const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
+      if (amount > remaining) {
+        throw new BadRequestException(
+          `Amount exceeds remaining balance (${remaining})`,
+        );
+      }
+
+      const occurredAt = input.occurredAt ?? new Date();
+      const note = input.note?.trim() || null;
+
+      const tx = manager.getRepository(PaymentTransaction).create({
+        workspaceId: input.workspaceId,
+        orderId: input.orderId,
+        paymentId: null,
+        provider: null,
+        type: PaymentTransactionType.charge,
+        amount,
+        currency: order.currency,
+        status: PaymentTransactionStatus.pending,
+        source: PaymentTransactionSource.nova_poshta_payment,
+        externalTransactionId: null,
+        note,
+        confirmedById: null,
+        occurredAt,
+        manualPaymentMethodId: null,
+      });
+      const saved = await manager.getRepository(PaymentTransaction).save(tx);
+
+      delivery.paymentId = saved.id;
+      await manager.getRepository(OrderDeliveryInfo).save(delivery);
+
+      return {
+        transaction: saved,
+        paymentStatus: order.paymentStatus,
+        totalAmount: order.totalAmount,
+        paidAmount,
+        remainingAmount: remaining,
+      };
+    });
+  }
+
+  /**
+   * Marks a pending Nova Poshta COD payment as succeeded (money received from carrier).
+   * Not available through the manual payment confirm endpoint.
+   */
+  async confirmNovaPoshtaDeliveryPayment(input: {
+    workspaceId: number;
+    orderId: number;
+    transactionId: number;
+    confirmedById?: number | null;
+    occurredAt?: Date;
+    note?: string | null;
+  }): Promise<{
+    transaction: PaymentTransaction;
+    paymentStatus: OrderPaymentStatus;
+    totalAmount: number;
+    paidAmount: number;
+    remainingAmount: number;
+  }> {
+    return this.dataSource
+      .transaction(async (manager) => {
+        const order = await manager
+          .getRepository(Order)
+          .createQueryBuilder("o")
+          .setLock("pessimistic_write")
+          .where("o.workspace_id = :workspaceId AND o.id = :orderId", {
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+          })
+          .getOne();
+
+        if (!order) {
+          throw new NotFoundException("Order not found");
+        }
+
+        const tx = await manager.getRepository(PaymentTransaction).findOne({
+          where: {
+            id: input.transactionId,
+            workspaceId: input.workspaceId,
+            orderId: input.orderId,
+          },
+        });
+        if (!tx) {
+          throw new NotFoundException("Payment transaction not found");
+        }
+        if (tx.source !== PaymentTransactionSource.nova_poshta_payment) {
+          throw new BadRequestException(
+            "Only Nova Poshta COD payment transactions can be confirmed this way",
+          );
+        }
+        if (tx.type !== PaymentTransactionType.charge) {
+          throw new BadRequestException(
+            "Only charge transactions can be confirmed as paid",
+          );
+        }
+        if (tx.status === PaymentTransactionStatus.succeeded) {
+          throw new ConflictException("Nova Poshta payment is already paid");
+        }
+        if (tx.status !== PaymentTransactionStatus.pending) {
+          throw new BadRequestException(
+            `Nova Poshta payment cannot be confirmed from status "${tx.status}"`,
+          );
+        }
+
+        const existingTransactions = await manager
+          .getRepository(PaymentTransaction)
+          .find({
+            where: { workspaceId: input.workspaceId, orderId: input.orderId },
+          });
+        const others = existingTransactions.filter((row) => row.id !== tx.id);
+        const paidAmount = calculatePaidAmount(others);
+        const remaining = calculateRemainingAmount(
+          order.totalAmount,
+          paidAmount,
+        );
+        if (tx.amount > remaining) {
+          throw new BadRequestException(
+            `Amount exceeds remaining balance (${remaining})`,
+          );
+        }
+
+        if (input.occurredAt) {
+          tx.occurredAt = input.occurredAt;
+        }
+        if (input.note !== undefined) {
+          tx.note = input.note?.trim() || null;
+        }
+        tx.status = PaymentTransactionStatus.succeeded;
+        tx.confirmedById = input.confirmedById ?? null;
         const saved = await manager.getRepository(PaymentTransaction).save(tx);
 
         const paymentStatusResult =

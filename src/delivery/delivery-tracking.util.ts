@@ -24,6 +24,20 @@ export function canRemoveDeliveryTracking(
   return STATUSES_BEFORE_SHIPPED.has(delivery.deliveryStatus);
 }
 
+/** COD payment can be synced when COD amount is set and TTN exists. */
+export function canSyncDeliveryPayment(
+  delivery: OrderDeliveryInfo | null | undefined,
+): boolean {
+  if (!delivery) {
+    return false;
+  }
+  const codAmount = delivery.cashOnDeliveryAmount;
+  if (codAmount == null || !(codAmount > 0)) {
+    return false;
+  }
+  return Boolean(delivery.trackingNumber?.trim());
+}
+
 export function hydrateDeliveryTrackingFlags(
   order: Order,
   delivery: OrderDeliveryInfo | null,
@@ -32,6 +46,7 @@ export function hydrateDeliveryTrackingFlags(
   order.canRemoveTracking = canRemove;
   if (delivery) {
     delivery.canRemoveTracking = canRemove;
+    delivery.canSyncPayment = canSyncDeliveryPayment(delivery);
   }
   order.deliveryInfo = delivery;
 }

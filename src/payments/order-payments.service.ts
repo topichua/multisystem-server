@@ -23,7 +23,12 @@ import { MonobankApiClient } from "./providers/monobank/monobank-api.client";
 import { PaymentDomainService } from "./payment-domain.service";
 import { PaymentIntegrationsService } from "./payment-integrations.service";
 import { ManualPaymentMethodsService } from "./manual-payment-methods.service";
-import { calculatePaidAmount, calculateRemainingAmount } from "./logic/order-payment-status.logic";
+import {
+  calculatePaidAmount,
+  calculateRemainingAmount,
+  canCreateOrderPayment,
+  canRefundOrderPayment,
+} from "./logic/order-payment-status.logic";
 import { resolveManualPaymentKind } from "./logic/manual-payment-kind";
 import {
   appendOrderPaymentEvent,
@@ -118,6 +123,8 @@ export class OrderPaymentsService {
       manualPaymentMethodId: order.manualPaymentMethodId,
       paidAmount,
       remainingAmount: calculateRemainingAmount(order.totalAmount, paidAmount),
+      canCreatePayment: canCreateOrderPayment(order.paymentStatus, transactions),
+      canRefund: canRefundOrderPayment(transactions),
       payments,
     };
   }
@@ -560,7 +567,10 @@ export class OrderPaymentsService {
 
   private resolvePaymentMethod(
     t: PaymentTransaction,
-  ): "online_payment" | "manual" {
+  ): "online_payment" | "manual" | "nova_poshta_payment" {
+    if (t.source === PaymentTransactionSource.nova_poshta_payment) {
+      return "nova_poshta_payment";
+    }
     if (
       t.source === PaymentTransactionSource.online_payment ||
       t.paymentId != null

@@ -15,11 +15,12 @@ export class ManualPaymentTransactionDto {
   type!: string;
 
   @ApiProperty({
-    enum: ["online_payment", "manual"],
+    enum: ["online_payment", "manual", "nova_poshta_payment"],
     description:
-      "`online_payment` for provider payment links; `manual` for cash/transfer. Online payments cannot be confirmed manually.",
+      "`online_payment` for provider payment links; `manual` for cash/transfer; " +
+      "`nova_poshta_payment` for COD via Nova Poshta. Online and Nova Poshta payments cannot be confirmed via manual approve.",
   })
-  method!: "online_payment" | "manual";
+  method!: "online_payment" | "manual" | "nova_poshta_payment";
 
   @ApiProperty()
   amount!: number;

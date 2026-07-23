@@ -60,7 +60,10 @@ import { WorkspaceSettingsService } from "../workspace-settings/workspace-settin
 import { NovaPoshtaWaybillService } from "../novaposhta-integrations/nova-poshta-waybill.service";
 import { NovaPoshtaDeliveryTrackingService } from "../novaposhta-integrations/nova-poshta-delivery-tracking.service";
 import { mapNovaPoshtaTrackingToDeliveryPatch } from "../novaposhta-integrations/nova-poshta-status-code.mapping";
-import { hydrateDeliveryTrackingFlags } from "../delivery/delivery-tracking.util";
+import {
+  canSyncDeliveryPayment,
+  hydrateDeliveryTrackingFlags,
+} from "../delivery/delivery-tracking.util";
 import { DeliveryStatusService } from "../delivery/delivery-status.service";
 import { OrderDeliveryStatusApplicationService } from "../delivery/order-delivery-status-application.service";
 import type { DeliveryStatusUpdateResultDto } from "../delivery/dto/delivery-status-update-result.dto";
@@ -85,8 +88,19 @@ import { resolveIntegrationIdFromConversation } from "./logic/resolve-order-inte
 import {
   calculatePaidAmount,
   calculateRemainingAmount,
+  canCreateOrderPayment,
+  canRefundOrderPayment,
 } from "../payments/logic/order-payment-status.logic";
 import { OrderPaymentStatusApplicationService } from "../payments/order-payment-status-application.service";
+import { PaymentDomainService } from "../payments/payment-domain.service";
+import {
+  appendOrderPaymentEvent,
+  OrderPaymentEventType,
+} from "../payments/order-payment-events";
+import type {
+  CreateOrderDeliveryPaymentDto,
+  CreateOrderDeliveryPaymentResponseDto,
+} from "./dto/create-order-delivery-payment.dto";
 
 export const OrderEventType = {
   ORDER_CREATED: "order.created",
@@ -130,6 +144,7 @@ type OrderDeliverySummary = {
   trackingNumber: string | null;
   deliveryStatusCode: string | null;
   deliveryStatusText: string | null;
+  canSyncPayment: boolean;
 };
 
 type OrderPaymentSummary = {
@@ -140,8 +155,12 @@ type OrderPaymentSummary = {
   manualPaymentMethodId: number | null;
   paidAmount: number;
   remainingAmount: number;
+  canCreatePayment: boolean;
+  canRefund: boolean;
   payments: Array<
-    PaymentTransaction & { method: "online_payment" | "manual" }
+    PaymentTransaction & {
+      method: "online_payment" | "manual" | "nova_poshta_payment";
+    }
   >;
 };
 
@@ -192,6 +211,7 @@ export class OrdersService {
     private readonly dataSource: DataSource,
     @Inject(forwardRef(() => OrderPaymentStatusApplicationService))
     private readonly paymentStatusApplication: OrderPaymentStatusApplicationService,
+    private readonly paymentDomain: PaymentDomainService,
   ) {}
 
   async createOrder(ownerId: number, dto: CreateOrderDto): Promise<Order> {
@@ -972,6 +992,114 @@ export class OrdersService {
     });
   }
 
+  async createDeliveryPayment(
+    ownerId: number,
+    orderId: number,
+    dto: CreateOrderDeliveryPaymentDto,
+    appRole?: string,
+  ): Promise<CreateOrderDeliveryPaymentResponseDto> {
+    await this.requireOrdersPaymentsManage(ownerId, appRole);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const order = await this.requireOrderForWorkspace(orderId, workspace.id);
+    const delivery = await this.findDeliveryForOrder(order);
+    if (!delivery) {
+      throw new NotFoundException("Delivery info not found for order");
+    }
+
+    const result = await this.paymentDomain.createNovaPoshtaDeliveryPayment({
+      workspaceId: workspace.id,
+      orderId: order.id,
+      deliveryInfoId: delivery.id,
+      amount: dto.amount,
+      note: dto.note,
+    });
+
+    await appendOrderPaymentEvent(this.orderEventRepo, {
+      workspaceId: workspace.id,
+      orderId: order.id,
+      type: OrderPaymentEventType.PAYMENT_CREATED,
+      actorId: ownerId,
+      payload: {
+        method: "nova_poshta_payment",
+        transactionId: result.transaction.id,
+        amount: result.transaction.amount,
+        currency: result.transaction.currency,
+        deliveryInfoId: delivery.id,
+        note: result.transaction.note,
+      },
+    });
+
+    return {
+      paymentId: result.transaction.id,
+      orderId: order.id,
+      method: "nova_poshta_payment",
+      amount: result.transaction.amount,
+      currency: result.transaction.currency,
+      status: result.transaction.status,
+      source: "nova_poshta_payment",
+    };
+  }
+
+  /**
+   * Marks linked Nova Poshta COD payment as succeeded when money is received.
+   * Not exposed via manual payment confirm — call this (or domain) explicitly.
+   */
+  async confirmDeliveryPaymentReceived(
+    ownerId: number,
+    orderId: number,
+    options?: { note?: string | null; occurredAt?: Date },
+  ): Promise<CreateOrderDeliveryPaymentResponseDto> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const order = await this.requireOrderForWorkspace(orderId, workspace.id);
+    const delivery = await this.findDeliveryForOrder(order);
+    if (!delivery) {
+      throw new NotFoundException("Delivery info not found for order");
+    }
+    if (delivery.paymentId == null) {
+      throw new BadRequestException(
+        "Delivery has no linked Nova Poshta payment",
+      );
+    }
+
+    const result = await this.paymentDomain.confirmNovaPoshtaDeliveryPayment({
+      workspaceId: workspace.id,
+      orderId: order.id,
+      transactionId: delivery.paymentId,
+      confirmedById: ownerId,
+      note: options?.note,
+      occurredAt: options?.occurredAt,
+    });
+
+    await appendOrderPaymentEvent(this.orderEventRepo, {
+      workspaceId: workspace.id,
+      orderId: order.id,
+      type: OrderPaymentEventType.PAYMENT_SUCCEEDED,
+      actorId: ownerId,
+      payload: {
+        method: "nova_poshta_payment",
+        transactionId: result.transaction.id,
+        amount: result.transaction.amount,
+        currency: result.transaction.currency,
+        paymentStatus: result.paymentStatus,
+        paidAmount: result.paidAmount,
+        remainingAmount: result.remainingAmount,
+        deliveryInfoId: delivery.id,
+      },
+    });
+
+    return {
+      paymentId: result.transaction.id,
+      orderId: order.id,
+      method: "nova_poshta_payment",
+      amount: result.transaction.amount,
+      currency: result.transaction.currency,
+      status: result.transaction.status,
+      source: "nova_poshta_payment",
+    };
+  }
+
   async syncDeliveryInfo(
     ownerId: number,
     orderId: number,
@@ -1098,6 +1226,21 @@ export class OrdersService {
     await this.hydrateOrdersPayment([order]);
     this.stripCircularOrderRefs(order);
     return order;
+  }
+
+  /** Same `payment` object as nested on GET /orders/:orderId. */
+  async getOrderPayment(
+    ownerId: number,
+    orderId: number,
+  ): Promise<NonNullable<Order["payment"]>> {
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const order = await this.requireOrderForWorkspace(orderId, workspace.id);
+    await this.hydrateOrdersPayment([order]);
+    if (!order.payment) {
+      throw new NotFoundException("Order payment not found");
+    }
+    return order.payment;
   }
 
   /** Avoid JSON cycles (TypeORM may hydrate parent on children). */
@@ -2023,12 +2166,15 @@ export class OrdersService {
         ).delivery = null;
         continue;
       }
+      const canSyncPayment = canSyncDeliveryPayment(info);
+      info.canSyncPayment = canSyncPayment;
       (order as unknown as { delivery: OrderDeliverySummary }).delivery = {
         deliveryStatus: info.deliveryStatus,
         deliveryStatusAt: info.deliveryStatusAt ?? null,
         trackingNumber: info.trackingNumber?.trim() || null,
         deliveryStatusCode: info.providerStatusCode?.trim() || null,
         deliveryStatusText: info.providerStatusText?.trim() || null,
+        canSyncPayment,
       };
     }
   }
@@ -2058,10 +2204,14 @@ export class OrdersService {
         (transaction) =>
           Object.assign(transaction, {
             method:
-              transaction.source === PaymentTransactionSource.online_payment ||
-              transaction.paymentId != null
-                ? ("online_payment" as const)
-                : ("manual" as const),
+              transaction.source ===
+              PaymentTransactionSource.nova_poshta_payment
+                ? ("nova_poshta_payment" as const)
+                : transaction.source ===
+                      PaymentTransactionSource.online_payment ||
+                    transaction.paymentId != null
+                  ? ("online_payment" as const)
+                  : ("manual" as const),
           }),
       );
       const paidAmount = calculatePaidAmount(payments);
@@ -2076,6 +2226,11 @@ export class OrdersService {
           order.totalAmount,
           paidAmount,
         ),
+        canCreatePayment: canCreateOrderPayment(
+          order.paymentStatus,
+          payments,
+        ),
+        canRefund: canRefundOrderPayment(payments),
         payments,
       };
       (order as unknown as { payment: OrderPaymentSummary }).payment = payment;
@@ -2117,6 +2272,21 @@ export class OrdersService {
     if (!hasBooleanPermission(resolved, "workspace.order_statuses")) {
       throw new ForbiddenException(
         "Missing workspace.order_statuses permission",
+      );
+    }
+  }
+
+  private async requireOrdersPaymentsManage(
+    userId: number,
+    appRole?: string,
+  ): Promise<void> {
+    const resolved = await this.workspacePermissions.getResolvedForUser(
+      userId,
+      appRole,
+    );
+    if (!hasBooleanPermission(resolved, "orders.payments.manage")) {
+      throw new ForbiddenException(
+        "Missing orders.payments.manage permission",
       );
     }
   }

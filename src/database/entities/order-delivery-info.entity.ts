@@ -2,6 +2,8 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
@@ -9,6 +11,7 @@ import { NovaPoshtaPayerType } from "./novaposhta-payer-type.enum";
 import { OrderDeliveryDestinationType } from "./order-delivery-destination-type.enum";
 import { OrderDeliveryProvider } from "./order-delivery-provider.enum";
 import { OrderDeliveryStatus } from "./order-delivery-status.enum";
+import { PaymentTransaction } from "./payment-transaction.entity";
 
 @Entity("order_delivery_infos")
 export class OrderDeliveryInfo {
@@ -165,8 +168,28 @@ export class OrderDeliveryInfo {
   })
   syncedFromTrackingManually: boolean;
 
+  /**
+   * Linked Nova Poshta COD payment transaction (`nova_poshta_payment` source).
+   * Optional until COD payment is created for this delivery.
+   */
+  @Column({ name: "payment_id", type: "int", nullable: true })
+  paymentId: number | null;
+
+  @ManyToOne(() => PaymentTransaction, {
+    onDelete: "SET NULL",
+    nullable: true,
+  })
+  @JoinColumn({ name: "payment_id" })
+  payment: PaymentTransaction | null;
+
   /** Hydrated: true when TTN can be deleted via API (before `shipped`). Not a DB column. */
   canRemoveTracking?: boolean;
+
+  /**
+   * Hydrated: true when COD amount is set and TTN exists
+   * (eligible for delivery COD payment sync). Not a DB column.
+   */
+  canSyncPayment?: boolean;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;

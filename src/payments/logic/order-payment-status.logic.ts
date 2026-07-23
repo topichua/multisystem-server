@@ -69,6 +69,33 @@ export function calculatePendingChargeAmount(
   return roundMoney(pending);
 }
 
+export function hasPendingCharge(
+  transactions: PaymentTransactionAmountRow[],
+): boolean {
+  return calculatePendingChargeAmount(transactions) > 0;
+}
+
+/** True when order is not fully paid and there is no pending charge. */
+export function canCreateOrderPayment(
+  paymentStatus: OrderPaymentStatus,
+  transactions: PaymentTransactionAmountRow[],
+): boolean {
+  if (
+    paymentStatus === OrderPaymentStatus.paid ||
+    paymentStatus === OrderPaymentStatus.overpaid
+  ) {
+    return false;
+  }
+  return !hasPendingCharge(transactions);
+}
+
+/** True when there is succeeded paid amount that can be refunded. */
+export function canRefundOrderPayment(
+  transactions: PaymentTransactionAmountRow[],
+): boolean {
+  return calculatePaidAmount(transactions) > 0;
+}
+
 function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
