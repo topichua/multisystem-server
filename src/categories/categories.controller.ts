@@ -40,8 +40,8 @@ export class CategoriesController {
   @ApiOperation({
     summary: "Get category",
     description:
-      "Returns the category with subcategories (for top-level parents). " +
-      "productCount counts only products assigned directly to this category (parent or subcategory row).",
+      "Returns the category with its direct child categories. " +
+      "productCount counts only products assigned directly to this category.",
   })
   async getById(
     @Req() req: { user?: AuthUser },
@@ -75,9 +75,9 @@ export class CategoriesController {
   @ApiOperation({
     summary: "Delete subcategory",
     description:
-      "Soft-deletes a subcategory under the given top-level parent. " +
+      "Soft-deletes a child category under the given parent. " +
       "Products assigned to it get `categoryId: null` (uncategorized). " +
-      "Use DELETE /categories/:id only for top-level categories (without subcategories).",
+      "Use DELETE /categories/:id for any category that has no children.",
   })
   async removeSubcategory(
     @Req() req: { user?: AuthUser },
@@ -97,9 +97,9 @@ export class CategoriesController {
   @ApiOperation({
     summary: "Delete category",
     description:
-      "Soft-deletes a category. Top-level categories must have no subcategories. " +
+      "Soft-deletes a category. Categories with children cannot be deleted until children are removed. " +
       "Products assigned to it get `categoryId: null` (uncategorized). " +
-      "Subcategories may also be removed via DELETE /categories/:parentId/subcategories/:subcategoryId.",
+      "Children may also be removed via DELETE /categories/:parentId/subcategories/:subcategoryId.",
   })
   async remove(
     @Req() req: { user?: AuthUser },

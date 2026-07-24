@@ -14,7 +14,7 @@ export class CreateManualPaymentDto {
   @ApiProperty({
     description:
       "Amount to collect. Creates a pending manual charge; confirm later to mark paid. " +
-      "Backend validates against remaining balance minus other pending charges.",
+      "Amount may exceed remaining balance; confirming then sets payment status to `overpaid`.",
   })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

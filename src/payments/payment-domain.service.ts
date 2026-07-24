@@ -346,16 +346,6 @@ export class PaymentDomainService {
             where: { workspaceId: input.workspaceId, orderId: input.orderId },
           });
         const others = existingTransactions.filter((row) => row.id !== tx.id);
-        const paidAmount = calculatePaidAmount(others);
-        const remaining = calculateRemainingAmount(
-          order.totalAmount,
-          paidAmount,
-        );
-        if (tx.amount > remaining) {
-          throw new BadRequestException(
-            `Amount exceeds remaining balance (${remaining})`,
-          );
-        }
 
         if (input.occurredAt) {
           tx.occurredAt = input.occurredAt;
@@ -493,11 +483,6 @@ export class PaymentDomainService {
         });
       const paidAmount = calculatePaidAmount(existingTransactions);
       const remaining = calculateRemainingAmount(order.totalAmount, paidAmount);
-      if (amount > remaining) {
-        throw new BadRequestException(
-          `Amount exceeds remaining balance (${remaining})`,
-        );
-      }
 
       const occurredAt = input.occurredAt ?? new Date();
       const note = input.note?.trim() || null;
@@ -602,16 +587,6 @@ export class PaymentDomainService {
             where: { workspaceId: input.workspaceId, orderId: input.orderId },
           });
         const others = existingTransactions.filter((row) => row.id !== tx.id);
-        const paidAmount = calculatePaidAmount(others);
-        const remaining = calculateRemainingAmount(
-          order.totalAmount,
-          paidAmount,
-        );
-        if (tx.amount > remaining) {
-          throw new BadRequestException(
-            `Amount exceeds remaining balance (${remaining})`,
-          );
-        }
 
         if (input.occurredAt) {
           tx.occurredAt = input.occurredAt;

@@ -147,7 +147,8 @@ export class OrderPaymentsController {
   @ApiOperation({
     summary: "Confirm pending manual payment as paid",
     description:
-      "Marks a pending manual charge transaction as `succeeded`, then recalculates order payment status / remaining amount.",
+      "Marks a pending manual charge transaction as `succeeded`, then recalculates order payment status / remaining amount. " +
+      "If the charge exceeds the remaining balance, order payment status becomes `overpaid`.",
   })
   @ApiParam({ name: "orderId", type: Number })
   @ApiParam({ name: "transactionId", type: Number })

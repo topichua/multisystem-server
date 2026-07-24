@@ -32,15 +32,18 @@ export function calculateOrderPaymentStatus(
   paidAmount: number,
   options?: { hasSucceededRefunds?: boolean },
 ): OrderPaymentStatus {
-  if (paidAmount <= 0) {
+  const total = roundMoney(Number(totalAmount) || 0);
+  const paid = roundMoney(Number(paidAmount) || 0);
+
+  if (paid <= 0) {
     return options?.hasSucceededRefunds
       ? OrderPaymentStatus.refunded
       : OrderPaymentStatus.unpaid;
   }
-  if (paidAmount > totalAmount) {
+  if (paid > total) {
     return OrderPaymentStatus.overpaid;
   }
-  if (paidAmount >= totalAmount) {
+  if (paid >= total) {
     return OrderPaymentStatus.paid;
   }
   return OrderPaymentStatus.partial;

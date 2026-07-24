@@ -94,13 +94,10 @@ export class CategoriesService {
       throw new NotFoundException("Category not found");
     }
 
-    const subcategoryRows =
-      row.parentId === null
-        ? await this.categoryRepo.find({
-            where: { workspaceId, parentId: id, deletedAt: IsNull() },
-            order: { sortOrder: "ASC", name: "ASC" },
-          })
-        : [];
+    const subcategoryRows = await this.categoryRepo.find({
+      where: { workspaceId, parentId: id, deletedAt: IsNull() },
+      order: { sortOrder: "ASC", name: "ASC" },
+    });
 
     const categoryIds = [row.id, ...subcategoryRows.map((s) => s.id)];
     const counts = await this.countProductsAndVariantsByCategoryIds(
@@ -187,7 +184,7 @@ export class CategoriesService {
     const parentId = dto.parentId ?? null;
 
     if (parentId) {
-      await this.requireExistingTopLevelParent(workspaceId, parentId);
+      await this.requireExistingParent(workspaceId, parentId);
     }
 
     await this.assertUniqueNameAmongSiblings(
@@ -246,15 +243,7 @@ export class CategoriesService {
       }
       if (newParentId !== null) {
         await this.assertNoCycleWhenReparenting(id, newParentId);
-        await this.requireExistingTopLevelParent(workspaceId, newParentId);
-        const childCount = await this.categoryRepo.count({
-          where: { workspaceId, parentId: id, deletedAt: IsNull() },
-        });
-        if (childCount > 0) {
-          throw new BadRequestException(
-            "Cannot set a parent category when this category has subcategories; maximum hierarchy depth is two levels",
-          );
-        }
+        await this.requireExistingParent(workspaceId, newParentId);
       }
       row.parentId = newParentId;
     }
@@ -300,7 +289,7 @@ export class CategoriesService {
   ): Promise<void> {
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-    await this.requireExistingTopLevelParent(workspaceId, parentId);
+    await this.requireExistingParent(workspaceId, parentId);
 
     const row = await this.categoryRepo.findOne({
       where: {
@@ -358,9 +347,9 @@ export class CategoriesService {
   }
 
   /**
-   * Parent must exist in the workspace and be a top-level category (`parent_id` IS NULL).
+   * Parent must exist in the workspace (any depth).
    */
-  private async requireExistingTopLevelParent(
+  private async requireExistingParent(
     workspaceId: number,
     parentId: number,
   ): Promise<ProductCategory> {
@@ -369,11 +358,6 @@ export class CategoriesService {
     });
     if (!parent) {
       throw new NotFoundException("Parent category not found");
-    }
-    if (parent.parentId !== null) {
-      throw new BadRequestException(
-        "Only top-level categories can be parents; maximum hierarchy depth is two levels",
-      );
     }
     return parent;
   }
