@@ -50,8 +50,9 @@ export class VariantCustomFieldsController {
   @ApiOperation({
     summary: "List variant custom field definitions for the workspace",
     description:
-      "Returns workspace-configured variant attributes (e.g. Color, Size). " +
+      "Returns workspace-configured variant attributes (e.g. Color, Size), including archived. " +
       "Defaults are created automatically when none exist. " +
+      "Options are returned as `{ id, label, archivedAt }` objects. " +
       "Product variants use customFields: [{ field: { id? | name?, type? }, value }].",
   })
   @ApiOkResponse({ type: VariantCustomFieldsListResponseDto })
@@ -100,15 +101,44 @@ export class VariantCustomFieldsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse()
   @ApiOperation({
-    summary: "Delete a custom field definition",
+    summary: "Hard-delete a custom field definition",
     description:
-      "Removes the definition only; existing variant column values are kept.",
+      "Allowed only when the field has no variant usages. " +
+      "If it is in use, archive it instead via POST /:id/archive.",
   })
   delete(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
   ): Promise<void> {
     return this.fields.deleteForOwner(this.requireOwnerId(req), id);
+  }
+
+  @Post(":id/archive")
+  @ApiOkResponse({ type: VariantCustomFieldDefinitionDto })
+  @ApiOperation({
+    summary: "Archive a custom field",
+    description:
+      "Archives the field and all of its list options. Archived fields/options are hidden from active catalogs.",
+  })
+  archive(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<VariantCustomFieldDefinitionDto> {
+    return this.fields.archiveForOwner(this.requireOwnerId(req), id);
+  }
+
+  @Post(":id/unarchive")
+  @ApiOkResponse({ type: VariantCustomFieldDefinitionDto })
+  @ApiOperation({
+    summary: "Unarchive a custom field",
+    description:
+      "Restores the field. Options stay archived until unarchived individually.",
+  })
+  unarchive(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<VariantCustomFieldDefinitionDto> {
+    return this.fields.unarchiveForOwner(this.requireOwnerId(req), id);
   }
 
   @Post(":id/option")
@@ -120,7 +150,11 @@ export class VariantCustomFieldsController {
   ): Promise<VariantCustomFieldOptionDto> {
     return this.fields
       .addOptionForOwner(this.requireOwnerId(req), id, dto.label)
-      .then((r) => ({ id: r.id, label: r.label }));
+      .then((r) => ({
+        id: r.id,
+        label: r.label,
+        archivedAt: r.archivedAt?.toISOString() ?? null,
+      }));
   }
 
   @Put(":id/option/:optionId")
@@ -133,12 +167,54 @@ export class VariantCustomFieldsController {
   ): Promise<VariantCustomFieldOptionDto> {
     return this.fields
       .updateOptionForOwner(this.requireOwnerId(req), id, optionId, dto.label)
-      .then((r) => ({ id: r.id, label: r.label }));
+      .then((r) => ({
+        id: r.id,
+        label: r.label,
+        archivedAt: r.archivedAt?.toISOString() ?? null,
+      }));
+  }
+
+  @Post(":id/option/:optionId/archive")
+  @ApiOkResponse({ type: VariantCustomFieldOptionDto })
+  @ApiOperation({ summary: "Archive a list option" })
+  archiveOption(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Param("optionId", ParseIntPipe) optionId: number,
+  ): Promise<VariantCustomFieldOptionDto> {
+    return this.fields.archiveOptionForOwner(
+      this.requireOwnerId(req),
+      id,
+      optionId,
+    );
+  }
+
+  @Post(":id/option/:optionId/unarchive")
+  @ApiOkResponse({ type: VariantCustomFieldOptionDto })
+  @ApiOperation({
+    summary: "Unarchive a list option",
+    description: "Fails if the parent field is still archived.",
+  })
+  unarchiveOption(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Param("optionId", ParseIntPipe) optionId: number,
+  ): Promise<VariantCustomFieldOptionDto> {
+    return this.fields.unarchiveOptionForOwner(
+      this.requireOwnerId(req),
+      id,
+      optionId,
+    );
   }
 
   @Delete(":id/option/:optionId")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse()
+  @ApiOperation({
+    summary: "Hard-delete a list option",
+    description:
+      "Allowed only when unused. If in use, archive via POST /:id/option/:optionId/archive.",
+  })
   deleteOption(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,

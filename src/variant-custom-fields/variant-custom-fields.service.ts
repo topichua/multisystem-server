@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, type EntityManager } from "typeorm";
+import { IsNull, Repository, type EntityManager } from "typeorm";
 import {
   ProductVariantCustomFieldValue,
   VariantCustomFieldType,
@@ -22,6 +22,7 @@ import type {
   VariantCustomFieldDefinitionDto,
   VariantCustomFieldsListResponseDto,
 } from "./dto/variant-custom-field-definition.dto";
+import type { VariantCustomFieldOptionDto } from "./dto/variant-custom-field-option.dto";
 import {
   apiTypeToStorageType,
   normalizeCustomFieldName,
@@ -92,11 +93,17 @@ export class VariantCustomFieldsService {
     workspaceId: number,
   ): Promise<WorkspaceVariantCustomField[]> {
     await this.ensureDefaults(workspaceId);
-    return this.fieldRepo.find({
-      where: { workspaceId },
+    const rows = await this.fieldRepo.find({
+      where: { workspaceId, archivedAt: IsNull() },
       relations: { fieldOptions: true },
       order: { sortOrder: "ASC", id: "ASC" },
     });
+    for (const row of rows) {
+      row.fieldOptions = (row.fieldOptions ?? []).filter(
+        (option) => option.archivedAt == null,
+      );
+    }
+    return rows;
   }
 
   async createForOwner(
@@ -128,6 +135,7 @@ export class VariantCustomFieldsService {
         label: dto.label,
         type: dto.type,
         sortOrder: dto.sortOrder ?? 0,
+        archivedAt: null,
       }),
     );
     if (dto.type === VariantCustomFieldType.options && dto.options?.length) {
@@ -174,7 +182,87 @@ export class VariantCustomFieldsService {
       undefined,
       row.workspaceId,
     );
+    const usage = await this.valueRepo.count({ where: { fieldId: row.id } });
+    if (usage > 0) {
+      throw new ConflictException(
+        "Custom field is in use and cannot be deleted; archive it instead",
+      );
+    }
     await this.fieldRepo.remove(row);
+  }
+
+  async archiveForOwner(
+    ownerId: number,
+    fieldId: number,
+  ): Promise<VariantCustomFieldDefinitionDto> {
+    const row = await this.requireOwnedField(ownerId, fieldId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      row.workspaceId,
+    );
+    const now = new Date();
+    if (row.archivedAt == null) {
+      row.archivedAt = now;
+      await this.fieldRepo.save(row);
+    }
+    await this.optionRepo
+      .createQueryBuilder()
+      .update(WorkspaceVariantCustomFieldOption)
+      .set({ archivedAt: now })
+      .where("field_id = :fieldId", { fieldId: row.id })
+      .andWhere("archived_at IS NULL")
+      .execute();
+    return this.toDto(await this.requireFieldWithOptions(row.id));
+  }
+
+  async unarchiveForOwner(
+    ownerId: number,
+    fieldId: number,
+  ): Promise<VariantCustomFieldDefinitionDto> {
+    const row = await this.requireOwnedField(ownerId, fieldId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      row.workspaceId,
+    );
+    if (row.archivedAt != null) {
+      row.archivedAt = null;
+      await this.fieldRepo.save(row);
+    }
+    return this.toDto(await this.requireFieldWithOptions(row.id));
+  }
+
+  async archiveOptionForOwner(
+    ownerId: number,
+    fieldId: number,
+    optionId: number,
+  ): Promise<VariantCustomFieldOptionDto> {
+    const option = await this.requireOwnedOption(ownerId, fieldId, optionId);
+    if (option.archivedAt == null) {
+      option.archivedAt = new Date();
+      await this.optionRepo.save(option);
+    }
+    return this.toOptionDto(option);
+  }
+
+  async unarchiveOptionForOwner(
+    ownerId: number,
+    fieldId: number,
+    optionId: number,
+  ): Promise<VariantCustomFieldOptionDto> {
+    const field = await this.requireOwnedField(ownerId, fieldId);
+    if (field.archivedAt != null) {
+      throw new BadRequestException(
+        "Cannot unarchive an option while its field is archived; unarchive the field first",
+      );
+    }
+    const option = await this.requireOwnedOption(ownerId, fieldId, optionId);
+    if (option.archivedAt != null) {
+      option.archivedAt = null;
+      await this.optionRepo.save(option);
+    }
+    return this.toOptionDto(option);
   }
 
   async addOptionForOwner(
@@ -183,6 +271,9 @@ export class VariantCustomFieldsService {
     label: string,
   ): Promise<WorkspaceVariantCustomFieldOption> {
     const field = await this.requireOwnedField(ownerId, fieldId);
+    if (field.archivedAt != null) {
+      throw new BadRequestException("Cannot add options to an archived field");
+    }
     if (field.type !== VariantCustomFieldType.options) {
       throw new BadRequestException("Field is not an options type");
     }
@@ -193,6 +284,11 @@ export class VariantCustomFieldsService {
       label,
     );
     if (existing) {
+      if (existing.archivedAt != null) {
+        throw new ConflictException(
+          "An archived option with this label exists; unarchive it instead",
+        );
+      }
       return existing;
     }
 
@@ -203,7 +299,11 @@ export class VariantCustomFieldsService {
     );
 
     return this.optionRepo.save(
-      this.optionRepo.create({ fieldId: field.id, label: label.trim() }),
+      this.optionRepo.create({
+        fieldId: field.id,
+        label: label.trim(),
+        archivedAt: null,
+      }),
     );
   }
 
@@ -270,7 +370,9 @@ export class VariantCustomFieldsService {
       where: { optionId: option.id },
     });
     if (usage > 0) {
-      throw new ConflictException("Option is in use and cannot be deleted");
+      throw new ConflictException(
+        "Option is in use and cannot be deleted; archive it instead",
+      );
     }
 
     await this.optionRepo.remove(option);
@@ -319,6 +421,7 @@ export class VariantCustomFieldsService {
         return {
           optionId: option.id,
           label: option.label,
+          archivedAt: option.archivedAt?.toISOString() ?? null,
           productCount: counts.productCount,
           productVariantCount: counts.productVariantCount,
         };
@@ -329,6 +432,7 @@ export class VariantCustomFieldsService {
         key: field.key,
         label: field.label,
         type: field.type,
+        archivedAt: field.archivedAt?.toISOString() ?? null,
         totalProducts,
         options: optionUsages,
       };
@@ -354,6 +458,7 @@ export class VariantCustomFieldsService {
       key: field.key,
       label: field.label,
       type: field.type,
+      archivedAt: field.archivedAt?.toISOString() ?? null,
       totalProducts,
       topTextValues: topTextValues.map((row) => ({
         value: row.value as string,
@@ -624,6 +729,7 @@ export class VariantCustomFieldsService {
         label: name,
         type: storageType,
         sortOrder: await this.nextFieldSortOrder(workspaceId, fieldRepo),
+        archivedAt: null,
       }),
     );
     return created;
@@ -658,6 +764,12 @@ export class VariantCustomFieldsService {
       return existing;
     }
 
+    if (field.archivedAt != null) {
+      throw new BadRequestException(
+        `Custom field "${field.key}" is archived; cannot create new options`,
+      );
+    }
+
     await this.productAuthz.requireCharacteristicsManage(
       ownerId,
       undefined,
@@ -668,6 +780,7 @@ export class VariantCustomFieldsService {
       optionRepo.create({
         fieldId: field.id,
         label,
+        archivedAt: null,
       }),
     );
   }
@@ -713,7 +826,9 @@ export class VariantCustomFieldsService {
         label,
       );
       if (!exists) {
-        await optionRepo.save(optionRepo.create({ fieldId, label }));
+        await optionRepo.save(
+          optionRepo.create({ fieldId, label, archivedAt: null }),
+        );
       }
     }
   }
@@ -731,7 +846,7 @@ export class VariantCustomFieldsService {
     fieldId: number,
   ): Promise<string[]> {
     const rows = await optionRepo.find({
-      where: { fieldId },
+      where: { fieldId, archivedAt: IsNull() },
       order: { id: "ASC" },
     });
     return rows.map((o) => o.label);
@@ -766,6 +881,27 @@ export class VariantCustomFieldsService {
     return row;
   }
 
+  private async requireOwnedOption(
+    ownerId: number,
+    fieldId: number,
+    optionId: number,
+  ): Promise<WorkspaceVariantCustomFieldOption> {
+    const field = await this.requireOwnedField(ownerId, fieldId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      field.workspaceId,
+    );
+    if (field.type !== VariantCustomFieldType.options) {
+      throw new BadRequestException("Field is not an options type");
+    }
+    const option = await this.optionRepo.findOne({ where: { id: optionId } });
+    if (!option || option.fieldId !== field.id) {
+      throw new NotFoundException("Option not found for this field");
+    }
+    return option;
+  }
+
   private async ensureDefaults(workspaceId: number): Promise<void> {
     const count = await this.fieldRepo.count({ where: { workspaceId } });
     if (count > 0) {
@@ -779,6 +915,7 @@ export class VariantCustomFieldsService {
           label: def.label,
           type: def.type,
           sortOrder: def.sortOrder,
+          archivedAt: null,
         }),
       );
       if (def.options.length > 0) {
@@ -803,21 +940,32 @@ export class VariantCustomFieldsService {
     }
   }
 
+  private toOptionDto(
+    option: WorkspaceVariantCustomFieldOption,
+  ): VariantCustomFieldOptionDto {
+    return {
+      id: option.id,
+      label: option.label,
+      archivedAt: option.archivedAt?.toISOString() ?? null,
+    };
+  }
+
   private toDto(
     row: WorkspaceVariantCustomField,
   ): VariantCustomFieldDefinitionDto {
-    const optionLabels = [...(row.fieldOptions ?? [])]
+    const options = [...(row.fieldOptions ?? [])]
       .sort((a, b) => a.id - b.id)
-      .map((o) => o.label);
+      .map((o) => this.toOptionDto(o));
     return {
       id: row.id,
       key: row.key,
       label: row.label,
       type: row.type,
-      ...(row.type === VariantCustomFieldType.options && optionLabels.length
-        ? { options: optionLabels }
+      ...(row.type === VariantCustomFieldType.options && options.length
+        ? { options }
         : {}),
       sortOrder: row.sortOrder,
+      archivedAt: row.archivedAt?.toISOString() ?? null,
     };
   }
 }

@@ -28,6 +28,10 @@ export class WorkspaceVariantCustomFieldOption {
   @Column({ type: "varchar", length: 128 })
   label: string;
 
+  /** When set, option is archived and hidden from active catalogs. */
+  @Column({ name: "archived_at", type: "timestamptz", nullable: true })
+  archivedAt: Date | null;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 }

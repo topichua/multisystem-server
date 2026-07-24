@@ -13,7 +13,9 @@ export type WorkspaceVariantCustomFieldWithOptions =
 export function getFieldOptionLabels(
   def: WorkspaceVariantCustomFieldWithOptions,
 ): string[] {
-  return (def.fieldOptions ?? []).map((o) => o.label);
+  return (def.fieldOptions ?? [])
+    .filter((o) => o.archivedAt == null)
+    .map((o) => o.label);
 }
 
 export type VariantCustomFieldValueInput = {

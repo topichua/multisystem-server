@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { VariantCustomFieldType } from "../../database/entities/variant-custom-field-type.enum";
 
 export class VariantCustomFieldOptionUsageDto {
@@ -7,6 +7,12 @@ export class VariantCustomFieldOptionUsageDto {
 
   @ApiProperty()
   label: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "ISO timestamp when archived; null if active",
+  })
+  archivedAt!: string | null;
 
   @ApiProperty()
   productCount: number;
@@ -38,6 +44,12 @@ export class VariantCustomFieldUsageDto {
 
   @ApiProperty({ enum: VariantCustomFieldType })
   type: VariantCustomFieldType;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "ISO timestamp when archived; null if active",
+  })
+  archivedAt!: string | null;
 
   @ApiProperty({ description: "Number of distinct products using this field." })
   totalProducts: number;

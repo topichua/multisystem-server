@@ -156,6 +156,7 @@ import { InstagramOAuthPendingPollStatus1744200000158 } from "./migrations/17442
 import { InstagramIntegrationWorkspacePageUnique1744200000159 } from "./migrations/1744200000159-InstagramIntegrationWorkspacePageUnique";
 import { OrderRefunds1744200000160 } from "./migrations/1744200000160-OrderRefunds";
 import { OrderDeliveryInfoNovaPoshtaPayment1744200000161 } from "./migrations/1744200000161-OrderDeliveryInfoNovaPoshtaPayment";
+import { VariantCustomFieldArchivedAt1744200000162 } from "./migrations/1744200000162-VariantCustomFieldArchivedAt";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -524,6 +525,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       InstagramIntegrationWorkspacePageUnique1744200000159,
       OrderRefunds1744200000160,
       OrderDeliveryInfoNovaPoshtaPayment1744200000161,
+      VariantCustomFieldArchivedAt1744200000162,
     ],
   };
 }

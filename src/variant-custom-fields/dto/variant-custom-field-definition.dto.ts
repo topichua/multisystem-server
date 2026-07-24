@@ -1,36 +1,43 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { VariantCustomFieldType } from "../../database/entities/variant-custom-field-type.enum";
+import { VariantCustomFieldOptionDto } from "./variant-custom-field-option.dto";
 
 export class VariantCustomFieldDefinitionDto {
   @ApiProperty()
-  id: number;
+  id!: number;
 
   @ApiProperty({
     description:
       "Stable key; `color` and `size` map to product_variants columns",
   })
-  key: string;
+  key!: string;
 
   @ApiProperty()
-  label: string;
+  label!: string;
 
   @ApiProperty({ enum: VariantCustomFieldType })
-  type: VariantCustomFieldType;
+  type!: VariantCustomFieldType;
 
   @ApiPropertyOptional({
-    type: [String],
-    description: "Predefined values when type is `options`",
+    type: [VariantCustomFieldOptionDto],
+    description: "Predefined options when type is `options` (includes archived)",
   })
-  options?: string[];
+  options?: VariantCustomFieldOptionDto[];
 
   @ApiProperty()
-  sortOrder: number;
+  sortOrder!: number;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "ISO timestamp when archived; null if active",
+  })
+  archivedAt!: string | null;
 }
 
 export class VariantCustomFieldsListResponseDto {
   @ApiProperty()
-  workspaceId: number;
+  workspaceId!: number;
 
   @ApiProperty({ type: [VariantCustomFieldDefinitionDto] })
-  items: VariantCustomFieldDefinitionDto[];
+  items!: VariantCustomFieldDefinitionDto[];
 }

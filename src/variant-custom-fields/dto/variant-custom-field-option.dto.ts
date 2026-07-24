@@ -1,13 +1,19 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import { IsNotEmpty, IsString, MaxLength } from "class-validator";
 
 export class VariantCustomFieldOptionDto {
   @ApiProperty()
-  id: number;
+  id!: number;
 
   @ApiProperty()
-  label: string;
+  label!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "ISO timestamp when archived; null if active",
+  })
+  archivedAt!: string | null;
 }
 
 export class VariantCustomFieldOptionRequestDto {
@@ -18,5 +24,5 @@ export class VariantCustomFieldOptionRequestDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim() : value,
   )
-  label: string;
+  label!: string;
 }

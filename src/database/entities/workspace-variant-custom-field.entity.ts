@@ -50,6 +50,10 @@ export class WorkspaceVariantCustomField {
   @Column({ name: "sort_order", type: "int", default: 0 })
   sortOrder: number;
 
+  /** When set, field is archived and hidden from active catalogs. */
+  @Column({ name: "archived_at", type: "timestamptz", nullable: true })
+  archivedAt: Date | null;
+
   @OneToMany(() => WorkspaceVariantCustomFieldOption, (o) => o.field)
   fieldOptions: WorkspaceVariantCustomFieldOption[];
 
