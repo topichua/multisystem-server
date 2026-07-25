@@ -259,7 +259,11 @@ export class CategoriesService {
     return this.findOneForOwner(ownerId, row.id);
   }
 
-  async removeForOwner(ownerId: number, id: number): Promise<void> {
+  async removeForOwner(
+    ownerId: number,
+    id: number,
+    reassignCategoryId?: number | null,
+  ): Promise<void> {
     await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
@@ -279,14 +283,16 @@ export class CategoriesService {
       );
     }
 
-    await this.softDeleteCategory(row, ownerId);
+    await this.softDeleteCategory(row, ownerId, reassignCategoryId);
   }
 
   async removeSubcategoryForOwner(
     ownerId: number,
     parentId: number,
     subcategoryId: number,
+    reassignCategoryId?: number | null,
   ): Promise<void> {
+    await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     await this.requireExistingParent(workspaceId, parentId);
@@ -303,20 +309,54 @@ export class CategoriesService {
       throw new NotFoundException("Subcategory not found");
     }
 
-    await this.softDeleteCategory(row, ownerId);
+    await this.softDeleteCategory(row, ownerId, reassignCategoryId);
   }
 
   private async softDeleteCategory(
     row: ProductCategory,
     ownerId: number,
+    reassignCategoryId?: number | null,
   ): Promise<void> {
+    const nextCategoryId = await this.resolveReassignCategoryId(
+      row,
+      reassignCategoryId,
+    );
     await this.productRepo.update(
       { categoryId: row.id, workspaceId: row.workspaceId },
-      { categoryId: null },
+      { categoryId: nextCategoryId },
     );
     row.deletedAt = new Date();
     row.deletedByUserId = ownerId;
     await this.categoryRepo.save(row);
+  }
+
+  /**
+   * `undefined`/`null` → uncategorized. Otherwise target must exist in the same
+   * workspace and must not be the category being deleted.
+   */
+  private async resolveReassignCategoryId(
+    deleted: ProductCategory,
+    reassignCategoryId?: number | null,
+  ): Promise<number | null> {
+    if (reassignCategoryId == null) {
+      return null;
+    }
+    if (reassignCategoryId === deleted.id) {
+      throw new BadRequestException(
+        "categoryId cannot be the category being deleted",
+      );
+    }
+    const target = await this.categoryRepo.findOne({
+      where: {
+        id: reassignCategoryId,
+        workspaceId: deleted.workspaceId,
+        deletedAt: IsNull(),
+      },
+    });
+    if (!target) {
+      throw new NotFoundException("Reassign category not found");
+    }
+    return target.id;
   }
 
   private buildTree(rows: ProductCategory[]): CategoryTreeNodeDto[] {

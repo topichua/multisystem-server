@@ -13,7 +13,11 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
@@ -22,6 +26,7 @@ import {
   type CategoryTreeNodeDto,
 } from "./categories.service";
 import { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
+import { DeleteCategoryRequestDto } from "./dto/delete-category-request.dto";
 import { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
 @ApiBearerAuth("bearer")
@@ -76,19 +81,23 @@ export class CategoriesController {
     summary: "Delete subcategory",
     description:
       "Soft-deletes a child category under the given parent. " +
-      "Products assigned to it get `categoryId: null` (uncategorized). " +
+      "Optional body `categoryId` reassigns products to that category; " +
+      "omit/`null` leaves products uncategorized. " +
       "Use DELETE /categories/:id for any category that has no children.",
   })
+  @ApiBody({ type: DeleteCategoryRequestDto, required: false })
   async removeSubcategory(
     @Req() req: { user?: AuthUser },
     @Param("parentId", ParseIntPipe) parentId: number,
     @Param("subcategoryId", ParseIntPipe) subcategoryId: number,
+    @Body() dto?: DeleteCategoryRequestDto,
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
     await this.categories.removeSubcategoryForOwner(
       ownerId,
       parentId,
       subcategoryId,
+      dto?.categoryId,
     );
   }
 
@@ -98,15 +107,18 @@ export class CategoriesController {
     summary: "Delete category",
     description:
       "Soft-deletes a category. Categories with children cannot be deleted until children are removed. " +
-      "Products assigned to it get `categoryId: null` (uncategorized). " +
+      "Optional body `categoryId` reassigns products from the deleted category to that category; " +
+      "omit/`null` leaves products uncategorized. " +
       "Children may also be removed via DELETE /categories/:parentId/subcategories/:subcategoryId.",
   })
+  @ApiBody({ type: DeleteCategoryRequestDto, required: false })
   async remove(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
+    @Body() dto?: DeleteCategoryRequestDto,
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
-    await this.categories.removeForOwner(ownerId, id);
+    await this.categories.removeForOwner(ownerId, id, dto?.categoryId);
   }
 
   private requireNumericOwnerId(req: { user?: AuthUser }): number {
