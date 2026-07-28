@@ -10,6 +10,7 @@ import { Product, ProductCategory } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
 import type { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
+import type { MoveCategoryRequestDto } from "./dto/move-category-request.dto";
 import type { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
 /** Synthetic list node for products with `categoryId: null`. Not stored in DB. */
@@ -322,22 +323,7 @@ export class CategoriesService {
     }
 
     if (dto.parentId !== undefined) {
-      const newParentId = dto.parentId;
-      if (newParentId === UNCATEGORIZED_CATEGORY_ID) {
-        throw new BadRequestException(
-          "Cannot use uncategorized category as parent",
-        );
-      }
-      if (newParentId === id) {
-        throw new BadRequestException(
-          "Cannot set parentId: that would create a cycle in the category hierarchy",
-        );
-      }
-      if (newParentId !== null) {
-        await this.assertNoCycleWhenReparenting(id, newParentId);
-        await this.requireExistingParent(workspaceId, newParentId);
-      }
-      row.parentId = newParentId;
+      await this.applyParentChange(workspaceId, row, dto.parentId);
     }
 
     await this.assertUniqueNameAmongSiblings(
@@ -349,6 +335,66 @@ export class CategoriesService {
 
     await this.categoryRepo.save(row);
     return this.findOneForOwner(ownerId, row.id);
+  }
+
+  /**
+   * Move a category under another category (or to top level when parentId is null).
+   * Children move with the subtree; cycles are rejected.
+   */
+  async moveForOwner(
+    ownerId: number,
+    id: number,
+    dto: MoveCategoryRequestDto,
+  ): Promise<CategoryDetailDto> {
+    if (id === UNCATEGORIZED_CATEGORY_ID) {
+      throw new BadRequestException("Uncategorized category cannot be moved");
+    }
+    await this.productAuthz.requireCategoryManage(ownerId);
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const row = await this.categoryRepo.findOne({
+      where: { id, workspaceId, deletedAt: IsNull() },
+    });
+    if (!row) {
+      throw new NotFoundException("Category not found");
+    }
+
+    const newParentId = dto.parentId ?? null;
+    if (row.parentId === newParentId) {
+      return this.findOneForOwner(ownerId, row.id);
+    }
+
+    await this.applyParentChange(workspaceId, row, newParentId);
+    await this.assertUniqueNameAmongSiblings(
+      workspaceId,
+      row.parentId,
+      row.name,
+      row.id,
+    );
+    await this.categoryRepo.save(row);
+    return this.findOneForOwner(ownerId, row.id);
+  }
+
+  private async applyParentChange(
+    workspaceId: number,
+    row: ProductCategory,
+    newParentId: number | null,
+  ): Promise<void> {
+    if (newParentId === UNCATEGORIZED_CATEGORY_ID) {
+      throw new BadRequestException(
+        "Cannot use uncategorized category as parent",
+      );
+    }
+    if (newParentId === row.id) {
+      throw new BadRequestException(
+        "Cannot set parentId: that would create a cycle in the category hierarchy",
+      );
+    }
+    if (newParentId !== null) {
+      await this.assertNoCycleWhenReparenting(row.id, newParentId);
+      await this.requireExistingParent(workspaceId, newParentId);
+    }
+    row.parentId = newParentId;
   }
 
   async removeForOwner(ownerId: number, id: number): Promise<void> {

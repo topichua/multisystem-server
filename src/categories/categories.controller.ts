@@ -13,7 +13,12 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
@@ -22,6 +27,7 @@ import {
   type CategoryTreeNodeDto,
 } from "./categories.service";
 import { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
+import { MoveCategoryRequestDto } from "./dto/move-category-request.dto";
 import { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
 @ApiBearerAuth("bearer")
@@ -75,6 +81,25 @@ export class CategoriesController {
   ): Promise<CategoryDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.categories.updateForOwner(ownerId, id, dto);
+  }
+
+  @Post(":id/move")
+  @ApiOperation({
+    summary: "Move category under another category",
+    description:
+      "Reparents the category. Pass `parentId` to nest under that category, or `null`/omit for top level. " +
+      "The whole subtree moves with it. Moving under a descendant (cycle) is rejected. " +
+      "Synthetic category `id: -1` cannot be moved or used as parent.",
+  })
+  @ApiBody({ type: MoveCategoryRequestDto })
+  @ApiOkResponse({ description: "Updated category detail." })
+  async move(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: MoveCategoryRequestDto,
+  ): Promise<CategoryDetailDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.categories.moveForOwner(ownerId, id, dto);
   }
 
   @Delete(":id")
