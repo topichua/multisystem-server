@@ -20,6 +20,10 @@ export type CategoryTreeNodeDto = {
   createdByUserId: number;
   createdAt: Date;
   updatedAt: Date;
+  /** Products assigned directly to this category. */
+  productCount: number;
+  /** Variants of products assigned directly to this category. */
+  productVariantCount: number;
   children: CategoryTreeNodeDto[];
 };
 
@@ -78,7 +82,11 @@ export class CategoriesService {
       where: { workspaceId, deletedAt: IsNull() },
       order: { sortOrder: "ASC", name: "ASC" },
     });
-    return this.buildTree(rows);
+    const counts = await this.countProductsAndVariantsByCategoryIds(
+      workspaceId,
+      rows.map((r) => r.id),
+    );
+    return this.buildTree(rows, counts);
   }
 
   async findOneForOwner(
@@ -259,11 +267,7 @@ export class CategoriesService {
     return this.findOneForOwner(ownerId, row.id);
   }
 
-  async removeForOwner(
-    ownerId: number,
-    id: number,
-    reassignCategoryId?: number | null,
-  ): Promise<void> {
+  async removeForOwner(ownerId: number, id: number): Promise<void> {
     await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
@@ -274,92 +278,65 @@ export class CategoriesService {
       throw new NotFoundException("Category not found");
     }
 
-    const childCount = await this.categoryRepo.count({
-      where: { workspaceId, parentId: id, deletedAt: IsNull() },
+    const allRows = await this.categoryRepo.find({
+      where: { workspaceId, deletedAt: IsNull() },
+      select: { id: true, parentId: true },
     });
-    if (childCount > 0) {
-      throw new ConflictException(
-        "Cannot delete a category that has child categories",
-      );
-    }
+    const deleteIds = this.collectDescendantIds(allRows, id);
 
-    await this.softDeleteCategory(row, ownerId, reassignCategoryId);
+    await this.productRepo
+      .createQueryBuilder()
+      .update(Product)
+      .set({ categoryId: null })
+      .where("workspace_id = :workspaceId", { workspaceId })
+      .andWhere("category_id IN (:...deleteIds)", { deleteIds })
+      .execute();
+
+    const now = new Date();
+    await this.categoryRepo
+      .createQueryBuilder()
+      .update(ProductCategory)
+      .set({ deletedAt: now, deletedByUserId: ownerId })
+      .where("workspace_id = :workspaceId", { workspaceId })
+      .andWhere("id IN (:...deleteIds)", { deleteIds })
+      .andWhere("deleted_at IS NULL")
+      .execute();
   }
 
-  async removeSubcategoryForOwner(
-    ownerId: number,
-    parentId: number,
-    subcategoryId: number,
-    reassignCategoryId?: number | null,
-  ): Promise<void> {
-    await this.productAuthz.requireCategoryManage(ownerId);
-    const workspaceId =
-      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-    await this.requireExistingParent(workspaceId, parentId);
-
-    const row = await this.categoryRepo.findOne({
-      where: {
-        id: subcategoryId,
-        workspaceId,
-        parentId,
-        deletedAt: IsNull(),
-      },
-    });
-    if (!row) {
-      throw new NotFoundException("Subcategory not found");
+  /** Root id plus every descendant (depth-first via adjacency map). */
+  private collectDescendantIds(
+    rows: Array<{ id: number; parentId: number | null }>,
+    rootId: number,
+  ): number[] {
+    const childrenByParent = new Map<number, number[]>();
+    for (const row of rows) {
+      if (row.parentId == null) {
+        continue;
+      }
+      const list = childrenByParent.get(row.parentId) ?? [];
+      list.push(row.id);
+      childrenByParent.set(row.parentId, list);
     }
 
-    await this.softDeleteCategory(row, ownerId, reassignCategoryId);
+    const result: number[] = [];
+    const stack = [rootId];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      result.push(current);
+      const children = childrenByParent.get(current);
+      if (children?.length) {
+        for (const childId of children) {
+          stack.push(childId);
+        }
+      }
+    }
+    return result;
   }
 
-  private async softDeleteCategory(
-    row: ProductCategory,
-    ownerId: number,
-    reassignCategoryId?: number | null,
-  ): Promise<void> {
-    const nextCategoryId = await this.resolveReassignCategoryId(
-      row,
-      reassignCategoryId,
-    );
-    await this.productRepo.update(
-      { categoryId: row.id, workspaceId: row.workspaceId },
-      { categoryId: nextCategoryId },
-    );
-    row.deletedAt = new Date();
-    row.deletedByUserId = ownerId;
-    await this.categoryRepo.save(row);
-  }
-
-  /**
-   * `undefined`/`null` → uncategorized. Otherwise target must exist in the same
-   * workspace and must not be the category being deleted.
-   */
-  private async resolveReassignCategoryId(
-    deleted: ProductCategory,
-    reassignCategoryId?: number | null,
-  ): Promise<number | null> {
-    if (reassignCategoryId == null) {
-      return null;
-    }
-    if (reassignCategoryId === deleted.id) {
-      throw new BadRequestException(
-        "categoryId cannot be the category being deleted",
-      );
-    }
-    const target = await this.categoryRepo.findOne({
-      where: {
-        id: reassignCategoryId,
-        workspaceId: deleted.workspaceId,
-        deletedAt: IsNull(),
-      },
-    });
-    if (!target) {
-      throw new NotFoundException("Reassign category not found");
-    }
-    return target.id;
-  }
-
-  private buildTree(rows: ProductCategory[]): CategoryTreeNodeDto[] {
+  private buildTree(
+    rows: ProductCategory[],
+    counts: Map<number, { productCount: number; productVariantCount: number }>,
+  ): CategoryTreeNodeDto[] {
     const byParent = new Map<number | null, ProductCategory[]>();
     for (const r of rows) {
       const key = r.parentId;
@@ -371,16 +348,24 @@ export class CategoriesService {
       list.sort(compareCategoriesForSort);
     }
 
-    const toDto = (row: ProductCategory): CategoryTreeNodeDto => ({
-      id: row.id,
-      name: row.name,
-      parentId: row.parentId,
-      sortOrder: row.sortOrder,
-      createdByUserId: row.createdByUserId,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      children: (byParent.get(row.id) ?? []).map(toDto),
-    });
+    const toDto = (row: ProductCategory): CategoryTreeNodeDto => {
+      const count = counts.get(row.id) ?? {
+        productCount: 0,
+        productVariantCount: 0,
+      };
+      return {
+        id: row.id,
+        name: row.name,
+        parentId: row.parentId,
+        sortOrder: row.sortOrder,
+        createdByUserId: row.createdByUserId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        productCount: count.productCount,
+        productVariantCount: count.productVariantCount,
+        children: (byParent.get(row.id) ?? []).map(toDto),
+      };
+    };
 
     const roots = byParent.get(null) ?? [];
     return roots.map(toDto);

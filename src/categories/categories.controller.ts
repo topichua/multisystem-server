@@ -13,11 +13,7 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiOperation,
-} from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
@@ -26,7 +22,6 @@ import {
   type CategoryTreeNodeDto,
 } from "./categories.service";
 import { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
-import { DeleteCategoryRequestDto } from "./dto/delete-category-request.dto";
 import { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
 @ApiBearerAuth("bearer")
@@ -36,6 +31,12 @@ export class CategoriesController {
   constructor(private readonly categories: CategoriesService) {}
 
   @Get()
+  @ApiOperation({
+    summary: "List category tree",
+    description:
+      "Full category tree for the workspace. Each node includes `productCount` and `productVariantCount` " +
+      "for products assigned directly to that category.",
+  })
   async list(@Req() req: { user?: AuthUser }): Promise<CategoryTreeNodeDto[]> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.categories.findTreeForOwner(ownerId);
@@ -46,7 +47,7 @@ export class CategoriesController {
     summary: "Get category",
     description:
       "Returns the category with its direct child categories. " +
-      "productCount counts only products assigned directly to this category.",
+      "`productCount` / `productVariantCount` count products and variants assigned directly to each category.",
   })
   async getById(
     @Req() req: { user?: AuthUser },
@@ -75,50 +76,20 @@ export class CategoriesController {
     return this.categories.updateForOwner(ownerId, id, dto);
   }
 
-  @Delete(":parentId/subcategories/:subcategoryId")
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: "Delete subcategory",
-    description:
-      "Soft-deletes a child category under the given parent. " +
-      "Optional body `categoryId` reassigns products to that category; " +
-      "omit/`null` leaves products uncategorized. " +
-      "Use DELETE /categories/:id for any category that has no children.",
-  })
-  @ApiBody({ type: DeleteCategoryRequestDto, required: false })
-  async removeSubcategory(
-    @Req() req: { user?: AuthUser },
-    @Param("parentId", ParseIntPipe) parentId: number,
-    @Param("subcategoryId", ParseIntPipe) subcategoryId: number,
-    @Body() dto?: DeleteCategoryRequestDto,
-  ): Promise<void> {
-    const ownerId = this.requireNumericOwnerId(req);
-    await this.categories.removeSubcategoryForOwner(
-      ownerId,
-      parentId,
-      subcategoryId,
-      dto?.categoryId,
-    );
-  }
-
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: "Delete category",
     description:
-      "Soft-deletes a category. Categories with children cannot be deleted until children are removed. " +
-      "Optional body `categoryId` reassigns products from the deleted category to that category; " +
-      "omit/`null` leaves products uncategorized. " +
-      "Children may also be removed via DELETE /categories/:parentId/subcategories/:subcategoryId.",
+      "Soft-deletes the category and all of its descendants (cascade). " +
+      "Products assigned to any deleted category get `categoryId: null` (uncategorized).",
   })
-  @ApiBody({ type: DeleteCategoryRequestDto, required: false })
   async remove(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto?: DeleteCategoryRequestDto,
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
-    await this.categories.removeForOwner(ownerId, id, dto?.categoryId);
+    await this.categories.removeForOwner(ownerId, id);
   }
 
   private requireNumericOwnerId(req: { user?: AuthUser }): number {
