@@ -34,8 +34,9 @@ export class CategoriesController {
   @ApiOperation({
     summary: "List category tree",
     description:
-      "Full category tree for the workspace. Each node includes `productCount` and `productVariantCount` " +
-      "for products assigned directly to that category.",
+      "Full category tree for the workspace. The first node is always synthetic " +
+      "`Без категорії` with `id: -1` (products with `categoryId: null`); it cannot be deleted. " +
+      "Each node includes `productCount` and `productVariantCount` for products assigned directly to that category.",
   })
   async list(@Req() req: { user?: AuthUser }): Promise<CategoryTreeNodeDto[]> {
     const ownerId = this.requireNumericOwnerId(req);
@@ -82,7 +83,8 @@ export class CategoriesController {
     summary: "Delete category",
     description:
       "Soft-deletes the category and all of its descendants (cascade). " +
-      "Products assigned to any deleted category get `categoryId: null` (uncategorized).",
+      "Products assigned to any deleted category get `categoryId: null` (uncategorized). " +
+      "Synthetic category `id: -1` (`Без категорії`) cannot be removed.",
   })
   async remove(
     @Req() req: { user?: AuthUser },

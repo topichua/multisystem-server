@@ -12,6 +12,10 @@ import { ProductAuthorizationService } from "../workspace-access/product-authori
 import type { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
 import type { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
+/** Synthetic list node for products with `categoryId: null`. Not stored in DB. */
+export const UNCATEGORIZED_CATEGORY_ID = -1;
+export const UNCATEGORIZED_CATEGORY_NAME = "Без категорії";
+
 export type CategoryTreeNodeDto = {
   id: number;
   name: string;
@@ -82,17 +86,44 @@ export class CategoriesService {
       where: { workspaceId, deletedAt: IsNull() },
       order: { sortOrder: "ASC", name: "ASC" },
     });
-    const counts = await this.countProductsAndVariantsByCategoryIds(
-      workspaceId,
-      rows.map((r) => r.id),
-    );
-    return this.buildTree(rows, counts);
+    const [counts, uncategorized] = await Promise.all([
+      this.countProductsAndVariantsByCategoryIds(
+        workspaceId,
+        rows.map((r) => r.id),
+      ),
+      this.countUncategorizedProductsAndVariants(workspaceId),
+    ]);
+    return [
+      this.buildUncategorizedTreeNode(uncategorized),
+      ...this.buildTree(rows, counts),
+    ];
   }
 
   async findOneForOwner(
     ownerId: number,
     id: number,
   ): Promise<CategoryDetailDto> {
+    if (id === UNCATEGORIZED_CATEGORY_ID) {
+      await this.productAuthz.requireRead(ownerId);
+      const workspaceId =
+        await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+      const counts = await this.countUncategorizedProductsAndVariants(
+        workspaceId,
+      );
+      return {
+        id: UNCATEGORIZED_CATEGORY_ID,
+        name: UNCATEGORIZED_CATEGORY_NAME,
+        parentId: null,
+        sortOrder: -1,
+        createdByUserId: 0,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+        productCount: counts.productCount,
+        productVariantCount: counts.productVariantCount,
+        subcategories: [],
+      };
+    }
+
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
     const row = await this.categoryRepo.findOne({
@@ -177,6 +208,45 @@ export class CategoriesService {
     );
   }
 
+  private async countUncategorizedProductsAndVariants(
+    workspaceId: number,
+  ): Promise<{ productCount: number; productVariantCount: number }> {
+    const row = await this.productRepo
+      .createQueryBuilder("p")
+      .select("COUNT(*)::int", "product_count")
+      .addSelect("COUNT(v.id)::int", "product_variant_count")
+      .leftJoin("product_variants", "v", "v.product_id = p.id")
+      .where("p.workspaceId = :workspaceId", { workspaceId })
+      .andWhere("p.categoryId IS NULL")
+      .getRawOne<{
+        product_count: number;
+        product_variant_count: number;
+      }>();
+
+    return {
+      productCount: Number(row?.product_count ?? 0),
+      productVariantCount: Number(row?.product_variant_count ?? 0),
+    };
+  }
+
+  private buildUncategorizedTreeNode(counts: {
+    productCount: number;
+    productVariantCount: number;
+  }): CategoryTreeNodeDto {
+    return {
+      id: UNCATEGORIZED_CATEGORY_ID,
+      name: UNCATEGORIZED_CATEGORY_NAME,
+      parentId: null,
+      sortOrder: -1,
+      createdByUserId: 0,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+      productCount: counts.productCount,
+      productVariantCount: counts.productVariantCount,
+      children: [],
+    };
+  }
+
   async createForOwner(
     ownerId: number,
     dto: CreateCategoryRequestDto,
@@ -190,6 +260,12 @@ export class CategoriesService {
     }
     const sortOrder = dto.sortOrder ?? 0;
     const parentId = dto.parentId ?? null;
+
+    if (parentId === UNCATEGORIZED_CATEGORY_ID) {
+      throw new BadRequestException(
+        "Cannot use uncategorized category as parent",
+      );
+    }
 
     if (parentId) {
       await this.requireExistingParent(workspaceId, parentId);
@@ -220,6 +296,9 @@ export class CategoriesService {
     id: number,
     dto: UpdateCategoryRequestDto,
   ): Promise<CategoryDetailDto> {
+    if (id === UNCATEGORIZED_CATEGORY_ID) {
+      throw new BadRequestException("Uncategorized category cannot be updated");
+    }
     await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
@@ -244,6 +323,11 @@ export class CategoriesService {
 
     if (dto.parentId !== undefined) {
       const newParentId = dto.parentId;
+      if (newParentId === UNCATEGORIZED_CATEGORY_ID) {
+        throw new BadRequestException(
+          "Cannot use uncategorized category as parent",
+        );
+      }
       if (newParentId === id) {
         throw new BadRequestException(
           "Cannot set parentId: that would create a cycle in the category hierarchy",
@@ -268,6 +352,9 @@ export class CategoriesService {
   }
 
   async removeForOwner(ownerId: number, id: number): Promise<void> {
+    if (id === UNCATEGORIZED_CATEGORY_ID) {
+      throw new BadRequestException("Uncategorized category cannot be removed");
+    }
     await this.productAuthz.requireCategoryManage(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
