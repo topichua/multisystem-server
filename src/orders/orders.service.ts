@@ -145,6 +145,8 @@ type OrderDeliverySummary = {
   deliveryStatusCode: string | null;
   deliveryStatusText: string | null;
   canSyncPayment: boolean;
+  /** Linked COD payment transaction id from `order_delivery_infos.payment_id`. */
+  syncedPaymentId: number | null;
 };
 
 type OrderPaymentSummary = {
@@ -2167,7 +2169,9 @@ export class OrdersService {
         continue;
       }
       const canSyncPayment = canSyncDeliveryPayment(info);
+      const syncedPaymentId = info.paymentId ?? null;
       info.canSyncPayment = canSyncPayment;
+      info.syncedPaymentId = syncedPaymentId;
       (order as unknown as { delivery: OrderDeliverySummary }).delivery = {
         deliveryStatus: info.deliveryStatus,
         deliveryStatusAt: info.deliveryStatusAt ?? null,
@@ -2175,6 +2179,7 @@ export class OrdersService {
         deliveryStatusCode: info.providerStatusCode?.trim() || null,
         deliveryStatusText: info.providerStatusText?.trim() || null,
         canSyncPayment,
+        syncedPaymentId,
       };
     }
   }

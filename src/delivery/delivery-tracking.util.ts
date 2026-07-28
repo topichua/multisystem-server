@@ -47,6 +47,7 @@ export function hydrateDeliveryTrackingFlags(
   if (delivery) {
     delivery.canRemoveTracking = canRemove;
     delivery.canSyncPayment = canSyncDeliveryPayment(delivery);
+    delivery.syncedPaymentId = delivery.paymentId ?? null;
   }
   order.deliveryInfo = delivery;
 }

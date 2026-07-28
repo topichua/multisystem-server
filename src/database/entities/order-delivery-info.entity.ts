@@ -182,6 +182,12 @@ export class OrderDeliveryInfo {
   @JoinColumn({ name: "payment_id" })
   payment: PaymentTransaction | null;
 
+  /**
+   * Hydrated API alias of `paymentId` (COD payment linked on delivery).
+   * Not a separate DB column.
+   */
+  syncedPaymentId?: number | null;
+
   /** Hydrated: true when TTN can be deleted via API (before `shipped`). Not a DB column. */
   canRemoveTracking?: boolean;
 
