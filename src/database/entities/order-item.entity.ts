@@ -32,19 +32,21 @@ export class OrderItem {
   ])
   order: Order;
 
-  @Column({ name: "product_id", type: "int" })
-  productId: number;
+  /** Null when the catalog product was hard-deleted; snapshots remain. */
+  @Column({ name: "product_id", type: "int", nullable: true })
+  productId: number | null;
 
-  @ManyToOne(() => Product, { onDelete: "RESTRICT" })
+  @ManyToOne(() => Product, { onDelete: "SET NULL", nullable: true })
   @JoinColumn({ name: "product_id" })
-  product: Product;
+  product: Product | null;
 
-  @Column({ name: "variant_id", type: "int" })
-  variantId: number;
+  /** Null when the catalog variant was hard-deleted; snapshots remain. */
+  @Column({ name: "variant_id", type: "int", nullable: true })
+  variantId: number | null;
 
-  @ManyToOne(() => ProductVariant, { onDelete: "RESTRICT" })
+  @ManyToOne(() => ProductVariant, { onDelete: "SET NULL", nullable: true })
   @JoinColumn({ name: "variant_id" })
-  variant: ProductVariant;
+  variant: ProductVariant | null;
 
   @Column({ type: "int" })
   quantity: number;

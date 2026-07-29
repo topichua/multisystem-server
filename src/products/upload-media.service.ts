@@ -69,6 +69,32 @@ export class UploadMediaService {
     await this.uploadMediaRepo.remove(row);
   }
 
+  /** Delete staged uploads that are no longer linked from `product_media`. */
+  async deleteOrphanedForWorkspace(
+    workspaceId: number,
+    uploadMediaIds: number[],
+  ): Promise<void> {
+    const unique = [...new Set(uploadMediaIds.filter((id) => id > 0))];
+    if (unique.length === 0) {
+      return;
+    }
+    const rows = await this.uploadMediaRepo.find({
+      where: { workspaceId, id: In(unique) },
+    });
+    for (const row of rows) {
+      const inUse = await this.productMediaRepo.exist({
+        where: { uploadMediaId: row.id },
+      });
+      if (inUse) {
+        continue;
+      }
+      if (row.cloudflareImageId) {
+        await this.cloudflareImages.deleteImage(row.cloudflareImageId);
+      }
+      await this.uploadMediaRepo.remove(row);
+    }
+  }
+
   async requireForWorkspace(
     workspaceId: number,
     ids: number[],

@@ -157,6 +157,8 @@ import { InstagramIntegrationWorkspacePageUnique1744200000159 } from "./migratio
 import { OrderRefunds1744200000160 } from "./migrations/1744200000160-OrderRefunds";
 import { OrderDeliveryInfoNovaPoshtaPayment1744200000161 } from "./migrations/1744200000161-OrderDeliveryInfoNovaPoshtaPayment";
 import { VariantCustomFieldArchivedAt1744200000162 } from "./migrations/1744200000162-VariantCustomFieldArchivedAt";
+import { DeletePackedShippedOrderStatuses1744200000163 } from "./migrations/1744200000163-DeletePackedShippedOrderStatuses";
+import { OrderItemsProductVariantOnDeleteSetNull1744200000164 } from "./migrations/1744200000164-OrderItemsProductVariantOnDeleteSetNull";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -526,6 +528,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       OrderRefunds1744200000160,
       OrderDeliveryInfoNovaPoshtaPayment1744200000161,
       VariantCustomFieldArchivedAt1744200000162,
+      DeletePackedShippedOrderStatuses1744200000163,
+      OrderItemsProductVariantOnDeleteSetNull1744200000164,
     ],
   };
 }

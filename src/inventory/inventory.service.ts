@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, EntityManager, In, Not, Repository } from "typeorm";
+import { DataSource, EntityManager, In, IsNull, Not, Repository } from "typeorm";
 import {
   InventoryMode,
   Order,
@@ -684,6 +684,41 @@ export class InventoryService {
     return result;
   }
 
+  /**
+   * Release advanced-mode reservations for order lines pointing at these variants.
+   * Call before hard-deleting variants so reserved stock is restored.
+   */
+  async releaseActiveReservationsForVariants(
+    workspaceId: number,
+    variantIds: number[],
+    actorUserId: number | null,
+  ): Promise<void> {
+    const unique = [...new Set(variantIds.filter((id) => id > 0))];
+    if (unique.length === 0) {
+      return;
+    }
+    const items = await this.orderItemRepo.find({
+      where: {
+        workspaceId,
+        variantId: In(unique),
+        stockReservedAt: Not(IsNull()),
+        stockReleasedAt: IsNull(),
+        stockDeductedAt: IsNull(),
+      },
+    });
+    for (const item of items) {
+      const order = await this.orderRepo.findOne({
+        where: { id: item.orderId, workspaceId },
+      });
+      if (!order) {
+        continue;
+      }
+      await this.dataSource.transaction(async (em) => {
+        await this.releaseOrderItem(em, order, item.id, actorUserId);
+      });
+    }
+  }
+
   async handleOrderInventoryForStatus(
     workspaceId: number,
     orderId: number,
@@ -848,7 +883,11 @@ export class InventoryService {
       where: { id: orderItemId },
       lock: { mode: "pessimistic_write" },
     });
-    if (!lockedItem || lockedItem.stockDeductedAt != null) {
+    if (
+      !lockedItem ||
+      lockedItem.variantId == null ||
+      lockedItem.stockDeductedAt != null
+    ) {
       return;
     }
 
@@ -953,6 +992,7 @@ export class InventoryService {
     });
     if (
       !lockedItem ||
+      lockedItem.variantId == null ||
       lockedItem.stockReservedAt != null ||
       lockedItem.stockDeductedAt != null
     ) {
@@ -1014,6 +1054,7 @@ export class InventoryService {
     });
     if (
       !lockedItem ||
+      lockedItem.variantId == null ||
       lockedItem.stockReservedAt == null ||
       lockedItem.stockReleasedAt != null ||
       lockedItem.stockDeductedAt != null

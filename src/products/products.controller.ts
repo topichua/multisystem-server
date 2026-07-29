@@ -357,7 +357,8 @@ export class ProductsController {
   @ApiOperation({
     summary: "Archive product",
     description:
-      "Sets the product and all of its variants to status `archived`. Rows are not hard-deleted.",
+      "Sets the product and all of its variants to status `archived`. Rows are not hard-deleted. " +
+      "Use `DELETE /products/:id/hard` to permanently remove the product.",
   })
   async remove(
     @Req() req: { user?: AuthUser },
@@ -365,6 +366,24 @@ export class ProductsController {
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
     await this.products.removeForOwner(ownerId, id);
+  }
+
+  @Delete(":id/hard")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Hard-delete product",
+    description:
+      "Permanently deletes the product and all of its variants. " +
+      "Also removes wishlist entries, gallery media, Instagram refs, suggestions, stock, and custom-field values. " +
+      "Order line items keep title/price snapshots; their `productId` / `variantId` become null. " +
+      "Active inventory reservations on those variants are released first.",
+  })
+  async hardRemove(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<void> {
+    const ownerId = this.requireNumericOwnerId(req);
+    await this.products.hardRemoveForOwner(ownerId, id);
   }
 
   @Post(":id/variants")
@@ -406,7 +425,8 @@ export class ProductsController {
   @ApiOperation({
     summary: "Delete variant",
     description:
-      "Hard-deletes the variant unless it is referenced by order line items, in which case it is archived.",
+      "Hard-deletes the variant unless it is referenced by order line items, in which case it is archived. " +
+      "Use `DELETE /products/:id/variants/:variantId/hard` to force permanent delete.",
   })
   async removeVariant(
     @Req() req: { user?: AuthUser },
@@ -415,6 +435,25 @@ export class ProductsController {
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
     await this.products.removeVariantForOwner(ownerId, id, variantId);
+  }
+
+  @Delete(":id/variants/:variantId/hard")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Hard-delete variant",
+    description:
+      "Permanently deletes the variant even when it appears on order lines. " +
+      "Cascades wishlist, media, stock, and custom-field values for that variant. " +
+      "Order line items keep snapshots; `variantId` becomes null. " +
+      "Active inventory reservations are released first.",
+  })
+  async hardRemoveVariant(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Param("variantId", ParseIntPipe) variantId: number,
+  ): Promise<void> {
+    const ownerId = this.requireNumericOwnerId(req);
+    await this.products.hardRemoveVariantForOwner(ownerId, id, variantId);
   }
 
   @Post(":id/media")

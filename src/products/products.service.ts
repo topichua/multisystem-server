@@ -798,6 +798,42 @@ export class ProductsService {
     });
   }
 
+  /**
+   * Permanently deletes the product and all variants. Cascades wishlist,
+   * media rows, Instagram refs, suggestions, stock, and custom-field values.
+   * Order line items keep snapshots; `product_id` / `variant_id` become null.
+   */
+  async hardRemoveForOwner(ownerId: number, productId: number): Promise<void> {
+    await this.productAuthz.requireWrite(ownerId);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const product = await this.productRepo.findOne({
+      where: { id: productId, workspaceId: workspace.id },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const variants = await this.variantRepo.find({
+      where: { productId },
+      select: ["id"],
+    });
+    const variantIds = variants.map((v) => v.id);
+    const uploadMediaIds = await this.collectUploadMediaIdsForProduct(productId);
+
+    await this.inventory.releaseActiveReservationsForVariants(
+      workspace.id,
+      variantIds,
+      ownerId,
+    );
+
+    await this.productRepo.remove(product);
+    await this.uploadMedia.deleteOrphanedForWorkspace(
+      workspace.id,
+      uploadMediaIds,
+    );
+  }
+
   async createVariantForOwner(
     ownerId: number,
     productId: number,
@@ -948,6 +984,43 @@ export class ProductsService {
         ownerId,
       );
     });
+  }
+
+  /**
+   * Permanently deletes a variant even when referenced by order line items.
+   * Order lines keep snapshots; `variant_id` (and `product_id` if the product
+   * is also gone) become null. Cascades wishlist, media, stock, etc.
+   */
+  async hardRemoveVariantForOwner(
+    ownerId: number,
+    productId: number,
+    variantId: number,
+  ): Promise<void> {
+    await this.productAuthz.requireWrite(ownerId);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    await this.requireProduct(workspace.id, productId);
+    const variant = await this.variantRepo.findOne({
+      where: { id: variantId, productId },
+    });
+    if (!variant) {
+      throw new NotFoundException("Variant not found");
+    }
+
+    const uploadMediaIds =
+      await this.collectUploadMediaIdsForVariant(productId, variantId);
+
+    await this.inventory.releaseActiveReservationsForVariants(
+      workspace.id,
+      [variantId],
+      ownerId,
+    );
+
+    await this.variantRepo.remove(variant);
+    await this.uploadMedia.deleteOrphanedForWorkspace(
+      workspace.id,
+      uploadMediaIds,
+    );
   }
 
   async createMediaForOwner(
@@ -1418,7 +1491,44 @@ export class ProductsService {
       where: { productId },
       select: ["variantId"],
     });
-    return new Set(rows.map((r) => r.variantId));
+    return new Set(
+      rows
+        .map((r) => r.variantId)
+        .filter((id): id is number => id != null && id > 0),
+    );
+  }
+
+  private async collectUploadMediaIdsForProduct(
+    productId: number,
+  ): Promise<number[]> {
+    const rows = await this.mediaRepo.find({
+      where: { productId },
+      select: ["uploadMediaId"],
+    });
+    return [
+      ...new Set(
+        rows
+          .map((r) => r.uploadMediaId)
+          .filter((id): id is number => id != null && id > 0),
+      ),
+    ];
+  }
+
+  private async collectUploadMediaIdsForVariant(
+    productId: number,
+    variantId: number,
+  ): Promise<number[]> {
+    const rows = await this.mediaRepo.find({
+      where: { productId, variantId },
+      select: ["uploadMediaId"],
+    });
+    return [
+      ...new Set(
+        rows
+          .map((r) => r.uploadMediaId)
+          .filter((id): id is number => id != null && id > 0),
+      ),
+    ];
   }
 
   private async archiveOrRemoveVariants(
