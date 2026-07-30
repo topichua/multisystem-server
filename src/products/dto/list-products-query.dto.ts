@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -11,10 +13,12 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from "class-validator";
 import { ProductStatus } from "../../database/entities/product-status.enum";
 import { ProductListByStatus } from "./product-list-by-status.enum";
 import { ProductListSort } from "./product-list-sort.enum";
+import { ProductFieldFilterDto } from "./product-field-filter.dto";
 
 function parseOptionalBoolean(value: unknown): boolean | undefined {
   if (value === true || value === "true" || value === 1 || value === "1") {
@@ -56,6 +60,30 @@ export class ListProductsQueryDto {
   @Transform(({ value }) => parseOptionalBoolean(value))
   @IsBoolean()
   wishlistOnly?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "When true, only products that have at least one variant with `reserved_quantity > 0` " +
+      "(advanced inventory reservations). Alias query key: `show_only_reserved`.",
+    default: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseOptionalBoolean(value))
+  @IsBoolean()
+  showOnlyReserved?: boolean;
+
+  @ApiPropertyOptional({
+    type: [ProductFieldFilterDto],
+    description:
+      "Parsed from dynamic query keys `field:{id}=...` (see list endpoint docs). " +
+      "Prefer sending `field:12=Red,Blue` rather than this object directly.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ProductFieldFilterDto)
+  fieldFilters?: ProductFieldFilterDto[];
 
   @ApiPropertyOptional({
     description:
@@ -137,6 +165,29 @@ export class ListProductsQueryDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   maxPrice?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Minimum variant stock `quantity` (inclusive). Alias: `quantity_from`. " +
+      "Products match if any variant’s stock is in range; variants list filters that variant’s stock.",
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  quantityFrom?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Maximum variant stock `quantity` (inclusive). Alias: `quantity_to`.",
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  quantityTo?: number;
 
   @ApiPropertyOptional({
     default: 1,

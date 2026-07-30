@@ -27,6 +27,7 @@ import { InventoryMode } from "../database/entities/inventory-mode.enum";
 import { ProductMediaType } from "../database/entities/product-media-type.enum";
 import { ProductStatus } from "../database/entities/product-status.enum";
 import { ProductType } from "../database/entities/product-type.enum";
+import { VariantCustomFieldType } from "../database/entities/variant-custom-field-type.enum";
 import type { CreateProductDto } from "./dto/create-product.dto";
 import type { CreateProductMediaDto } from "./dto/create-product-media.dto";
 import type { CreateProductVariantInputDto } from "./dto/create-product-variant-input.dto";
@@ -35,6 +36,10 @@ import type { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import type { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
 import type { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
+import {
+  ProductFieldFilterMode,
+  type ProductFieldFilterDto,
+} from "./dto/product-field-filter.dto";
 import { ProductListByStatus } from "./dto/product-list-by-status.enum";
 import { ProductListSort } from "./dto/product-list-sort.enum";
 import type { UpdateProductDto } from "./dto/update-product.dto";
@@ -175,11 +180,21 @@ export type ProductVariantListResponseDto = {
   offset: number;
 };
 
+type ResolvedFieldFilter =
+  | { fieldId: number; mode: "all" }
+  | { fieldId: number; mode: "contains"; keyword: string }
+  | { fieldId: number; mode: "in"; optionIds: number[] };
+
 function assertListPriceRange(query: ListProductsQueryDto): void {
   const minP = query.minPrice;
   const maxP = query.maxPrice;
   if (minP !== undefined && maxP !== undefined && minP > maxP) {
     throw new BadRequestException("minPrice must be <= maxPrice");
+  }
+  const qFrom = query.quantityFrom;
+  const qTo = query.quantityTo;
+  if (qFrom !== undefined && qTo !== undefined && qFrom > qTo) {
+    throw new BadRequestException("quantityFrom must be <= quantityTo");
   }
 }
 
@@ -288,10 +303,16 @@ export class ProductsService {
     );
     assertListPriceRange(query);
 
+    const fieldFilterPlan = await this.resolveFieldFilterPlan(
+      workspace.id,
+      query.fieldFilters,
+    );
+
     const qb = this.productRepo
       .createQueryBuilder("p")
       .where("p.workspaceId = :workspaceId", { workspaceId: workspace.id });
     this.applyProductStatusFilter(qb, query);
+    this.applyProductFieldFilters(qb, "product", fieldFilterPlan);
     if (query.wishlistOnly === true) {
       qb.andWhere(
         `EXISTS (
@@ -302,6 +323,20 @@ export class ProductsService {
         { wishlistWorkspaceId: workspace.id },
       );
     }
+    if (query.showOnlyReserved === true) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM product_variants rv
+          INNER JOIN variant_stocks vs ON vs.variant_id = rv.id
+          WHERE rv.product_id = p.id
+            AND vs.workspace_id = :reservedWorkspaceId
+            AND vs.reserved_quantity > 0
+        )`,
+        { reservedWorkspaceId: workspace.id },
+      );
+    }
+    this.applyStockQuantityRangeFilter(qb, "product", workspace.id, query);
     if (categoryIdFilter?.length) {
       qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
     }
@@ -487,6 +522,10 @@ export class ProductsService {
       workspace.id,
       query,
     );
+    const fieldFilterPlan = await this.resolveFieldFilterPlan(
+      workspace.id,
+      query.fieldFilters,
+    );
 
     const countQb = this.variantRepo
       .createQueryBuilder("v")
@@ -496,6 +535,7 @@ export class ProductsService {
       workspace.id,
       categoryIdFilter,
       query,
+      fieldFilterPlan,
     );
     const total = await countQb.getCount();
 
@@ -504,7 +544,13 @@ export class ProductsService {
       .innerJoinAndSelect("v.product", "p")
       .leftJoinAndSelect("v.media", "m")
       .leftJoinAndSelect("v.customFieldValues", "cfv");
-    this.applyVariantListFilters(dataQb, workspace.id, categoryIdFilter, query);
+    this.applyVariantListFilters(
+      dataQb,
+      workspace.id,
+      categoryIdFilter,
+      query,
+      fieldFilterPlan,
+    );
     applyVariantListSort(dataQb, query.sort);
     const rows = await dataQb.skip(offset).take(limit).getMany();
     const fieldDefs =
@@ -1833,9 +1879,11 @@ export class ProductsService {
     workspaceId: number,
     categoryIdFilter: number[] | undefined,
     query: ListProductsQueryDto,
+    fieldFilterPlan: ResolvedFieldFilter[] = [],
   ): void {
     qb.where("p.workspaceId = :workspaceId", { workspaceId });
     this.applyProductStatusFilter(qb, query);
+    this.applyProductFieldFilters(qb, "variant", fieldFilterPlan);
     if (query.wishlistOnly === true) {
       qb.andWhere(
         `EXISTS (
@@ -1846,6 +1894,18 @@ export class ProductsService {
         { wishlistWorkspaceId: workspaceId },
       );
     }
+    if (query.showOnlyReserved === true) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM variant_stocks vs
+          WHERE vs.variant_id = v.id
+            AND vs.workspace_id = :reservedWorkspaceId
+            AND vs.reserved_quantity > 0
+        )`,
+        { reservedWorkspaceId: workspaceId },
+      );
+    }
+    this.applyStockQuantityRangeFilter(qb, "variant", workspaceId, query);
     if (categoryIdFilter != null && categoryIdFilter.length > 0) {
       qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
     }
@@ -1886,6 +1946,216 @@ export class ProductsService {
     if (query.status !== undefined) {
       qb.andWhere("p.status = :status", { status: query.status });
     }
+  }
+
+  private applyStockQuantityRangeFilter(
+    qb: SelectQueryBuilder<Product | ProductVariant>,
+    scope: "product" | "variant",
+    workspaceId: number,
+    query: ListProductsQueryDto,
+  ): void {
+    const qFrom = query.quantityFrom;
+    const qTo = query.quantityTo;
+    if (qFrom === undefined && qTo === undefined) {
+      return;
+    }
+
+    const params: Record<string, unknown> = {
+      qtyRangeWorkspaceId: workspaceId,
+    };
+    const bounds: string[] = [];
+    if (qFrom !== undefined) {
+      bounds.push("vs.quantity >= :qtyFrom");
+      params.qtyFrom = qFrom;
+    }
+    if (qTo !== undefined) {
+      bounds.push("vs.quantity <= :qtyTo");
+      params.qtyTo = qTo;
+    }
+
+    if (scope === "product") {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM product_variants qv
+          INNER JOIN variant_stocks vs ON vs.variant_id = qv.id
+          WHERE qv.product_id = p.id
+            AND vs.workspace_id = :qtyRangeWorkspaceId
+            AND ${bounds.join(" AND ")}
+        )`,
+        params,
+      );
+      return;
+    }
+
+    qb.andWhere(
+      `EXISTS (
+        SELECT 1 FROM variant_stocks vs
+        WHERE vs.variant_id = v.id
+          AND vs.workspace_id = :qtyRangeWorkspaceId
+          AND ${bounds.join(" AND ")}
+      )`,
+      params,
+    );
+  }
+
+  /**
+   * AND across fields. Product scope: any variant of the product matches.
+   * Variant scope: the variant itself matches.
+   */
+  private applyProductFieldFilters(
+    qb: SelectQueryBuilder<Product | ProductVariant>,
+    scope: "product" | "variant",
+    plan: ResolvedFieldFilter[],
+  ): void {
+    for (let i = 0; i < plan.length; i++) {
+      const filter = plan[i]!;
+      const alias = `cfv_f${i}`;
+      const fieldParam = `fieldId_f${i}`;
+      const variantRef =
+        scope === "product" ? `${alias}_v.product_id = p.id` : `${alias}.variant_id = v.id`;
+      const fromClause =
+        scope === "product"
+          ? `product_variants ${alias}_v
+             INNER JOIN product_variant_custom_field_value ${alias}
+               ON ${alias}.variant_id = ${alias}_v.id`
+          : `product_variant_custom_field_value ${alias}`;
+
+      if (filter.mode === "all") {
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1 FROM ${fromClause}
+            WHERE ${variantRef}
+              AND ${alias}.field_id = :${fieldParam}
+              AND (
+                NULLIF(BTRIM(${alias}.value), '') IS NOT NULL
+                OR NULLIF(BTRIM(COALESCE(${alias}.text_value, '')), '') IS NOT NULL
+              )
+          )`,
+          { [fieldParam]: filter.fieldId },
+        );
+        continue;
+      }
+
+      if (filter.mode === "contains") {
+        const patternParam = `fieldContains_f${i}`;
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1 FROM ${fromClause}
+            WHERE ${variantRef}
+              AND ${alias}.field_id = :${fieldParam}
+              AND (
+                ${alias}.value ILIKE :${patternParam} ESCAPE '\\'
+                OR COALESCE(${alias}.text_value, '') ILIKE :${patternParam} ESCAPE '\\'
+              )
+          )`,
+          {
+            [fieldParam]: filter.fieldId,
+            [patternParam]: `%${escapePgIlikePattern(filter.keyword)}%`,
+          },
+        );
+        continue;
+      }
+
+      // options IN: match option_id only
+      const optionIdsParam = `fieldOptionIds_f${i}`;
+      if (filter.optionIds.length === 0) {
+        qb.andWhere("1 = 0");
+        continue;
+      }
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM ${fromClause}
+          WHERE ${variantRef}
+            AND ${alias}.field_id = :${fieldParam}
+            AND ${alias}.option_id IN (:...${optionIdsParam})
+        )`,
+        {
+          [fieldParam]: filter.fieldId,
+          [optionIdsParam]: filter.optionIds,
+        },
+      );
+    }
+  }
+
+  private async resolveFieldFilterPlan(
+    workspaceId: number,
+    filters: ProductFieldFilterDto[] | undefined,
+  ): Promise<ResolvedFieldFilter[]> {
+    if (!filters?.length) {
+      return [];
+    }
+
+    const fieldIds = [...new Set(filters.map((f) => f.fieldId))];
+    const defs = await this.variantCustomFields.listDefinitionsByIdsForWorkspace(
+      workspaceId,
+      fieldIds,
+    );
+    const byId = new Map(defs.map((d) => [d.id, d]));
+    const missing = fieldIds.filter((id) => !byId.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Unknown or inaccessible characteristic field id(s): ${missing.join(", ")}`,
+      );
+    }
+
+    const plan: ResolvedFieldFilter[] = [];
+    for (const filter of filters) {
+      const def = byId.get(filter.fieldId)!;
+      if (filter.mode === ProductFieldFilterMode.all) {
+        plan.push({ fieldId: filter.fieldId, mode: "all" });
+        continue;
+      }
+
+      const values = (filter.values ?? [])
+        .map((v) => v.trim())
+        .filter(Boolean);
+      if (values.length === 0) {
+        throw new BadRequestException(
+          `field:${filter.fieldId} requires values or "all"`,
+        );
+      }
+
+      if (def.type === VariantCustomFieldType.text) {
+        plan.push({
+          fieldId: filter.fieldId,
+          mode: "contains",
+          keyword: values.join(","),
+        });
+        continue;
+      }
+
+      const optionIds: number[] = [];
+      const invalid: string[] = [];
+      for (const token of values) {
+        if (!/^\d+$/.test(token)) {
+          invalid.push(token);
+          continue;
+        }
+        const id = Number(token);
+        if (!Number.isInteger(id) || id <= 0) {
+          invalid.push(token);
+          continue;
+        }
+        optionIds.push(id);
+      }
+      if (invalid.length > 0) {
+        throw new BadRequestException(
+          `field:${filter.fieldId} expects comma-separated option ids or "all" (invalid: ${invalid.join(", ")})`,
+        );
+      }
+      const uniqueOptionIds = [...new Set(optionIds)];
+      await this.variantCustomFields.assertOptionIdsBelongToField(
+        filter.fieldId,
+        uniqueOptionIds,
+      );
+      plan.push({
+        fieldId: filter.fieldId,
+        mode: "in",
+        optionIds: uniqueOptionIds,
+      });
+    }
+    return plan;
   }
 
   private async assertCategoriesInWorkspace(

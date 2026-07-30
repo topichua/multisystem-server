@@ -39,6 +39,7 @@ import { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
 import { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto";
+import { ParseProductFieldFiltersPipe } from "./pipes/parse-product-field-filters.pipe";
 import { ProductListResponseDto as ProductListResponseSwaggerDto } from "./dto/product-list-response.dto";
 import { ReplaceProductMediaRequestDto } from "./dto/replace-product-media.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
@@ -83,12 +84,17 @@ export class ProductsController {
     description:
       "Paginated products for the authenticated owner's workspace. Each item includes nested `variants` " +
       "(custom fields, price/stock, and variant media). Filters: `byStatus` (`all` | `onlyActive` | `onlyArchived`), " +
-      "`wishlistOnly`, `status`, `categoryIds`, `keyword`, price range, sort.",
+      "`wishlistOnly`, `showOnlyReserved` (`show_only_reserved`), `quantityFrom`/`quantityTo` (`quantity_from`/`quantity_to`), " +
+      "`status`, `categoryIds`, `keyword`, price range, sort. " +
+      "Characteristic filters use dynamic query keys: `field:{id}=3,7` (options: comma-separated option ids), " +
+      "`field:{id}=all` (any product/variant that has this characteristic set — options or text), " +
+      "or for text fields `field:{id}=keyword` (case-insensitive contains). " +
+      "Multiple `field:*` params are AND-combined; a product matches if any of its variants satisfies each field filter.",
   })
   @ApiOkResponse({ type: ProductListResponseSwaggerDto })
   async list(
     @Req() req: { user?: AuthUser },
-    @Query() query: ListProductsQueryDto,
+    @Query(ParseProductFieldFiltersPipe) query: ListProductsQueryDto,
   ): Promise<ProductListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.products.listForOwner(ownerId, query);
@@ -114,11 +120,12 @@ export class ProductsController {
   @ApiOperation({
     summary: "List product variants (full rows)",
     description:
-      "Paginated variants with `product_parent`, filters, and variant `media`. For a lighter picker, use `GET /products/catalog-variants`.",
+      "Paginated variants with `product_parent`, filters, and variant `media`. For a lighter picker, use `GET /products/catalog-variants`. " +
+      "Supports the same `field:{id}=...` characteristic filters as `GET /products`.",
   })
   async listVariants(
     @Req() req: { user?: AuthUser },
-    @Query() query: ListProductsQueryDto,
+    @Query(ParseProductFieldFiltersPipe) query: ListProductsQueryDto,
   ): Promise<ProductVariantListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.products.listVariantsForOwner(ownerId, query);

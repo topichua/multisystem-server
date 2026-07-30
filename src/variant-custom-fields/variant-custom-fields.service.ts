@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { IsNull, Repository, type EntityManager } from "typeorm";
+import { In, IsNull, Repository, type EntityManager } from "typeorm";
 import {
   ProductVariantCustomFieldValue,
   VariantCustomFieldType,
@@ -104,6 +104,37 @@ export class VariantCustomFieldsService {
       );
     }
     return rows;
+  }
+
+  /** Resolve field definitions by id (includes archived) for list filters. */
+  async listDefinitionsByIdsForWorkspace(
+    workspaceId: number,
+    fieldIds: number[],
+  ): Promise<WorkspaceVariantCustomField[]> {
+    const unique = [...new Set(fieldIds.filter((id) => id > 0))];
+    if (unique.length === 0) {
+      return [];
+    }
+    return this.fieldRepo.find({
+      where: { workspaceId, id: In(unique) },
+    });
+  }
+
+  async assertOptionIdsBelongToField(
+    fieldId: number,
+    optionIds: number[],
+  ): Promise<void> {
+    if (optionIds.length === 0) {
+      return;
+    }
+    const count = await this.optionRepo.count({
+      where: { fieldId, id: In(optionIds) },
+    });
+    if (count !== optionIds.length) {
+      throw new BadRequestException(
+        `One or more option ids do not belong to characteristic field ${fieldId}`,
+      );
+    }
   }
 
   async createForOwner(
