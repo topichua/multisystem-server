@@ -82,7 +82,8 @@ export class ProductsController {
     summary: "List products",
     description:
       "Paginated products for the authenticated owner's workspace. Each item includes nested `variants` " +
-      "(custom fields, price/stock, and variant media). Supports filters: status, categoryIds, keyword, price range, sort.",
+      "(custom fields, price/stock, and variant media). Filters: `byStatus` (`all` | `onlyActive` | `onlyArchived`), " +
+      "`wishlistOnly`, `status`, `categoryIds`, `keyword`, price range, sort.",
   })
   @ApiOkResponse({ type: ProductListResponseSwaggerDto })
   async list(
@@ -355,9 +356,9 @@ export class ProductsController {
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: "Archive product",
+    summary: "Archive product (legacy)",
     description:
-      "Sets the product and all of its variants to status `archived`. Rows are not hard-deleted. " +
+      "Alias for `POST /products/:id/archive`. Prefer the explicit archive endpoint. " +
       "Use `DELETE /products/:id/hard` to permanently remove the product.",
   })
   async remove(
@@ -366,6 +367,34 @@ export class ProductsController {
   ): Promise<void> {
     const ownerId = this.requireNumericOwnerId(req);
     await this.products.removeForOwner(ownerId, id);
+  }
+
+  @Post(":id/archive")
+  @ApiOperation({
+    summary: "Archive product",
+    description:
+      "Sets the product and all of its variants to `archived`. Rows are not deleted.",
+  })
+  async archive(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<ProductDetailDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.products.archiveProductForOwner(ownerId, id);
+  }
+
+  @Post(":id/unarchive")
+  @ApiOperation({
+    summary: "Unarchive product",
+    description:
+      "Sets the product and all of its variants to `active`.",
+  })
+  async unarchive(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<ProductDetailDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.products.unarchiveProductForOwner(ownerId, id);
   }
 
   @Delete(":id/hard")
@@ -420,13 +449,46 @@ export class ProductsController {
     return this.products.updateVariantForOwner(ownerId, id, variantId, dto);
   }
 
+  @Post(":id/variants/:variantId/archive")
+  @ApiOperation({
+    summary: "Archive variant",
+    description:
+      "Sets the variant to `archived`. If every variant of the product is archived, " +
+      "the product is archived as well.",
+  })
+  async archiveVariant(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Param("variantId", ParseIntPipe) variantId: number,
+  ): Promise<ProductDetailDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.products.archiveVariantForOwner(ownerId, id, variantId);
+  }
+
+  @Post(":id/variants/:variantId/unarchive")
+  @ApiOperation({
+    summary: "Unarchive variant",
+    description:
+      "Sets the variant to `active`. If the parent product is archived, it becomes `active` " +
+      "because at least one variant is active.",
+  })
+  async unarchiveVariant(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Param("variantId", ParseIntPipe) variantId: number,
+  ): Promise<ProductDetailDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.products.unarchiveVariantForOwner(ownerId, id, variantId);
+  }
+
   @Delete(":id/variants/:variantId")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: "Delete variant",
     description:
       "Hard-deletes the variant unless it is referenced by order line items, in which case it is archived. " +
-      "Use `DELETE /products/:id/variants/:variantId/hard` to force permanent delete.",
+      "Use `DELETE /products/:id/variants/:variantId/hard` to force permanent delete, " +
+      "or `POST .../archive` to archive without deleting.",
   })
   async removeVariant(
     @Req() req: { user?: AuthUser },

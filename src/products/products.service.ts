@@ -7,6 +7,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import {
   In,
   IsNull,
+  Not,
   Repository,
   type EntityManager,
   type SelectQueryBuilder,
@@ -34,6 +35,7 @@ import type { CreateProductVariantDto } from "./dto/create-product-variant.dto";
 import type { CatalogVariantListResponseDto } from "./dto/catalog-variant-list-response.dto";
 import type { ListCatalogVariantsQueryDto } from "./dto/list-catalog-variants-query.dto";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto";
+import { ProductListByStatus } from "./dto/product-list-by-status.enum";
 import { ProductListSort } from "./dto/product-list-sort.enum";
 import type { UpdateProductDto } from "./dto/update-product.dto";
 import type { UpdateProductMediaDto } from "./dto/update-product-media.dto";
@@ -289,8 +291,16 @@ export class ProductsService {
     const qb = this.productRepo
       .createQueryBuilder("p")
       .where("p.workspaceId = :workspaceId", { workspaceId: workspace.id });
-    if (query.status !== undefined) {
-      qb.andWhere("p.status = :status", { status: query.status });
+    this.applyProductStatusFilter(qb, query);
+    if (query.wishlistOnly === true) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM client_wishlist_items w
+          WHERE w.product_id = p.id
+            AND w.workspace_id = :wishlistWorkspaceId
+        )`,
+        { wishlistWorkspaceId: workspace.id },
+      );
     }
     if (categoryIdFilter?.length) {
       qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
@@ -774,6 +784,16 @@ export class ProductsService {
   }
 
   async removeForOwner(ownerId: number, productId: number): Promise<void> {
+    await this.archiveProductForOwner(ownerId, productId);
+  }
+
+  /**
+   * Archive product and all of its variants (`status = archived`).
+   */
+  async archiveProductForOwner(
+    ownerId: number,
+    productId: number,
+  ): Promise<ProductDetailDto> {
     await this.productAuthz.requireWrite(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
@@ -788,14 +808,59 @@ export class ProductsService {
 
     await this.productRepo.manager.transaction(async (em) => {
       for (const variant of variants) {
+        if (variant.status === ProductStatus.archived) {
+          continue;
+        }
         variant.status = ProductStatus.archived;
         variant.updatedByUserId = ownerId;
         await em.save(variant);
       }
-      product.status = ProductStatus.archived;
-      product.updatedByUserId = ownerId;
-      await em.save(product);
+      if (product.status !== ProductStatus.archived) {
+        product.status = ProductStatus.archived;
+        product.updatedByUserId = ownerId;
+        await em.save(product);
+      }
     });
+
+    return this.findOneForOwner(ownerId, productId);
+  }
+
+  /**
+   * Unarchive product and all of its variants (`status = active`).
+   */
+  async unarchiveProductForOwner(
+    ownerId: number,
+    productId: number,
+  ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const product = await this.productRepo.findOne({
+      where: { id: productId, workspaceId: workspace.id },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const variants = await this.variantRepo.find({ where: { productId } });
+
+    await this.productRepo.manager.transaction(async (em) => {
+      for (const variant of variants) {
+        if (variant.status === ProductStatus.active) {
+          continue;
+        }
+        variant.status = ProductStatus.active;
+        variant.updatedByUserId = ownerId;
+        await em.save(variant);
+      }
+      if (product.status !== ProductStatus.active) {
+        product.status = ProductStatus.active;
+        product.updatedByUserId = ownerId;
+        await em.save(product);
+      }
+    });
+
+    return this.findOneForOwner(ownerId, productId);
   }
 
   /**
@@ -984,6 +1049,85 @@ export class ProductsService {
         ownerId,
       );
     });
+  }
+
+  /**
+   * Archive a single variant. If every variant of the product is archived,
+   * the product is archived as well.
+   */
+  async archiveVariantForOwner(
+    ownerId: number,
+    productId: number,
+    variantId: number,
+  ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const product = await this.requireProduct(workspace.id, productId);
+    const variant = await this.variantRepo.findOne({
+      where: { id: variantId, productId },
+    });
+    if (!variant) {
+      throw new NotFoundException("Variant not found");
+    }
+
+    await this.variantRepo.manager.transaction(async (em) => {
+      if (variant.status !== ProductStatus.archived) {
+        variant.status = ProductStatus.archived;
+        variant.updatedByUserId = ownerId;
+        await em.save(variant);
+      }
+
+      const remainingActive = await em.getRepository(ProductVariant).count({
+        where: {
+          productId,
+          status: Not(ProductStatus.archived),
+        },
+      });
+      if (remainingActive === 0 && product.status !== ProductStatus.archived) {
+        product.status = ProductStatus.archived;
+        product.updatedByUserId = ownerId;
+        await em.save(product);
+      }
+    });
+
+    return this.findOneForOwner(ownerId, productId);
+  }
+
+  /**
+   * Unarchive a variant (`status = active`). If the parent product is archived,
+   * it becomes active because at least one variant is active.
+   */
+  async unarchiveVariantForOwner(
+    ownerId: number,
+    productId: number,
+    variantId: number,
+  ): Promise<ProductDetailDto> {
+    await this.productAuthz.requireWrite(ownerId);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const product = await this.requireProduct(workspace.id, productId);
+    const variant = await this.variantRepo.findOne({
+      where: { id: variantId, productId },
+    });
+    if (!variant) {
+      throw new NotFoundException("Variant not found");
+    }
+
+    await this.variantRepo.manager.transaction(async (em) => {
+      if (variant.status !== ProductStatus.active) {
+        variant.status = ProductStatus.active;
+        variant.updatedByUserId = ownerId;
+        await em.save(variant);
+      }
+      if (product.status === ProductStatus.archived) {
+        product.status = ProductStatus.active;
+        product.updatedByUserId = ownerId;
+        await em.save(product);
+      }
+    });
+
+    return this.findOneForOwner(ownerId, productId);
   }
 
   /**
@@ -1691,9 +1835,16 @@ export class ProductsService {
     query: ListProductsQueryDto,
   ): void {
     qb.where("p.workspaceId = :workspaceId", { workspaceId });
-
-    if (query.status !== undefined) {
-      qb.andWhere("p.status = :status", { status: query.status });
+    this.applyProductStatusFilter(qb, query);
+    if (query.wishlistOnly === true) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM client_wishlist_items w
+          WHERE w.product_id = p.id
+            AND w.workspace_id = :wishlistWorkspaceId
+        )`,
+        { wishlistWorkspaceId: workspaceId },
+      );
     }
     if (categoryIdFilter != null && categoryIdFilter.length > 0) {
       qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
@@ -1712,6 +1863,28 @@ export class ProductsService {
       qb.andWhere("p.name ILIKE :nameKeyword ESCAPE '\\'", {
         nameKeyword: `%${escapePgIlikePattern(keyword)}%`,
       });
+    }
+  }
+
+  private applyProductStatusFilter(
+    qb: SelectQueryBuilder<Product | ProductVariant>,
+    query: ListProductsQueryDto,
+  ): void {
+    const byStatus = query.byStatus ?? ProductListByStatus.all;
+    if (byStatus === ProductListByStatus.onlyActive) {
+      qb.andWhere("p.status = :byStatusActive", {
+        byStatusActive: ProductStatus.active,
+      });
+      return;
+    }
+    if (byStatus === ProductListByStatus.onlyArchived) {
+      qb.andWhere("p.status = :byStatusArchived", {
+        byStatusArchived: ProductStatus.archived,
+      });
+      return;
+    }
+    if (query.status !== undefined) {
+      qb.andWhere("p.status = :status", { status: query.status });
     }
   }
 

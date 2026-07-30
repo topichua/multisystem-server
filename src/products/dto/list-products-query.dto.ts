@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNumber,
@@ -12,13 +13,49 @@ import {
   Min,
 } from "class-validator";
 import { ProductStatus } from "../../database/entities/product-status.enum";
+import { ProductListByStatus } from "./product-list-by-status.enum";
 import { ProductListSort } from "./product-list-sort.enum";
 
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === true || value === "true" || value === 1 || value === "1") {
+    return true;
+  }
+  if (value === false || value === "false" || value === 0 || value === "0") {
+    return false;
+  }
+  return undefined;
+}
+
 export class ListProductsQueryDto {
-  @ApiPropertyOptional({ enum: ProductStatus })
+  @ApiPropertyOptional({
+    enum: ProductListByStatus,
+    default: ProductListByStatus.all,
+    description:
+      "`all` — any status; `onlyActive` — `active` only; `onlyArchived` — `archived` only. " +
+      "Takes precedence over exact `status` when both are sent.",
+  })
+  @IsOptional()
+  @IsEnum(ProductListByStatus)
+  byStatus?: ProductListByStatus;
+
+  @ApiPropertyOptional({
+    enum: ProductStatus,
+    description:
+      "Exact product status filter (`draft` | `active` | `archived`). Ignored when `byStatus` is set.",
+  })
   @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
+
+  @ApiPropertyOptional({
+    description:
+      "When true, only products that appear in at least one client wishlist in this workspace.",
+    default: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseOptionalBoolean(value))
+  @IsBoolean()
+  wishlistOnly?: boolean;
 
   @ApiPropertyOptional({
     description:
