@@ -19,7 +19,13 @@ import { Workspace } from "../database/entities";
 import type { TikTokOAuthPendingPollResponseDto } from "../integrations/dto/http/tiktok-oauth-pending.dto";
 import { CredentialsEncryptionService } from "../payments/encryption/credentials-encryption.service";
 
-const DEFAULT_OAUTH_SCOPES = ["biz.brand.insights", "comment.list"];
+const DEFAULT_OAUTH_SCOPES = [
+  "user.info.basic",
+  "user.info.profile",
+  "video.list",
+  "comment.list",
+  "biz.brand.insights",
+];
 
 const STATE_TTL_SECONDS = 15 * 60;
 const PENDING_SESSION_TTL_MS = 30 * 60 * 1000;
@@ -317,7 +323,10 @@ export class TikTokOAuthService {
         pending.workspaceId,
       );
 
-      const profile = await this.fetchUserInfoBestEffort(tokens.accessToken);
+      const profile = await this.fetchUserInfoBestEffort(
+        tokens.accessToken,
+        tokens.scope,
+      );
       const integration = await this.saveConnectedTikTokIntegration({
         workspace,
         openId: tokens.openId,
@@ -576,12 +585,55 @@ export class TikTokOAuthService {
 
   private async fetchUserInfoBestEffort(
     accessToken: string,
+    grantedScopes: string | null,
   ): Promise<{
     displayName: string | null;
     username: string | null;
     avatarUrl: string | null;
   } | null> {
-    const fields = "open_id,union_id,avatar_url,display_name,username";
+    // Basic profile (display_name, avatar) needs user.info.basic.
+    // username needs user.info.profile — requesting it without that scope
+    // can fail the entire /user/info call.
+    const scopeSet = new Set(
+      (grantedScopes ?? "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    const wantUsername = scopeSet.has("user.info.profile");
+
+    const basicFields = "open_id,union_id,avatar_url,display_name";
+    const fields = wantUsername
+      ? `${basicFields},username`
+      : basicFields;
+
+    const basic = await this.fetchUserInfoFields(accessToken, fields);
+    if (!basic) {
+      return null;
+    }
+
+    // If username wasn't in the first request, try a profile-only follow-up.
+    if (!wantUsername && !basic.username) {
+      const profile = await this.fetchUserInfoFields(
+        accessToken,
+        "open_id,username",
+      );
+      if (profile?.username) {
+        return { ...basic, username: profile.username };
+      }
+    }
+
+    return basic;
+  }
+
+  private async fetchUserInfoFields(
+    accessToken: string,
+    fields: string,
+  ): Promise<{
+    displayName: string | null;
+    username: string | null;
+    avatarUrl: string | null;
+  } | null> {
     const u = new URL(USER_INFO_URL);
     u.searchParams.set("fields", fields);
 
@@ -604,21 +656,25 @@ export class TikTokOAuthService {
       }
       if (!response.ok) {
         this.log.warn(
-          `TikTok user.info HTTP ${response.status}: ${text.slice(0, 300)}`,
+          `TikTok user.info HTTP ${response.status} fields=${fields}: ${text.slice(0, 300)}`,
         );
         return null;
       }
       if (body.error?.code && body.error.code !== "ok") {
         this.log.warn(
-          `TikTok user.info error=${body.error.code} message=${body.error.message ?? ""}`,
+          `TikTok user.info error=${body.error.code} message=${body.error.message ?? ""} fields=${fields}`,
         );
         return null;
       }
       const user = body.data?.user;
+      if (!user) {
+        this.log.warn(`TikTok user.info returned no user object fields=${fields}`);
+        return null;
+      }
       return {
-        displayName: user?.display_name?.trim() || null,
-        username: user?.username?.trim() || null,
-        avatarUrl: user?.avatar_url?.trim() || null,
+        displayName: user.display_name?.trim() || null,
+        username: user.username?.trim() || null,
+        avatarUrl: user.avatar_url?.trim() || null,
       };
     } catch (err) {
       this.log.warn(
