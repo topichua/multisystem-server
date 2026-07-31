@@ -7,9 +7,11 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Not, IsNull, QueryFailedError, Repository } from "typeorm";
 import { FacebookOAuthService } from "../auth/facebook-oauth.service";
+import { TikTokOAuthService } from "../auth/tiktok-oauth.service";
 import {
   InstagramIntegration,
   TelegramIntegrationStatus,
+  TikTokIntegration,
 } from "../database/entities";
 import type { TelegramIntegration } from "../database/entities";
 import { TelegramIntegrationsService } from "../telegram-integrations/telegram-integrations.service";
@@ -26,6 +28,7 @@ import type {
   ConfirmInstagramIntegrationResponseDto,
   InstagramOAuthPendingPollResponseDto,
 } from "./dto/http/instagram-oauth-pending.dto";
+import type { TikTokOAuthPendingPollResponseDto } from "./dto/http/tiktok-oauth-pending.dto";
 import { InstagramIntegrationProfileService } from "../instagram/instagram-integration-profile.service";
 
 @Injectable()
@@ -33,8 +36,11 @@ export class IntegrationsService {
   constructor(
     @InjectRepository(InstagramIntegration)
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
+    @InjectRepository(TikTokIntegration)
+    private readonly tiktokIntegrationRepo: Repository<TikTokIntegration>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly facebookOAuth: FacebookOAuthService,
+    private readonly tikTokOAuth: TikTokOAuthService,
     private readonly telegramIntegrations: TelegramIntegrationsService,
     private readonly novaPoshtaIntegrations: NovaPoshtaIntegrationsService,
     private readonly roleIntegrationGrants: WorkspaceRoleIntegrationGrantsService,
@@ -46,25 +52,38 @@ export class IntegrationsService {
     dto: CreateIntegrationRequestDto,
   ): Promise<CreateIntegrationResponseDto> {
     const type = dto.integration_type;
-    if (type !== "instagram") {
-      throw new BadRequestException(
-        `integration_type "${type}" is not supported on this endpoint`,
-      );
-    }
-
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    const started = await this.facebookOAuth.startInstagramOAuthForOwner(
-      ownerId,
-      workspace.id,
-    );
 
-    return {
-      type: "instagram",
-      name: workspace.name,
-      url: started.url,
-      sessionId: started.sessionId,
-    };
+    if (type === "instagram") {
+      const started = await this.facebookOAuth.startInstagramOAuthForOwner(
+        ownerId,
+        workspace.id,
+      );
+      return {
+        type: "instagram",
+        name: workspace.name,
+        url: started.url,
+        sessionId: started.sessionId,
+      };
+    }
+
+    if (type === "tiktok") {
+      const started = await this.tikTokOAuth.startTikTokOAuthForOwner(
+        ownerId,
+        workspace.id,
+      );
+      return {
+        type: "tiktok",
+        name: workspace.name,
+        url: started.url,
+        sessionId: started.sessionId,
+      };
+    }
+
+    throw new BadRequestException(
+      `integration_type "${type}" is not supported on this endpoint`,
+    );
   }
 
   async listInstagramOAuthPagesForOwner(
@@ -85,6 +104,13 @@ export class IntegrationsService {
     );
   }
 
+  async pollTikTokOAuthStatusForOwner(
+    ownerId: number,
+    sessionId: string,
+  ): Promise<TikTokOAuthPendingPollResponseDto> {
+    return this.tikTokOAuth.pollPendingSessionForOwner(ownerId, sessionId);
+  }
+
   async listForOwner(
     ownerId: number,
     workspaceIdParam?: number,
@@ -102,6 +128,14 @@ export class IntegrationsService {
     const items: IntegrationListItemDto[] = await Promise.all(
       instagramRows.map((row) => this.mapInstagramRow(row)),
     );
+
+    const tiktokRows = await this.tiktokIntegrationRepo.find({
+      where: { workspaceId, status: "CONNECTED" },
+      order: { id: "ASC" },
+    });
+    for (const row of tiktokRows) {
+      items.push(this.mapTikTokRow(row));
+    }
 
     const telegramRows =
       await this.telegramIntegrations.findActiveByWorkspace(workspaceId);
@@ -133,6 +167,9 @@ export class IntegrationsService {
     switch (integrationType) {
       case "instagram":
         await this.deleteInstagramForOwner(ownerId, id);
+        return;
+      case "tiktok":
+        await this.deleteTikTokForOwner(ownerId, id);
         return;
       case "telegram":
         await this.roleIntegrationGrants.removeForIntegration("telegram", id);
@@ -184,6 +221,35 @@ export class IntegrationsService {
     }
   }
 
+  private async deleteTikTokForOwner(
+    ownerId: number,
+    id: number,
+  ): Promise<void> {
+    const row = await this.tiktokIntegrationRepo.findOne({ where: { id } });
+    if (!row || row.ownerId !== ownerId) {
+      throw new NotFoundException("TikTok integration not found");
+    }
+
+    await this.workspaceContext.requireWorkspaceOwner(ownerId, row.workspaceId);
+
+    await this.tikTokOAuth.revokeIntegrationPermissionsBestEffort(row);
+
+    try {
+      await this.tiktokIntegrationRepo.remove(row);
+    } catch (err) {
+      if (
+        err instanceof QueryFailedError &&
+        (err as QueryFailedError & { driverError?: { code?: string } })
+          .driverError?.code === "23503"
+      ) {
+        throw new ConflictException(
+          "Cannot delete TikTok integration while other records still reference it",
+        );
+      }
+      throw err;
+    }
+  }
+
   private mapTelegramRow(row: TelegramIntegration): IntegrationListItemDto {
     const mapped = this.telegramIntegrations.mapToIntegrationListItem(row);
     return {
@@ -195,6 +261,26 @@ export class IntegrationsService {
         ? { status: mapped.status }
         : {}),
       ...(mapped.lastError ? { lastError: mapped.lastError } : {}),
+    };
+  }
+
+  private mapTikTokRow(row: TikTokIntegration): IntegrationListItemDto {
+    const name =
+      row.displayName?.trim() ||
+      (row.username?.trim() ? `@${row.username.trim()}` : null) ||
+      row.name?.trim() ||
+      `TikTok #${row.id}`;
+    const connectedAt = row.createdAt;
+    return {
+      type: "tiktok",
+      id: row.id,
+      name,
+      ...(row.username?.trim() ? { userName: row.username.trim() } : {}),
+      ...(row.avatarUrl != null ? { avatar: row.avatarUrl } : { avatar: null }),
+      ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
+        ? { connectedAt: connectedAt.toISOString() }
+        : {}),
+      ...(row.status !== "CONNECTED" ? { status: row.status } : {}),
     };
   }
 

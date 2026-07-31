@@ -9,6 +9,18 @@ export {
   type InstagramOAuthPendingPage,
   type InstagramOAuthPendingStatus,
 } from "./instagram-oauth-pending-session.entity";
+export {
+  TikTokIntegration,
+  TIKTOK_INTEGRATION_PROVIDER,
+  TIKTOK_INTEGRATION_STATUSES,
+  type TikTokIntegrationStatus,
+} from "./tiktok-integration.entity";
+export { TikTokOAuthState } from "./tiktok-oauth-state.entity";
+export {
+  TikTokOAuthPendingSession,
+  TIKTOK_OAUTH_PENDING_STATUSES,
+  type TikTokOAuthPendingStatus,
+} from "./tiktok-oauth-pending-session.entity";
 export { TelegramIntegration } from "./telegram-integration.entity";
 export { TelegramIntegrationLock } from "./telegram-integration-lock.entity";
 export { TelegramIntegrationStatus } from "./telegram-integration-status.enum";

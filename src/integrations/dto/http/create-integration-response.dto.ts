@@ -19,16 +19,17 @@ export class CreateIntegrationResponseDto {
 
   @ApiProperty({
     description:
-      "URL to open in a new window to complete Facebook Login (Instagram / Page tokens). " +
-      "A workspace may have multiple Instagram integrations (one per Facebook Page).",
+      "URL to open in a new window to complete OAuth. " +
+      "Instagram: Facebook Login. TikTok: Login Kit authorize URL.",
   })
   url: string;
 
   @ApiPropertyOptional({
     format: "uuid",
     description:
-      "Correlation id for Instagram OAuth. Poll GET /integrations/instagram/oauth/pages?sessionId=… " +
-      "until status is `select_page`, then confirm.",
+      "Correlation id for OAuth. Instagram: poll GET /integrations/instagram/oauth/pages?sessionId=… " +
+      "until `select_page`, then confirm. TikTok: poll GET /integrations/tiktok/oauth/status?sessionId=… " +
+      "until `connected`.",
   })
   sessionId?: string;
 

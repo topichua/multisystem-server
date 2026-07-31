@@ -35,6 +35,7 @@ import {
   ConfirmInstagramIntegrationResponseDto,
   InstagramOAuthPendingPollResponseDto,
 } from "./dto/http/instagram-oauth-pending.dto";
+import { TikTokOAuthPendingPollResponseDto } from "./dto/http/tiktok-oauth-pending.dto";
 import { IntegrationsService } from "./integrations.service";
 
 @ApiTags("integrations")
@@ -48,8 +49,8 @@ export class IntegrationsController {
   @ApiOperation({
     summary: "List integrations for a workspace",
     description:
-      "Returns connected-channel integrations for the current user's workspace. " +
-      "Today this includes Instagram rows from `instagram_integration`. " +
+      "Returns connected-channel integrations for the current user's workspace " +
+      "(Instagram, TikTok, Telegram, Nova Poshta). " +
       "Omit `workspace_id` to use the workspace from your latest integration row.",
   })
   @ApiQuery({
@@ -90,7 +91,9 @@ export class IntegrationsController {
     description:
       "For `instagram`, returns Facebook Login `url` + correlation `sessionId`. " +
       "Open `url` (popup/new tab). Poll GET /integrations/instagram/oauth/pages?sessionId=… " +
-      "every few seconds until `status` is `select_page`, then POST /integrations/instagram/oauth/confirm.",
+      "every few seconds until `status` is `select_page`, then POST /integrations/instagram/oauth/confirm. " +
+      "For `tiktok`, returns TikTok Login Kit `url` + `sessionId`. Poll " +
+      "GET /integrations/tiktok/oauth/status?sessionId=… until `status` is `connected`.",
   })
   @ApiCreatedResponse({ type: CreateIntegrationResponseDto })
   async create(
@@ -153,6 +156,28 @@ export class IntegrationsController {
     return this.integrations.confirmInstagramOAuthForOwner(ownerId, dto);
   }
 
+  @Get("tiktok/oauth/status")
+  @ApiOperation({
+    summary: "Poll TikTok OAuth pending session",
+    description:
+      "Client should poll with the `sessionId` from POST /integrations (`integration_type: tiktok`). " +
+      "`awaiting_tiktok` → keep polling. `connected` → integration ready. `failed` → restart connect.",
+  })
+  @ApiQuery({ name: "sessionId", required: true, format: "uuid" })
+  @ApiOkResponse({ type: TikTokOAuthPendingPollResponseDto })
+  async pollTikTokOAuthStatus(
+    @Req() req: { user?: AuthUser },
+    @Query("sessionId") sessionId: string,
+  ): Promise<TikTokOAuthPendingPollResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.integrations.pollTikTokOAuthStatusForOwner(ownerId, sessionId);
+  }
+
   @Delete(":type/:id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
@@ -160,6 +185,7 @@ export class IntegrationsController {
     description:
       "**Instagram:** revokes Meta app permissions (best effort) and deletes the `instagram_integration` row. " +
       "Reconnect with `POST /integrations` → Facebook Login → select Page → confirm. " +
+      "**TikTok:** revokes TikTok tokens (best effort) and deletes the `tiktok_integrations` row. " +
       "**Telegram:** detaches the live session and removes the `telegram_integrations` row.",
   })
   @ApiParam({ name: "type", enum: INTEGRATION_TYPES })

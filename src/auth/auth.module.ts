@@ -12,6 +12,8 @@ import {
   WorkspaceMember,
   WorkspaceRole,
   InstagramOAuthPendingSession,
+  TikTokIntegration,
+  TikTokOAuthPendingSession,
 } from "../database/entities";
 import { ProductsModule } from "../products/products.module";
 import { SendgridModule } from "../sendgrid/sendgrid.module";
@@ -25,6 +27,8 @@ import { InvitationTokenService } from "../users/crypto/invitation-token.service
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { FacebookOAuthService } from "./facebook-oauth.service";
+import { TikTokOAuthService } from "./tiktok-oauth.service";
+import { CredentialsEncryptionService } from "../payments/encryption/credentials-encryption.service";
 import { JwtStrategy } from "./jwt.strategy";
 import { RegistrationTokenCryptoService } from "./registration-token-crypto.service";
 import { RegistrationService } from "./registration.service";
@@ -44,6 +48,8 @@ import { PasswordResetService } from "./password-reset.service";
       Workspace,
       InstagramIntegration,
       InstagramOAuthPendingSession,
+      TikTokIntegration,
+      TikTokOAuthPendingSession,
       WorkspaceMember,
       WorkspaceRole,
       RegistrationToken,
@@ -69,10 +75,18 @@ import { PasswordResetService } from "./password-reset.service";
     PasswordResetService,
     RegistrationTokenCryptoService,
     FacebookOAuthService,
+    TikTokOAuthService,
+    CredentialsEncryptionService,
     JwtStrategy,
     PasswordService,
     InvitationTokenService,
   ],
-  exports: [AuthService, FacebookOAuthService, JwtModule, PassportModule],
+  exports: [
+    AuthService,
+    FacebookOAuthService,
+    TikTokOAuthService,
+    JwtModule,
+    PassportModule,
+  ],
 })
 export class AuthModule {}

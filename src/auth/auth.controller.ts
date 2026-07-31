@@ -29,6 +29,7 @@ import {
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import { FacebookOAuthService } from "./facebook-oauth.service";
+import { TikTokOAuthService } from "./tiktok-oauth.service";
 import { MeResponseDto } from "./dto/me-response.dto";
 import { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
 import { ChangePasswordResponseDto } from "./dto/change-password-response.dto";
@@ -65,6 +66,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly facebookOAuth: FacebookOAuthService,
+    private readonly tikTokOAuth: TikTokOAuthService,
     private readonly registration: RegistrationService,
     private readonly passwordReset: PasswordResetService,
   ) {}
@@ -355,5 +357,46 @@ export class AuthController {
       );
     }
     return this.facebookOAuth.getStatusForOwner(ownerId);
+  }
+
+  @Get("tiktok/callback")
+  @ApiOperation({
+    summary: "TikTok OAuth redirect URI (legacy popup / Instagram-style path)",
+    description:
+      "Prefer `GET /integrations/tiktok/callback` from the workspace connect flow. " +
+      "Redirects to `APP_URL/settings/integrations/tiktok?status=success|error`.",
+  })
+  @ApiQuery({ name: "code", required: false })
+  @ApiQuery({ name: "state", required: false })
+  @ApiQuery({ name: "error", required: false })
+  @ApiQuery({ name: "error_description", required: false })
+  async tiktokOAuthCallback(
+    @Query("code") code: string | undefined,
+    @Query("state") state: string | undefined,
+    @Query("error") error: string | undefined,
+    @Query("error_description") errorDescription: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    let status: "success" | "error" = "error";
+    try {
+      const result = await this.tikTokOAuth.handleCallback(
+        code,
+        state,
+        error,
+        errorDescription,
+      );
+      status = result.status === "connected" ? "success" : "error";
+    } catch {
+      status = "error";
+    }
+    const base = (process.env.APP_URL ?? "").trim().replace(/\/$/, "");
+    if (!base) {
+      res
+        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .type("html")
+        .send("<p>APP_URL is not configured</p>");
+      return;
+    }
+    res.redirect(302, `${base}/settings/integrations/tiktok?status=${status}`);
   }
 }

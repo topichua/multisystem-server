@@ -4,10 +4,11 @@ import { INTEGRATION_TYPES } from "../../integration-type";
 
 export class CreateIntegrationRequestDto {
   @ApiProperty({
-    enum: ["instagram"],
-    description: "Channel to connect. Only `instagram` is supported today.",
+    enum: ["instagram", "tiktok"],
+    description:
+      "Channel to connect via OAuth. `instagram` uses Facebook Login; `tiktok` uses TikTok Login Kit.",
     example: "instagram",
   })
-  @IsIn(["instagram"])
-  integration_type: "instagram";
+  @IsIn(["instagram", "tiktok"])
+  integration_type: "instagram" | "tiktok";
 }

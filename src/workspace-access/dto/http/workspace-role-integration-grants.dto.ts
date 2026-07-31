@@ -77,9 +77,9 @@ export class WorkspaceRoleIntegrationGrantsResponseDto {
 }
 
 export class WorkspaceRoleIntegrationGrantInputDto {
-  @ApiProperty({ enum: INTEGRATION_TYPES })
+  @ApiProperty({ enum: ["instagram", "telegram"] })
   @IsString()
-  @IsIn([...INTEGRATION_TYPES])
+  @IsIn(["instagram", "telegram"])
   integrationType: string;
 
   @ApiProperty()

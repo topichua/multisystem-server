@@ -159,6 +159,9 @@ import { OrderDeliveryInfoNovaPoshtaPayment1744200000161 } from "./migrations/17
 import { VariantCustomFieldArchivedAt1744200000162 } from "./migrations/1744200000162-VariantCustomFieldArchivedAt";
 import { DeletePackedShippedOrderStatuses1744200000163 } from "./migrations/1744200000163-DeletePackedShippedOrderStatuses";
 import { OrderItemsProductVariantOnDeleteSetNull1744200000164 } from "./migrations/1744200000164-OrderItemsProductVariantOnDeleteSetNull";
+import { TikTokIntegrations1744200000165 } from "./migrations/1744200000165-TikTokIntegrations";
+import { TikTokOAuthPendingSessions1744200000166 } from "./migrations/1744200000166-TikTokOAuthPendingSessions";
+import { TikTokOAuthPendingCodeVerifier1744200000167 } from "./migrations/1744200000167-TikTokOAuthPendingCodeVerifier";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -166,6 +169,9 @@ import {
   ClientWishlistItem,
   InstagramIntegration,
   InstagramOAuthPendingSession,
+  TikTokIntegration,
+  TikTokOAuthState,
+  TikTokOAuthPendingSession,
   Conversation,
   ConversationEvent,
   ConversationGroup,
@@ -278,6 +284,9 @@ const entities = [
   WorkspaceInvitation,
   InstagramIntegration,
   InstagramOAuthPendingSession,
+  TikTokIntegration,
+  TikTokOAuthState,
+  TikTokOAuthPendingSession,
   TelegramIntegration,
   TelegramIntegrationLock,
   NovaPoshtaIntegration,
@@ -530,6 +539,9 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       VariantCustomFieldArchivedAt1744200000162,
       DeletePackedShippedOrderStatuses1744200000163,
       OrderItemsProductVariantOnDeleteSetNull1744200000164,
+      TikTokIntegrations1744200000165,
+      TikTokOAuthPendingSessions1744200000166,
+      TikTokOAuthPendingCodeVerifier1744200000167,
     ],
   };
 }

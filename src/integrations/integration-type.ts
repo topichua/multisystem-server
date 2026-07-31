@@ -1,5 +1,6 @@
 export const INTEGRATION_TYPES = [
   "instagram",
+  "tiktok",
   "telegram",
   "novaposhta",
 ] as const;

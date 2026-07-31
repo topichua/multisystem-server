@@ -6,10 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
-import {
-  INTEGRATION_TYPES,
-  type IntegrationType,
-} from "../integrations/integration-type";
+import type { IntegrationType } from "../integrations/integration-type";
 import {
   InstagramIntegration,
   TelegramIntegration,
@@ -268,14 +265,12 @@ export class WorkspaceRoleIntegrationGrantsService {
   ): NormalizedGrantInput[] {
     const out: NormalizedGrantInput[] = [];
     const seen = new Set<string>();
+    const grantTypes: readonly string[] = ["instagram", "telegram"];
     for (const grant of grants) {
       const integrationType = grant.integrationType?.trim().toLowerCase();
-      if (
-        !integrationType ||
-        !(INTEGRATION_TYPES as readonly string[]).includes(integrationType)
-      ) {
+      if (!integrationType || !grantTypes.includes(integrationType)) {
         throw new BadRequestException(
-          `integrationType must be one of: ${INTEGRATION_TYPES.join(", ")}`,
+          `integrationType must be one of: ${grantTypes.join(", ")}`,
         );
       }
       const integrationId = Number(grant.integrationId);
