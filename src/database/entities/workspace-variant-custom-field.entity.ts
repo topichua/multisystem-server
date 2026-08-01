@@ -38,7 +38,7 @@ export class WorkspaceVariantCustomField {
   key: string;
 
   /**
-   * System / full name (e.g. `Взуття: розмір`).
+   * System / full name (`{group.label}:{field.name}`, e.g. `Взуття:Розмір`).
    * Prefer `displayName` for UI when set.
    */
   @Column({ type: "varchar", length: 128 })

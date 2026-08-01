@@ -26,7 +26,7 @@ export type VariantCustomFieldValueInput = {
 export type VariantCustomFieldValueDto = {
   fieldId: number;
   key: string;
-  /** System / full name (e.g. `Взуття: розмір`). */
+  /** System / full name (`{group.label}:{field.name}`, e.g. `Взуття:Розмір`). */
   label: string;
   /** Short UI name when set; otherwise null — use `label`. */
   displayName: string | null;

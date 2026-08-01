@@ -24,6 +24,8 @@ import type {
 } from "./dto/variant-custom-field-definition.dto";
 import type { VariantCustomFieldOptionDto } from "./dto/variant-custom-field-option.dto";
 import type {
+  InstallSystemFieldLibraryGroupRequestDto,
+  InstallSystemFieldLibraryGroupResponseDto,
   InstallSystemFieldLibraryRequestDto,
   InstallSystemFieldLibraryResponseDto,
   SystemFieldLibraryListResponseDto,
@@ -189,6 +191,65 @@ export class VariantCustomFieldsService {
     });
 
     return { field, groupKey: group?.key ?? null };
+  }
+
+  /**
+   * Install every field from a system library group.
+   * Already-present keys are skipped (not an error).
+   */
+  async installSystemLibraryGroupForOwner(
+    ownerId: number,
+    dto: InstallSystemFieldLibraryGroupRequestDto,
+  ): Promise<InstallSystemFieldLibraryGroupResponseDto> {
+    const groupKey = dto.groupKey.trim().toLowerCase();
+    const group = SYSTEM_FIELD_LIBRARY_GROUPS.find((g) => g.key === groupKey);
+    if (!group) {
+      throw new NotFoundException(
+        `System library group "${groupKey}" is not available`,
+      );
+    }
+
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    await this.productAuthz.requireCharacteristicsManage(
+      ownerId,
+      undefined,
+      workspace.id,
+    );
+
+    const existing = await this.fieldRepo.find({
+      where: { workspaceId: workspace.id },
+      select: { id: true, key: true },
+    });
+    const byKey = new Map(existing.map((row) => [row.key, row.id]));
+
+    const installed: InstallSystemFieldLibraryResponseDto["field"][] = [];
+    const skipped: InstallSystemFieldLibraryGroupResponseDto["skipped"] = [];
+
+    for (const fieldKey of group.fieldKeys) {
+      const existingId = byKey.get(fieldKey);
+      if (existingId != null) {
+        skipped.push({
+          key: fieldKey,
+          workspaceFieldId: existingId,
+          reason: "already_installed",
+        });
+        continue;
+      }
+
+      const result = await this.installSystemLibraryFieldForOwner(ownerId, {
+        key: fieldKey,
+        groupKey: group.key,
+      });
+      installed.push(result.field);
+      byKey.set(fieldKey, result.field.id);
+    }
+
+    return {
+      groupKey: group.key,
+      installed,
+      skipped,
+    };
   }
 
   async listDefinitionsForWorkspace(

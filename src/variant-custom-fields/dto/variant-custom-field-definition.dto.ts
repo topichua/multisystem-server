@@ -14,14 +14,14 @@ export class VariantCustomFieldDefinitionDto {
 
   @ApiProperty({
     description:
-      "System / full name (e.g. `Взуття: розмір`). Prefer `displayName` in UI.",
+      "System / full name (`{group.label}:{field.name}`, e.g. `Взуття:Розмір`). Prefer `displayName` in UI.",
   })
   label!: string;
 
   @ApiPropertyOptional({
     nullable: true,
     description:
-      "Optional short UI name (e.g. `Розмір` when `label` is `Взуття: розмір`). " +
+      "Optional short UI name (`field.name`, e.g. `Розмір` when `label` is `Взуття:Розмір`). " +
       "Omit or null → clients should show `label`.",
     example: "Розмір",
   })

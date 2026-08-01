@@ -38,6 +38,8 @@ import {
 } from "./dto/variant-custom-field-definition.dto";
 import { VariantCustomFieldUsageDto } from "./dto/variant-custom-field-usage.dto";
 import {
+  InstallSystemFieldLibraryGroupRequestDto,
+  InstallSystemFieldLibraryGroupResponseDto,
   InstallSystemFieldLibraryRequestDto,
   InstallSystemFieldLibraryResponseDto,
   SystemFieldLibraryListResponseDto,
@@ -87,7 +89,8 @@ export class VariantCustomFieldsController {
     summary: "Install a system library field into the workspace",
     description:
       "Creates the characteristic (and default options) from the system library. " +
-      "Conflicts if the workspace already has the same `key`.",
+      "Conflicts if the workspace already has the same `key`. " +
+      "To install a full category, use POST …/library/install-group.",
   })
   @ApiCreatedResponse({ type: InstallSystemFieldLibraryResponseDto })
   installLibrary(
@@ -95,6 +98,24 @@ export class VariantCustomFieldsController {
     @Body() dto: InstallSystemFieldLibraryRequestDto,
   ): Promise<InstallSystemFieldLibraryResponseDto> {
     return this.fields.installSystemLibraryFieldForOwner(
+      this.requireOwnerId(req),
+      dto,
+    );
+  }
+
+  @Post("library/install-group")
+  @ApiOperation({
+    summary: "Install all fields from a system library group",
+    description:
+      "Installs every field in the category (e.g. `jewelry`, `food`). " +
+      "Keys that already exist in the workspace are skipped and listed in `skipped`.",
+  })
+  @ApiCreatedResponse({ type: InstallSystemFieldLibraryGroupResponseDto })
+  installLibraryGroup(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: InstallSystemFieldLibraryGroupRequestDto,
+  ): Promise<InstallSystemFieldLibraryGroupResponseDto> {
+    return this.fields.installSystemLibraryGroupForOwner(
       this.requireOwnerId(req),
       dto,
     );

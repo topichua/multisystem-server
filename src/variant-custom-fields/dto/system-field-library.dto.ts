@@ -105,8 +105,8 @@ export class InstallSystemFieldLibraryRequestDto {
     example: "shoes",
     description:
       "Category the user installed from (Одяг / Взуття / …). " +
-      "Sets system `label` to `{group}: {displayName}` (e.g. `Взуття: розмір`) " +
-      "while `displayName` stays short (`Розмір`). Omit for featured installs.",
+      "Sets system `label` to `{group.label}:{field.name}` (e.g. `Взуття:Розмір`) " +
+      "while `displayName` is `field.name` only (`Розмір`). Omit for featured installs.",
   })
   @IsOptional()
   @IsString()
@@ -127,4 +127,51 @@ export class InstallSystemFieldLibraryResponseDto {
     example: "shoes",
   })
   groupKey: string | null;
+}
+
+export class InstallSystemFieldLibraryGroupRequestDto {
+  @ApiProperty({
+    example: "jewelry",
+    description: "System library group key (Одяг / Взуття / Прикраси / …).",
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  @Matches(/^[a-z][a-z0-9_]{0,63}$/, {
+    message: "groupKey must be lowercase snake_case (e.g. jewelry)",
+  })
+  groupKey: string;
+}
+
+export class InstallSystemFieldLibraryGroupSkippedDto {
+  @ApiProperty({ example: "jewelry_color" })
+  key: string;
+
+  @ApiProperty({
+    description: "Existing workspace field id.",
+  })
+  workspaceFieldId: number;
+
+  @ApiProperty({
+    example: "already_installed",
+    description: "Why this library field was not created.",
+  })
+  reason: "already_installed";
+}
+
+export class InstallSystemFieldLibraryGroupResponseDto {
+  @ApiProperty({ example: "jewelry" })
+  groupKey: string;
+
+  @ApiProperty({
+    type: [VariantCustomFieldDefinitionDto],
+    description: "Fields created in this request.",
+  })
+  installed: VariantCustomFieldDefinitionDto[];
+
+  @ApiProperty({
+    type: [InstallSystemFieldLibraryGroupSkippedDto],
+    description: "Library fields that already existed in the workspace.",
+  })
+  skipped: InstallSystemFieldLibraryGroupSkippedDto[];
 }

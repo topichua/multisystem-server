@@ -415,16 +415,20 @@ export function typeDisplayLabel(type: VariantCustomFieldType): string {
   return type === VariantCustomFieldType.options ? "список" : "текст";
 }
 
-/** e.g. group «Взуття» + display «Розмір» → `Взуття: розмір`. */
+/**
+ * System field name: `{group.label}:{field.name}`
+ * e.g. group «Взуття» + field «Розмір» → `Взуття:Розмір`.
+ * `displayName` is stored separately as `field.name` only.
+ */
 export function buildSystemFieldLabel(
   groupLabel: string,
-  displayName: string,
+  fieldName: string,
 ): string {
-  const short = displayName.trim();
-  if (!short) return groupLabel.trim();
-  const lowered =
-    short.charAt(0).toLocaleLowerCase("uk-UA") + short.slice(1);
-  return `${groupLabel.trim()}: ${lowered}`;
+  const group = groupLabel.trim();
+  const name = fieldName.trim();
+  if (!name) return group;
+  if (!group) return name;
+  return `${group}:${name}`;
 }
 
 export function listSystemFieldLibraryFlat(): SystemFieldLibraryEntry[] {

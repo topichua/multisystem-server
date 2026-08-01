@@ -43,7 +43,7 @@ export class CreateVariantCustomFieldDto {
   @ApiPropertyOptional({
     example: "Розмір",
     description:
-      "Optional short UI name (e.g. `Розмір` when `label` is `Взуття: розмір`). " +
+      "Optional short UI name (e.g. `Розмір` when `label` is `Взуття:Розмір`). " +
       "When omitted, left null — clients should use `label`.",
   })
   @IsOptional()
