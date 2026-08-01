@@ -26,7 +26,10 @@ export type VariantCustomFieldValueInput = {
 export type VariantCustomFieldValueDto = {
   fieldId: number;
   key: string;
+  /** System / full name (e.g. `Взуття: розмір`). */
   label: string;
+  /** Short UI name when set; otherwise null — use `label`. */
+  displayName: string | null;
   type: VariantCustomFieldType;
   value: string;
   order: number;
@@ -64,6 +67,7 @@ export function serializeVariantCustomFields(
       fieldId: def.id,
       key: def.key,
       label: def.label,
+      displayName: def.displayName?.trim() || null,
       type: def.type,
       value: row.value.trim(),
       order: row.sortOrder,

@@ -40,6 +40,22 @@ export class CreateVariantCustomFieldDto {
   @MaxLength(128)
   label: string;
 
+  @ApiPropertyOptional({
+    example: "Розмір",
+    description:
+      "Optional short UI name (e.g. `Розмір` when `label` is `Взуття: розмір`). " +
+      "When omitted, left null — clients should use `label`.",
+  })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  })
+  @MaxLength(128)
+  displayName?: string;
+
   @ApiProperty({ enum: VariantCustomFieldType })
   @IsEnum(VariantCustomFieldType)
   type: VariantCustomFieldType;
@@ -77,6 +93,18 @@ export class UpdateVariantCustomFieldDto {
   @IsNotEmpty()
   @MaxLength(128)
   label?: string;
+
+  @ApiPropertyOptional({
+    description: "Short UI name. Pass null to clear (UI falls back to `label`).",
+    nullable: true,
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === null) return null;
+    return typeof value === "string" ? value.trim() : value;
+  })
+  @MaxLength(128)
+  displayName?: string | null;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()

@@ -23,6 +23,19 @@ import type {
   VariantCustomFieldsListResponseDto,
 } from "./dto/variant-custom-field-definition.dto";
 import type { VariantCustomFieldOptionDto } from "./dto/variant-custom-field-option.dto";
+import type {
+  InstallSystemFieldLibraryRequestDto,
+  InstallSystemFieldLibraryResponseDto,
+  SystemFieldLibraryListResponseDto,
+} from "./dto/system-field-library.dto";
+import {
+  buildSystemFieldLabel,
+  findSystemFieldLibraryEntry,
+  resolveLibraryEntries,
+  SYSTEM_FIELD_LIBRARY_FEATURED_KEYS,
+  SYSTEM_FIELD_LIBRARY_GROUPS,
+  typeDisplayLabel,
+} from "./system-field-library";
 import {
   apiTypeToStorageType,
   normalizeCustomFieldName,
@@ -34,29 +47,6 @@ import {
   resolveVariantCustomFieldValues,
   type VariantCustomFieldValueInput,
 } from "./variant-custom-fields.util";
-
-const DEFAULT_FIELDS: Array<{
-  key: string;
-  label: string;
-  type: VariantCustomFieldType;
-  options: string[];
-  sortOrder: number;
-}> = [
-  {
-    key: "color",
-    label: "Color",
-    type: VariantCustomFieldType.options,
-    options: ["Black", "White", "Red", "Blue", "Green", "Beige"],
-    sortOrder: 0,
-  },
-  {
-    key: "size",
-    label: "Size",
-    type: VariantCustomFieldType.options,
-    options: ["XS", "S", "M", "L", "XL", "XXL"],
-    sortOrder: 1,
-  },
-];
 
 @Injectable()
 export class VariantCustomFieldsService {
@@ -77,7 +67,6 @@ export class VariantCustomFieldsService {
     await this.productAuthz.requireRead(ownerId);
     const workspace =
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
-    await this.ensureDefaults(workspace.id);
     const rows = await this.fieldRepo.find({
       where: { workspaceId: workspace.id },
       relations: { fieldOptions: true },
@@ -89,10 +78,122 @@ export class VariantCustomFieldsService {
     };
   }
 
+  /**
+   * System library of proposed characteristics (featured + grouped).
+   * Matches «ДОДАТИ ПОЛЕ З ШАБЛОНУ» UI.
+   */
+  async listSystemLibraryForOwner(
+    ownerId: number,
+  ): Promise<SystemFieldLibraryListResponseDto> {
+    await this.productAuthz.requireRead(ownerId);
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    const existing = await this.fieldRepo.find({
+      where: { workspaceId: workspace.id },
+      select: { id: true, key: true },
+    });
+    const byKey = new Map(existing.map((row) => [row.key, row.id]));
+
+    const mapField = (field: {
+      key: string;
+      label: string;
+      type: VariantCustomFieldType;
+      options: string[];
+      description?: string;
+      sortOrder: number;
+    }) => {
+      const workspaceFieldId = byKey.get(field.key) ?? null;
+      const typeLabel = typeDisplayLabel(field.type);
+      return {
+        key: field.key,
+        label: field.label,
+        displayLabel: `${field.label} (${typeLabel})`,
+        type: field.type,
+        typeLabel,
+        options: field.options,
+        ...(field.description ? { description: field.description } : {}),
+        sortOrder: field.sortOrder,
+        alreadyInstalled: workspaceFieldId != null,
+        workspaceFieldId,
+      };
+    };
+
+    const featured = resolveLibraryEntries(
+      SYSTEM_FIELD_LIBRARY_FEATURED_KEYS,
+    ).map(mapField);
+
+    const groups = [...SYSTEM_FIELD_LIBRARY_GROUPS]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.key.localeCompare(b.key))
+      .map((group) => {
+        const fields = resolveLibraryEntries(group.fieldKeys).map(mapField);
+        return {
+          key: group.key,
+          label: group.label,
+          icon: group.icon,
+          fieldCount: fields.length,
+          sortOrder: group.sortOrder,
+          fields,
+        };
+      });
+
+    return { workspaceId: workspace.id, featured, groups };
+  }
+
+  /**
+   * Install a system library field into the workspace (creates definition + options).
+   */
+  async installSystemLibraryFieldForOwner(
+    ownerId: number,
+    dto: InstallSystemFieldLibraryRequestDto,
+  ): Promise<InstallSystemFieldLibraryResponseDto> {
+    const key = dto.key.trim().toLowerCase();
+    const entry = findSystemFieldLibraryEntry(key);
+    if (!entry) {
+      throw new NotFoundException(
+        `System library field "${key}" is not available`,
+      );
+    }
+
+    const groupKey = dto.groupKey?.trim().toLowerCase() || null;
+    let group =
+      groupKey == null
+        ? null
+        : SYSTEM_FIELD_LIBRARY_GROUPS.find((g) => g.key === groupKey) ?? null;
+    if (groupKey && !group) {
+      throw new BadRequestException(
+        `Unknown library groupKey "${groupKey}"`,
+      );
+    }
+    if (group && !group.fieldKeys.includes(entry.key)) {
+      throw new BadRequestException(
+        `Field "${entry.key}" is not part of group "${group.key}"`,
+      );
+    }
+
+    const displayName = entry.label.trim();
+    const label =
+      group != null
+        ? buildSystemFieldLabel(group.label, displayName)
+        : displayName;
+
+    const field = await this.createForOwner(ownerId, {
+      key: entry.key,
+      label,
+      displayName,
+      type: entry.type,
+      options:
+        entry.type === VariantCustomFieldType.options
+          ? entry.options
+          : undefined,
+      sortOrder: entry.sortOrder,
+    });
+
+    return { field, groupKey: group?.key ?? null };
+  }
+
   async listDefinitionsForWorkspace(
     workspaceId: number,
   ): Promise<WorkspaceVariantCustomField[]> {
-    await this.ensureDefaults(workspaceId);
     const rows = await this.fieldRepo.find({
       where: { workspaceId, archivedAt: IsNull() },
       relations: { fieldOptions: true },
@@ -164,6 +265,7 @@ export class VariantCustomFieldsService {
         workspaceId: workspace.id,
         key: dto.key,
         label: dto.label,
+        displayName: dto.displayName?.trim() || null,
         type: dto.type,
         sortOrder: dto.sortOrder ?? 0,
         archivedAt: null,
@@ -189,6 +291,10 @@ export class VariantCustomFieldsService {
 
     if (dto.label !== undefined) {
       row.label = dto.label;
+    }
+    if (dto.displayName !== undefined) {
+      row.displayName =
+        dto.displayName == null ? null : dto.displayName.trim() || null;
     }
     if (dto.sortOrder !== undefined) {
       row.sortOrder = dto.sortOrder;
@@ -462,6 +568,7 @@ export class VariantCustomFieldsService {
         id: field.id,
         key: field.key,
         label: field.label,
+        displayName: field.displayName?.trim() || null,
         type: field.type,
         archivedAt: field.archivedAt?.toISOString() ?? null,
         totalProducts,
@@ -488,6 +595,7 @@ export class VariantCustomFieldsService {
       id: field.id,
       key: field.key,
       label: field.label,
+      displayName: field.displayName?.trim() || null,
       type: field.type,
       archivedAt: field.archivedAt?.toISOString() ?? null,
       totalProducts,
@@ -758,6 +866,7 @@ export class VariantCustomFieldsService {
         workspaceId,
         key,
         label: name,
+        displayName: null,
         type: storageType,
         sortOrder: await this.nextFieldSortOrder(workspaceId, fieldRepo),
         archivedAt: null,
@@ -933,28 +1042,6 @@ export class VariantCustomFieldsService {
     return option;
   }
 
-  private async ensureDefaults(workspaceId: number): Promise<void> {
-    const count = await this.fieldRepo.count({ where: { workspaceId } });
-    if (count > 0) {
-      return;
-    }
-    for (const def of DEFAULT_FIELDS) {
-      const row = await this.fieldRepo.save(
-        this.fieldRepo.create({
-          workspaceId,
-          key: def.key,
-          label: def.label,
-          type: def.type,
-          sortOrder: def.sortOrder,
-          archivedAt: null,
-        }),
-      );
-      if (def.options.length > 0) {
-        await this.insertOptionLabels(row.id, def.options);
-      }
-    }
-  }
-
   private validateOptionsForType(
     type: VariantCustomFieldType,
     options: string[] | undefined,
@@ -991,6 +1078,7 @@ export class VariantCustomFieldsService {
       id: row.id,
       key: row.key,
       label: row.label,
+      displayName: row.displayName?.trim() || null,
       type: row.type,
       ...(row.type === VariantCustomFieldType.options && options.length
         ? { options }

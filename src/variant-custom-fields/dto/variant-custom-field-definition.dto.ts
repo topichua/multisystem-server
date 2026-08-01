@@ -12,8 +12,20 @@ export class VariantCustomFieldDefinitionDto {
   })
   key!: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      "System / full name (e.g. `Взуття: розмір`). Prefer `displayName` in UI.",
+  })
   label!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Optional short UI name (e.g. `Розмір` when `label` is `Взуття: розмір`). " +
+      "Omit or null → clients should show `label`.",
+    example: "Розмір",
+  })
+  displayName!: string | null;
 
   @ApiProperty({ enum: VariantCustomFieldType })
   type!: VariantCustomFieldType;

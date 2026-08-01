@@ -37,6 +37,11 @@ import {
   VariantCustomFieldsListResponseDto,
 } from "./dto/variant-custom-field-definition.dto";
 import { VariantCustomFieldUsageDto } from "./dto/variant-custom-field-usage.dto";
+import {
+  InstallSystemFieldLibraryRequestDto,
+  InstallSystemFieldLibraryResponseDto,
+  SystemFieldLibraryListResponseDto,
+} from "./dto/system-field-library.dto";
 import { VariantCustomFieldsService } from "./variant-custom-fields.service";
 
 @ApiTags("workspace")
@@ -51,7 +56,7 @@ export class VariantCustomFieldsController {
     summary: "List variant custom field definitions for the workspace",
     description:
       "Returns workspace-configured variant attributes (e.g. Color, Size), including archived. " +
-      "Defaults are created automatically when none exist. " +
+      "Install system proposals via GET/POST …/library. " +
       "Options are returned as `{ id, label, archivedAt }` objects. " +
       "Product variants use customFields: [{ field: { id? | name?, type? }, value }].",
   })
@@ -60,6 +65,39 @@ export class VariantCustomFieldsController {
     @Req() req: { user?: AuthUser },
   ): Promise<VariantCustomFieldsListResponseDto> {
     return this.fields.listForOwner(this.requireOwnerId(req));
+  }
+
+  @Get("library")
+  @ApiOperation({
+    summary: "List system characteristic library",
+    description:
+      "Shape for «ДОДАТИ ПОЛЕ З ШАБЛОНУ»: `featured` (e.g. Колір) + `groups` " +
+      "(Одяг, Взуття, …) with `icon`, `fieldCount`, and fields (`displayLabel`, `alreadyInstalled` / «є»). " +
+      "Install with POST /workspace/variant-custom-fields/library/install `{ key }`.",
+  })
+  @ApiOkResponse({ type: SystemFieldLibraryListResponseDto })
+  listLibrary(
+    @Req() req: { user?: AuthUser },
+  ): Promise<SystemFieldLibraryListResponseDto> {
+    return this.fields.listSystemLibraryForOwner(this.requireOwnerId(req));
+  }
+
+  @Post("library/install")
+  @ApiOperation({
+    summary: "Install a system library field into the workspace",
+    description:
+      "Creates the characteristic (and default options) from the system library. " +
+      "Conflicts if the workspace already has the same `key`.",
+  })
+  @ApiCreatedResponse({ type: InstallSystemFieldLibraryResponseDto })
+  installLibrary(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: InstallSystemFieldLibraryRequestDto,
+  ): Promise<InstallSystemFieldLibraryResponseDto> {
+    return this.fields.installSystemLibraryFieldForOwner(
+      this.requireOwnerId(req),
+      dto,
+    );
   }
 
   @Get(":id")

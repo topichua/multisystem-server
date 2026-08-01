@@ -37,8 +37,19 @@ export class WorkspaceVariantCustomField {
   @Column({ type: "varchar", length: 64 })
   key: string;
 
+  /**
+   * System / full name (e.g. `Взуття: розмір`).
+   * Prefer `displayName` for UI when set.
+   */
   @Column({ type: "varchar", length: 128 })
   label: string;
+
+  /**
+   * Short UI name without category prefix (e.g. `Розмір`).
+   * Falls back to `label` when null.
+   */
+  @Column({ name: "display_name", type: "varchar", length: 128, nullable: true })
+  displayName: string | null;
 
   @Column({
     type: "enum",

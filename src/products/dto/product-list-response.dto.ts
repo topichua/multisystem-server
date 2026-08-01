@@ -13,6 +13,12 @@ export class ProductListVariantCustomFieldDto {
   @ApiProperty()
   label: string;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Optional short UI name; null → use `label`.",
+  })
+  displayName: string | null;
+
   @ApiProperty({ enum: VariantCustomFieldType })
   type: VariantCustomFieldType;
 
