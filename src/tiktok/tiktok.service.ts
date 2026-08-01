@@ -1,6 +1,8 @@
 import {
   BadGatewayException,
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -16,6 +18,10 @@ import { CredentialsEncryptionService } from "../payments/encryption/credentials
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { ListTikTokCommentsQueryDto } from "./dto/list-tiktok-comments-query.dto";
 import type { ListTikTokVideosQueryDto } from "./dto/list-tiktok-videos-query.dto";
+import type {
+  TikTokCommentsDiagnoseAttemptDto,
+  TikTokCommentsDiagnoseResponseDto,
+} from "./dto/tiktok-comments-diagnose.dto";
 import type {
   TikTokCommentDto,
   TikTokCommentsListResponseDto,
@@ -92,6 +98,13 @@ type TikTokCommentListResponse = TikTokErrorBody & {
   };
 };
 
+type TikTokFetchResult<T> = {
+  ok: boolean;
+  httpStatus: number;
+  json: T;
+  text: string;
+};
+
 @Injectable()
 export class TikTokService {
   private readonly log = new Logger(TikTokService.name);
@@ -116,6 +129,7 @@ export class TikTokService {
       ownerId,
       query.integrationId,
     );
+    this.assertGrantedScope(integration, "video.list");
     const accessToken = await this.resolveAccessToken(integration);
 
     const body: Record<string, unknown> = {
@@ -160,6 +174,53 @@ export class TikTokService {
     videoIdRaw: string,
     query: ListTikTokCommentsQueryDto = {},
   ): Promise<TikTokCommentsListResponseDto> {
+    const diagnostic = await this.diagnoseCommentsForOwner(
+      ownerId,
+      videoIdRaw,
+      query,
+    );
+    if (diagnostic.reason !== "ok") {
+      this.log.warn(
+        `TikTok comments failed videoId=${diagnostic.videoId} reason=${diagnostic.reason} diagnostic=${JSON.stringify(diagnostic)}`,
+      );
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.BAD_REQUEST,
+          error: "Bad Request",
+          message: diagnostic.message,
+          reason: diagnostic.reason,
+          fix: diagnostic.fix,
+          videoId: diagnostic.videoId,
+          integration: diagnostic.integration,
+          oauthScopesConfigured: diagnostic.oauthScopesConfigured,
+          attempts: diagnostic.attempts,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const success = diagnostic.attempts.find((a) => a.ok);
+    const json = (success?.responseJson ?? {}) as TikTokCommentListResponse;
+    return {
+      data: (json.data?.comments ?? []).map((raw) => this.mapComment(raw)),
+      ...(json.data?.cursor != null ? { cursor: Number(json.data.cursor) } : {}),
+      ...(typeof json.data?.has_more === "boolean"
+        ? { hasMore: json.data.has_more }
+        : {}),
+      videoId: diagnostic.videoId,
+      integrationId: diagnostic.integration.id,
+    };
+  }
+
+  /**
+   * Probes TikTok comment.list (GET then POST) and returns a structured
+   * explanation of success or failure — does not throw on TikTok API errors.
+   */
+  async diagnoseCommentsForOwner(
+    ownerId: number,
+    videoIdRaw: string,
+    query: ListTikTokCommentsQueryDto = {},
+  ): Promise<TikTokCommentsDiagnoseResponseDto> {
     const videoId = videoIdRaw?.trim();
     if (!videoId || videoId.length > 64) {
       throw new BadRequestException("videoId is required");
@@ -169,36 +230,75 @@ export class TikTokService {
       ownerId,
       query.integrationId,
     );
-    const accessToken = await this.resolveAccessToken(integration);
+    const oauthScopesConfigured = this.getConfiguredOAuthScopes();
+    const grantedScopes = this.parseScopes(integration.scopes);
+    const hasCommentListScope =
+      grantedScopes.size === 0 ? undefined : grantedScopes.has("comment.list");
 
-    const url = new URL(COMMENT_LIST_URL);
-    url.searchParams.set("fields", COMMENT_FIELDS);
-    url.searchParams.set("video_id", videoId);
-    url.searchParams.set("max_count", String(query.maxCount ?? 20));
-    if (query.cursor != null) {
-      url.searchParams.set("cursor", String(query.cursor));
+    const expiresAt = integration.accessTokenExpiresAt?.getTime() ?? 0;
+    const accessTokenNearExpiry =
+      !expiresAt || expiresAt - Date.now() <= ACCESS_TOKEN_REFRESH_SKEW_MS;
+
+    const integrationDiag = {
+      id: integration.id,
+      openId: integration.openId,
+      scopes: integration.scopes,
+      hasCommentListScope,
+      accessTokenExpiresAt: integration.accessTokenExpiresAt
+        ? integration.accessTokenExpiresAt.toISOString()
+        : null,
+      accessTokenNearExpiry,
+      status: integration.status,
+    };
+
+    if (hasCommentListScope === false) {
+      return {
+        reason: "scope_missing_on_token",
+        message: `Stored token for integration #${integration.id} does not include comment.list (granted: ${integration.scopes}).`,
+        fix: 'Enable comment.list in TikTok Developer Portal, then DELETE this integration and reconnect via POST /integrations { "integration_type": "tiktok" }.',
+        videoId,
+        integration: integrationDiag,
+        oauthScopesConfigured,
+        attempts: [],
+      };
     }
 
-    let json: TikTokCommentListResponse;
+    let accessToken: string;
     try {
-      json = await this.tikTokJson<TikTokCommentListResponse>(
-        url.toString(),
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
-        "comment.list",
-      );
+      accessToken = await this.resolveAccessToken(integration);
     } catch (err) {
-      // Some TikTok app configs expect POST + JSON body instead of GET.
-      if (!(err instanceof BadGatewayException)) {
-        throw err;
-      }
-      this.log.warn(
-        `TikTok comment.list GET failed; retrying as POST (${err.message})`,
-      );
+      return {
+        reason: "access_token_invalid",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to resolve TikTok access token",
+        fix: 'Reconnect TikTok via POST /integrations { "integration_type": "tiktok" }.',
+        videoId,
+        integration: integrationDiag,
+        oauthScopesConfigured,
+        attempts: [],
+      };
+    }
+
+    const attempts: TikTokCommentsDiagnoseAttemptDto[] = [];
+
+    const getUrl = new URL(COMMENT_LIST_URL);
+    getUrl.searchParams.set("fields", COMMENT_FIELDS);
+    getUrl.searchParams.set("video_id", videoId);
+    getUrl.searchParams.set("max_count", String(query.maxCount ?? 20));
+    if (query.cursor != null) {
+      getUrl.searchParams.set("cursor", String(query.cursor));
+    }
+
+    attempts.push(
+      await this.probeTikTokJson<TikTokCommentListResponse>(getUrl.toString(), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }),
+    );
+
+    if (!attempts[0]?.ok) {
       const postUrl = new URL(COMMENT_LIST_URL);
       postUrl.searchParams.set("fields", COMMENT_FIELDS);
       const postBody: Record<string, unknown> = {
@@ -208,29 +308,143 @@ export class TikTokService {
       if (query.cursor != null) {
         postBody.cursor = query.cursor;
       }
-      json = await this.tikTokJson<TikTokCommentListResponse>(
-        postUrl.toString(),
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
+      attempts.push(
+        await this.probeTikTokJson<TikTokCommentListResponse>(
+          postUrl.toString(),
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(postBody),
           },
-          body: JSON.stringify(postBody),
-        },
-        "comment.list",
+        ),
       );
     }
 
+    const success = attempts.find((a) => a.ok);
+    if (success) {
+      const json = success.responseJson as TikTokCommentListResponse;
+      return {
+        reason: "ok",
+        message: "TikTok comment.list succeeded",
+        videoId,
+        integration: integrationDiag,
+        oauthScopesConfigured,
+        attempts,
+        commentsSample: (json.data?.comments ?? []).slice(0, 3),
+      };
+    }
+
+    const last = attempts[attempts.length - 1]!;
+    const classified = this.classifyTikTokCommentFailure(last);
     return {
-      data: (json.data?.comments ?? []).map((raw) => this.mapComment(raw)),
-      ...(json.data?.cursor != null ? { cursor: Number(json.data.cursor) } : {}),
-      ...(typeof json.data?.has_more === "boolean"
-        ? { hasMore: json.data.has_more }
-        : {}),
+      reason: classified.reason,
+      message: classified.message,
+      fix: classified.fix,
       videoId,
-      integrationId: integration.id,
+      integration: integrationDiag,
+      oauthScopesConfigured,
+      attempts,
     };
+  }
+
+  private classifyTikTokCommentFailure(
+    attempt: TikTokCommentsDiagnoseAttemptDto,
+  ): {
+    reason: string;
+    message: string;
+    fix: string;
+  } {
+    const code = attempt.errorCode ?? "";
+    const msg = attempt.errorMessage ?? "";
+    if (
+      code === "scope_not_authorized" ||
+      /scope/i.test(msg) ||
+      code === "scope_permission_missed"
+    ) {
+      return {
+        reason: "scope_not_authorized",
+        message:
+          msg ||
+          "TikTok rejected comment.list — scope not authorized on this token.",
+        fix: "In TikTok Developer Portal enable the product that provides comment.list, ensure that scope is Added (not pending), then DELETE the integration and reconnect so the token includes comment.list.",
+      };
+    }
+    if (code === "access_token_invalid") {
+      return {
+        reason: "access_token_invalid",
+        message: msg || "TikTok access token is invalid.",
+        fix: 'Reconnect TikTok via POST /integrations { "integration_type": "tiktok" }.',
+      };
+    }
+    if (code === "invalid_params" || /invalid/i.test(msg)) {
+      return {
+        reason: "invalid_params",
+        message:
+          msg ||
+          "TikTok rejected the comment.list request parameters (often a bad video_id).",
+        fix: "Confirm videoId is a TikTok video owned by the connected open_id (from GET /api/tiktok/videos when video.list is available). Pass TikTok log_id to TikTok support if needed.",
+      };
+    }
+    if (attempt.httpStatus == null) {
+      return {
+        reason: "network_error",
+        message: msg || "Failed to reach TikTok API",
+        fix: "Retry later; check outbound network from the API host to open.tiktokapis.com.",
+      };
+    }
+    return {
+      reason: code || "tiktok_api_error",
+      message:
+        msg ||
+        `TikTok comment.list failed (HTTP ${attempt.httpStatus ?? "?"})`,
+      fix: "Inspect attempts[].responseJson / log_id. Common causes: wrong endpoint for your app product, video not owned by this user, or app not approved for comment APIs.",
+    };
+  }
+
+  private async probeTikTokJson<T extends TikTokErrorBody>(
+    url: string,
+    init: RequestInit,
+  ): Promise<TikTokCommentsDiagnoseAttemptDto> {
+    const method = init.method ?? "GET";
+    try {
+      const result = await this.fetchTikTokJson<T>(url, init);
+      const errorCode = result.json.error?.code;
+      const errorMessage =
+        result.json.error?.message ?? result.json.error_description;
+      const logId = result.json.error?.log_id ?? result.json.log_id;
+      const ok = result.ok && (!errorCode || errorCode === "ok");
+      const attempt: TikTokCommentsDiagnoseAttemptDto = {
+        method,
+        url,
+        httpStatus: result.httpStatus,
+        responseJson: result.json,
+        ok,
+        ...(errorCode ? { errorCode } : {}),
+        ...(errorMessage ? { errorMessage } : {}),
+        ...(logId ? { logId } : {}),
+      };
+      if (!ok) {
+        this.log.warn(
+          `TikTok API failure method=${method} url=${url} status=${result.httpStatus} responseJson=${JSON.stringify(result.json)}`,
+        );
+      }
+      return attempt;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log.warn(
+        `TikTok API network failure method=${method} url=${url} error=${message}`,
+      );
+      return {
+        method,
+        url,
+        ok: false,
+        errorMessage: message,
+        responseJson: { error: { code: "network_error", message } },
+      };
+    }
   }
 
   private parseVideoIdForBody(videoId: string): string | number {
@@ -239,6 +453,39 @@ export class TikTokService {
     }
     // Large int64 ids stay as strings to avoid JS precision loss.
     return videoId;
+  }
+
+  private parseScopes(raw: string | null | undefined): Set<string> {
+    if (!raw?.trim()) return new Set();
+    return new Set(
+      raw
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+  }
+
+  private getConfiguredOAuthScopes(): string {
+    return (
+      this.config.get<string>("TIKTOK_OAUTH_SCOPES")?.trim() ||
+      "user.info.basic,user.info.profile,video.list,comment.list,biz.brand.insights"
+    );
+  }
+
+  private assertGrantedScope(
+    integration: TikTokIntegration,
+    required: string,
+  ): void {
+    const granted = this.parseScopes(integration.scopes);
+    if (granted.size === 0) {
+      // Older rows may lack scopes; let TikTok API decide.
+      return;
+    }
+    if (!granted.has(required)) {
+      throw new BadRequestException(
+        `TikTok integration #${integration.id} was authorized without "${required}" (granted: ${integration.scopes}). Enable that scope in the TikTok Developer Portal, then DELETE this integration and reconnect via POST /integrations { "integration_type": "tiktok" }.`,
+      );
+    }
   }
 
   private async requireConnectedIntegrationForOwner(
@@ -353,7 +600,9 @@ export class TikTokService {
       try {
         json = JSON.parse(text) as TikTokTokenRefreshResponse;
       } catch {
-        throw new BadGatewayException("TikTok token refresh returned invalid JSON");
+        throw new BadGatewayException(
+          "TikTok token refresh returned invalid JSON",
+        );
       }
     }
     if (!response.ok || json.error?.code || !json.access_token?.trim()) {
@@ -393,19 +642,11 @@ export class TikTokService {
     return json.access_token.trim();
   }
 
-  private async tikTokJson<T extends TikTokErrorBody>(
+  private async fetchTikTokJson<T extends TikTokErrorBody>(
     url: string,
     init: RequestInit,
-    scopeHint: string,
-  ): Promise<T> {
-    let response: Response;
-    try {
-      response = await fetch(url, init);
-    } catch (err) {
-      throw new BadGatewayException(
-        `Failed to reach TikTok API: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+  ): Promise<TikTokFetchResult<T>> {
+    const response = await fetch(url, init);
     const text = await response.text();
     let json: T = {} as T;
     if (text) {
@@ -415,28 +656,50 @@ export class TikTokService {
         throw new BadGatewayException("TikTok API returned invalid JSON");
       }
     }
+    return {
+      ok: response.ok,
+      httpStatus: response.status,
+      json,
+      text,
+    };
+  }
 
-    const errorCode = json.error?.code;
-    const errorMessage = json.error?.message ?? json.error_description;
-    if (!response.ok || (errorCode && errorCode !== "ok")) {
+  private async tikTokJson<T extends TikTokErrorBody>(
+    url: string,
+    init: RequestInit,
+    scopeHint: string,
+  ): Promise<T> {
+    let result: TikTokFetchResult<T>;
+    try {
+      result = await this.fetchTikTokJson<T>(url, init);
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Failed to reach TikTok API: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    const errorCode = result.json.error?.code;
+    const errorMessage =
+      result.json.error?.message ?? result.json.error_description;
+    if (!result.ok || (errorCode && errorCode !== "ok")) {
       this.log.warn(
-        `TikTok API HTTP ${response.status} scopeHint=${scopeHint} code=${errorCode ?? ""} body=${text.slice(0, 500)}`,
+        `TikTok API failure method=${init.method ?? "GET"} url=${url} status=${result.httpStatus} scopeHint=${scopeHint} responseJson=${JSON.stringify(result.json)}`,
       );
       if (
         errorCode === "scope_not_authorized" ||
         /scope/i.test(errorMessage ?? "")
       ) {
         throw new BadRequestException(
-          errorMessage ??
-            `TikTok denied this call. Ensure OAuth scope "${scopeHint}" is enabled on the app and reconnect TikTok.`,
+          `TikTok scope "${scopeHint}" is not on this token. In TikTok Developer Portal enable that scope, then DELETE the TikTok integration and reconnect (POST /integrations { "integration_type": "tiktok" }). Detail: ${errorMessage ?? errorCode}`,
         );
       }
       throw new BadGatewayException(
         errorMessage ??
-          `TikTok API request failed with status ${response.status}`,
+          `TikTok API request failed with status ${result.httpStatus}`,
       );
     }
-    return json;
+    return result.json;
   }
 
   private mapVideo(raw: Record<string, unknown>): TikTokVideoDto {
@@ -513,7 +776,11 @@ export class TikTokService {
 
   private asNumber(value: unknown): number | undefined {
     if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim() && !Number.isNaN(Number(value))) {
+    if (
+      typeof value === "string" &&
+      value.trim() &&
+      !Number.isNaN(Number(value))
+    ) {
       return Number(value);
     }
     return undefined;

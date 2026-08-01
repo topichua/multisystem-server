@@ -84,6 +84,8 @@ export type ProductVariantDto = {
   quantity: number | null;
   reservedQuantity: number | null;
   availableQuantity: number | null;
+  /** Weighted avg cost; null until purchase price was recorded on stock. */
+  avgPurchasePrice: number | null;
   imageUrl: string | null;
   sku: string | null;
   status: ProductStatus;

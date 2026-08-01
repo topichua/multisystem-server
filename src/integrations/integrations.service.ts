@@ -281,6 +281,7 @@ export class IntegrationsService {
         ? { connectedAt: connectedAt.toISOString() }
         : {}),
       ...(row.status !== "CONNECTED" ? { status: row.status } : {}),
+      ...(row.scopes?.trim() ? { scopes: row.scopes.trim() } : {}),
     };
   }
 

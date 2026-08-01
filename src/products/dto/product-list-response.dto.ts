@@ -71,6 +71,14 @@ export class ProductListVariantDto {
   @ApiPropertyOptional({ nullable: true })
   availableQuantity: number | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Weighted average purchase (cost) price from inventory. " +
+      "`null` until stock was initialized / purchased with a price.",
+  })
+  avgPurchasePrice: number | null;
+
   @ApiPropertyOptional({ nullable: true })
   imageUrl: string | null;
 

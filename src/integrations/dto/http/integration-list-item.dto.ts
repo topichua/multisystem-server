@@ -58,6 +58,12 @@ export class IntegrationListItemDto {
 
   @ApiPropertyOptional({
     description:
+      "TikTok only: space/comma-separated OAuth scopes granted on the stored token (e.g. `user.info.basic video.list`).",
+  })
+  scopes?: string;
+
+  @ApiPropertyOptional({
+    description:
       "Instagram only: follower count from Graph (`followers_count`).",
   })
   followersCount?: number;

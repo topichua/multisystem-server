@@ -18,7 +18,8 @@ import { WorkspaceAccessContextService } from "../workspace-access/workspace-acc
 
 const AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/";
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/";
-const OAUTH_SCOPE = "user.info.basic";
+const DEFAULT_OAUTH_SCOPE =
+  "user.info.basic,user.info.profile,video.list,comment.list,biz.brand.insights";
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 type TikTokTokenResponse = {
@@ -77,7 +78,11 @@ export class TikTokOAuthConnectService {
     const url = new URL(AUTHORIZE_URL);
     url.searchParams.set("client_key", clientKey);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", OAUTH_SCOPE);
+    url.searchParams.set(
+      "scope",
+      this.config.get<string>("TIKTOK_OAUTH_SCOPES")?.trim() ||
+        DEFAULT_OAUTH_SCOPE,
+    );
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("state", state);
 

@@ -7,6 +7,11 @@ export type ProductStockFields = {
   quantity: number | null;
   reservedQuantity: number | null;
   availableQuantity: number | null;
+  /**
+   * Weighted average purchase (cost) price from inventory.
+   * `null` until stock has been initialized with a purchase price.
+   */
+  avgPurchasePrice: number | null;
 };
 
 export function presentProductStockFields(
@@ -16,6 +21,7 @@ export function presentProductStockFields(
     quantity: stock.quantity,
     reservedQuantity: stock.reservedQuantity,
     availableQuantity: stock.availableQuantity,
+    avgPurchasePrice: stock.avgPurchasePrice,
   };
 }
 
