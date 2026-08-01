@@ -7,6 +7,7 @@ import {
   ProductVariant,
   StockMovement,
   StockSupply,
+  StockSupplyItem,
   VariantStock,
   Workspace,
 } from "../database/entities";
@@ -26,6 +27,7 @@ import { InventoryService } from "./inventory.service";
       Order,
       OrderItem,
       StockSupply,
+      StockSupplyItem,
     ]),
   ],
   controllers: [InventoryController],

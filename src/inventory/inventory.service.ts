@@ -16,6 +16,7 @@ import {
   StockMovement,
   StockMovementType,
   StockSupply,
+  StockSupplyItem,
   VariantStock,
   Workspace,
 } from "../database/entities";
@@ -29,11 +30,23 @@ import type { CreateInitialStockDto } from "./dto/create-initial-stock.dto";
 import type { CreateInventoryCountDto } from "./dto/create-inventory-count.dto";
 import type { CreatePurchaseDto } from "./dto/create-purchase.dto";
 import type { CreateReturnDto } from "./dto/create-return.dto";
-import type { CreateStockSupplyDto } from "./dto/create-stock-supply.dto";
-import type { SetSimpleQuantityDto } from "./dto/set-simple-quantity.dto";
 import type {
+  CreateStockSupplyDto,
+  CreateStockSupplyItemDto,
+} from "./dto/create-stock-supply.dto";
+import type { SetSimpleQuantityDto } from "./dto/set-simple-quantity.dto";
+import type { UpdateStockSupplyDto } from "./dto/update-stock-supply.dto";
+import type { ListStockSuppliesQueryDto } from "./dto/list-stock-supplies-query.dto";
+import {
+  ListStockSuppliesByFilter as SuppliesByFilter,
+  ListStockSuppliesStatusFilter,
+} from "./dto/list-stock-supplies-query.dto";
+import type {
+  ApplyStockSupplyResponseDto,
   CreateStockSupplyResponseDto,
   StockSupplyLineResultDto,
+  StockSupplyListResponseDto,
+  StockSupplyResponseDto,
 } from "./dto/stock-supply-response.dto";
 import type { ListStockHistoryQueryDto } from "./dto/list-stock-history-query.dto";
 import type {
@@ -114,6 +127,8 @@ export class InventoryService {
     private readonly orderItemRepo: Repository<OrderItem>,
     @InjectRepository(StockSupply)
     private readonly stockSupplyRepo: Repository<StockSupply>,
+    @InjectRepository(StockSupplyItem)
+    private readonly stockSupplyItemRepo: Repository<StockSupplyItem>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
     private readonly variantCustomFields: VariantCustomFieldsService,
@@ -222,85 +237,245 @@ export class InventoryService {
     assertAdvancedMode(ctx.mode);
 
     return this.dataSource.transaction(async (em) => {
+      const now = new Date();
+      const immediatelyApply = dto.immediatelyApply === true;
       const supply = await em.save(
         em.create(StockSupply, {
           workspaceId: ctx.workspaceId,
           userId: ctx.userId,
+          name: dto.name.trim(),
           comment: dto.comment?.trim() || null,
+          status: immediatelyApply ? "applied" : "pending",
+          appliedAt: immediatelyApply ? now : null,
         }),
       );
 
-      const lines: StockSupplyLineResultDto[] = [];
+      await this.replaceSupplyItems(em, ctx, supply.id, dto.items);
 
-      for (const item of dto.items) {
-        const variant = await em.findOne(ProductVariant, {
-          where: { id: item.productVariantId },
-          relations: { product: true },
+      const withUser = await em.findOne(StockSupply, {
+        where: { id: supply.id },
+        relations: { user: true },
+      });
+
+      if (!immediatelyApply) {
+        const items = await em.find(StockSupplyItem, {
+          where: { supplyId: supply.id },
+          order: { id: "ASC" },
         });
-        if (
-          !variant?.product ||
-          variant.product.workspaceId !== ctx.workspaceId
-        ) {
-          throw new NotFoundException(
-            `Variant ${item.productVariantId} not found`,
-          );
-        }
-        if (variant.productId !== item.productId) {
-          throw new BadRequestException(
-            `productVariantId ${item.productVariantId} does not belong to productId ${item.productId}`,
-          );
-        }
-
-        const stock = await this.lockVariantStock(
-          em,
-          ctx.workspaceId,
-          item.productVariantId,
-        );
-        const result = applySupply(
-          this.toSnapshot(stock),
-          item.quantity,
-          item.buyPrice,
-        );
-        await this.persistStock(em, stock, result.after);
-
-        const movement = await em.save(
-          em.create(StockMovement, {
-            workspaceId: ctx.workspaceId,
-            variantId: item.productVariantId,
-            type: StockMovementType.supply,
-            quantityChange: result.quantityChange,
-            purchasePrice: item.buyPrice,
-            totalCostChange: result.totalCostChange,
-            reason: null,
-            comment: dto.comment?.trim() || null,
-            orderId: null,
-            orderItemId: null,
-            supplyId: supply.id,
-            userId: ctx.userId,
-          }),
-        );
-
-        lines.push({
-          item: {
-            productId: item.productId,
-            productVariantId: item.productVariantId,
-            quantity: movement.quantityChange,
-            buyPrice: movement.purchasePrice ?? item.buyPrice,
-          },
-          movement: this.toMovementDto(movement, null),
-          stock: this.toStockDto(stock, ctx.mode),
-        });
+        return {
+          supply: this.toSupplyDto(supply, items, withUser?.user ?? null),
+          lines: [],
+        };
       }
 
+      const lines = await this.applySupplyItemsInTx(em, ctx, supply);
+      const items = await em.find(StockSupplyItem, {
+        where: { supplyId: supply.id },
+        order: { id: "ASC" },
+      });
       return {
-        supply: {
-          id: supply.id,
-          comment: supply.comment,
-          createdAt: supply.createdAt,
-          items: lines.map((line) => line.item),
-        },
+        supply: this.toSupplyDto(supply, items, withUser?.user ?? null),
         lines,
       };
+    });
+  }
+
+  async listStockSupplies(
+    userId: number,
+    query: ListStockSuppliesQueryDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockSupplyListResponseDto> {
+    const ctx = await this.requireViewContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
+    assertAdvancedMode(ctx.mode);
+
+    const limit = query.limit ?? 20;
+    const offset = query.offset ?? 0;
+    const whereQb = this.stockSupplyRepo
+      .createQueryBuilder("ss")
+      .where("ss.workspace_id = :workspaceId", {
+        workspaceId: ctx.workspaceId,
+      });
+
+    const statusFilter = this.resolveSupplyStatusFilter(query);
+    if (statusFilter === "applied") {
+      whereQb.andWhere("ss.status = :status", { status: "applied" });
+    } else if (statusFilter === "pending") {
+      whereQb.andWhere("ss.status = :status", { status: "pending" });
+    }
+
+    if (query.createdFrom) {
+      whereQb.andWhere("ss.created_at >= :createdFrom", {
+        createdFrom: this.parseHistoryDateBoundary(query.createdFrom, "start"),
+      });
+    }
+    if (query.createdTo) {
+      whereQb.andWhere("ss.created_at <= :createdTo", {
+        createdTo: this.parseHistoryDateBoundary(query.createdTo, "end"),
+      });
+    }
+    if (query.createdBy) {
+      whereQb.andWhere("ss.user_id = :createdBy", {
+        createdBy: query.createdBy,
+      });
+    }
+
+    const total = await whereQb.clone().getCount();
+    const rows = await whereQb
+      .leftJoinAndSelect("ss.user", "user")
+      .leftJoinAndSelect("ss.items", "items")
+      .orderBy("ss.created_at", "DESC")
+      .addOrderBy("ss.id", "DESC")
+      .skip(offset)
+      .take(limit)
+      .getMany();
+
+    return {
+      items: rows.map((row) =>
+        this.toSupplyDto(
+          row,
+          [...(row.items ?? [])].sort((a, b) => a.id - b.id),
+          row.user,
+        ),
+      ),
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  async getStockSupplyById(
+    userId: number,
+    supplyId: number,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockSupplyResponseDto> {
+    const ctx = await this.requireViewContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
+    assertAdvancedMode(ctx.mode);
+    const supply = await this.requireSupplyInWorkspace(
+      ctx.workspaceId,
+      supplyId,
+      true,
+    );
+    return this.toSupplyDto(
+      supply,
+      [...(supply.items ?? [])].sort((a, b) => a.id - b.id),
+      supply.user,
+    );
+  }
+
+  async applyStockSupply(
+    userId: number,
+    supplyId: number,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<ApplyStockSupplyResponseDto> {
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
+    assertAdvancedMode(ctx.mode);
+
+    return this.dataSource.transaction(async (em) => {
+      const supply = await em.findOne(StockSupply, {
+        where: { id: supplyId, workspaceId: ctx.workspaceId },
+        lock: { mode: "pessimistic_write" },
+      });
+      if (!supply) {
+        throw new NotFoundException("Supply not found");
+      }
+      if (supply.status === "applied") {
+        throw new BadRequestException("Supply is already applied");
+      }
+
+      const lines = await this.applySupplyItemsInTx(em, ctx, supply);
+      supply.status = "applied";
+      supply.appliedAt = new Date();
+      await em.save(supply);
+
+      const items = await em.find(StockSupplyItem, {
+        where: { supplyId: supply.id },
+        order: { id: "ASC" },
+      });
+      const withUser = await em.findOne(StockSupply, {
+        where: { id: supply.id },
+        relations: { user: true },
+      });
+
+      return {
+        supply: this.toSupplyDto(supply, items, withUser?.user ?? null),
+        lines,
+      };
+    });
+  }
+
+  async updateStockSupply(
+    userId: number,
+    supplyId: number,
+    dto: UpdateStockSupplyDto,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<StockSupplyResponseDto> {
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
+    assertAdvancedMode(ctx.mode);
+
+    if (dto.items === undefined && dto.comment === undefined && dto.name === undefined) {
+      throw new BadRequestException(
+        "At least one of name, items or comment must be provided",
+      );
+    }
+
+    return this.dataSource.transaction(async (em) => {
+      const supply = await em.findOne(StockSupply, {
+        where: { id: supplyId, workspaceId: ctx.workspaceId },
+        lock: { mode: "pessimistic_write" },
+        relations: { user: true },
+      });
+      if (!supply) {
+        throw new NotFoundException("Supply not found");
+      }
+      if (supply.status !== "pending") {
+        throw new BadRequestException(
+          "Only pending (not applied) supplies can be edited",
+        );
+      }
+
+      let dirty = false;
+      if (dto.name !== undefined) {
+        supply.name = dto.name.trim();
+        dirty = true;
+      }
+      if (dto.comment !== undefined) {
+        supply.comment =
+          dto.comment == null ? null : dto.comment.trim() || null;
+        dirty = true;
+      }
+      if (dirty) {
+        await em.save(supply);
+      }
+
+      if (dto.items !== undefined) {
+        await this.replaceSupplyItems(em, ctx, supply.id, dto.items);
+      }
+
+      const items = await em.find(StockSupplyItem, {
+        where: { supplyId: supply.id },
+        order: { id: "ASC" },
+      });
+      return this.toSupplyDto(supply, items, supply.user);
     });
   }
 
@@ -1131,6 +1306,164 @@ export class InventoryService {
     });
   }
 
+  private resolveSupplyStatusFilter(
+    query: ListStockSuppliesQueryDto,
+  ): "all" | "applied" | "pending" {
+    if (query.by === SuppliesByFilter.applied) return "applied";
+    if (query.by === SuppliesByFilter.not_applied) return "pending";
+    if (query.by === SuppliesByFilter.all) return "all";
+    if (query.status === ListStockSuppliesStatusFilter.applied) return "applied";
+    if (query.status === ListStockSuppliesStatusFilter.pending) return "pending";
+    return "all";
+  }
+
+  private async requireSupplyInWorkspace(
+    workspaceId: number,
+    supplyId: number,
+    withRelations: boolean,
+  ): Promise<StockSupply> {
+    const supply = await this.stockSupplyRepo.findOne({
+      where: { id: supplyId, workspaceId },
+      ...(withRelations
+        ? { relations: { items: true, user: true } }
+        : {}),
+    });
+    if (!supply) {
+      throw new NotFoundException("Supply not found");
+    }
+    return supply;
+  }
+
+  private async replaceSupplyItems(
+    em: EntityManager,
+    ctx: StockContext,
+    supplyId: number,
+    items: CreateStockSupplyItemDto[],
+  ): Promise<void> {
+    await em.delete(StockSupplyItem, { supplyId });
+    for (const item of items) {
+      await this.assertSupplyItemVariant(em, ctx.workspaceId, item);
+      await em.save(
+        em.create(StockSupplyItem, {
+          supplyId,
+          productId: item.productId,
+          variantId: item.productVariantId,
+          quantity: item.quantity,
+          buyPrice: item.buyPrice,
+        }),
+      );
+    }
+  }
+
+  private async assertSupplyItemVariant(
+    em: EntityManager,
+    workspaceId: number,
+    item: CreateStockSupplyItemDto,
+  ): Promise<void> {
+    const variant = await em.findOne(ProductVariant, {
+      where: { id: item.productVariantId },
+      relations: { product: true },
+    });
+    if (!variant?.product || variant.product.workspaceId !== workspaceId) {
+      throw new NotFoundException(
+        `Variant ${item.productVariantId} not found`,
+      );
+    }
+    if (variant.productId !== item.productId) {
+      throw new BadRequestException(
+        `productVariantId ${item.productVariantId} does not belong to productId ${item.productId}`,
+      );
+    }
+  }
+
+  private async applySupplyItemsInTx(
+    em: EntityManager,
+    ctx: StockContext,
+    supply: StockSupply,
+  ): Promise<StockSupplyLineResultDto[]> {
+    const items = await em.find(StockSupplyItem, {
+      where: { supplyId: supply.id },
+      order: { id: "ASC" },
+    });
+    if (items.length === 0) {
+      throw new BadRequestException("Supply has no line items to apply");
+    }
+
+    const lines: StockSupplyLineResultDto[] = [];
+    for (const item of items) {
+      const stock = await this.lockVariantStock(
+        em,
+        ctx.workspaceId,
+        item.variantId,
+      );
+      const result = applySupply(
+        this.toSnapshot(stock),
+        item.quantity,
+        item.buyPrice,
+      );
+      await this.persistStock(em, stock, result.after);
+
+      const movement = await em.save(
+        em.create(StockMovement, {
+          workspaceId: ctx.workspaceId,
+          variantId: item.variantId,
+          type: StockMovementType.supply,
+          quantityChange: result.quantityChange,
+          purchasePrice: item.buyPrice,
+          totalCostChange: result.totalCostChange,
+          reason: null,
+          comment: supply.comment,
+          orderId: null,
+          orderItemId: null,
+          supplyId: supply.id,
+          userId: ctx.userId,
+        }),
+      );
+
+      lines.push({
+        item: {
+          productId: item.productId,
+          productVariantId: item.variantId,
+          quantity: item.quantity,
+          buyPrice: item.buyPrice,
+        },
+        movement: this.toMovementDto(movement, null),
+        stock: this.toStockDto(stock, ctx.mode),
+      });
+    }
+    return lines;
+  }
+
+  private toSupplyDto(
+    supply: StockSupply,
+    items: StockSupplyItem[],
+    user:
+      | {
+          id: number;
+          firstName?: string | null;
+          lastName?: string | null;
+          name?: string | null;
+        }
+      | null
+      | undefined,
+  ): StockSupplyResponseDto {
+    return {
+      id: supply.id,
+      name: supply.name,
+      status: supply.status,
+      comment: supply.comment,
+      createdAt: supply.createdAt,
+      appliedAt: supply.appliedAt,
+      createdBy: this.toHistoryUser(user),
+      items: items.map((item) => ({
+        productId: item.productId,
+        productVariantId: item.variantId,
+        quantity: item.quantity,
+        buyPrice: Number(item.buyPrice),
+      })),
+    };
+  }
+
   private async requireManageContext(
     userId: number,
     appRole?: string,
@@ -1330,7 +1663,7 @@ export class InventoryService {
   ): StockHistoryFilterSql {
     const params: unknown[] = [workspaceId];
     let idx = 2;
-    const supplyParts = ["ss.workspace_id = $1"];
+    const supplyParts = ["ss.workspace_id = $1", "ss.status = 'applied'"];
     const movementParts = ["sm.workspace_id = $1", "sm.supply_id IS NULL"];
     if (mode === InventoryMode.simple) {
       movementParts.push(
@@ -1389,11 +1722,10 @@ export class InventoryService {
       supplyParts.push(`(
         EXISTS (
           SELECT 1
-          FROM stock_movements sm_kw
-          INNER JOIN product_variants pv_kw ON pv_kw.id = sm_kw.variant_id
+          FROM stock_supply_items si_kw
+          INNER JOIN product_variants pv_kw ON pv_kw.id = si_kw.variant_id
           INNER JOIN products p_kw ON p_kw.id = pv_kw.product_id
-          WHERE sm_kw.supply_id = ss.id
-            AND sm_kw.workspace_id = $1
+          WHERE si_kw.supply_id = ss.id
             AND ${productMatch}
         )
         OR EXISTS (
@@ -1618,6 +1950,7 @@ export class InventoryService {
       id: supply.id,
       type: StockMovementType.supply,
       createdAt: supply.createdAt,
+      name: supply.name,
       comment: supply.comment,
       user: this.toHistoryUser(supply.user),
       totalQuantityChange: movements.reduce(

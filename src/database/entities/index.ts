@@ -69,6 +69,11 @@ export { VariantStock } from "./variant-stock.entity";
 export { StockMovement } from "./stock-movement.entity";
 export { StockMovementType } from "./stock-movement-type.enum";
 export { StockSupply } from "./stock-supply.entity";
+export { StockSupplyItem } from "./stock-supply-item.entity";
+export {
+  STOCK_SUPPLY_STATUSES,
+  type StockSupplyStatus,
+} from "./stock-supply-status";
 export { ProductVariant } from "./product-variant.entity";
 export { ProductVariantCustomFieldValue } from "./product-variant-custom-field-value.entity";
 export { UploadMedia } from "./upload-media.entity";

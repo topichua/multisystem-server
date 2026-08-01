@@ -162,6 +162,8 @@ import { OrderItemsProductVariantOnDeleteSetNull1744200000164 } from "./migratio
 import { TikTokIntegrations1744200000165 } from "./migrations/1744200000165-TikTokIntegrations";
 import { TikTokOAuthPendingSessions1744200000166 } from "./migrations/1744200000166-TikTokOAuthPendingSessions";
 import { TikTokOAuthPendingCodeVerifier1744200000167 } from "./migrations/1744200000167-TikTokOAuthPendingCodeVerifier";
+import { StockSupplyPendingStatus1744200000168 } from "./migrations/1744200000168-StockSupplyPendingStatus";
+import { StockSupplyName1744200000169 } from "./migrations/1744200000169-StockSupplyName";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -209,6 +211,7 @@ import {
   VariantStock,
   StockMovement,
   StockSupply,
+  StockSupplyItem,
   WorkspaceEntitlements,
   PlanTemplate,
   WorkspaceSubscription,
@@ -321,6 +324,7 @@ const entities = [
   VariantStock,
   StockMovement,
   StockSupply,
+  StockSupplyItem,
   WorkspaceEntitlements,
   PlanTemplate,
   WorkspaceSubscription,
@@ -542,6 +546,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       TikTokIntegrations1744200000165,
       TikTokOAuthPendingSessions1744200000166,
       TikTokOAuthPendingCodeVerifier1744200000167,
+      StockSupplyPendingStatus1744200000168,
+      StockSupplyName1744200000169,
     ],
   };
 }

@@ -54,6 +54,12 @@ export class StockHistorySupplyEntryDto {
   @ApiProperty()
   createdAt: Date;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Display name of the supply batch.",
+  })
+  name: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   comment: string | null;
 

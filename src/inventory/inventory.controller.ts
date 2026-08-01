@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -24,6 +25,8 @@ import { CreateInventoryCountDto } from "./dto/create-inventory-count.dto";
 import { CreatePurchaseDto } from "./dto/create-purchase.dto";
 import { CreateReturnDto } from "./dto/create-return.dto";
 import { CreateStockSupplyDto } from "./dto/create-stock-supply.dto";
+import { ListStockSuppliesQueryDto } from "./dto/list-stock-supplies-query.dto";
+import { UpdateStockSupplyDto } from "./dto/update-stock-supply.dto";
 import { SetSimpleQuantityDto } from "./dto/set-simple-quantity.dto";
 import {
   ProductStockListResponseDto,
@@ -31,7 +34,12 @@ import {
   StockOperationResponseDto,
   VariantStockDto,
 } from "./dto/stock-response.dto";
-import { CreateStockSupplyResponseDto } from "./dto/stock-supply-response.dto";
+import {
+  ApplyStockSupplyResponseDto,
+  CreateStockSupplyResponseDto,
+  StockSupplyListResponseDto,
+  StockSupplyResponseDto,
+} from "./dto/stock-supply-response.dto";
 import { ListInventoryMovementsQueryDto } from "./dto/list-inventory-movements-query.dto";
 import { ListStockHistoryQueryDto } from "./dto/list-stock-history-query.dto";
 import { StockHistoryListResponseDto } from "./dto/stock-history-response.dto";
@@ -89,12 +97,51 @@ export class InventoryController {
     );
   }
 
+  @Get("stock/supplies")
+  @ApiOperation({
+    summary: "List stock supplies",
+    description:
+      "Filters: `by=all|applied|not_applied` (or `status=all|applied|pending`), " +
+      "`createdFrom` / `createdTo`, `createdBy` (user id), pagination.",
+  })
+  @ApiOkResponse({ type: StockSupplyListResponseDto })
+  listStockSupplies(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListStockSuppliesQueryDto,
+  ): Promise<StockSupplyListResponseDto> {
+    return this.inventory.listStockSupplies(
+      this.requireUserId(req),
+      query,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Get("stock/supplies/:id")
+  @ApiOperation({
+    summary: "Get stock supply by id",
+    description: "Includes line items (products/variants in the supply).",
+  })
+  @ApiOkResponse({ type: StockSupplyResponseDto })
+  getStockSupply(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<StockSupplyResponseDto> {
+    return this.inventory.getStockSupplyById(
+      this.requireUserId(req),
+      id,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
   @Post("stock/supplies")
   @ApiOperation({
-    summary: "Record stock supply / delivery batch (advanced mode)",
+    summary: "Create stock supply / delivery batch (advanced mode)",
     description:
-      "Creates one supply record and stock movements of type `supply` for each line item. " +
-      "Allowed before initial stock; each affected variant is marked `stockInitialized: true`.",
+      "Body must include `immediatelyApply`. When false, creates a pending supply " +
+      "(editable, no stock movements). When true, applies immediately. " +
+      "Use POST /inventory/stock/supplies/:id/apply for pending supplies.",
   })
   @ApiCreatedResponse({ type: CreateStockSupplyResponseDto })
   createStockSupply(
@@ -103,6 +150,47 @@ export class InventoryController {
   ): Promise<CreateStockSupplyResponseDto> {
     return this.inventory.createStockSupply(
       this.requireUserId(req),
+      dto,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Post("stock/supplies/:id/apply")
+  @ApiOperation({
+    summary: "Apply a pending stock supply",
+    description:
+      "Creates stock movements for each line and marks the supply as `applied`. " +
+      "Fails if already applied.",
+  })
+  @ApiOkResponse({ type: ApplyStockSupplyResponseDto })
+  applyStockSupply(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<ApplyStockSupplyResponseDto> {
+    return this.inventory.applyStockSupply(
+      this.requireUserId(req),
+      id,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Patch("stock/supplies/:id")
+  @ApiOperation({
+    summary: "Edit a pending stock supply",
+    description:
+      "Allowed only while status is `pending` (not applied). Can replace `items` and/or `comment`.",
+  })
+  @ApiOkResponse({ type: StockSupplyResponseDto })
+  updateStockSupply(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateStockSupplyDto,
+  ): Promise<StockSupplyResponseDto> {
+    return this.inventory.updateStockSupply(
+      this.requireUserId(req),
+      id,
       dto,
       req.user?.role,
       req.user?.workspaceId,
