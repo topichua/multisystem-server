@@ -15,6 +15,7 @@ import { WorkspaceSettingsModule } from "../workspace-settings/workspace-setting
 import { ClientsController } from "./clients.controller";
 import { ClientLinksController } from "./client-links.controller";
 import { ClientWishlistController } from "./client-wishlist.controller";
+import { ProductVariantWishlistController } from "./product-variant-wishlist.controller";
 import { ClientsService } from "./clients.service";
 
 @Module({
@@ -36,6 +37,7 @@ import { ClientsService } from "./clients.service";
     ClientWishlistController,
     ClientLinksController,
     ClientsController,
+    ProductVariantWishlistController,
   ],
   providers: [ClientsService],
   exports: [ClientsService],

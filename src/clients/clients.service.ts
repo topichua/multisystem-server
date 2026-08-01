@@ -25,6 +25,7 @@ import type { AddClientWishlistRequestDto } from "./dto/add-client-wishlist-requ
 import type { ClientWishlistItemResponseDto } from "./dto/client-wishlist-item-response.dto";
 import type { ClientWishlistProductsResponseDto } from "./dto/client-wishlist-products-response.dto";
 import type { RemoveClientWishlistRequestDto } from "./dto/remove-client-wishlist-request.dto";
+import type { VariantWishlistResponseDto } from "./dto/variant-wishlist-response.dto";
 import type { ClientSocialIds } from "./dto/client-link-input.util";
 import type { ClientOrderStatDto } from "./dto/client-order-stat.dto";
 import type { ClientsListResponseDto } from "./dto/clients-list-response.dto";
@@ -474,6 +475,74 @@ export class ClientsService {
     );
 
     return { clientId, items };
+  }
+
+  /**
+   * Clients who wishlisted a product variant (newest first), for the
+   * «Очікують варіант» modal.
+   */
+  async listVariantWishlistForOwner(
+    ownerId: number,
+    productId: number,
+    variantId: number,
+  ): Promise<VariantWishlistResponseDto> {
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    await this.requireWishlistEnabled(workspaceId);
+
+    const product = await this.productRepo.findOne({
+      where: { id: productId, workspaceId },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const variant = await this.productVariantRepo.findOne({
+      where: { id: variantId, productId },
+    });
+    if (!variant) {
+      throw new NotFoundException("Variant not found");
+    }
+
+    const rows = await this.clientWishlistRepo.find({
+      where: { workspaceId, productId, variantId },
+      order: { at: "DESC", id: "DESC" },
+    });
+
+    if (rows.length === 0) {
+      return { productId, variantId, total: 0, items: [] };
+    }
+
+    const clientIds = [...new Set(rows.map((row) => row.clientId))];
+    const clients = await this.clientRepo.find({
+      where: { workspaceId, id: In(clientIds) },
+    });
+    const clientDtos = await this.toClientDtos(clients, workspaceId, {
+      includeAvatarSrc: true,
+    });
+    const clientById = new Map(clientDtos.map((c) => [c.id, c]));
+
+    const items = rows.flatMap((row) => {
+      const client = clientById.get(row.clientId);
+      if (!client) {
+        return [];
+      }
+      return [
+        {
+          id: row.id,
+          at: row.at,
+          conversationId: row.conversationId,
+          client,
+        },
+      ];
+    });
+
+    return {
+      productId,
+      variantId,
+      total: items.length,
+      items,
+    };
   }
 
   async getByIdForOwner(
