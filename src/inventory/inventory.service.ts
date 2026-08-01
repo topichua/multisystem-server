@@ -328,7 +328,7 @@ export class InventoryService {
     const rows = await whereQb
       .leftJoinAndSelect("ss.user", "user")
       .leftJoinAndSelect("ss.items", "items")
-      .orderBy("ss.created_at", "DESC")
+      .orderBy("ss.createdAt", "DESC")
       .addOrderBy("ss.id", "DESC")
       .skip(offset)
       .take(limit)
@@ -1447,6 +1447,21 @@ export class InventoryService {
       | null
       | undefined,
   ): StockSupplyResponseDto {
+    let totalQuantity = 0;
+    let totalSum = 0;
+    const itemDtos = items.map((item) => {
+      const quantity = Number(item.quantity);
+      const buyPrice = Number(item.buyPrice);
+      totalQuantity += quantity;
+      totalSum += quantity * buyPrice;
+      return {
+        productId: item.productId,
+        productVariantId: item.variantId,
+        quantity,
+        buyPrice,
+      };
+    });
+
     return {
       id: supply.id,
       name: supply.name,
@@ -1455,12 +1470,10 @@ export class InventoryService {
       createdAt: supply.createdAt,
       appliedAt: supply.appliedAt,
       createdBy: this.toHistoryUser(user),
-      items: items.map((item) => ({
-        productId: item.productId,
-        productVariantId: item.variantId,
-        quantity: item.quantity,
-        buyPrice: Number(item.buyPrice),
-      })),
+      positionsCount: items.length,
+      totalQuantity,
+      totalSum,
+      items: itemDtos,
     };
   }
 

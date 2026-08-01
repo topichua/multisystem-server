@@ -55,6 +55,24 @@ export class StockSupplyResponseDto {
   @ApiPropertyOptional({ type: StockSupplyUserDto, nullable: true })
   createdBy: StockSupplyUserDto | null;
 
+  @ApiProperty({
+    description: "Number of line items (позицій).",
+    example: 3,
+  })
+  positionsCount: number;
+
+  @ApiProperty({
+    description: "Sum of line quantities (одиниць).",
+    example: 62,
+  })
+  totalQuantity: number;
+
+  @ApiProperty({
+    description: "Sum of quantity × buyPrice across lines (сума).",
+    example: 25740,
+  })
+  totalSum: number;
+
   @ApiProperty({ type: [StockSupplyItemResponseDto] })
   items: StockSupplyItemResponseDto[];
 }
