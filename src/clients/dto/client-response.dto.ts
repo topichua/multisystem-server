@@ -35,6 +35,13 @@ export class ClientResponseDto {
   @ApiProperty({ example: "+380501234567" })
   phone: string;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "Постійний клієнт, любить знижки",
+    description: "Free-text note from the client page.",
+  })
+  note: string | null;
+
   @ApiProperty({
     type: [String],
     example: ["17841400008460056"],

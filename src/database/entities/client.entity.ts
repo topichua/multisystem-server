@@ -29,6 +29,9 @@ export class Client {
   @Column({ name: "phone", type: "varchar", length: 64 })
   phone: string;
 
+  @Column({ name: "note", type: "text", nullable: true })
+  note: string | null;
+
   @Column({ name: "workspace_id", type: "int" })
   workspaceId: number;
 

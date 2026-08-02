@@ -38,6 +38,15 @@ export class CreateClientRequestDto {
   phone?: string;
 
   @ApiPropertyOptional({
+    nullable: true,
+    description: "Free-text note on the client page. Empty/null clears.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  note?: string | null;
+
+  @ApiPropertyOptional({
     type: [String],
     description:
       "Instagram scoped user ids (`client_links.external_id`, provider `instagram`).",

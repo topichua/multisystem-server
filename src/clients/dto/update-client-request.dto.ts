@@ -32,6 +32,15 @@ export class UpdateClientRequestDto {
   phone?: string;
 
   @ApiPropertyOptional({
+    nullable: true,
+    description: "Free-text note on the client page. Pass null or empty to clear.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  note?: string | null;
+
+  @ApiPropertyOptional({
     type: [String],
     description:
       "Replaces all Instagram links when set (`[]` clears). Stored in `client_links`.",

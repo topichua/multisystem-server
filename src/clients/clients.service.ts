@@ -93,6 +93,8 @@ export class ClientsService {
       firstName: (dto.first_name?.trim() ?? "") || "",
       lastName: (dto.last_name?.trim() ?? "") || "",
       phone: (dto.phone?.trim() ?? "") || "",
+      note:
+        dto.note == null || dto.note.trim() === "" ? null : dto.note.trim(),
       workspaceId,
     });
 
@@ -136,6 +138,10 @@ export class ClientsService {
     }
     if (dto.phone !== undefined) {
       row.phone = dto.phone.trim();
+    }
+    if (dto.note !== undefined) {
+      row.note =
+        dto.note === null || dto.note.trim() === "" ? null : dto.note.trim();
     }
 
     const instagramUserIds = dto.resolvedInstagramUserIds();
@@ -806,6 +812,7 @@ export class ClientsService {
       lastName: row.lastName,
       createdAt: row.createdAt,
       phone: row.phone,
+      note: row.note?.trim() || null,
       instagramUserIds: socialIds.instagramUserIds,
       telegramUserIds: socialIds.telegramUserIds,
       workspaceId: row.workspaceId,
@@ -944,6 +951,7 @@ export class ClientsService {
       lastName: row.lastName,
       createdAt: row.createdAt,
       phone: row.phone,
+      note: row.note?.trim() || null,
       instagramUserIds: socialIds.instagramUserIds,
       telegramUserIds: socialIds.telegramUserIds,
       instagramUsers: options?.socialProfiles?.instagramUsers ?? [],

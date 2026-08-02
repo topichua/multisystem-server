@@ -17,6 +17,9 @@ export class ClientWriteResponseDto {
   @ApiProperty()
   phone: string;
 
+  @ApiProperty({ nullable: true })
+  note: string | null;
+
   @ApiProperty({ type: [String] })
   instagramUserIds: string[];
 

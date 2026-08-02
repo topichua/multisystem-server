@@ -165,6 +165,7 @@ import { TikTokOAuthPendingCodeVerifier1744200000167 } from "./migrations/174420
 import { StockSupplyPendingStatus1744200000168 } from "./migrations/1744200000168-StockSupplyPendingStatus";
 import { StockSupplyName1744200000169 } from "./migrations/1744200000169-StockSupplyName";
 import { WorkspaceVariantCustomFieldDisplayName1744200000170 } from "./migrations/1744200000170-WorkspaceVariantCustomFieldDisplayName";
+import { ClientsNote1744200000171 } from "./migrations/1744200000171-ClientsNote";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -550,6 +551,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       StockSupplyPendingStatus1744200000168,
       StockSupplyName1744200000169,
       WorkspaceVariantCustomFieldDisplayName1744200000170,
+      ClientsNote1744200000171,
     ],
   };
 }
