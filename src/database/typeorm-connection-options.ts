@@ -166,12 +166,14 @@ import { StockSupplyPendingStatus1744200000168 } from "./migrations/174420000016
 import { StockSupplyName1744200000169 } from "./migrations/1744200000169-StockSupplyName";
 import { WorkspaceVariantCustomFieldDisplayName1744200000170 } from "./migrations/1744200000170-WorkspaceVariantCustomFieldDisplayName";
 import { ClientsNote1744200000171 } from "./migrations/1744200000171-ClientsNote";
+import { InstagramSynchronizations1744200000172 } from "./migrations/1744200000172-InstagramSynchronizations";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
   ClientLink,
   ClientWishlistItem,
   InstagramIntegration,
+  InstagramSynchronization,
   InstagramOAuthPendingSession,
   TikTokIntegration,
   TikTokOAuthState,
@@ -288,6 +290,7 @@ const entities = [
   WorkspaceMember,
   WorkspaceInvitation,
   InstagramIntegration,
+  InstagramSynchronization,
   InstagramOAuthPendingSession,
   TikTokIntegration,
   TikTokOAuthState,
@@ -552,6 +555,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       StockSupplyName1744200000169,
       WorkspaceVariantCustomFieldDisplayName1744200000170,
       ClientsNote1744200000171,
+      InstagramSynchronizations1744200000172,
     ],
   };
 }

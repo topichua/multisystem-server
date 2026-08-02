@@ -4,6 +4,13 @@ export { ClientWishlistItem } from "./client-wishlist-item.entity";
 export { ClientLinkProvider } from "./client-link-provider.enum";
 export { InstagramIntegration } from "./instagram-integration.entity";
 export {
+  InstagramSynchronization,
+  INSTAGRAM_SYNCHRONIZATION_PHASES,
+  INSTAGRAM_SYNCHRONIZATION_STATUSES,
+  type InstagramSynchronizationPhase,
+  type InstagramSynchronizationStatus,
+} from "./instagram-synchronization.entity";
+export {
   InstagramOAuthPendingSession,
   INSTAGRAM_OAUTH_PENDING_STATUSES,
   type InstagramOAuthPendingPage,

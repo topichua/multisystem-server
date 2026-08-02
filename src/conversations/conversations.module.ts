@@ -34,6 +34,7 @@ import { ConversationsAllocationService } from "./conversations-allocation.servi
 import { ConversationsGateway } from "./conversations.gateway";
 import { ConversationsRealtimeService } from "./conversations-realtime.service";
 import { ConversationsService } from "./conversations.service";
+import { InstagramSynchronizationWorkerService } from "./instagram-synchronization-worker.service";
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { ConversationsService } from "./conversations.service";
     ConversationMessageNotifyService,
     ConversationsRealtimeService,
     ConversationsGateway,
+    InstagramSynchronizationWorkerService,
   ],
   exports: [
     ConversationsService,

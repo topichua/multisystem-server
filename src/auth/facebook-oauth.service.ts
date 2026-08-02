@@ -16,6 +16,7 @@ import {
   InstagramOAuthPendingSession,
   type InstagramOAuthPendingPage,
 } from "../database/entities/instagram-oauth-pending-session.entity";
+import { InstagramSynchronizationsService } from "../instagram/instagram-synchronizations.service";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
 import type { FacebookOAuthStatusDto } from "./dto/facebook-oauth-status.dto";
 import type {
@@ -43,7 +44,6 @@ const DEFAULT_OAUTH_SCOPES = [
   "instagram_basic",
   "instagram_manage_messages",
   "instagram_manage_comments",
-  //"pages_read_engagement",
 ];
 
 const STATE_TTL_SECONDS = 15 * 60;
@@ -91,6 +91,7 @@ export class FacebookOAuthService {
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
     @InjectRepository(InstagramOAuthPendingSession)
     private readonly pendingSessionRepo: Repository<InstagramOAuthPendingSession>,
+    private readonly instagramSynchronizations: InstagramSynchronizationsService,
   ) {}
 
   private maskToken(t: string): string {
@@ -478,8 +479,11 @@ export class FacebookOAuthService {
 
     await this.pendingSessionRepo.delete({ id: session.id });
 
+    const syncJob =
+      await this.instagramSynchronizations.enqueueAfterConnect(integration);
+
     this.log.log(
-      `Instagram integration confirmed workspaceId=${workspace.id} integrationId=${integration.id} pageId=${selected.pageId}`,
+      `Instagram integration confirmed workspaceId=${workspace.id} integrationId=${integration.id} pageId=${selected.pageId} syncId=${syncJob.id}`,
     );
 
     return {
@@ -490,6 +494,7 @@ export class FacebookOAuthService {
       instagramAccountId: selected.instagramAccountId,
       tokenConnectedAt: integration.tokenConnectedAt!.toISOString(),
       tokenStatus: TOKEN_STATUS_ACTIVE,
+      synchronizationId: syncJob.id,
     };
   }
 

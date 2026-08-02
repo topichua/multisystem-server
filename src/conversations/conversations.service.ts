@@ -21,6 +21,7 @@ import {
 } from "typeorm";
 import {
   InstagramIntegration,
+  InstagramSynchronization,
   Conversation,
   ConversationGroup,
   ConversationMessage,
@@ -634,6 +635,165 @@ export class ConversationsService {
       upserted++;
     }
     return { upserted };
+  }
+
+  /**
+   * Background backfill: upsert Instagram conversations updated within `job.sinceAt`,
+   * then import recent messages for each (Meta typically exposes ~20 recent messages/thread).
+   * Progress is reported via `onProgress` (no websocket notify flood).
+   */
+  async runInstagramHistorySynchronization(
+    job: InstagramSynchronization,
+    options: {
+      onProgress: (patch: {
+        phase?: "conversations" | "messages" | "done";
+        conversationsTotal?: number;
+        conversationsProcessed?: number;
+        conversationsFailed?: number;
+        messagesImported?: number;
+      }) => Promise<void>;
+    },
+  ): Promise<void> {
+    const integration = await this.instagramIntegrationRepo.findOne({
+      where: { id: job.integrationId, workspaceId: job.workspaceId },
+    });
+    if (!integration) {
+      throw new NotFoundException(
+        `Instagram integration ${job.integrationId} not found`,
+      );
+    }
+    const pageId = integration.pageId?.trim();
+    if (!pageId) {
+      throw new BadRequestException(
+        "Instagram page id is not configured on the integration",
+      );
+    }
+
+    const token = await this.resolveGraphAccessToken(integration.id);
+    const since = job.sinceAt;
+    const sinceMs = since.getTime();
+
+    await options.onProgress({ phase: "conversations" });
+
+    const allConversations = await this.fetchAllInstagramConversations(
+      pageId,
+      token,
+    );
+    const inWindow = allConversations.filter((ig) => {
+      const t = new Date(ig.updated_time).getTime();
+      return !Number.isNaN(t) && t >= sinceMs && Boolean(ig.id?.trim());
+    });
+
+    await this.enrichParticipantProfilePics(
+      { data: inWindow, paging: undefined },
+      token,
+    );
+
+    const participantIds = new Set<string>();
+    for (const ig of inWindow) {
+      for (const p of ig.participants?.data ?? []) {
+        const id = p.id?.trim();
+        if (id) participantIds.add(id);
+      }
+    }
+    if (participantIds.size > 0) {
+      await this.instagramUsers.syncMissingFromGraph(
+        integration.workspaceId,
+        [...participantIds],
+        {
+          pageAccessToken: token,
+          userAccessToken: integration.userAccessToken,
+          businessAccountId: integration.instagramAccountId,
+          pageId: integration.pageId,
+        },
+        { maxSync: participantIds.size },
+      );
+    }
+
+    await options.onProgress({
+      phase: "messages",
+      conversationsTotal: inWindow.length,
+      conversationsProcessed: 0,
+      conversationsFailed: 0,
+      messagesImported: 0,
+    });
+
+    let conversationsProcessed = 0;
+    let conversationsFailed = 0;
+    let messagesImported = 0;
+    const ownerId = integration.ownerId;
+
+    for (const ig of inWindow) {
+      const externalId = ig.id!.trim();
+      try {
+        const participantId = this.pickCustomerParticipantId(
+          ig.participants?.data ?? [],
+          pageId,
+        );
+        const instUpdatedAt = new Date(ig.updated_time);
+
+        let row = await this.conversationRepo.findOne({
+          where: { workspaceId: integration.workspaceId, externalId },
+        });
+        const isNew = !row;
+        if (!row) {
+          row = this.conversationRepo.create({
+            externalSourceId: pageId,
+            externalId,
+            createdAt: new Date(),
+            instUpdatedAt,
+            readAt: null,
+            participantId,
+            source: ConversationSource.INSTAGRAM,
+            workspaceId: integration.workspaceId,
+            groupId: null,
+          });
+        } else {
+          row.instUpdatedAt = instUpdatedAt;
+          row.participantId = participantId;
+          row.externalSourceId = pageId;
+          row.workspaceId = integration.workspaceId;
+        }
+        await this.conversationRepo.save(row);
+        if (isNew) {
+          await this.conversationWorkflow.onConversationCreated(row, ownerId);
+        }
+
+        const graphMessages = await this.getInstagramMessagesSince(
+          externalId,
+          token,
+          since,
+        );
+        const batch = graphMessages.data ?? [];
+        // Omit ownerId so backfill does not flood websocket notifications.
+        await this.persistInstagramMessages(row.id, batch);
+        messagesImported += batch.length;
+        conversationsProcessed += 1;
+      } catch (e) {
+        conversationsFailed += 1;
+        conversationsProcessed += 1;
+        const err = e instanceof Error ? e.message : String(e);
+        this.log.warn(
+          `Instagram history sync conversation failed integrationId=${integration.id} externalId=${externalId}: ${err}`,
+        );
+      }
+
+      await options.onProgress({
+        phase: "messages",
+        conversationsTotal: inWindow.length,
+        conversationsProcessed,
+        conversationsFailed,
+        messagesImported,
+      });
+    }
+
+    await options.onProgress({
+      phase: "done",
+      conversationsTotal: inWindow.length,
+      conversationsProcessed,
+      conversationsFailed,
+      messagesImported,
+    });
   }
 
   /**

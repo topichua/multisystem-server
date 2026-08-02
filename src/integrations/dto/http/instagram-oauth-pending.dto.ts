@@ -79,4 +79,11 @@ export class ConfirmInstagramIntegrationResponseDto {
 
   @ApiProperty({ example: "active" })
   tokenStatus!: string;
+
+  @ApiProperty({
+    description:
+      "Background job id that syncs conversations + messages for the last 7 days. " +
+      "Poll GET /api/instagram/synchronizations/:id for progress.",
+  })
+  synchronizationId!: number;
 }

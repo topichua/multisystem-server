@@ -22,6 +22,7 @@ import { OrderStatusDefaultsModule } from "../orders/order-status-defaults.modul
 import { OrderStatusAutomationsModule } from "../order-status-automations/order-status-automations.module";
 import { BillingProvisioningModule } from "../billing/billing-provisioning.module";
 import { BillingModule } from "../billing/billing.module";
+import { InstagramModule } from "../instagram/instagram.module";
 import { PasswordService } from "../users/crypto/password.service";
 import { InvitationTokenService } from "../users/crypto/invitation-token.service";
 import { AuthController } from "./auth.controller";
@@ -43,6 +44,7 @@ import { PasswordResetService } from "./password-reset.service";
     forwardRef(() => OrderStatusAutomationsModule),
     BillingProvisioningModule,
     BillingModule,
+    InstagramModule,
     TypeOrmModule.forFeature([
       User,
       Workspace,

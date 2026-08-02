@@ -46,6 +46,12 @@ import { ReplyInstagramCommentResponseDto } from "./dto/reply-instagram-comment-
 import { InstagramPostAiExtractionService } from "./instagram-post-ai-extraction.service";
 import { InstagramProductAiService } from "./instagram-product-ai.service";
 import { InstagramService } from "./instagram.service";
+import { InstagramSynchronizationsService } from "./instagram-synchronizations.service";
+import {
+  InstagramSynchronizationDto,
+  InstagramSynchronizationListResponseDto,
+} from "./dto/instagram-synchronization.dto";
+import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 
 @ApiBearerAuth("bearer")
 @UseGuards(JwtAuthGuard)
@@ -56,6 +62,8 @@ export class InstagramController {
     private readonly instagramProductAi: InstagramProductAiService,
     private readonly instagramPostAiExtraction: InstagramPostAiExtractionService,
     private readonly productInstagramReferences: ProductInstagramReferencesService,
+    private readonly synchronizations: InstagramSynchronizationsService,
+    private readonly workspaceContext: WorkspaceAccessContextService,
   ) {}
 
   @Get("integrations")
@@ -95,6 +103,109 @@ export class InstagramController {
     }
 
     return this.instagram.listIntegrationsForOwner(ownerId, workspaceId);
+  }
+
+  @Get("synchronizations")
+  @ApiOperation({
+    summary: "List Instagram history synchronization jobs",
+    description:
+      "Jobs sync conversations and recent messages (last 7 days) after Instagram connect. " +
+      "Filter by `integration_id` when needed.",
+  })
+  @ApiQuery({
+    name: "workspace_id",
+    required: false,
+    schema: { type: "integer", minimum: 1 },
+  })
+  @ApiQuery({
+    name: "integration_id",
+    required: false,
+    schema: { type: "integer", minimum: 1 },
+  })
+  @ApiOkResponse({ type: InstagramSynchronizationListResponseDto })
+  async listSynchronizations(
+    @Req() req: { user?: AuthUser },
+    @Query("workspace_id") workspaceIdRaw?: string,
+    @Query("integration_id") integrationIdRaw?: string,
+  ): Promise<InstagramSynchronizationListResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+
+    let workspaceIdParam: number | undefined;
+    if (workspaceIdRaw != null && workspaceIdRaw.trim() !== "") {
+      workspaceIdParam = Number(workspaceIdRaw.trim());
+      if (!Number.isInteger(workspaceIdParam) || workspaceIdParam <= 0) {
+        throw new BadRequestException(
+          "workspace_id must be a positive integer",
+        );
+      }
+    }
+
+    let integrationId: number | undefined;
+    if (integrationIdRaw != null && integrationIdRaw.trim() !== "") {
+      integrationId = Number(integrationIdRaw.trim());
+      if (!Number.isInteger(integrationId) || integrationId <= 0) {
+        throw new BadRequestException(
+          "integration_id must be a positive integer",
+        );
+      }
+    }
+
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+      req.user?.role,
+      workspaceIdParam,
+    );
+    const items = await this.synchronizations.listForWorkspace(
+      workspace.id,
+      integrationId,
+    );
+    return { items };
+  }
+
+  @Get("synchronizations/:id")
+  @ApiOperation({
+    summary: "Get Instagram history synchronization progress",
+  })
+  @ApiParam({ name: "id", type: Number })
+  @ApiQuery({
+    name: "workspace_id",
+    required: false,
+    schema: { type: "integer", minimum: 1 },
+  })
+  @ApiOkResponse({ type: InstagramSynchronizationDto })
+  async getSynchronization(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+    @Query("workspace_id") workspaceIdRaw?: string,
+  ): Promise<InstagramSynchronizationDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+
+    let workspaceIdParam: number | undefined;
+    if (workspaceIdRaw != null && workspaceIdRaw.trim() !== "") {
+      workspaceIdParam = Number(workspaceIdRaw.trim());
+      if (!Number.isInteger(workspaceIdParam) || workspaceIdParam <= 0) {
+        throw new BadRequestException(
+          "workspace_id must be a positive integer",
+        );
+      }
+    }
+
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+      req.user?.role,
+      workspaceIdParam,
+    );
+    return this.synchronizations.getByIdForWorkspace(workspace.id, id);
   }
 
   @Get("media")
