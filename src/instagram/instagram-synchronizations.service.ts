@@ -150,6 +150,19 @@ export class InstagramSynchronizationsService {
     return this.toDto(row);
   }
 
+  /** True if any pending/processing sync exists for the workspace (optional integration filter). */
+  async isAnySyncing(
+    workspaceId: number,
+    integrationId?: number,
+  ): Promise<boolean> {
+    const where =
+      integrationId != null
+        ? { workspaceId, integrationId, status: In(ACTIVE_STATUSES) }
+        : { workspaceId, status: In(ACTIVE_STATUSES) };
+    const count = await this.syncRepo.count({ where });
+    return count > 0;
+  }
+
   toDto(row: InstagramSynchronization): InstagramSynchronizationDto {
     const total = row.conversationsTotal;
     const processed = row.conversationsProcessed;

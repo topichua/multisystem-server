@@ -68,3 +68,14 @@ export class InstagramSynchronizationListResponseDto {
   @ApiProperty({ type: [InstagramSynchronizationDto] })
   items: InstagramSynchronizationDto[];
 }
+
+/** Lightweight poll for whether any Instagram history sync is still running. */
+export class InstagramSynchronizationActiveResponseDto {
+  @ApiProperty({
+    description:
+      "`true` when at least one job is `pending` or `processing` for the workspace (optionally filtered by integration).",
+    example: true,
+  })
+  syncing: boolean;
+}
+

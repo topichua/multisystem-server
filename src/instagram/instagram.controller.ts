@@ -49,6 +49,7 @@ import { InstagramService } from "./instagram.service";
 import { InstagramSynchronizationsService } from "./instagram-synchronizations.service";
 import {
   InstagramSynchronizationDto,
+  InstagramSynchronizationActiveResponseDto,
   InstagramSynchronizationListResponseDto,
 } from "./dto/instagram-synchronization.dto";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
@@ -165,6 +166,68 @@ export class InstagramController {
       integrationId,
     );
     return { items };
+  }
+
+  @Get("synchronizations/active")
+  @ApiOperation({
+    summary: "Is any Instagram history sync running?",
+    description:
+      "Lightweight check: returns `{ syncing: true }` when a job is `pending` or `processing` " +
+      "for the workspace. Optionally filter by `integration_id`.",
+  })
+  @ApiQuery({
+    name: "workspace_id",
+    required: false,
+    schema: { type: "integer", minimum: 1 },
+  })
+  @ApiQuery({
+    name: "integration_id",
+    required: false,
+    schema: { type: "integer", minimum: 1 },
+  })
+  @ApiOkResponse({ type: InstagramSynchronizationActiveResponseDto })
+  async isSynchronizationActive(
+    @Req() req: { user?: AuthUser },
+    @Query("workspace_id") workspaceIdRaw?: string,
+    @Query("integration_id") integrationIdRaw?: string,
+  ): Promise<InstagramSynchronizationActiveResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+
+    let workspaceIdParam: number | undefined;
+    if (workspaceIdRaw != null && workspaceIdRaw.trim() !== "") {
+      workspaceIdParam = Number(workspaceIdRaw.trim());
+      if (!Number.isInteger(workspaceIdParam) || workspaceIdParam <= 0) {
+        throw new BadRequestException(
+          "workspace_id must be a positive integer",
+        );
+      }
+    }
+
+    let integrationId: number | undefined;
+    if (integrationIdRaw != null && integrationIdRaw.trim() !== "") {
+      integrationId = Number(integrationIdRaw.trim());
+      if (!Number.isInteger(integrationId) || integrationId <= 0) {
+        throw new BadRequestException(
+          "integration_id must be a positive integer",
+        );
+      }
+    }
+
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      ownerId,
+      req.user?.role,
+      workspaceIdParam,
+    );
+    const syncing = await this.synchronizations.isAnySyncing(
+      workspace.id,
+      integrationId,
+    );
+    return { syncing };
   }
 
   @Get("synchronizations/:id")
