@@ -62,6 +62,7 @@ import { ConversationGroupDefaultsService } from "./conversation-group-defaults.
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
+import { resolveInstagramMessageActors } from "./instagram-message-actors.util";
 import type { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 import type { OutboundConversationMessageMediaType } from "./dto/http/send-instagram-message-request.dto";
 import {
@@ -772,7 +773,10 @@ export class ConversationsService {
         );
         const batch = graphMessages.data ?? [];
         // Omit ownerId so backfill does not flood websocket notifications.
-        await this.persistInstagramMessages(row.id, batch);
+        await this.persistInstagramMessages(row.id, batch, {
+          businessInstagramId: integration.instagramAccountId,
+          pageId: integration.pageId,
+        });
         messagesImported += batch.length;
         conversationsProcessed += 1;
       } catch (e) {
@@ -928,6 +932,39 @@ export class ConversationsService {
     }
 
     return this.getConversationForOwnerById(ownerId, conversationId);
+  }
+
+  /**
+   * Permanently deletes a conversation (hard delete). Cascades messages, events,
+   * and product suggestions; orders/`client_wishlist_items` lose the FK reference.
+   */
+  async deleteConversationForOwner(
+    ownerId: number,
+    conversationId: number,
+    context?: { sessionWorkspaceId?: number; appRole?: string },
+  ): Promise<void> {
+    const conv = await this.requireConversationInWorkspace(
+      ownerId,
+      { id: conversationId },
+      context?.sessionWorkspaceId,
+    );
+    await this.assertCanWriteConversation(ownerId, conv);
+
+    await this.conversationRepo.manager.transaction(async (em) => {
+      await em.query(
+        `UPDATE "client_wishlist_items"
+         SET "conversation_id" = NULL
+         WHERE "conversation_id" = $1`,
+        [conv.id],
+      );
+      const result = await em.delete(Conversation, {
+        id: conv.id,
+        workspaceId: conv.workspaceId,
+      });
+      if (!result.affected) {
+        throw new NotFoundException("Conversation not found");
+      }
+    });
   }
 
   private async assertCanAssignConversationResponsibility(
@@ -3478,15 +3515,23 @@ export class ConversationsService {
   private async persistInstagramMessages(
     conversationDbId: number,
     messages: InstagramMessageDto[],
-    options?: { editedAt?: Date; ownerId: number },
+    options?: {
+      editedAt?: Date;
+      ownerId?: number;
+      businessInstagramId?: string | null;
+      pageId?: string | null;
+    },
   ): Promise<void> {
     for (const m of messages) {
       const ext = m.id?.trim();
       if (!ext) continue;
       const createdAt = new Date(m.created_time);
       if (Number.isNaN(createdAt.getTime())) continue;
-      const senderId = m.from?.id?.trim() ?? "";
-      const receiverId = m.to?.data?.[0]?.id?.trim() ?? "";
+      const { senderId, receiverId } = resolveInstagramMessageActors({
+        msg: m,
+        businessInstagramId: options?.businessInstagramId,
+        pageId: options?.pageId,
+      });
       const text = m.message ?? "";
       const { id, ...messageWithoutId } = m;
       void id;
@@ -3500,7 +3545,14 @@ export class ConversationsService {
             messageWithoutId as Record<string, unknown>,
           )
         : (messageWithoutId as Record<string, unknown>);
-      const instagramJson = JSON.stringify(payloadForJson);
+      const withActors = {
+        ...payloadForJson,
+        from: { id: senderId },
+        to: {
+          data: receiverId && receiverId !== "0" ? [{ id: receiverId }] : [],
+        },
+      };
+      const instagramJson = JSON.stringify(withActors);
 
       if (!row) {
         row = this.conversationMessageRepo.create({

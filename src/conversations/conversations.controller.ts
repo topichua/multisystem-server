@@ -2,6 +2,7 @@ import {
   Body,
   BadRequestException,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -20,6 +21,7 @@ import {
   ApiBody,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -649,6 +651,43 @@ export class ConversationsController {
       ownerId,
       numericId,
       dto,
+    );
+  }
+
+  @Delete(":id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Hard-delete a conversation",
+    description:
+      "Permanently deletes the conversation row and cascaded messages/events/suggestions. " +
+      "Orders keep their rows with `conversation_id` set to null. Requires write access on the conversation.",
+  })
+  @ApiNoContentResponse({ description: "Conversation deleted" })
+  async deleteConversation(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<void> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    await this.conversationsService.deleteConversationForOwner(
+      ownerId,
+      numericId,
+      {
+        sessionWorkspaceId: req.user?.workspaceId,
+        appRole: req.user?.role,
+      },
     );
   }
 

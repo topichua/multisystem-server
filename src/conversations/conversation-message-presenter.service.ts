@@ -190,6 +190,17 @@ export class ConversationMessagePresenterService {
           ...(forClient as unknown as InstagramMessageDto),
           ...(reactions != null ? { reactions } : {}),
           ...(attachments != null ? { attachments } : {}),
+          // DB columns are the source of truth for direction (webhook may correct Graph).
+          from:
+            row.senderId && row.senderId !== "0"
+              ? { id: row.senderId }
+              : undefined,
+          to: {
+            data:
+              row.receiverId && row.receiverId !== "0"
+                ? [{ id: row.receiverId }]
+                : [],
+          },
           id:
             typeof forClient.id === "string" && forClient.id.length > 0
               ? forClient.id
@@ -206,6 +217,9 @@ export class ConversationMessagePresenterService {
       id: row.externalId,
       created_time: row.createdAt.toISOString(),
       message: row.message,
+      ...(row.senderId && row.senderId !== "0"
+        ? { from: { id: row.senderId } }
+        : {}),
       to: {
         data:
           row.receiverId && row.receiverId !== "0"

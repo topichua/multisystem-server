@@ -31,6 +31,7 @@ import { ConversationMessageNotifyService } from "./conversation-message-notify.
 import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
+import { resolveInstagramMessageActors } from "./instagram-message-actors.util";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import { InstagramUsersService } from "../instagram/instagram-users.service";
 
@@ -185,7 +186,11 @@ export class ConversationsAllocationService {
     if (numEdit > 0 && ev.message_edit?.mid?.trim()) {
       return "edit";
     }
-    if (ev.message_edit?.mid?.trim() && ev.message_edit?.num_edit == 0) {
+    // New DM: classic `message.mid`, or Meta's `message_edit` with num_edit=0.
+    if (ev.message?.mid?.trim()) {
+      return "new_message";
+    }
+    if (ev.message_edit?.mid?.trim() && numEdit === 0) {
       return "new_message";
     }
     return "skip";
@@ -217,7 +222,8 @@ export class ConversationsAllocationService {
     },
   ): Promise<void> {
     const t = `[webhook trace=${ctx.traceId}]`;
-    const mid = ev.message_edit?.mid?.trim();
+    const mid =
+      ev.message?.mid?.trim() || ev.message_edit?.mid?.trim() || "";
     if (!mid) {
       return;
     }
@@ -230,7 +236,8 @@ export class ConversationsAllocationService {
     const customerUserId = this.pickCustomerUserIdForWebhook(
       msg,
       ctx.businessInstagramId,
-      null,
+      ev.sender?.id,
+      ctx.pageId,
     );
     if (!customerUserId) {
       throw new Error("Could not resolve customer user_id from message");
@@ -260,8 +267,17 @@ export class ConversationsAllocationService {
       );
     }
 
-    const senderId = msg.from?.id?.trim() ?? "";
-    const isInboundCustomer = Boolean(senderId && senderId === customerUserId);
+    const { senderId } = resolveInstagramMessageActors({
+      msg,
+      businessInstagramId: ctx.businessInstagramId,
+      pageId: ctx.pageId,
+      webhook: ev,
+    });
+    const isInboundCustomer = Boolean(
+      senderId &&
+        senderId === customerUserId &&
+        ev.message?.is_echo !== true,
+    );
     if (
       isInboundCustomer &&
       (await this.conversationWorkflow.shouldDropInboundMessage(conv))
@@ -281,6 +297,10 @@ export class ConversationsAllocationService {
       conv,
       ev,
       conv.readAt,
+      {
+        businessInstagramId: ctx.businessInstagramId,
+        pageId: ctx.pageId,
+      },
     );
 
     await this.archiveInstagramMessageRow(messageRow, ctx.accessToken, conv.id);
@@ -384,6 +404,7 @@ export class ConversationsAllocationService {
       msg,
       ctx.businessInstagramId,
       ev.sender?.id,
+      ctx.pageId,
     );
     if (!customerUserId) {
       throw new Error("Could not resolve customer user_id for read event");
@@ -505,12 +526,20 @@ export class ConversationsAllocationService {
     msg: InstagramMessageDto,
     conversationDbId: number,
     ev: InstagramWebhookMessagingItem,
-    options?: { inheritReadAtFromConversation?: Date | null },
+    options?: {
+      inheritReadAtFromConversation?: Date | null;
+      businessInstagramId?: string | null;
+      pageId?: string | null;
+    },
   ): ConversationMessage {
     const ext = msg.id?.trim() ?? "";
     const createdAt = new Date(msg.created_time);
-    const senderId = msg.from?.id?.trim() ?? "";
-    const receiverId = msg.to?.data?.[0]?.id?.trim() ?? "";
+    const { senderId, receiverId } = resolveInstagramMessageActors({
+      msg,
+      businessInstagramId: options?.businessInstagramId,
+      pageId: options?.pageId,
+      webhook: ev,
+    });
     const text = msg.message ?? "";
     const parentMidRaw =
       msg.reply_to?.mid?.trim() || ev.message?.reply_to?.mid?.trim();
@@ -532,6 +561,9 @@ export class ConversationsAllocationService {
 
     const instagramJson = JSON.stringify({
       ...messageWithoutId,
+      // Prefer webhook-resolved actors in stored JSON so API clients see correct from/to.
+      from: { id: senderId },
+      to: { data: receiverId && receiverId !== "0" ? [{ id: receiverId }] : [] },
       webhook_messaging: this.sanitizeWebhookMessagingForStorage(ev),
     });
 
@@ -555,6 +587,10 @@ export class ConversationsAllocationService {
     conversation: Conversation,
     ev: InstagramWebhookMessagingItem,
     convReadAt: Date | null,
+    businessCtx?: {
+      businessInstagramId?: string | null;
+      pageId?: string | null;
+    },
   ): ConversationMessage {
     const ext = msg.id?.trim();
     if (!ext) {
@@ -563,6 +599,8 @@ export class ConversationsAllocationService {
 
     const fresh = this.buildMessageRowFromGraph(msg, conversation.id, ev, {
       inheritReadAtFromConversation: convReadAt,
+      businessInstagramId: businessCtx?.businessInstagramId,
+      pageId: businessCtx?.pageId,
     });
 
     if (!existing) {
@@ -697,9 +735,10 @@ export class ConversationsAllocationService {
   private pickCustomerUserIdFromMessage(
     m: InstagramMessageDto,
     businessInstagramId: string,
+    pageId?: string | null,
   ): string | null {
     const excludedIds = new Set(
-      [businessInstagramId]
+      [businessInstagramId, pageId]
         .map((x) => x?.trim())
         .filter((x): x is string => Boolean(x)),
     );
@@ -729,25 +768,25 @@ export class ConversationsAllocationService {
     m: InstagramMessageDto,
     businessInstagramId: string,
     senderHintId?: string | null,
+    pageId?: string | null,
   ): string | null {
     const excludedIds = new Set(
-      [businessInstagramId]
+      [businessInstagramId, pageId]
         .map((x) => x?.trim())
         .filter((x): x is string => Boolean(x)),
     );
 
-    const fromGraph = this.pickCustomerUserIdFromMessage(
-      m,
-      businessInstagramId,
-    );
-    if (fromGraph) {
-      return fromGraph;
-    }
+    // Prefer webhook sender when it is the customer (not our business/page).
     const hint = senderHintId?.trim();
     if (hint && this.isLikelyInstagramPsid(hint) && !excludedIds.has(hint)) {
       return hint;
     }
-    return null;
+
+    return this.pickCustomerUserIdFromMessage(
+      m,
+      businessInstagramId,
+      pageId,
+    );
   }
 
   private instUpdatedAtFromWebhookMessage(
@@ -863,8 +902,11 @@ export class ConversationsAllocationService {
           businessInstagramId,
           params.pageId,
         )
-      : (this.pickCustomerUserIdFromMessage(msg, businessInstagramId) ??
-        "unknown");
+      : (this.pickCustomerUserIdFromMessage(
+          msg,
+          businessInstagramId,
+          params.pageId,
+        ) ?? "unknown");
 
     row = await this.conversationRepo.findOne({
       where: {
