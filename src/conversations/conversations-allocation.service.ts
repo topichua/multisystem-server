@@ -861,6 +861,7 @@ export class ConversationsAllocationService {
       ? this.pickCustomerParticipantId(
           igConv.participants?.data ?? [],
           businessInstagramId,
+          params.pageId,
         )
       : (this.pickCustomerUserIdFromMessage(msg, businessInstagramId) ??
         "unknown");
@@ -1153,13 +1154,14 @@ export class ConversationsAllocationService {
   private pickCustomerParticipantId(
     participants: InstagramConversationParticipantDto[],
     businessInstagramId: string,
+    pageId?: string | null,
   ): string {
     const ids = participants
       .map((p) => p.id?.trim())
       .filter((id): id is string => Boolean(id));
     if (ids.length === 0) return "unknown";
     const excludedIds = new Set(
-      [businessInstagramId]
+      [businessInstagramId, pageId]
         .map((x) => x?.trim())
         .filter((x): x is string => Boolean(x)),
     );

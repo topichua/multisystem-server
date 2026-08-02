@@ -601,7 +601,10 @@ export class ConversationsService {
       if (!externalId) continue;
       const participantId = this.pickCustomerParticipantId(
         ig.participants?.data ?? [],
-        pageId,
+        {
+          pageId,
+          instagramAccountId: integration.instagramAccountId,
+        },
       );
       const instUpdatedAt = new Date(ig.updated_time);
       if (Number.isNaN(instUpdatedAt.getTime())) continue;
@@ -728,7 +731,10 @@ export class ConversationsService {
       try {
         const participantId = this.pickCustomerParticipantId(
           ig.participants?.data ?? [],
-          pageId,
+          {
+            pageId,
+            instagramAccountId: integration.instagramAccountId,
+          },
         );
         const instUpdatedAt = new Date(ig.updated_time);
 
@@ -3910,15 +3916,19 @@ export class ConversationsService {
 
   private pickCustomerParticipantId(
     participants: InstagramConversationParticipantDto[],
-    pageId: string,
+    businessIds: { pageId?: string | null; instagramAccountId?: string | null },
   ): string {
     const ids = participants
       .map((p) => p.id?.trim())
       .filter((id): id is string => Boolean(id));
     if (ids.length === 0) return "unknown";
-    const page = pageId.trim();
-    const notPage = ids.find((id) => id !== page);
-    return notPage ?? ids[0];
+    const excluded = new Set(
+      [businessIds.pageId, businessIds.instagramAccountId]
+        .map((x) => x?.trim())
+        .filter((x): x is string => Boolean(x)),
+    );
+    const customerId = ids.find((id) => !excluded.has(id));
+    return customerId ?? ids[0];
   }
 
   private async fetchAllInstagramConversations(
