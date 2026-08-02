@@ -38,7 +38,7 @@ const GRAPH_VERSION = "v25.0";
  * you may add Page messaging scopes via `FACEBOOK_OAUTH_SCOPES` / `FB_OAUTH_SCOPES`.
  */
 const DEFAULT_OAUTH_SCOPES = [
-  // "pages_show_list",
+  "pages_show_list",
   "business_management",
   "instagram_basic",
   "instagram_manage_messages",
