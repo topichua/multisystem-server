@@ -495,6 +495,37 @@ export class InventoryService {
     });
   }
 
+  async deleteStockSupply(
+    userId: number,
+    supplyId: number,
+    appRole?: string,
+    workspaceIdParam?: number,
+  ): Promise<void> {
+    const ctx = await this.requireManageContext(
+      userId,
+      appRole,
+      workspaceIdParam,
+    );
+    assertAdvancedMode(ctx.mode);
+
+    const supply = await this.stockSupplyRepo.findOne({
+      where: { id: supplyId, workspaceId: ctx.workspaceId },
+    });
+    if (!supply) {
+      throw new NotFoundException("Supply not found");
+    }
+    if (supply.status !== "pending") {
+      throw new BadRequestException(
+        "Only pending (not applied) supplies can be deleted",
+      );
+    }
+
+    await this.stockSupplyRepo.delete({
+      id: supply.id,
+      workspaceId: ctx.workspaceId,
+    });
+  }
+
   async createCorrection(
     userId: number,
     dto: CreateCorrectionDto,

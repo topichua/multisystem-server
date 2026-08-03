@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -13,6 +16,7 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -193,6 +197,27 @@ export class InventoryController {
       this.requireUserId(req),
       id,
       dto,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Delete("stock/supplies/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Delete a pending stock supply",
+    description:
+      "Hard-deletes the supply and its line items. Allowed only while status is `pending` " +
+      "(not applied). Applied supplies cannot be deleted.",
+  })
+  @ApiNoContentResponse({ description: "Supply deleted" })
+  deleteStockSupply(
+    @Req() req: { user?: AuthUser },
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<void> {
+    return this.inventory.deleteStockSupply(
+      this.requireUserId(req),
+      id,
       req.user?.role,
       req.user?.workspaceId,
     );
