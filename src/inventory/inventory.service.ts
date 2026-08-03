@@ -324,6 +324,22 @@ export class InventoryService {
       });
     }
 
+    const totalSumExpr = `(
+      SELECT COALESCE(SUM(si.quantity * si.buy_price), 0)
+      FROM stock_supply_items si
+      WHERE si.supply_id = ss.id
+    )`;
+    if (query.totalSumFrom != null) {
+      whereQb.andWhere(`${totalSumExpr} >= :totalSumFrom`, {
+        totalSumFrom: query.totalSumFrom,
+      });
+    }
+    if (query.totalSumTo != null) {
+      whereQb.andWhere(`${totalSumExpr} <= :totalSumTo`, {
+        totalSumTo: query.totalSumTo,
+      });
+    }
+
     const total = await whereQb.clone().getCount();
     const rows = await whereQb
       .leftJoinAndSelect("ss.user", "user")

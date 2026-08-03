@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   Max,
   Min,
@@ -65,6 +66,30 @@ export class ListStockSuppliesQueryDto {
   @IsInt()
   @Min(1)
   createdBy?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Inclusive lower bound on supply total sum (`SUM(quantity * buy_price)` of line items).",
+    example: 1000,
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  totalSumFrom?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Inclusive upper bound on supply total sum (`SUM(quantity * buy_price)` of line items).",
+    example: 50000,
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  totalSumTo?: number;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
   @IsOptional()

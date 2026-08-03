@@ -102,7 +102,8 @@ export class InventoryController {
     summary: "List stock supplies",
     description:
       "Filters: `by=all|applied|not_applied` (or `status=all|applied|pending`), " +
-      "`createdFrom` / `createdTo`, `createdBy` (user id), pagination.",
+      "`createdFrom` / `createdTo`, `createdBy` (user id), " +
+      "`totalSumFrom` / `totalSumTo` (supply total = sum of quantity × buyPrice), pagination.",
   })
   @ApiOkResponse({ type: StockSupplyListResponseDto })
   listStockSupplies(
