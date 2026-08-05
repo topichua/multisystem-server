@@ -104,6 +104,17 @@ export class TelegramIntegration {
   })
   listenerHeartbeatAt: Date | null;
 
+  /**
+   * When true, newly created live chats on this channel are auto-assigned to an
+   * eligible member (`work_status = accepting_new_chats` + can take this channel).
+   */
+  @Column({
+    name: "chat_auto_distribution",
+    type: "boolean",
+    default: false,
+  })
+  chatAutoDistribution: boolean;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 

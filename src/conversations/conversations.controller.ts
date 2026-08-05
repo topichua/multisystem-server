@@ -31,10 +31,13 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { SuperAdminGuard } from "../auth/super-admin.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { ConversationsService } from "./conversations.service";
+import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
 import {
   ConversationRowDto,
   ConversationsListResponseDto,
 } from "./dto/http/conversations-list-response.dto";
+import { ChatAutoDistributionLogResponseDto } from "./dto/http/chat-auto-distribution-log-response.dto";
+import { ListChatAutoDistributionLogQueryDto } from "./dto/http/list-chat-auto-distribution-log-query.dto";
 import { SyncConversationsResponseDto } from "./dto/http/sync-conversations-response.dto";
 import { InstagramMessagesResponseDto } from "./dto/http/instagram-messages-response.dto";
 import { UpdateConversationRequestDto } from "./dto/http/update-conversation-request.dto";
@@ -67,7 +70,39 @@ type UploadedConversationMessageFile = {
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
 @Controller("conversations")
 export class ConversationsController {
-  constructor(private readonly conversationsService: ConversationsService) {}
+  constructor(
+    private readonly conversationsService: ConversationsService,
+    private readonly chatAutoDistribution: ChatAutoDistributionService,
+  ) {}
+
+  @Get("chat-auto-distribution")
+  @ApiOperation({
+    summary: "Chat auto-distribution log and summary",
+    description:
+      "Returns how many chats were auto-distributed, to whom, and by channel. " +
+      "`summary.byChannel` = counts per channel, `summary.byMember` = counts per employee, " +
+      "`summary.byChannelAndMember` = channel × member breakdown. " +
+      "`items` is a paginated event log (newest first). " +
+      "Optional filters: `integrationType`, `integrationId`, `memberId`, `createdFrom`, `createdTo`.",
+  })
+  @ApiOkResponse({ type: ChatAutoDistributionLogResponseDto })
+  async listChatAutoDistributionLog(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListChatAutoDistributionLogQueryDto,
+  ): Promise<ChatAutoDistributionLogResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.chatAutoDistribution.listLogForOwner(
+      ownerId,
+      query,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
 
   @Get()
   @ApiOperation({

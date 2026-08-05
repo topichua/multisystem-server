@@ -89,6 +89,7 @@ export class AuthService {
         subscription: null,
         permissions: null,
         workspaceRole: null,
+        work_status: null,
       };
     }
 
@@ -317,6 +318,7 @@ export class AuthService {
       subscription: billing.subscription,
       permissions: access.permissions,
       workspaceRole: access.workspaceRole,
+      work_status: access.workStatus,
     };
   }
 
@@ -375,9 +377,10 @@ export class AuthService {
   ): Promise<{
     permissions: MeResponseDto["permissions"];
     workspaceRole: MeResponseDto["workspaceRole"];
+    workStatus: MeResponseDto["work_status"];
   }> {
     if (workspaceId == null) {
-      return { permissions: null, workspaceRole: null };
+      return { permissions: null, workspaceRole: null, workStatus: null };
     }
 
     try {
@@ -390,14 +393,7 @@ export class AuthService {
         this.workspaceRepo.findOne({ where: { id: workspaceId } }),
       ]);
       if (!workspace) {
-        return { permissions: null, workspaceRole: null };
-      }
-
-      if (workspace.ownerId === user.id) {
-        return {
-          permissions,
-          workspaceRole: this.toOwnerWorkspaceRole(),
-        };
+        return { permissions: null, workspaceRole: null, workStatus: null };
       }
 
       const member = await this.workspaceMemberRepo.findOne({
@@ -408,26 +404,38 @@ export class AuthService {
         },
         relations: { role: true },
       });
+
+      const workStatus = member?.workStatus ?? null;
+
+      if (workspace.ownerId === user.id) {
+        return {
+          permissions,
+          workspaceRole: this.toOwnerWorkspaceRole(member?.id ?? null),
+          workStatus,
+        };
+      }
+
       if (!member?.role) {
-        return { permissions, workspaceRole: null };
+        return { permissions, workspaceRole: null, workStatus: null };
       }
 
       return {
         permissions,
         workspaceRole: this.toMemberWorkspaceRole(member),
+        workStatus,
       };
     } catch (error) {
       if (
         error instanceof NotFoundException ||
         error instanceof ForbiddenException
       ) {
-        return { permissions: null, workspaceRole: null };
+        return { permissions: null, workspaceRole: null, workStatus: null };
       }
       throw error;
     }
   }
 
-  private toOwnerWorkspaceRole(): WorkspaceRoleMeDto {
+  private toOwnerWorkspaceRole(memberId: number | null): WorkspaceRoleMeDto {
     return {
       id: null,
       slug: "owner",
@@ -435,7 +443,7 @@ export class AuthService {
       description: null,
       color: null,
       isOwner: true,
-      memberId: null,
+      memberId,
     };
   }
 

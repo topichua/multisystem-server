@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -30,6 +31,8 @@ import { INTEGRATION_TYPES } from "./integration-type";
 import { CreateIntegrationRequestDto } from "./dto/http/create-integration-request.dto";
 import { CreateIntegrationResponseDto } from "./dto/http/create-integration-response.dto";
 import { IntegrationsListResponseDto } from "./dto/http/integrations-list-response.dto";
+import { IntegrationListItemDto } from "./dto/http/integration-list-item.dto";
+import { UpdateChannelChatAutoDistributionRequestDto } from "./dto/http/update-channel-chat-auto-distribution.dto";
 import {
   ConfirmInstagramIntegrationRequestDto,
   ConfirmInstagramIntegrationResponseDto,
@@ -176,6 +179,40 @@ export class IntegrationsController {
       );
     }
     return this.integrations.pollTikTokOAuthStatusForOwner(ownerId, sessionId);
+  }
+
+  @Patch(":type/:id")
+  @ApiOperation({
+    summary: "Update channel auto-distribution setting",
+    description:
+      "Sets `chat_auto_distribution` for Instagram or Telegram channels. " +
+      "When enabled, new live chats are assigned to a member with `work_status=accepting_new_chats` " +
+      "who has `canTakeChat` («Брати непризначені») for this channel, full conversation access, or is the owner. " +
+      "Emits conversation event `responsible_changed` with `source: auto_distribution`.",
+  })
+  @ApiParam({ name: "type", enum: ["instagram", "telegram"] })
+  @ApiParam({ name: "id", type: Number })
+  @ApiBody({ type: UpdateChannelChatAutoDistributionRequestDto })
+  @ApiOkResponse({ type: IntegrationListItemDto })
+  async updateChatAutoDistribution(
+    @Req() req: { user?: AuthUser },
+    @Param("type") type: string,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateChannelChatAutoDistributionRequestDto,
+  ): Promise<IntegrationListItemDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return this.integrations.updateChatAutoDistributionForOwner(
+      ownerId,
+      type,
+      id,
+      dto.chat_auto_distribution,
+      req.user?.role,
+    );
   }
 
   @Delete(":type/:id")

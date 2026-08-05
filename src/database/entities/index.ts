@@ -40,6 +40,7 @@ export {
 } from "./conversation-group-system-key.enum";
 export { ConversationEvent } from "./conversation-event.entity";
 export { ConversationEventType } from "./conversation-event-type.enum";
+export { ChatAutoDistributionLog } from "./chat-auto-distribution-log.entity";
 export { ConversationMessage } from "./conversation-message.entity";
 export { ConversationMessageType } from "./conversation-message-type.enum";
 export { ConversationSource } from "./conversation-source.enum";

@@ -151,8 +151,9 @@ export class AuthController {
     summary: "Current user profile and company",
     description:
       "Returns JWT claims plus full user row (without secrets), the latest company for this owner when applicable, " +
-      "billing plan/subscription/entitlements, and resolved workspace permissions with role for the JWT workspace session. " +
-      "Env super-admin login has no user/company rows.",
+      "billing plan/subscription/entitlements, resolved workspace permissions/role, and `work_status` " +
+      "for the active workspace membership (`accepting_new_chats` | `not_accepting_new_chats` | `break`). " +
+      "Env super-admin login has no user/company rows (`work_status` is null).",
   })
   @ApiOkResponse({ type: MeResponseDto })
   async getAuth(

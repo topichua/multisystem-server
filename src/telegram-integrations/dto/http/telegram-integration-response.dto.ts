@@ -54,4 +54,12 @@ export class TelegramIntegrationResponseDto {
       "Where Telegram delivered the login code (from GramJS `isCodeViaApp`).",
   })
   codeDelivery?: "telegram_app" | "sms";
+
+  @ApiProperty({
+    description:
+      "When true, new live chats on this channel are auto-distributed to eligible members " +
+      "with work_status `accepting_new_chats`.",
+    example: false,
+  })
+  chat_auto_distribution: boolean;
 }

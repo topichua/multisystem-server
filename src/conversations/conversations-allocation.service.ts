@@ -30,6 +30,7 @@ import type {
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
+import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import { resolveInstagramMessageActors } from "./instagram-message-actors.util";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
@@ -81,6 +82,7 @@ export class ConversationsAllocationService {
     private readonly messageNotify: ConversationMessageNotifyService,
     private readonly mediaArchive: ConversationMediaArchiveService,
     private readonly conversationWorkflow: ConversationWorkflowService,
+    private readonly chatAutoDistribution: ChatAutoDistributionService,
   ) {
     setInterval(() => this.sweepExpiredCompanyContextCache(), 60_000).unref?.();
   }
@@ -265,6 +267,7 @@ export class ConversationsAllocationService {
         conv,
         ctx.companyCtx.ownerId,
       );
+      await this.chatAutoDistribution.tryAssignOnNewConversation(conv);
     }
 
     const { senderId } = resolveInstagramMessageActors({

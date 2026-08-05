@@ -16,6 +16,7 @@ import {
   Client,
   ClientLink,
 } from "../database/entities";
+import { ChatAutoDistributionLog } from "../database/entities/chat-auto-distribution-log.entity";
 import { AuthModule } from "../auth/auth.module";
 import { InstagramModule } from "../instagram/instagram.module";
 import { ProductsModule } from "../products/products.module";
@@ -26,6 +27,7 @@ import { ConversationEventsModule } from "./conversation-events.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
 import { ConversationGroupsService } from "./conversation-groups.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
+import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
 import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
@@ -60,6 +62,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
       ProductVariant,
       Client,
       ClientLink,
+      ChatAutoDistributionLog,
     ]),
   ],
   controllers: [ConversationsController, ConversationGroupsController],
@@ -68,6 +71,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
     ConversationsAllocationService,
     ConversationGroupsService,
     ConversationWorkflowService,
+    ChatAutoDistributionService,
     ConversationMessagePresenterService,
     ConversationMediaArchiveService,
     ConversationMessageNotifyService,
@@ -83,6 +87,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
     ConversationMessageNotifyService,
     ConversationMediaArchiveService,
     ConversationWorkflowService,
+    ChatAutoDistributionService,
   ],
 })
 export class ConversationsModule {}

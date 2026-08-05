@@ -66,6 +66,16 @@ export class TelegramIntegrationsService {
     return this.toDto(row);
   }
 
+  async updateChatAutoDistributionForOwner(
+    ownerId: number,
+    id: number,
+    chatAutoDistribution: boolean,
+  ): Promise<TelegramIntegration> {
+    const row = await this.requireOwnedRow(ownerId, id);
+    row.chatAutoDistribution = chatAutoDistribution === true;
+    return this.telegramRepo.save(row);
+  }
+
   async startForOwner(
     ownerId: number,
     dto: StartTelegramIntegrationRequestDto,
@@ -404,12 +414,14 @@ export class TelegramIntegrationsService {
     connectedAt?: string;
     status: TelegramIntegrationStatus;
     lastError?: string;
+    chat_auto_distribution: boolean;
   } {
     return {
       type: "telegram",
       id: row.id,
       name: this.resolveIntegrationListName(row),
       status: row.status,
+      chat_auto_distribution: row.chatAutoDistribution === true,
       ...(row.lastError?.trim() ? { lastError: row.lastError.trim() } : {}),
       ...(row.connectedAt != null && !Number.isNaN(row.connectedAt.getTime())
         ? { connectedAt: row.connectedAt.toISOString() }
@@ -463,6 +475,7 @@ export class TelegramIntegrationsService {
       status: row.status,
       name: row.name,
       phoneNumber: row.phoneNumber,
+      chat_auto_distribution: row.chatAutoDistribution === true,
       ...(row.telegramUserId ? { telegramUserId: row.telegramUserId } : {}),
       ...(row.telegramUsername
         ? { telegramUsername: row.telegramUsername }

@@ -69,6 +69,7 @@ export class InstagramIntegrationProfileService {
       ...(connectedAt != null && !Number.isNaN(connectedAt.getTime())
         ? { connectedAt: connectedAt.toISOString() }
         : {}),
+      chat_auto_distribution: row.chatAutoDistribution === true,
     };
   }
 

@@ -51,6 +51,13 @@ export class InstagramIntegrationListItemDto {
       "Published post count from Graph (`media_count`). Omitted when Graph does not return it.",
   })
   postsCount?: number;
+
+  @ApiProperty({
+    description:
+      "When true, new live chats on this channel are auto-distributed to eligible members.",
+    example: false,
+  })
+  chat_auto_distribution: boolean;
 }
 
 export class InstagramIntegrationsListResponseDto {

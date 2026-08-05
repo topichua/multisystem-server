@@ -181,6 +181,47 @@ export class IntegrationsService {
     }
   }
 
+  async updateChatAutoDistributionForOwner(
+    ownerId: number,
+    type: string,
+    id: number,
+    chatAutoDistribution: boolean,
+    appRole?: string,
+  ): Promise<IntegrationListItemDto> {
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    const integrationType = this.parseIntegrationType(type);
+    if (integrationType !== "instagram" && integrationType !== "telegram") {
+      throw new BadRequestException(
+        "chat_auto_distribution is only supported for instagram and telegram channels",
+      );
+    }
+
+    if (integrationType === "instagram") {
+      const row = await this.instagramIntegrationRepo.findOne({ where: { id } });
+      if (!row || row.ownerId !== ownerId) {
+        throw new NotFoundException("Instagram integration not found");
+      }
+      await this.workspaceContext.requireWorkspaceOwner(
+        ownerId,
+        row.workspaceId,
+        appRole,
+      );
+      row.chatAutoDistribution = chatAutoDistribution === true;
+      const saved = await this.instagramIntegrationRepo.save(row);
+      return this.mapInstagramRow(saved);
+    }
+
+    const updated =
+      await this.telegramIntegrations.updateChatAutoDistributionForOwner(
+        ownerId,
+        id,
+        chatAutoDistribution,
+      );
+    return this.mapTelegramRow(updated);
+  }
+
   private parseIntegrationType(raw: string): IntegrationType {
     const type = raw.trim().toLowerCase();
     if (!(INTEGRATION_TYPES as readonly string[]).includes(type)) {
@@ -256,6 +297,7 @@ export class IntegrationsService {
       type: mapped.type,
       id: mapped.id,
       name: mapped.name,
+      chat_auto_distribution: mapped.chat_auto_distribution,
       ...(mapped.connectedAt ? { connectedAt: mapped.connectedAt } : {}),
       ...(mapped.status !== TelegramIntegrationStatus.ACTIVE
         ? { status: mapped.status }

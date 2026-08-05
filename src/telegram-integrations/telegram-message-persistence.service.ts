@@ -31,6 +31,7 @@ import {
   type StoredMessageReaction,
 } from "../conversations/conversation-message-reactions-json.util";
 import { ConversationWorkflowService } from "../conversations/conversation-workflow.service";
+import { ChatAutoDistributionService } from "../conversations/chat-auto-distribution.service";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { TelegramUsersService } from "./telegram-users.service";
 import {
@@ -56,6 +57,7 @@ export class TelegramMessagePersistenceService {
     @Inject(forwardRef(() => TelegramUsersService))
     private readonly telegramUsers: TelegramUsersService,
     private readonly conversationWorkflow: ConversationWorkflowService,
+    private readonly chatAutoDistribution: ChatAutoDistributionService,
   ) {}
 
   /**
@@ -403,6 +405,7 @@ export class TelegramMessagePersistenceService {
     if (convSaved) {
       await this.conversationRepo.save(conv);
       await this.conversationWorkflow.onConversationCreated(conv, ownerId);
+      await this.chatAutoDistribution.tryAssignOnNewConversation(conv);
     } else if (
       !isOutgoing &&
       (await this.conversationWorkflow.shouldDropInboundMessage(conv))

@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -12,6 +13,7 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -30,6 +32,7 @@ import { StartTelegramQrLoginResponseDto } from "./dto/http/start-telegram-qr-lo
 import { TelegramDialogsListResponseDto } from "./dto/http/telegram-dialog-response.dto";
 import { TelegramIntegrationResponseDto } from "./dto/http/telegram-integration-response.dto";
 import { TelegramIntegrationsListResponseDto } from "./dto/http/telegram-integrations-list-response.dto";
+import { UpdateChannelChatAutoDistributionRequestDto } from "../integrations/dto/http/update-channel-chat-auto-distribution.dto";
 import { TelegramIntegrationsService } from "./telegram-integrations.service";
 
 @ApiTags("telegram-integrations")
@@ -92,6 +95,30 @@ export class TelegramIntegrationsController {
       this.requireOwnerId(req),
       this.parseId(id),
     );
+  }
+
+  @Patch(":id")
+  @ApiOperation({
+    summary: "Update Telegram chat auto-distribution",
+    description:
+      "Toggles `chat_auto_distribution` for this channel. Alias of " +
+      "`PATCH /integrations/telegram/:id`.",
+  })
+  @ApiParam({ name: "id", type: Number })
+  @ApiBody({ type: UpdateChannelChatAutoDistributionRequestDto })
+  @ApiOkResponse({ type: TelegramIntegrationResponseDto })
+  async updateChatAutoDistribution(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+    @Body() dto: UpdateChannelChatAutoDistributionRequestDto,
+  ): Promise<TelegramIntegrationResponseDto> {
+    const ownerId = this.requireOwnerId(req);
+    const row = await this.telegram.updateChatAutoDistributionForOwner(
+      ownerId,
+      this.parseId(id),
+      dto.chat_auto_distribution,
+    );
+    return this.telegram.getOneForOwner(ownerId, row.id);
   }
 
   @Post()

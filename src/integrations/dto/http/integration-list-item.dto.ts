@@ -51,7 +51,7 @@ export class IntegrationListItemDto {
 
   @ApiPropertyOptional({
     description:
-      "Instagram only: profile picture URL from Graph (`profile_picture_url`). `null` when the account has no picture or Graph did not return one.",
+      "Instagram only: profile picture URL from Graph (`profile_picture_url`). `null` when unavailable.",
     nullable: true,
   })
   avatar?: string | null;
@@ -73,4 +73,12 @@ export class IntegrationListItemDto {
       "Instagram only: published post count from Graph (`media_count`).",
   })
   postsCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Instagram / Telegram: when true, new live chats are auto-distributed to eligible members " +
+      "with work_status `accepting_new_chats`. Toggle via PATCH /integrations/:type/:id.",
+    example: false,
+  })
+  chat_auto_distribution?: boolean;
 }

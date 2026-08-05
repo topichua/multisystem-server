@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { UserStatus } from "../../database/entities";
+import {
+  UserStatus,
+  WorkspaceMemberWorkStatus,
+} from "../../database/entities";
 import { BillingCycle } from "../../database/entities/billing-cycle.enum";
 import { SubscriptionStatus } from "../../database/entities/subscription-status.enum";
 import { PlanTemplateResponseDto } from "../../billing/dto/plan-template-response.dto";
@@ -165,7 +168,8 @@ export class WorkspaceRoleMeDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "Workspace member id when the user is not the owner.",
+    description:
+      "Workspace member id for the current user in this workspace (owners who have a members row included).",
   })
   memberId: number | null;
 }
@@ -228,4 +232,16 @@ export class MeResponseDto {
       "Workspace role for the current user in the JWT workspace session.",
   })
   workspaceRole: WorkspaceRoleMeDto | null;
+
+  @ApiPropertyOptional({
+    enum: WorkspaceMemberWorkStatus,
+    nullable: true,
+    description:
+      "Current workspace member work/availability status for the JWT session " +
+      "(`accepting_new_chats` | `not_accepting_new_chats` | `break`). " +
+      "Null when no active membership (e.g. env super-admin). " +
+      "Update via PATCH workspace members me work status endpoint.",
+    example: WorkspaceMemberWorkStatus.ACCEPTING_NEW_CHATS,
+  })
+  work_status: WorkspaceMemberWorkStatus | null;
 }

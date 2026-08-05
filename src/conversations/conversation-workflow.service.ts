@@ -144,6 +144,7 @@ export class ConversationWorkflowService {
     fromMemberId: number | null,
     toMemberId: number | null,
     actorId: number | null,
+    meta?: { source?: string },
   ): Promise<void> {
     if (fromMemberId === toMemberId) {
       return;
@@ -156,6 +157,7 @@ export class ConversationWorkflowService {
       {
         fromResponsibleMemberId: fromMemberId,
         toResponsibleMemberId: toMemberId,
+        ...(meta?.source ? { source: meta.source } : {}),
       },
     );
 

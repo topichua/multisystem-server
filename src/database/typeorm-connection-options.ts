@@ -168,6 +168,8 @@ import { WorkspaceVariantCustomFieldDisplayName1744200000170 } from "./migration
 import { ClientsNote1744200000171 } from "./migrations/1744200000171-ClientsNote";
 import { InstagramSynchronizations1744200000172 } from "./migrations/1744200000172-InstagramSynchronizations";
 import { ClientsBlocked1744200000173 } from "./migrations/1744200000173-ClientsBlocked";
+import { ChatAutoDistribution1744200000174 } from "./migrations/1744200000174-ChatAutoDistribution";
+import { ChatAutoDistributionLogs1744200000175 } from "./migrations/1744200000175-ChatAutoDistributionLogs";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -177,6 +179,7 @@ import {
   InstagramSynchronization,
   InstagramOAuthPendingSession,
   TikTokIntegration,
+  ChatAutoDistributionLog,
   TikTokOAuthState,
   TikTokOAuthPendingSession,
   Conversation,
@@ -307,6 +310,7 @@ const entities = [
   ConversationGroup,
   Conversation,
   ConversationEvent,
+  ChatAutoDistributionLog,
   ConversationMessage,
   ProductCategory,
   Product,
@@ -558,6 +562,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ClientsNote1744200000171,
       InstagramSynchronizations1744200000172,
       ClientsBlocked1744200000173,
+      ChatAutoDistribution1744200000174,
+      ChatAutoDistributionLogs1744200000175,
     ],
   };
 }
