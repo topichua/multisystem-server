@@ -41,6 +41,11 @@ import type { UpdateClientRequestDto } from "./dto/update-client-request.dto";
 type ClientReadOptions = {
   includeOrderStat?: boolean;
   keyword?: string;
+  blocked?: "all" | "not_blocked" | "blocked";
+  createdFrom?: string;
+  createdTo?: string;
+  lastOrderFrom?: string;
+  lastOrderTo?: string;
 };
 
 type ClientSerializeOptions = ClientReadOptions & {
@@ -252,6 +257,43 @@ export class ClientsService {
           OR (c.firstName || ' ' || c.lastName) ILIKE :pattern ESCAPE '\\')`,
         { pattern },
       );
+    }
+
+    const blockedFilter = options?.blocked ?? "all";
+    if (blockedFilter === "blocked") {
+      qb.andWhere("c.blocked = true");
+    } else if (blockedFilter === "not_blocked") {
+      qb.andWhere("c.blocked = false");
+    }
+
+    if (options?.createdFrom) {
+      qb.andWhere("c.createdAt >= :createdFrom", {
+        createdFrom: this.parseDateBoundary(options.createdFrom, "start"),
+      });
+    }
+    if (options?.createdTo) {
+      qb.andWhere("c.createdAt <= :createdTo", {
+        createdTo: this.parseDateBoundary(options.createdTo, "end"),
+      });
+    }
+
+    if (options?.lastOrderFrom || options?.lastOrderTo) {
+      const lastOrderExpr = `(
+        SELECT MAX(o.created_at)
+        FROM orders o
+        WHERE o.customer_id = c.id
+          AND o.workspace_id = :workspaceId
+      )`;
+      if (options.lastOrderFrom) {
+        qb.andWhere(`${lastOrderExpr} >= :lastOrderFrom`, {
+          lastOrderFrom: this.parseDateBoundary(options.lastOrderFrom, "start"),
+        });
+      }
+      if (options.lastOrderTo) {
+        qb.andWhere(`${lastOrderExpr} <= :lastOrderTo`, {
+          lastOrderTo: this.parseDateBoundary(options.lastOrderTo, "end"),
+        });
+      }
     }
 
     const [rows, total] = await qb
@@ -1028,6 +1070,25 @@ export class ClientsService {
     if (!enabled) {
       throw new ForbiddenException("Wishlist is disabled for this workspace");
     }
+  }
+
+  private parseDateBoundary(
+    value: string,
+    boundary: "start" | "end",
+  ): Date {
+    const trimmed = value.trim();
+    const date = new Date(trimmed);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`Invalid date: ${value}`);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      if (boundary === "start") {
+        date.setUTCHours(0, 0, 0, 0);
+      } else {
+        date.setUTCHours(23, 59, 59, 999);
+      }
+    }
+    return date;
   }
 
   private escapePgIlikePattern(value: string): string {

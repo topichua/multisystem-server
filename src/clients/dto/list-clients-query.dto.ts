@@ -2,6 +2,8 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
   IsBoolean,
+  IsDateString,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -24,6 +26,13 @@ function trimOptionalString(value: unknown): string | undefined {
   if (value == null || value === "") return undefined;
   const s = typeof value === "string" ? value.trim() : String(value).trim();
   return s.length > 0 ? s : undefined;
+}
+
+/** UI «Показувати»: all / not blocked / blocked. */
+export enum ListClientsBlockedFilter {
+  all = "all",
+  not_blocked = "not_blocked",
+  blocked = "blocked",
 }
 
 /**
@@ -110,4 +119,50 @@ export class ListClientsQueryDto {
   @IsString()
   @MinLength(1)
   keyword?: string;
+
+  @ApiPropertyOptional({
+    enum: ListClientsBlockedFilter,
+    description:
+      "Blocked-status filter for list mode: `all` (default), `not_blocked`, `blocked`.",
+    default: ListClientsBlockedFilter.all,
+  })
+  @IsOptional()
+  @IsEnum(ListClientsBlockedFilter)
+  blocked?: ListClientsBlockedFilter;
+
+  @ApiPropertyOptional({
+    description:
+      "Client `createdAt` range start (ISO date `YYYY-MM-DD` or datetime). List mode only.",
+    example: "2026-01-01",
+  })
+  @IsOptional()
+  @IsDateString()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Client `createdAt` range end (ISO date `YYYY-MM-DD` or datetime). List mode only.",
+    example: "2026-12-31",
+  })
+  @IsOptional()
+  @IsDateString()
+  createdTo?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Filter by last order date (`MAX(orders.created_at)` for the client) start. Clients with no orders are excluded when this is set. List mode only.",
+    example: "2026-01-01",
+  })
+  @IsOptional()
+  @IsDateString()
+  lastOrderFrom?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Filter by last order date (`MAX(orders.created_at)` for the client) end. Clients with no orders are excluded when this is set. List mode only.",
+    example: "2026-12-31",
+  })
+  @IsOptional()
+  @IsDateString()
+  lastOrderTo?: string;
 }

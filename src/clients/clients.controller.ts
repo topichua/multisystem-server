@@ -63,6 +63,8 @@ export class ClientsController {
       "**Lookup** (at most one of): `id`, `instagramUserId` / `instagramId`, `telegramUserId` — returns `ClientLookupResponseDto` (HTTP 200, `associated: false` if none). " +
       "**List:** omit all lookup params — paginated workspace clients (`page` / `pageSize`, defaults 1 / 50). " +
       "Optional `keyword` filters by first name, last name, phone, or full name. " +
+      "Filters (list only): `blocked=all|not_blocked|blocked`, `createdFrom`/`createdTo` (client created at), " +
+      "`lastOrderFrom`/`lastOrderTo` (max order created_at; clients without orders excluded when set). " +
       "Every client in GET responses includes read-only `avatar_src` (from linked `telegram_users` or `instagram_users`). " +
       "Pass `include_order_stat=true` to also embed `orderStats` (order count, total spent, average order price, last order date).",
   })
@@ -118,6 +120,11 @@ export class ClientsController {
     return this.clients.listPagedForOwner(ownerId, page, pageSize, {
       ...statOptions,
       keyword: query.keyword,
+      blocked: query.blocked,
+      createdFrom: query.createdFrom,
+      createdTo: query.createdTo,
+      lastOrderFrom: query.lastOrderFrom,
+      lastOrderTo: query.lastOrderTo,
     });
   }
 
