@@ -30,10 +30,12 @@ export class R2UploadTestResponseDto {
   @ApiProperty({ description: "Object key inside the R2 bucket." })
   key: string;
 
-  @ApiProperty({
-    description: "Public URL — open in browser to verify bucket public access.",
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Public URL when CF_R2_PUBLIC_URL is set; null for private-only buckets.",
   })
-  publicUrl: string;
+  publicUrl: string | null;
 
   @ApiProperty()
   contentType: string;
@@ -52,8 +54,12 @@ export class R2PingResponseDto {
   @ApiProperty()
   key: string;
 
-  @ApiProperty()
-  publicUrl: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Public URL when CF_R2_PUBLIC_URL is set; null for private-only buckets.",
+  })
+  publicUrl: string | null;
 
   @ApiProperty({
     description: "ISO timestamp written into the ping object.",

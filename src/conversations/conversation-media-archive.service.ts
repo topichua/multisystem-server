@@ -123,6 +123,12 @@ export class ConversationMediaArchiveService {
         buffer: downloaded.buffer,
         contentType: downloaded.contentType,
       });
+      if (!uploaded.publicUrl) {
+        this.log.warn(
+          `Telegram ${mediaKind} R2 upload missing public URL chat=${chatId} msg=${msg.id} key=${key}`,
+        );
+        return null;
+      }
       publicUrl = uploaded.publicUrl;
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
@@ -231,6 +237,12 @@ export class ConversationMediaArchiveService {
         buffer,
         contentType: contentType || "application/octet-stream",
       });
+      if (!uploaded.publicUrl) {
+        this.log.warn(
+          `Outbound ${mediaType} R2 upload missing public URL message=${context.messageExternalId} key=${key}`,
+        );
+        return null;
+      }
       return {
         type: mediaType,
         key,
@@ -304,11 +316,18 @@ export class ConversationMediaArchiveService {
         buffer: downloaded.buffer,
         contentType: downloaded.contentType,
       });
+      if (!uploaded.publicUrl) {
+        this.log.warn(
+          `Instagram ${mediaFolder} R2 upload missing public URL mid=${context.messageExternalId} key=${key}`,
+        );
+        return item;
+      }
+      const publicUrl = uploaded.publicUrl;
 
       const next: InstagramAttachment = {
         ...item,
-        file_url: uploaded.publicUrl,
-        r2_url: uploaded.publicUrl,
+        file_url: publicUrl,
+        r2_url: publicUrl,
         r2_key: uploaded.key,
         source_url: sourceUrl,
       };
@@ -318,12 +337,12 @@ export class ConversationMediaArchiveService {
           videoData && typeof videoData === "object" ? videoData : {};
         next.video_data = {
           ...existingVideo,
-          url: uploaded.publicUrl,
+          url: publicUrl,
           preview_url:
             typeof existingVideo.preview_url === "string" &&
             existingVideo.preview_url.trim()
               ? existingVideo.preview_url
-              : uploaded.publicUrl,
+              : publicUrl,
           source_url: sourceUrl,
         };
       }
