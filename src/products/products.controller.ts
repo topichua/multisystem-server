@@ -57,6 +57,12 @@ import {
 import type { ProductMedia } from "../database/entities";
 import { ProductMediaType } from "../database/entities/product-media-type.enum";
 import { ProductAuthorizationService } from "../workspace-access/product-authorization.service";
+import {
+  CreateProductExportDto,
+  CreateProductExportResponseDto,
+  ProductExportStatusResponseDto,
+} from "./dto/create-product-export.dto";
+import { ProductExportsService } from "./product-exports.service";
 
 type UploadedImageFile = {
   buffer: Buffer;
@@ -76,6 +82,7 @@ export class ProductsController {
     private readonly uploadMedia: UploadMediaService,
     private readonly inventory: InventoryService,
     private readonly productAuthz: ProductAuthorizationService,
+    private readonly productExports: ProductExportsService,
   ) {}
 
   @Get()
@@ -98,6 +105,70 @@ export class ProductsController {
   ): Promise<ProductListResponseDto> {
     const ownerId = this.requireNumericOwnerId(req);
     return this.products.listForOwner(ownerId, query);
+  }
+
+  @Post("exports")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Start async product export",
+    description:
+      "Creates a product export job (`all` | `filtered` | `selected`) in XLSX or CSV. " +
+      "`filtered` reuses the same product list filters/sort as GET /products (no pagination). " +
+      "`selected` takes priority over filters. File is uploaded to private R2; poll GET /products/exports/:id.",
+  })
+  @ApiCreatedResponse({ type: CreateProductExportResponseDto })
+  async createExport(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: CreateProductExportDto,
+  ): Promise<CreateProductExportResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.productExports.createForOwner(
+      ownerId,
+      dto,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Get("exports/:id")
+  @ApiOperation({
+    summary: "Get product export status",
+    description:
+      "Returns job status. When completed, includes file metadata and a temporary signed download URL.",
+  })
+  @ApiOkResponse({ type: ProductExportStatusResponseDto })
+  async getExportStatus(
+    @Req() req: { user?: AuthUser },
+    @Param("id") exportId: string,
+  ): Promise<ProductExportStatusResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.productExports.getStatusForOwner(
+      ownerId,
+      exportId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
+
+  @Get("exports/:id/download")
+  @ApiOperation({
+    summary: "Get temporary signed download URL for a completed export",
+  })
+  async getExportDownload(
+    @Req() req: { user?: AuthUser },
+    @Param("id") exportId: string,
+  ): Promise<{
+    downloadUrl: string;
+    fileName: string;
+    expiresInSeconds: number;
+  }> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.productExports.getDownloadForOwner(
+      ownerId,
+      exportId,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
   }
 
   @Get("catalog-variants")

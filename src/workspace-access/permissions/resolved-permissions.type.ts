@@ -31,6 +31,7 @@ export type ResolvedUserPermissions = {
     inventoryView: boolean;
     inventoryManage: boolean;
     referencesManagement: boolean;
+    export: boolean;
   };
   orders: {
     view: boolean;

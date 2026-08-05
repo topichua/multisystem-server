@@ -171,6 +171,7 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       ),
       booleanPermission("products.category", "Керування категоріями"),
       booleanPermission("products.inventory.manage", "Керування інвентарем"),
+      booleanPermission("products.export", "Експорт товарів"),
       booleanPermission(
         "products.references.manage",
         "Керування референсами",

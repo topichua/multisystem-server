@@ -56,6 +56,27 @@ export class ProductAuthorizationService {
     await this.requireKey(userId, "products.ai_import", appRole, workspaceId);
   }
 
+  async requireExport(
+    userId: number,
+    appRole?: string,
+    workspaceId?: number,
+  ): Promise<void> {
+    await this.requireKey(userId, "products.export", appRole, workspaceId);
+  }
+
+  async canViewPurchasePrice(
+    userId: number,
+    appRole?: string,
+    workspaceId?: number,
+  ): Promise<boolean> {
+    try {
+      await this.requireInventoryView(userId, appRole, workspaceId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async requireCategoryManage(
     userId: number,
     appRole?: string,

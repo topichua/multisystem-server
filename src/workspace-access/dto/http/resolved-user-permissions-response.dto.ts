@@ -32,6 +32,11 @@ export class ResolvedProductsPermissionsDto {
     description: "Whether the role may manage product references at all.",
   })
   referencesManagement: boolean;
+
+  @ApiProperty({
+    description: "Whether the role may export the product catalog.",
+  })
+  export: boolean;
 }
 
 export class ResolvedOrdersPermissionsDto {

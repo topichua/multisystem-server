@@ -299,65 +299,8 @@ export class ProductsService {
     const offset =
       query.page != null ? (page - 1) * pageSize : (query.offset ?? 0);
     const limit = pageSize;
-    const categoryIdFilter = await this.parseAndValidateCategoryIdsForList(
-      workspace.id,
-      query,
-    );
-    assertListPriceRange(query);
 
-    const fieldFilterPlan = await this.resolveFieldFilterPlan(
-      workspace.id,
-      query.fieldFilters,
-    );
-
-    const qb = this.productRepo
-      .createQueryBuilder("p")
-      .where("p.workspaceId = :workspaceId", { workspaceId: workspace.id });
-    this.applyProductStatusFilter(qb, query);
-    this.applyProductFieldFilters(qb, "product", fieldFilterPlan);
-    if (query.wishlistOnly === true) {
-      qb.andWhere(
-        `EXISTS (
-          SELECT 1 FROM client_wishlist_items w
-          WHERE w.product_id = p.id
-            AND w.workspace_id = :wishlistWorkspaceId
-        )`,
-        { wishlistWorkspaceId: workspace.id },
-      );
-    }
-    if (query.showOnlyReserved === true) {
-      qb.andWhere(
-        `EXISTS (
-          SELECT 1
-          FROM product_variants rv
-          INNER JOIN variant_stocks vs ON vs.variant_id = rv.id
-          WHERE rv.product_id = p.id
-            AND vs.workspace_id = :reservedWorkspaceId
-            AND vs.reserved_quantity > 0
-        )`,
-        { reservedWorkspaceId: workspace.id },
-      );
-    }
-    this.applyStockQuantityRangeFilter(qb, "product", workspace.id, query);
-    if (categoryIdFilter?.length) {
-      qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
-    }
-    const minP = query.minPrice;
-    const maxP = query.maxPrice;
-    if (minP !== undefined && maxP !== undefined) {
-      qb.andWhere("p.price BETWEEN :minP AND :maxP", { minP, maxP });
-    } else if (minP !== undefined) {
-      qb.andWhere("p.price >= :minP", { minP });
-    } else if (maxP !== undefined) {
-      qb.andWhere("p.price <= :maxP", { maxP });
-    }
-    const keyword = query.keyword?.trim();
-    if (keyword) {
-      qb.andWhere("p.name ILIKE :nameKeyword ESCAPE '\\'", {
-        nameKeyword: `%${escapePgIlikePattern(keyword)}%`,
-      });
-    }
-    applyProductListSort(qb, query.sort);
+    const qb = await this.buildProductListQuery(workspace.id, query);
     const [rows, total] = await qb.skip(offset).take(limit).getManyAndCount();
     if (rows.length === 0) {
       return {
@@ -428,9 +371,178 @@ export class ProductsService {
   }
 
   /**
-   * Paginated variant rows for the owner’s catalog: same filters/sort/paging as `GET /products`,
-   * but each item is one variant with `product_parent` and variant `media`.
+   * Shared product-list query (filters + sort, no pagination).
+   * Used by GET /products and product export jobs.
    */
+  async buildProductListQuery(
+    workspaceId: number,
+    query: ListProductsQueryDto,
+  ): Promise<SelectQueryBuilder<Product>> {
+    const categoryIdFilter = await this.parseAndValidateCategoryIdsForList(
+      workspaceId,
+      query,
+    );
+    assertListPriceRange(query);
+
+    const fieldFilterPlan = await this.resolveFieldFilterPlan(
+      workspaceId,
+      query.fieldFilters,
+    );
+
+    const qb = this.productRepo
+      .createQueryBuilder("p")
+      .where("p.workspaceId = :workspaceId", { workspaceId });
+    this.applyProductStatusFilter(qb, query);
+    this.applyProductFieldFilters(qb, "product", fieldFilterPlan);
+    if (query.wishlistOnly === true) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM client_wishlist_items w
+          WHERE w.product_id = p.id
+            AND w.workspace_id = :wishlistWorkspaceId
+        )`,
+        { wishlistWorkspaceId: workspaceId },
+      );
+    }
+    if (query.showOnlyReserved === true) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM product_variants rv
+          INNER JOIN variant_stocks vs ON vs.variant_id = rv.id
+          WHERE rv.product_id = p.id
+            AND vs.workspace_id = :reservedWorkspaceId
+            AND vs.reserved_quantity > 0
+        )`,
+        { reservedWorkspaceId: workspaceId },
+      );
+    }
+    this.applyStockQuantityRangeFilter(qb, "product", workspaceId, query);
+    if (categoryIdFilter?.length) {
+      qb.andWhere("p.categoryId IN (:...catIds)", { catIds: categoryIdFilter });
+    }
+    const minP = query.minPrice;
+    const maxP = query.maxPrice;
+    if (minP !== undefined && maxP !== undefined) {
+      qb.andWhere("p.price BETWEEN :minP AND :maxP", { minP, maxP });
+    } else if (minP !== undefined) {
+      qb.andWhere("p.price >= :minP", { minP });
+    } else if (maxP !== undefined) {
+      qb.andWhere("p.price <= :maxP", { maxP });
+    }
+    const keyword = query.keyword?.trim();
+    if (keyword) {
+      qb.andWhere("p.name ILIKE :nameKeyword ESCAPE '\\'", {
+        nameKeyword: `%${escapePgIlikePattern(keyword)}%`,
+      });
+    }
+    applyProductListSort(qb, query.sort);
+    return qb;
+  }
+
+  /**
+   * Product ids matching the same filters/sort as GET /products (no pagination).
+   * When `productIds` is provided (selected scope), only validates workspace ownership
+   * and ignores filters; ids are returned in request order (deduped).
+   */
+  async collectProductIdsForExport(
+    workspaceId: number,
+    options: {
+      scope: "all" | "filtered" | "selected";
+      listQuery?: ListProductsQueryDto;
+      productIds?: number[] | null;
+    },
+  ): Promise<number[]> {
+    if (options.scope === "selected") {
+      const ids = [...new Set((options.productIds ?? []).filter((id) => id > 0))];
+      if (ids.length === 0) {
+        return [];
+      }
+      const found = await this.productRepo.find({
+        where: { workspaceId, id: In(ids) },
+        select: { id: true },
+      });
+      const foundSet = new Set(found.map((p) => p.id));
+      const missing = ids.filter((id) => !foundSet.has(id));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          "One or more productIds are invalid or not in your workspace",
+        );
+      }
+      return ids;
+    }
+
+    const query = options.listQuery ?? ({} as ListProductsQueryDto);
+    const qb = await this.buildProductListQuery(workspaceId, query);
+    const rows = await qb.select(["p.id"]).getMany();
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Load full export rows for the given product ids (workspace-scoped).
+   * Order of products matches the order of `productIds`.
+   */
+  async loadProductsForExport(
+    workspaceId: number,
+    productIds: number[],
+  ): Promise<{
+    products: Product[];
+    categoriesById: Map<number, string>;
+    fieldDefs: WorkspaceVariantCustomField[];
+    stockMap: Map<number, VariantStockDto>;
+    productImageById: Map<number, string>;
+  }> {
+    if (productIds.length === 0) {
+      return {
+        products: [],
+        categoriesById: new Map(),
+        fieldDefs: [],
+        stockMap: new Map(),
+        productImageById: new Map(),
+      };
+    }
+
+    const loaded = await this.productRepo.find({
+      where: { id: In(productIds), workspaceId },
+      relations: {
+        variants: { customFieldValues: true, media: true },
+        media: true,
+        category: true,
+      },
+    });
+    const byId = new Map(loaded.map((p) => [p.id, p]));
+    const products = productIds
+      .map((id) => byId.get(id))
+      .filter((p): p is Product => p != null);
+
+    const categoriesById = new Map<number, string>();
+    for (const p of products) {
+      if (p.categoryId != null && p.category?.name) {
+        categoriesById.set(p.categoryId, p.category.name);
+      }
+    }
+
+    const fieldDefs =
+      await this.variantCustomFields.listDefinitionsForWorkspace(workspaceId);
+    const productImageById =
+      await this.loadFirstProductLevelMediaUrls(productIds);
+    const variantIds = products.flatMap((p) =>
+      (p.variants ?? []).map((v) => v.id),
+    );
+    const stockMap = await this.inventory.getStockMapForVariantIds(
+      workspaceId,
+      variantIds,
+    );
+
+    return {
+      products,
+      categoriesById,
+      fieldDefs,
+      stockMap,
+      productImageById,
+    };
+  }
+
   /**
    * Flat variant rows with embedded product info — for catalog search / order line pickers.
    * Lighter than `GET /products/variants` (no media gallery on each row).

@@ -65,6 +65,7 @@ export function resolveOwnerPermissions(
       inventoryView: true,
       inventoryManage: true,
       referencesManagement: true,
+      export: true,
     },
     orders: {
       view: true,
@@ -134,6 +135,7 @@ export function resolveRolePermissions(
       inventoryManage,
       referencesManagement:
         enabled && hasKey(keys, "products.references.manage"),
+      export: enabled && hasKey(keys, "products.export"),
     },
     orders: {
       view: ordersVisibility !== "none",
@@ -280,6 +282,8 @@ export function hasBooleanPermission(
       return resolved.products.categoryManagement;
     case "products.ai_import":
       return resolved.products.aiImport;
+    case "products.export":
+      return resolved.products.export;
     case "products.inventory.view":
       return resolved.products.inventoryView;
     case "products.inventory.manage":

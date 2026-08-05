@@ -170,6 +170,7 @@ import { InstagramSynchronizations1744200000172 } from "./migrations/17442000001
 import { ClientsBlocked1744200000173 } from "./migrations/1744200000173-ClientsBlocked";
 import { ChatAutoDistribution1744200000174 } from "./migrations/1744200000174-ChatAutoDistribution";
 import { ChatAutoDistributionLogs1744200000175 } from "./migrations/1744200000175-ChatAutoDistributionLogs";
+import { ProductExports1744200000176 } from "./migrations/1744200000176-ProductExports";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -195,6 +196,7 @@ import {
   OrderStatus,
   Product,
   ProductCategory,
+  ProductExport,
   ProductMedia,
   ProductInstagramReference,
   ProductSuggestion,
@@ -314,6 +316,7 @@ const entities = [
   ConversationMessage,
   ProductCategory,
   Product,
+  ProductExport,
   ProductVariant,
   ProductVariantCustomFieldValue,
   ProductMedia,
@@ -564,6 +567,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ClientsBlocked1744200000173,
       ChatAutoDistribution1744200000174,
       ChatAutoDistributionLogs1744200000175,
+      ProductExports1744200000176,
     ],
   };
 }

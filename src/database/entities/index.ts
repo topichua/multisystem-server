@@ -64,6 +64,13 @@ export {
 } from "./order-status-system-defaults";
 export { ProductCategory } from "./product-category.entity";
 export { Product } from "./product.entity";
+export {
+  ProductExport,
+  type ProductExportScope,
+  type ProductExportFormat,
+  type ProductExportStatus,
+} from "./product-export.entity";
+
 export { ProductMedia } from "./product-media.entity";
 export { ProductMediaType } from "./product-media-type.enum";
 export { ProductInstagramReference } from "./product-instagram-reference.entity";
