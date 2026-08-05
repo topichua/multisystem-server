@@ -95,6 +95,7 @@ export class ClientsService {
       phone: (dto.phone?.trim() ?? "") || "",
       note:
         dto.note == null || dto.note.trim() === "" ? null : dto.note.trim(),
+      blocked: false,
       workspaceId,
     });
 
@@ -186,6 +187,46 @@ export class ClientsService {
     if (res.affected === 0) {
       throw new NotFoundException("Client not found");
     }
+  }
+
+  async blockForOwner(
+    ownerId: number,
+    clientId: number,
+  ): Promise<ClientWriteResponseDto> {
+    return this.setBlockedForOwner(ownerId, clientId, true);
+  }
+
+  async unblockForOwner(
+    ownerId: number,
+    clientId: number,
+  ): Promise<ClientWriteResponseDto> {
+    return this.setBlockedForOwner(ownerId, clientId, false);
+  }
+
+  private async setBlockedForOwner(
+    ownerId: number,
+    clientId: number,
+    blocked: boolean,
+  ): Promise<ClientWriteResponseDto> {
+    const workspaceId =
+      await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
+    const row = await this.clientRepo.findOne({
+      where: { id: clientId, workspaceId },
+    });
+    if (!row) {
+      throw new NotFoundException("Client not found");
+    }
+
+    if (row.blocked !== blocked) {
+      row.blocked = blocked;
+      await this.clientRepo.save(row);
+    }
+
+    const socialIds = await this.loadSocialIdsByClientIds([row.id]);
+    return this.toWriteClientDto(
+      row,
+      socialIds.get(row.id) ?? EMPTY_SOCIAL_IDS,
+    );
   }
 
   async listPagedForOwner(
@@ -813,6 +854,7 @@ export class ClientsService {
       createdAt: row.createdAt,
       phone: row.phone,
       note: row.note?.trim() || null,
+      blocked: row.blocked === true,
       instagramUserIds: socialIds.instagramUserIds,
       telegramUserIds: socialIds.telegramUserIds,
       workspaceId: row.workspaceId,
@@ -952,6 +994,7 @@ export class ClientsService {
       createdAt: row.createdAt,
       phone: row.phone,
       note: row.note?.trim() || null,
+      blocked: row.blocked === true,
       instagramUserIds: socialIds.instagramUserIds,
       telegramUserIds: socialIds.telegramUserIds,
       instagramUsers: options?.socialProfiles?.instagramUsers ?? [],

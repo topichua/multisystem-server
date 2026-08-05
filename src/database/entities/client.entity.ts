@@ -32,6 +32,9 @@ export class Client {
   @Column({ name: "note", type: "text", nullable: true })
   note: string | null;
 
+  @Column({ name: "blocked", type: "boolean", default: false })
+  blocked: boolean;
+
   @Column({ name: "workspace_id", type: "int" })
   workspaceId: number;
 

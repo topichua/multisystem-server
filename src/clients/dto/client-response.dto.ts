@@ -43,6 +43,12 @@ export class ClientResponseDto {
   note: string | null;
 
   @ApiProperty({
+    example: false,
+    description: "When true, the client is blocked in this workspace.",
+  })
+  blocked: boolean;
+
+  @ApiProperty({
     type: [String],
     example: ["17841400008460056"],
     description: "Instagram ids from `client_links` (provider `instagram`).",

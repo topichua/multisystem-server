@@ -226,6 +226,40 @@ export class ClientsController {
     return this.clients.updateForOwner(ownerId, clientId, dto);
   }
 
+  @Post(":id/block")
+  @ApiOperation({
+    summary: "Block client",
+    description:
+      "Sets `blocked=true` for the client in your workspace. Idempotent if already blocked.",
+  })
+  @ApiParam({ name: "id", type: Number, description: "Client primary key" })
+  @ApiOkResponse({ type: ClientWriteResponseDto })
+  async block(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ClientWriteResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    const clientId = this.parsePositiveInt(id, "id");
+    return this.clients.blockForOwner(ownerId, clientId);
+  }
+
+  @Post(":id/unblock")
+  @ApiOperation({
+    summary: "Unblock client",
+    description:
+      "Sets `blocked=false` for the client in your workspace. Idempotent if already unblocked.",
+  })
+  @ApiParam({ name: "id", type: Number, description: "Client primary key" })
+  @ApiOkResponse({ type: ClientWriteResponseDto })
+  async unblock(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ClientWriteResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    const clientId = this.parsePositiveInt(id, "id");
+    return this.clients.unblockForOwner(ownerId, clientId);
+  }
+
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Delete client" })

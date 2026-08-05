@@ -167,6 +167,7 @@ import { StockSupplyName1744200000169 } from "./migrations/1744200000169-StockSu
 import { WorkspaceVariantCustomFieldDisplayName1744200000170 } from "./migrations/1744200000170-WorkspaceVariantCustomFieldDisplayName";
 import { ClientsNote1744200000171 } from "./migrations/1744200000171-ClientsNote";
 import { InstagramSynchronizations1744200000172 } from "./migrations/1744200000172-InstagramSynchronizations";
+import { ClientsBlocked1744200000173 } from "./migrations/1744200000173-ClientsBlocked";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -556,6 +557,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceVariantCustomFieldDisplayName1744200000170,
       ClientsNote1744200000171,
       InstagramSynchronizations1744200000172,
+      ClientsBlocked1744200000173,
     ],
   };
 }

@@ -20,6 +20,9 @@ export class ClientWriteResponseDto {
   @ApiProperty({ nullable: true })
   note: string | null;
 
+  @ApiProperty({ example: false })
+  blocked: boolean;
+
   @ApiProperty({ type: [String] })
   instagramUserIds: string[];
 
