@@ -1302,6 +1302,26 @@ export class OrdersService {
     const skip = (page - 1) * pageSize;
     const workspaceId = workspace.id;
 
+    const qb = await this.buildOrderListQuery(workspaceId, query);
+    const [items, total] = await qb.take(pageSize).skip(skip).getManyAndCount();
+
+    this.hydrateOrdersDelivery(items);
+    await Promise.all([
+      this.hydrateOrdersCreatedBy(items),
+      this.hydrateOrdersPayment(items),
+    ]);
+
+    return { items, total, page, pageSize };
+  }
+
+  /**
+   * Shared order-list query (filters + sort, no pagination).
+   * Used by GET /orders and order export jobs.
+   */
+  async buildOrderListQuery(
+    workspaceId: number,
+    query: ListOrdersQueryDto,
+  ): Promise<import("typeorm").SelectQueryBuilder<Order>> {
     const qb = this.orderRepo
       .createQueryBuilder("o")
       .where("o.workspaceId = :workspaceId", { workspaceId });
@@ -1325,22 +1345,16 @@ export class OrdersService {
       qb.andWhere("o.customerId = :clientId", { clientId: query.clientId });
     }
 
-    // status filters: prefer `statuses` array, fall back to single statusId for compatibility
-    const statuses = (query as any).statuses ?? (query as any).statuses;
-    if (
-      Array.isArray((query as any).statuses) &&
-      (query as any).statuses.length > 0
-    ) {
+    if (Array.isArray(query.statuses) && query.statuses.length > 0) {
       qb.andWhere("o.statusId IN (:...statuses)", {
-        statuses: (query as any).statuses,
+        statuses: query.statuses,
       });
-    } else if ((query as any).statusId != null) {
+    } else if (query.statusId != null) {
       qb.andWhere("o.statusId = :statusId", {
-        statusId: (query as any).statusId,
+        statusId: query.statusId,
       });
     }
 
-    // created at range
     if (query.createdFrom) {
       qb.andWhere("o.createdAt >= :createdFrom", {
         createdFrom: query.createdFrom,
@@ -1350,7 +1364,6 @@ export class OrdersService {
       qb.andWhere("o.createdAt <= :createdTo", { createdTo: query.createdTo });
     }
 
-    // total amount range
     if (query.totalPriceFrom != null) {
       qb.andWhere("o.totalAmount >= :totalPriceFrom", {
         totalPriceFrom: query.totalPriceFrom,
@@ -1362,9 +1375,7 @@ export class OrdersService {
       });
     }
 
-    // sources filter (instagram, telegram, manual)
     if (Array.isArray(query.sources) && query.sources.length > 0) {
-      // Normalize values to match stored enum strings
       const srcs = query.sources
         .map((s) => String(s).trim())
         .filter((s) => s.length > 0);
@@ -1379,16 +1390,140 @@ export class OrdersService {
     }
 
     qb.orderBy("o.createdAt", "DESC").addOrderBy("o.id", "DESC");
+    return qb;
+  }
 
-    const [items, total] = await qb.take(pageSize).skip(skip).getManyAndCount();
+  /**
+   * Composite order keys matching the same filters/sort as GET /orders
+   * (no pagination), in list order.
+   */
+  async collectOrderKeysForExport(
+    workspaceId: number,
+    query: ListOrdersQueryDto,
+  ): Promise<Array<{ workspaceId: number; id: number }>> {
+    const qb = await this.buildOrderListQuery(workspaceId, query);
+    const rows = await qb.select(["o.workspaceId", "o.id"]).getMany();
+    return rows.map((r) => ({ workspaceId: r.workspaceId, id: r.id }));
+  }
 
-    this.hydrateOrdersDelivery(items);
-    await Promise.all([
-      this.hydrateOrdersCreatedBy(items),
-      this.hydrateOrdersPayment(items),
-    ]);
+  /**
+   * Load orders for export (status, customer, delivery, items, payment, manager).
+   * Does not mutate/delete payment fields on the entity (export-safe).
+   * Order of results matches `keys` order.
+   */
+  async loadOrdersForExport(
+    workspaceId: number,
+    keys: Array<{ workspaceId: number; id: number }>,
+  ): Promise<
+    Array<{
+      order: Order;
+      paidAmount: number;
+      paymentMethodName: string;
+      managerName: string;
+    }>
+  > {
+    if (keys.length === 0) {
+      return [];
+    }
+    const ids = keys.map((k) => k.id);
+    const loaded = await this.orderRepo.find({
+      where: { workspaceId, id: In(ids) },
+      relations: {
+        status: true,
+        customer: true,
+        items: true,
+        manualPaymentMethod: true,
+      },
+    });
 
-    return { items, total, page, pageSize };
+    // Delivery via map join alias is not a TypeORM relation — load separately.
+    const deliveryIds = [
+      ...new Set(
+        loaded
+          .map((o) => o.deliveryId)
+          .filter((id): id is number => id != null && id > 0),
+      ),
+    ];
+    const deliveries =
+      deliveryIds.length > 0
+        ? await this.orderDeliveryRepo.find({
+            where: { id: In(deliveryIds) },
+          })
+        : [];
+    const deliveryById = new Map(deliveries.map((d) => [d.id, d]));
+    for (const order of loaded) {
+      order.deliveryInfo =
+        order.deliveryId != null
+          ? (deliveryById.get(order.deliveryId) ?? null)
+          : null;
+    }
+
+    const byId = new Map(loaded.map((o) => [o.id, o]));
+
+    const managerIds = [
+      ...new Set(
+        loaded
+          .map((o) => o.createdById)
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+    const managers =
+      managerIds.length > 0
+        ? await this.userRepo.find({
+            where: { id: In(managerIds) },
+            select: { id: true, firstName: true, lastName: true },
+          })
+        : [];
+    const managerById = new Map(managers.map((u) => [u.id, u]));
+
+    const transactions = await this.paymentTransactionRepo.find({
+      where: { workspaceId, orderId: In(ids) },
+      order: { occurredAt: "DESC", id: "DESC" },
+    });
+    const paymentsByOrderId = new Map<number, PaymentTransaction[]>();
+    for (const t of transactions) {
+      const list = paymentsByOrderId.get(t.orderId) ?? [];
+      list.push(t);
+      paymentsByOrderId.set(t.orderId, list);
+    }
+
+    const result: Array<{
+      order: Order;
+      paidAmount: number;
+      paymentMethodName: string;
+      managerName: string;
+    }> = [];
+
+    for (const key of keys) {
+      const order = byId.get(key.id);
+      if (!order) continue;
+      const payments = paymentsByOrderId.get(order.id) ?? [];
+      const paidAmount = calculatePaidAmount(payments);
+      const manager = managerById.get(order.createdById);
+      const managerName = manager
+        ? [manager.firstName, manager.lastName?.trim()]
+            .filter(Boolean)
+            .join(" ")
+            .trim()
+        : "";
+      let paymentMethodName =
+        order.manualPaymentMethod?.name?.trim() || "";
+      if (!paymentMethodName && payments.length > 0) {
+        const latest = payments[0];
+        if (latest.source === PaymentTransactionSource.nova_poshta_payment) {
+          paymentMethodName = "nova_poshta_payment";
+        } else if (
+          latest.source === PaymentTransactionSource.online_payment ||
+          latest.paymentId != null
+        ) {
+          paymentMethodName = "online_payment";
+        } else {
+          paymentMethodName = "manual";
+        }
+      }
+      result.push({ order, paidAmount, paymentMethodName, managerName });
+    }
+    return result;
   }
 
   async listOrdersForClient(

@@ -19,6 +19,7 @@ import {
 } from "../database/entities";
 import { ConversationEventsModule } from "../conversations/conversation-events.module";
 import { DeliveryModule } from "../delivery/delivery.module";
+import { ExportsModule } from "../exports/exports.module";
 import { VariantCustomFieldsModule } from "../variant-custom-fields/variant-custom-fields.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
@@ -30,6 +31,7 @@ import { OrderIdAllocationService } from "./order-id-allocation.service";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 import { OrderStatusTransitionService } from "./order-status-transition.service";
+import { OrderExportHandler } from "./order-export.handler";
 
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     InventoryModule,
     WorkspaceSettingsModule,
     ConversationEventsModule,
+    ExportsModule,
     forwardRef(() => NovaPoshtaIntegrationsModule),
     OrderStatusDefaultsModule,
     forwardRef(() => DeliveryModule),
@@ -64,7 +67,8 @@ import { OrderStatusTransitionService } from "./order-status-transition.service"
     OrdersService,
     OrderIdAllocationService,
     OrderStatusTransitionService,
+    OrderExportHandler,
   ],
-  exports: [OrdersService, OrderStatusTransitionService],
+  exports: [OrdersService, OrderStatusTransitionService, OrderExportHandler],
 })
 export class OrdersModule {}

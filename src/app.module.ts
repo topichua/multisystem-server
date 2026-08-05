@@ -32,6 +32,7 @@ import { StorageModule } from "./storage/storage.module";
 import { BillingModule } from "./billing/billing.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { OrderStatusAutomationsModule } from "./order-status-automations/order-status-automations.module";
+import { ExportsModule } from "./exports/exports.module";
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { OrderStatusAutomationsModule } from "./order-status-automations/order-s
     ProductsModule,
     InventoryModule,
     ProductInstagramReferencesModule,
+    ExportsModule,
     OrdersModule,
     AnalyticsModule,
     WorkspaceSettingsModule,

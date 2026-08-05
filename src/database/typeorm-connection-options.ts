@@ -171,6 +171,7 @@ import { ClientsBlocked1744200000173 } from "./migrations/1744200000173-ClientsB
 import { ChatAutoDistribution1744200000174 } from "./migrations/1744200000174-ChatAutoDistribution";
 import { ChatAutoDistributionLogs1744200000175 } from "./migrations/1744200000175-ChatAutoDistributionLogs";
 import { ProductExports1744200000176 } from "./migrations/1744200000176-ProductExports";
+import { WorkspaceExportJobs1744200000177 } from "./migrations/1744200000177-WorkspaceExportJobs";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -203,6 +204,7 @@ import {
   ProductVariant,
   ProductVariantCustomFieldValue,
   UploadMedia,
+  WorkspaceExportJob,
   WorkspaceVariantCustomField,
   WorkspaceVariantCustomFieldOption,
   TelegramIntegration,
@@ -317,6 +319,7 @@ const entities = [
   ProductCategory,
   Product,
   ProductExport,
+  WorkspaceExportJob,
   ProductVariant,
   ProductVariantCustomFieldValue,
   ProductMedia,
@@ -568,6 +571,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ChatAutoDistribution1744200000174,
       ChatAutoDistributionLogs1744200000175,
       ProductExports1744200000176,
+      WorkspaceExportJobs1744200000177,
     ],
   };
 }

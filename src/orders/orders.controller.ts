@@ -52,13 +52,42 @@ import {
 } from "../delivery/dto/change-delivery-status.dto";
 import { OrderPaymentSummaryResponseDto } from "../payments/dto/order-payment-summary-response.dto";
 import { OrdersService } from "./orders.service";
+import { CreateOrderExportDto } from "./dto/create-order-export.dto";
+import { CreateWorkspaceExportResponseDto } from "../exports/dto/workspace-export-response.dto";
+import { OrderExportHandler } from "./order-export.handler";
 
 @ApiTags("orders")
 @ApiBearerAuth("bearer")
 @UseGuards(JwtAuthGuard)
 @Controller("orders")
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly orderExports: OrderExportHandler,
+  ) {}
+
+  @Post("export")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Start async orders export",
+    description:
+      "Creates an export job for the same filtered dataset as GET /orders (no pagination). " +
+      "`type=orders` (one row per order) or `type=order_items` (one row per line item). " +
+      "File is generated in background and stored in private R2; poll GET /exports/:id.",
+  })
+  @ApiCreatedResponse({ type: CreateWorkspaceExportResponseDto })
+  async createExport(
+    @Req() req: { user?: AuthUser },
+    @Body() dto: CreateOrderExportDto,
+  ): Promise<CreateWorkspaceExportResponseDto> {
+    const ownerId = this.requireNumericOwnerId(req);
+    return this.orderExports.createForOwner(
+      ownerId,
+      dto,
+      req.user?.role,
+      req.user?.workspaceId,
+    );
+  }
 
   @Post()
   @ApiOperation({

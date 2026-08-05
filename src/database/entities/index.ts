@@ -70,6 +70,12 @@ export {
   type ProductExportFormat,
   type ProductExportStatus,
 } from "./product-export.entity";
+export {
+  WorkspaceExportJob,
+  type WorkspaceExportFormat,
+  type WorkspaceExportStatus,
+  type WorkspaceExportType,
+} from "./workspace-export-job.entity";
 
 export { ProductMedia } from "./product-media.entity";
 export { ProductMediaType } from "./product-media-type.enum";
