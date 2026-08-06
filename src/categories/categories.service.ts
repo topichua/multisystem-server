@@ -25,10 +25,10 @@ export type CategoryTreeNodeDto = {
   createdByUserId: number;
   createdAt: Date;
   updatedAt: Date;
-  /** Products assigned directly to this category. */
-  productCount: number;
-  /** Variants of products assigned directly to this category. */
-  productVariantCount: number;
+  /** Products assigned directly to this category (when `withCounters=true`). */
+  productCount?: number;
+  /** Variants of products assigned directly to this category (when `withCounters=true`). */
+  productVariantCount?: number;
   children: CategoryTreeNodeDto[];
 };
 
@@ -40,8 +40,8 @@ export type CategorySubcategoryDto = {
   createdByUserId: number;
   createdAt: Date;
   updatedAt: Date;
-  productCount: number;
-  productVariantCount: number;
+  productCount?: number;
+  productVariantCount?: number;
 };
 
 export type CategoryDetailDto = {
@@ -53,8 +53,8 @@ export type CategoryDetailDto = {
   createdAt: Date;
   updatedAt: Date;
   /** Products assigned directly to this category (not subcategories). */
-  productCount: number;
-  productVariantCount: number;
+  productCount?: number;
+  productVariantCount?: number;
   subcategories: CategorySubcategoryDto[];
 };
 
@@ -79,7 +79,10 @@ export class CategoriesService {
     private readonly productAuthz: ProductAuthorizationService,
   ) {}
 
-  async findTreeForOwner(ownerId: number): Promise<CategoryTreeNodeDto[]> {
+  async findTreeForOwner(
+    ownerId: number,
+    withCounters = true,
+  ): Promise<CategoryTreeNodeDto[]> {
     await this.productAuthz.requireRead(ownerId);
     const workspaceId =
       await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
@@ -87,6 +90,12 @@ export class CategoriesService {
       where: { workspaceId, deletedAt: IsNull() },
       order: { sortOrder: "ASC", name: "ASC" },
     });
+    if (!withCounters) {
+      return [
+        this.buildUncategorizedTreeNode(null),
+        ...this.buildTree(rows, null),
+      ];
+    }
     const [counts, uncategorized] = await Promise.all([
       this.countProductsAndVariantsByCategoryIds(
         workspaceId,
@@ -103,15 +112,13 @@ export class CategoriesService {
   async findOneForOwner(
     ownerId: number,
     id: number,
+    withCounters = true,
   ): Promise<CategoryDetailDto> {
     if (id === UNCATEGORIZED_CATEGORY_ID) {
       await this.productAuthz.requireRead(ownerId);
       const workspaceId =
         await this.workspaceContext.resolveWorkspaceIdForOwner(ownerId);
-      const counts = await this.countUncategorizedProductsAndVariants(
-        workspaceId,
-      );
-      return {
+      const base = {
         id: UNCATEGORIZED_CATEGORY_ID,
         name: UNCATEGORIZED_CATEGORY_NAME,
         parentId: null,
@@ -119,9 +126,18 @@ export class CategoriesService {
         createdByUserId: 0,
         createdAt: new Date(0),
         updatedAt: new Date(0),
+        subcategories: [] as CategorySubcategoryDto[],
+      };
+      if (!withCounters) {
+        return base;
+      }
+      const counts = await this.countUncategorizedProductsAndVariants(
+        workspaceId,
+      );
+      return {
+        ...base,
         productCount: counts.productCount,
         productVariantCount: counts.productVariantCount,
-        subcategories: [],
       };
     }
 
@@ -138,6 +154,27 @@ export class CategoriesService {
       where: { workspaceId, parentId: id, deletedAt: IsNull() },
       order: { sortOrder: "ASC", name: "ASC" },
     });
+
+    if (!withCounters) {
+      return {
+        id: row.id,
+        name: row.name,
+        parentId: row.parentId,
+        sortOrder: row.sortOrder,
+        createdByUserId: row.createdByUserId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        subcategories: subcategoryRows.map((sub) => ({
+          id: sub.id,
+          name: sub.name,
+          parentId: sub.parentId as number,
+          sortOrder: sub.sortOrder,
+          createdByUserId: sub.createdByUserId,
+          createdAt: sub.createdAt,
+          updatedAt: sub.updatedAt,
+        })),
+      };
+    }
 
     const categoryIds = [row.id, ...subcategoryRows.map((s) => s.id)];
     const counts = await this.countProductsAndVariantsByCategoryIds(
@@ -174,6 +211,10 @@ export class CategoriesService {
     };
   }
 
+  /**
+   * productCount = DISTINCT products in category (not inflated by variant join).
+   * productVariantCount = number of variant rows for those products.
+   */
   private async countProductsAndVariantsByCategoryIds(
     workspaceId: number,
     categoryIds: number[],
@@ -186,7 +227,7 @@ export class CategoriesService {
     const rows = await this.productRepo
       .createQueryBuilder("p")
       .select("p.categoryId", "categoryId")
-      .addSelect("COUNT(*)::int", "product_count")
+      .addSelect("COUNT(DISTINCT p.id)::int", "product_count")
       .addSelect("COUNT(v.id)::int", "product_variant_count")
       .leftJoin("product_variants", "v", "v.product_id = p.id")
       .where("p.workspaceId = :workspaceId", { workspaceId })
@@ -214,7 +255,7 @@ export class CategoriesService {
   ): Promise<{ productCount: number; productVariantCount: number }> {
     const row = await this.productRepo
       .createQueryBuilder("p")
-      .select("COUNT(*)::int", "product_count")
+      .select("COUNT(DISTINCT p.id)::int", "product_count")
       .addSelect("COUNT(v.id)::int", "product_variant_count")
       .leftJoin("product_variants", "v", "v.product_id = p.id")
       .where("p.workspaceId = :workspaceId", { workspaceId })
@@ -230,11 +271,13 @@ export class CategoriesService {
     };
   }
 
-  private buildUncategorizedTreeNode(counts: {
-    productCount: number;
-    productVariantCount: number;
-  }): CategoryTreeNodeDto {
-    return {
+  private buildUncategorizedTreeNode(
+    counts: {
+      productCount: number;
+      productVariantCount: number;
+    } | null,
+  ): CategoryTreeNodeDto {
+    const node: CategoryTreeNodeDto = {
       id: UNCATEGORIZED_CATEGORY_ID,
       name: UNCATEGORIZED_CATEGORY_NAME,
       parentId: null,
@@ -242,10 +285,13 @@ export class CategoriesService {
       createdByUserId: 0,
       createdAt: new Date(0),
       updatedAt: new Date(0),
-      productCount: counts.productCount,
-      productVariantCount: counts.productVariantCount,
       children: [],
     };
+    if (counts) {
+      node.productCount = counts.productCount;
+      node.productVariantCount = counts.productVariantCount;
+    }
+    return node;
   }
 
   async createForOwner(
@@ -289,7 +335,7 @@ export class CategoriesService {
       deletedByUserId: null,
     });
     await this.categoryRepo.save(row);
-    return this.findOneForOwner(ownerId, row.id);
+    return this.findOneForOwner(ownerId, row.id, true);
   }
 
   async updateForOwner(
@@ -334,7 +380,7 @@ export class CategoriesService {
     );
 
     await this.categoryRepo.save(row);
-    return this.findOneForOwner(ownerId, row.id);
+    return this.findOneForOwner(ownerId, row.id, true);
   }
 
   /**
@@ -361,7 +407,7 @@ export class CategoriesService {
 
     const newParentId = dto.parentId ?? null;
     if (row.parentId === newParentId) {
-      return this.findOneForOwner(ownerId, row.id);
+      return this.findOneForOwner(ownerId, row.id, true);
     }
 
     await this.applyParentChange(workspaceId, row, newParentId);
@@ -372,7 +418,7 @@ export class CategoriesService {
       row.id,
     );
     await this.categoryRepo.save(row);
-    return this.findOneForOwner(ownerId, row.id);
+    return this.findOneForOwner(ownerId, row.id, true);
   }
 
   private async applyParentChange(
@@ -468,7 +514,10 @@ export class CategoriesService {
 
   private buildTree(
     rows: ProductCategory[],
-    counts: Map<number, { productCount: number; productVariantCount: number }>,
+    counts: Map<
+      number,
+      { productCount: number; productVariantCount: number }
+    > | null,
   ): CategoryTreeNodeDto[] {
     const byParent = new Map<number | null, ProductCategory[]>();
     for (const r of rows) {
@@ -482,11 +531,7 @@ export class CategoriesService {
     }
 
     const toDto = (row: ProductCategory): CategoryTreeNodeDto => {
-      const count = counts.get(row.id) ?? {
-        productCount: 0,
-        productVariantCount: 0,
-      };
-      return {
+      const node: CategoryTreeNodeDto = {
         id: row.id,
         name: row.name,
         parentId: row.parentId,
@@ -494,10 +539,17 @@ export class CategoriesService {
         createdByUserId: row.createdByUserId,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
-        productCount: count.productCount,
-        productVariantCount: count.productVariantCount,
         children: (byParent.get(row.id) ?? []).map(toDto),
       };
+      if (counts) {
+        const count = counts.get(row.id) ?? {
+          productCount: 0,
+          productVariantCount: 0,
+        };
+        node.productCount = count.productCount;
+        node.productVariantCount = count.productVariantCount;
+      }
+      return node;
     };
 
     const roots = byParent.get(null) ?? [];

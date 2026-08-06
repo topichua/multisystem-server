@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -27,6 +28,7 @@ import {
   type CategoryTreeNodeDto,
 } from "./categories.service";
 import { CreateCategoryRequestDto } from "./dto/create-category-request.dto";
+import { ListCategoriesQueryDto } from "./dto/list-categories-query.dto";
 import { MoveCategoryRequestDto } from "./dto/move-category-request.dto";
 import { UpdateCategoryRequestDto } from "./dto/update-category-request.dto";
 
@@ -42,11 +44,18 @@ export class CategoriesController {
     description:
       "Full category tree for the workspace. The first node is always synthetic " +
       "`Без категорії` with `id: -1` (products with `categoryId: null`); it cannot be deleted. " +
-      "Each node includes `productCount` and `productVariantCount` for products assigned directly to that category.",
+      "Pass `withCounters=true` (default) for `productCount` (distinct products assigned to the category) " +
+      "and `productVariantCount` (variants of those products). Pass `withCounters=false` to skip count queries.",
   })
-  async list(@Req() req: { user?: AuthUser }): Promise<CategoryTreeNodeDto[]> {
+  async list(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListCategoriesQueryDto,
+  ): Promise<CategoryTreeNodeDto[]> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.categories.findTreeForOwner(ownerId);
+    return this.categories.findTreeForOwner(
+      ownerId,
+      query.withCounters !== false,
+    );
   }
 
   @Get(":id")
@@ -54,14 +63,19 @@ export class CategoriesController {
     summary: "Get category",
     description:
       "Returns the category with its direct child categories. " +
-      "`productCount` / `productVariantCount` count products and variants assigned directly to each category.",
+      "`withCounters` defaults to `true` (`productCount` / `productVariantCount`). Pass `false` to skip.",
   })
   async getById(
     @Req() req: { user?: AuthUser },
     @Param("id", ParseIntPipe) id: number,
+    @Query() query: ListCategoriesQueryDto,
   ): Promise<CategoryDetailDto> {
     const ownerId = this.requireNumericOwnerId(req);
-    return this.categories.findOneForOwner(ownerId, id);
+    return this.categories.findOneForOwner(
+      ownerId,
+      id,
+      query.withCounters !== false,
+    );
   }
 
   @Post()

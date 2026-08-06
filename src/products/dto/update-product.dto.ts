@@ -106,9 +106,21 @@ class UpdateProductBodyDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "Set to null to clear category.",
+    description:
+      "Optional. Set a category id, or `null` / empty to clear (uncategorized).",
   })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "string") {
+      const t = value.trim();
+      if (t === "" || t === "null" || t === "undefined") return null;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : value;
+    }
+    if (value === 0 || value === -1) return null;
+    return value;
+  })
   @ValidateIf((_, v) => v !== undefined && v !== null)
   @Type(() => Number)
   @IsInt()
