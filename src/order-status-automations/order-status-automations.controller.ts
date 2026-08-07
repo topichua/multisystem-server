@@ -107,7 +107,7 @@ export class OrderStatusAutomationsController {
   @ApiOperation({
     summary: "Create order status automation",
     description:
-      "Creates a rule with conditions combined by `condition_type` (`OR` or `AND`) " +
+      "Creates a rule with conditions combined by `conditionType` (`OR` or `AND`; alias `condition_type`) " +
       "and a single action: change order status.",
   })
   @ApiBody({ type: CreateOrderStatusAutomationDto })
@@ -128,7 +128,7 @@ export class OrderStatusAutomationsController {
     summary: "Update order status automation",
     description:
       "Partial update. Sending `conditions` replaces the full condition list. " +
-      "`condition_type` controls OR vs AND matching.",
+      "`conditionType` (or `condition_type`) controls OR vs AND matching.",
   })
   @ApiBody({ type: UpdateOrderStatusAutomationDto })
   @ApiParam({ name: "id", type: Number })

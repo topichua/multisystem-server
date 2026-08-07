@@ -70,13 +70,21 @@ export class OrderStatusAutomationResponseDto {
   @ApiProperty({
     enum: AutomationConditionType,
     description:
-      "How conditions combine: `OR` = at least one must pass; `AND` = all must pass.",
+      "How conditions combine: `OR` = at least one must pass; `AND` = all must pass. " +
+      "Preferred response field (camelCase).",
+  })
+  conditionType!: AutomationConditionType;
+
+  @ApiProperty({
+    enum: AutomationConditionType,
+    description:
+      "Snake_case alias of `conditionType` (legacy clients).",
   })
   condition_type!: AutomationConditionType;
 
   @ApiProperty({
     type: [OrderStatusAutomationConditionResponseDto],
-    description: "Trigger conditions combined by `condition_type`.",
+    description: "Trigger conditions combined by `conditionType`.",
   })
   conditions!: OrderStatusAutomationConditionResponseDto[];
 

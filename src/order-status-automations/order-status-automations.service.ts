@@ -25,6 +25,7 @@ import type {
   ListOrderStatusAutomationsQueryDto,
   UpdateOrderStatusAutomationDto,
 } from "./dto/order-status-automation.dto";
+import { resolveConditionType } from "./dto/order-status-automation.dto";
 import type { OrderStatusAutomationResponseDto } from "./dto/order-status-automation-response.dto";
 import type { OrderStatusAutomationCriteriaResponseDto } from "./dto/order-status-automation-criteria-response.dto";
 import { formatAutomationDuration } from "./logic/automation-duration.logic";
@@ -145,7 +146,8 @@ export class OrderStatusAutomationsService {
       appRole,
     );
     const conditions = normalizeAutomationConditions(dto.conditions);
-    const conditionType = dto.condition_type ?? AutomationConditionType.or;
+    const conditionType =
+      resolveConditionType(dto) ?? AutomationConditionType.or;
     this.validateActionType(dto.actionType);
     await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
     await this.assertNoDuplicate({
@@ -191,7 +193,8 @@ export class OrderStatusAutomationsService {
       dto.conditions != null
         ? normalizeAutomationConditions(dto.conditions)
         : this.normalizePersistedConditions(row.conditions ?? []);
-    const nextConditionType = dto.condition_type ?? row.conditionType;
+    const nextConditionType =
+      resolveConditionType(dto, row.conditionType) ?? row.conditionType;
     const nextTargetStatusId =
       dto.targetOrderStatusId ?? row.targetOrderStatusId;
 
@@ -214,7 +217,9 @@ export class OrderStatusAutomationsService {
 
     if (dto.name != null) row.name = dto.name.trim();
     if (dto.isActive != null) row.isActive = dto.isActive;
-    if (dto.condition_type != null) row.conditionType = dto.condition_type;
+    if (dto.conditionType != null || dto.condition_type != null) {
+      row.conditionType = nextConditionType;
+    }
     if (dto.targetOrderStatusId != null) {
       row.targetOrderStatusId = dto.targetOrderStatusId;
     }
@@ -383,6 +388,7 @@ export class OrderStatusAutomationsService {
       workspaceId: row.workspaceId,
       name: row.name,
       isActive: row.isActive,
+      conditionType: row.conditionType ?? AutomationConditionType.or,
       condition_type: row.conditionType ?? AutomationConditionType.or,
       conditions: conditions.map((condition) => ({
         id: condition.id,

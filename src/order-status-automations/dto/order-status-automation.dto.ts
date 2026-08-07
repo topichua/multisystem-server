@@ -13,22 +13,21 @@ import {
   ValidateIf,
   ValidateNested,
 } from "class-validator";
-import { Transform, Type } from "class-transformer";
+import { Type } from "class-transformer";
 import { AutomationActionType } from "../../database/entities/automation-action-type.enum";
 import { AutomationConditionType } from "../../database/entities/automation-condition-type.enum";
 import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
 
-function pickConditionType(
-  obj: Record<string, unknown>,
+/** Prefer camelCase; keep snake_case for older clients. */
+export function resolveConditionType(
+  dto: {
+    conditionType?: AutomationConditionType;
+    condition_type?: AutomationConditionType;
+  },
+  fallback?: AutomationConditionType,
 ): AutomationConditionType | undefined {
-  if (obj.condition_type !== undefined) {
-    return obj.condition_type as AutomationConditionType;
-  }
-  if (obj.conditionType !== undefined) {
-    return obj.conditionType as AutomationConditionType;
-  }
-  return undefined;
+  return dto.conditionType ?? dto.condition_type ?? fallback;
 }
 
 export class OrderStatusAutomationConditionDto {
@@ -91,17 +90,26 @@ export class CreateOrderStatusAutomationDto {
     default: AutomationConditionType.or,
     description:
       "How conditions combine: `OR` = at least one must pass; `AND` = all must pass. " +
-      "Also accepted as `conditionType`. Defaults to `OR`.",
+      "Preferred body field (camelCase). Defaults to `OR`.",
   })
   @IsOptional()
-  @Transform(({ obj }) => pickConditionType(obj as Record<string, unknown>))
+  @IsEnum(AutomationConditionType)
+  conditionType?: AutomationConditionType;
+
+  @ApiPropertyOptional({
+    enum: AutomationConditionType,
+    default: AutomationConditionType.or,
+    description:
+      "Snake_case alias of `conditionType` (legacy clients). Prefer `conditionType`.",
+  })
+  @IsOptional()
   @IsEnum(AutomationConditionType)
   condition_type?: AutomationConditionType;
 
   @ApiProperty({
     type: [OrderStatusAutomationConditionDto],
     description:
-      "Trigger conditions combined by `condition_type`. Each may have its own optional delay.",
+      "Trigger conditions combined by `conditionType`. Each may have its own optional delay.",
     example: [
       {
         sourceType: "DELIVERY_STATUS",
@@ -148,11 +156,17 @@ export class UpdateOrderStatusAutomationDto {
   @ApiPropertyOptional({
     enum: AutomationConditionType,
     description:
-      "How conditions combine: `OR` = at least one must pass; `AND` = all must pass. " +
-      "Also accepted as `conditionType`.",
+      "How conditions combine: `OR` = at least one must pass; `AND` = all must pass.",
   })
   @IsOptional()
-  @Transform(({ obj }) => pickConditionType(obj as Record<string, unknown>))
+  @IsEnum(AutomationConditionType)
+  conditionType?: AutomationConditionType;
+
+  @ApiPropertyOptional({
+    enum: AutomationConditionType,
+    description: "Snake_case alias of `conditionType` (legacy).",
+  })
+  @IsOptional()
   @IsEnum(AutomationConditionType)
   condition_type?: AutomationConditionType;
 
