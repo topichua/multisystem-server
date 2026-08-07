@@ -45,7 +45,10 @@ export class ChatAutoDistributionLog {
   conversationId: number;
 
   @ManyToOne(() => Conversation, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "conversation_id" })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "conversation_id", referencedColumnName: "id" },
+  ])
   conversation: Conversation;
 
   @Column({ name: "member_id", type: "int" })

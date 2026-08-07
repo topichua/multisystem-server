@@ -5,7 +5,7 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Unique,
 } from "typeorm";
 import { ConversationSource } from "./conversation-source.enum";
@@ -21,8 +21,16 @@ import { WorkspaceMember } from "./workspace-member.entity";
 @Index("IDX_conversations_workspace_created_at", ["workspaceId", "createdAt"])
 @Check(`"source" IN (1, 2)`)
 export class Conversation {
-  @PrimaryGeneratedColumn({ name: "id" })
+  @PrimaryColumn({ name: "workspace_id", type: "int" })
+  workspaceId: number;
+
+  /** Per-workspace sequential conversation number (starts at 1). */
+  @PrimaryColumn({ name: "id", type: "int" })
   id: number;
+
+  @ManyToOne(() => Workspace, { onDelete: "RESTRICT" })
+  @JoinColumn({ name: "workspace_id" })
+  workspace: Workspace;
 
   @Column({ name: "external_source_id", type: "varchar", length: 255 })
   externalSourceId: string;
@@ -50,13 +58,6 @@ export class Conversation {
 
   @Column({ name: "source", type: "smallint" })
   source: ConversationSource;
-
-  @Column({ name: "workspace_id", type: "int" })
-  workspaceId: number;
-
-  @ManyToOne(() => Workspace, { onDelete: "RESTRICT" })
-  @JoinColumn({ name: "workspace_id" })
-  workspace: Workspace;
 
   @Column({ name: "group_id", type: "int", nullable: true })
   groupId: number | null;

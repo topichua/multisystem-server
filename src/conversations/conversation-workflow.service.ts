@@ -36,7 +36,7 @@ export class ConversationWorkflowService {
     actorId?: number | null,
   ): Promise<void> {
     await this.events.append(
-      conversation.id,
+      conversation,
       ConversationEventType.CONVERSATION_CREATED,
       actorId ?? null,
       {
@@ -122,7 +122,7 @@ export class ConversationWorkflowService {
     await this.conversationRepo.save(conversation);
 
     await this.events.append(
-      conversation.id,
+      conversation,
       ConversationEventType.GROUP_CHANGED,
       actorId,
       {
@@ -151,7 +151,7 @@ export class ConversationWorkflowService {
     }
 
     await this.events.append(
-      conversation.id,
+      conversation,
       ConversationEventType.RESPONSIBLE_CHANGED,
       actorId,
       {
@@ -174,7 +174,7 @@ export class ConversationWorkflowService {
   ): Promise<void> {
     if (fromMemberId !== conversation.responsibleMemberId) {
       await this.events.append(
-        conversation.id,
+        conversation,
         ConversationEventType.RESPONSIBLE_CHANGED,
         actorId,
         {
@@ -207,7 +207,7 @@ export class ConversationWorkflowService {
     await this.conversationRepo.save(conversation);
 
     await this.events.append(
-      conversation.id,
+      conversation,
       ConversationEventType.GROUP_CHANGED,
       meta.actorId,
       {

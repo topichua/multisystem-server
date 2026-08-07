@@ -172,6 +172,10 @@ import { ChatAutoDistribution1744200000174 } from "./migrations/1744200000174-Ch
 import { ChatAutoDistributionLogs1744200000175 } from "./migrations/1744200000175-ChatAutoDistributionLogs";
 import { ProductExports1744200000176 } from "./migrations/1744200000176-ProductExports";
 import { WorkspaceExportJobs1744200000177 } from "./migrations/1744200000177-WorkspaceExportJobs";
+import { VariantCustomFieldAuditUsers1744200000178 } from "./migrations/1744200000178-VariantCustomFieldAuditUsers";
+import { ProductAndClientIdStart10001744200000179 } from "./migrations/1744200000179-ProductAndClientIdStart1000";
+import { CollapsePaymentPermissionsToOrders1744200000180 } from "./migrations/1744200000180-CollapsePaymentPermissionsToOrders";
+import { ConversationWorkspaceLocalIds1744200000181 } from "./migrations/1744200000181-ConversationWorkspaceLocalIds";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -572,6 +576,10 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ChatAutoDistributionLogs1744200000175,
       ProductExports1744200000176,
       WorkspaceExportJobs1744200000177,
+      VariantCustomFieldAuditUsers1744200000178,
+      ProductAndClientIdStart10001744200000179,
+      CollapsePaymentPermissionsToOrders1744200000180,
+      ConversationWorkspaceLocalIds1744200000181,
     ],
   };
 }

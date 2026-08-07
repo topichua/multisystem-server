@@ -14,12 +14,19 @@ import { ProductSuggestionReasonType } from "./product-suggestion-reason-type.en
 
 @Entity({ name: "product_suggestions" })
 @Index("IDX_product_suggestions_conversation_id", ["conversationId"])
+@Index("IDX_product_suggestions_workspace_conversation", [
+  "workspaceId",
+  "conversationId",
+])
 @Index("IDX_product_suggestions_product_id", ["productId"])
 @Index("IDX_product_suggestions_product_variant_id", ["productVariantId"])
 @Index("IDX_product_suggestions_post_id", ["postId"])
 export class ProductSuggestion {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
+
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
 
   @Column({ name: "product_id", type: "int" })
   productId: number;
@@ -39,7 +46,10 @@ export class ProductSuggestion {
   conversationId: number;
 
   @ManyToOne(() => Conversation, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "conversation_id" })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "conversation_id", referencedColumnName: "id" },
+  ])
   conversation: Conversation;
 
   @Column({ name: "post_id", type: "varchar", length: 255, nullable: true })

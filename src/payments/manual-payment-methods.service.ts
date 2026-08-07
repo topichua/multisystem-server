@@ -172,12 +172,9 @@ export class ManualPaymentMethodsService {
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (
-      !hasBooleanPermission(resolved, "payments.manual_methods.view") &&
-      !hasBooleanPermission(resolved, "payments.manual_methods.manage")
-    ) {
+    if (!hasBooleanPermission(resolved, "orders.payments.manage")) {
       throw new ForbiddenException(
-        "Missing payments.manual_methods.view permission",
+        "Missing orders.payments.manage permission",
       );
     }
   }
@@ -186,11 +183,6 @@ export class ManualPaymentMethodsService {
     userId: number,
     appRole?: string,
   ): Promise<void> {
-    const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (!hasBooleanPermission(resolved, "payments.manual_methods.manage")) {
-      throw new ForbiddenException(
-        "Missing payments.manual_methods.manage permission",
-      );
-    }
+    return this.requireViewPermission(userId, appRole);
   }
 }

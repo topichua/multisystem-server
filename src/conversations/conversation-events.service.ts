@@ -13,13 +13,14 @@ export class ConversationEventsService {
   ) {}
 
   async append(
-    conversationId: number,
+    conversation: { id: number; workspaceId: number },
     type: ConversationEventType,
     actorId: number | null,
     payload: ConversationEventPayload | null,
   ): Promise<ConversationEvent> {
     const row = this.eventRepo.create({
-      conversationId,
+      workspaceId: conversation.workspaceId,
+      conversationId: conversation.id,
       type,
       actorId,
       payload,
@@ -28,10 +29,13 @@ export class ConversationEventsService {
   }
 
   async listForConversation(
-    conversationId: number,
+    conversation: { id: number; workspaceId: number },
   ): Promise<ConversationEvent[]> {
     return this.eventRepo.find({
-      where: { conversationId },
+      where: {
+        workspaceId: conversation.workspaceId,
+        conversationId: conversation.id,
+      },
       order: { createdAt: "DESC", id: "DESC" },
     });
   }

@@ -59,6 +59,7 @@ import {
 } from "./conversation-message-attachments-json.util";
 import { ConversationEventsService } from "./conversation-events.service";
 import { ConversationGroupDefaultsService } from "./conversation-group-defaults.service";
+import { ConversationIdAllocationService } from "./conversation-id-allocation.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
@@ -173,6 +174,7 @@ export class ConversationsService {
     private readonly conversationEvents: ConversationEventsService,
     private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
     private readonly workspacePermissions: WorkspacePermissionsService,
+    private readonly conversationIdAllocation: ConversationIdAllocationService,
   ) {}
 
   async getConversationCriteriaForOwner(
@@ -502,7 +504,10 @@ export class ConversationsService {
       integration,
     );
     const lastMessageByConversationId =
-      await this.getLastMessageByConversationIds(baseRows.map((r) => r.id));
+      await this.getLastMessageByConversationIds(
+        workspaceId,
+        baseRows.map((r) => r.id),
+      );
     const { instagramById, telegramById } =
       await this.getParticipantMapsForRows(baseRows, { maxTelegramSync: 10 });
 
@@ -615,7 +620,12 @@ export class ConversationsService {
       });
       const isNew = !row;
       if (!row) {
+        const id =
+          await this.conversationIdAllocation.allocateNextConversationId(
+            integration.workspaceId,
+          );
         row = this.conversationRepo.create({
+          id,
           externalSourceId: pageId,
           externalId,
           createdAt: new Date(),
@@ -744,7 +754,12 @@ export class ConversationsService {
         });
         const isNew = !row;
         if (!row) {
+          const id =
+            await this.conversationIdAllocation.allocateNextConversationId(
+              integration.workspaceId,
+            );
           row = this.conversationRepo.create({
+            id,
             externalSourceId: pageId,
             externalId,
             createdAt: new Date(),
@@ -773,7 +788,7 @@ export class ConversationsService {
         );
         const batch = graphMessages.data ?? [];
         // Omit ownerId so backfill does not flood websocket notifications.
-        await this.persistInstagramMessages(row.id, batch, {
+        await this.persistInstagramMessages(row, batch, {
           businessInstagramId: integration.instagramAccountId,
           pageId: integration.pageId,
         });
@@ -954,8 +969,14 @@ export class ConversationsService {
       await em.query(
         `UPDATE "client_wishlist_items"
          SET "conversation_id" = NULL
-         WHERE "conversation_id" = $1`,
-        [conv.id],
+         WHERE "workspace_id" = $1 AND "conversation_id" = $2`,
+        [conv.workspaceId, conv.id],
+      );
+      await em.query(
+        `UPDATE "orders"
+         SET "conversation_id" = NULL
+         WHERE "workspace_id" = $1 AND "conversation_id" = $2`,
+        [conv.workspaceId, conv.id],
       );
       const result = await em.delete(Conversation, {
         id: conv.id,
@@ -1181,7 +1202,7 @@ export class ConversationsService {
       integration,
     );
     const lastMessageByConversationId =
-      await this.getLastMessageByConversationIds([row.id]);
+      await this.getLastMessageByConversationIds(workspaceId, [row.id]);
     const { instagramById, telegramById } =
       await this.getParticipantMapsForRows([row], { maxTelegramSync: 1 });
 
@@ -1331,11 +1352,11 @@ export class ConversationsService {
     ownerId: number,
     conversationId: number,
   ): Promise<ConversationEventsListResponseDto> {
-    await this.requireConversationInWorkspace(ownerId, {
+    const conversation = await this.requireConversationInWorkspace(ownerId, {
       id: conversationId,
     });
     const rows =
-      await this.conversationEvents.listForConversation(conversationId);
+      await this.conversationEvents.listForConversation(conversation);
     return {
       items: rows.map((row) => ({
         id: row.id,
@@ -1357,7 +1378,10 @@ export class ConversationsService {
     });
 
     const rows = await this.productSuggestionRepo.find({
-      where: { conversationId },
+      where: {
+        conversationId: conv.id,
+        workspaceId: conv.workspaceId,
+      },
       order: { createdAt: "DESC", id: "DESC" },
     });
 
@@ -1417,6 +1441,7 @@ export class ConversationsService {
 
     const row = await this.productSuggestionRepo.save(
       this.productSuggestionRepo.create({
+        workspaceId: product.workspaceId,
         conversationId: dto.conversationId,
         productId: dto.productId,
         productVariantId: variantId,
@@ -3363,6 +3388,7 @@ export class ConversationsService {
   }
 
   private async getLastMessageByConversationIds(
+    workspaceId: number,
     conversationIds: number[],
   ): Promise<Map<number, ConversationMessage>> {
     const uniqIds = [...new Set(conversationIds)];
@@ -3370,9 +3396,13 @@ export class ConversationsService {
 
     const rows = await this.conversationMessageRepo
       .createQueryBuilder("m")
-      .where("m.conversation_id IN (:...conversationIds)", {
-        conversationIds: uniqIds,
-      })
+      .where(
+        "m.workspace_id = :workspaceId AND m.conversation_id IN (:...conversationIds)",
+        {
+          workspaceId,
+          conversationIds: uniqIds,
+        },
+      )
       .orderBy("m.conversation_id", "ASC")
       .addOrderBy("m.created_at", "DESC")
       .addOrderBy("m.external_id", "DESC")
@@ -3513,7 +3543,7 @@ export class ConversationsService {
   }
 
   private async persistInstagramMessages(
-    conversationDbId: number,
+    conversation: Conversation,
     messages: InstagramMessageDto[],
     options?: {
       editedAt?: Date;
@@ -3537,7 +3567,11 @@ export class ConversationsService {
       void id;
 
       let row = await this.conversationMessageRepo.findOne({
-        where: { conversationId: conversationDbId, externalId: ext },
+        where: {
+          conversationId: conversation.id,
+          workspaceId: conversation.workspaceId,
+          externalId: ext,
+        },
       });
       const payloadForJson = row
         ? mergeMessageJsonPreservingReactions(
@@ -3556,7 +3590,8 @@ export class ConversationsService {
 
       if (!row) {
         row = this.conversationMessageRepo.create({
-          conversationId: conversationDbId,
+          workspaceId: conversation.workspaceId,
+          conversationId: conversation.id,
           externalId: ext,
           message: text,
           instagramJson,
@@ -3585,12 +3620,15 @@ export class ConversationsService {
   }
 
   private async getConversationMessagesFromDb(
-    conversationDbId: number,
+    conversation: Conversation,
     paging?: { page: number; pageSize: number },
   ): Promise<InstagramMessagesResponseDto> {
     const qb = this.conversationMessageRepo
       .createQueryBuilder("m")
-      .where("m.conversation_id = :cid", { cid: conversationDbId })
+      .where("m.conversation_id = :cid AND m.workspace_id = :ws", {
+        cid: conversation.id,
+        ws: conversation.workspaceId,
+      })
       .orderBy("m.created_at", "DESC")
       .addOrderBy("m.external_id", "DESC");
     const page = paging?.page ?? 1;
@@ -3615,7 +3653,8 @@ export class ConversationsService {
     if (missingParentIds.length > 0) {
       const extraParents = await this.conversationMessageRepo.find({
         where: {
-          conversationId: conversationDbId,
+          conversationId: conversation.id,
+          workspaceId: conversation.workspaceId,
           externalId: In(missingParentIds),
         },
       });
@@ -3663,7 +3702,7 @@ export class ConversationsService {
         appRole: options.appRole,
       },
     );
-    const result = await this.getConversationMessagesFromDb(conv.id, {
+    const result = await this.getConversationMessagesFromDb(conv, {
       page: options.page ?? 1,
       pageSize: options.pageSize ?? 50,
     });
@@ -3830,7 +3869,11 @@ export class ConversationsService {
     const replyMid = replyToMid?.trim();
     if (replyMid) {
       const parentExists = await this.conversationMessageRepo.exist({
-        where: { conversationId: conv.id, externalId: replyMid },
+        where: {
+          conversationId: conv.id,
+          workspaceId: conv.workspaceId,
+          externalId: replyMid,
+        },
       });
       if (!parentExists) {
         throw new BadRequestException(
@@ -3933,7 +3976,11 @@ export class ConversationsService {
     }
 
     const lastCustomerMessage = await this.conversationMessageRepo.findOne({
-      where: { conversationId: conv.id, senderId: participantId },
+      where: {
+        conversationId: conv.id,
+        workspaceId: conv.workspaceId,
+        senderId: participantId,
+      },
       order: { createdAt: "DESC" },
     });
     if (!lastCustomerMessage) {
@@ -4307,7 +4354,11 @@ export class ConversationsService {
     }
 
     const existing = await this.conversationMessageRepo.findOne({
-      where: { conversationId: params.conv.id, externalId },
+      where: {
+        conversationId: params.conv.id,
+        workspaceId: params.conv.workspaceId,
+        externalId,
+      },
     });
     if (existing) {
       return;
@@ -4326,6 +4377,7 @@ export class ConversationsService {
     });
 
     const row = this.conversationMessageRepo.create({
+      workspaceId: params.conv.workspaceId,
       conversationId: params.conv.id,
       externalId,
       message: params.text,

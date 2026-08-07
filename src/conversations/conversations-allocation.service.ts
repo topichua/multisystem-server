@@ -31,6 +31,7 @@ import { ConversationMessageNotifyService } from "./conversation-message-notify.
 import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
+import { ConversationIdAllocationService } from "./conversation-id-allocation.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import { resolveInstagramMessageActors } from "./instagram-message-actors.util";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
@@ -83,6 +84,7 @@ export class ConversationsAllocationService {
     private readonly mediaArchive: ConversationMediaArchiveService,
     private readonly conversationWorkflow: ConversationWorkflowService,
     private readonly chatAutoDistribution: ChatAutoDistributionService,
+    private readonly conversationIdAllocation: ConversationIdAllocationService,
   ) {
     setInterval(() => this.sweepExpiredCompanyContextCache(), 60_000).unref?.();
   }
@@ -292,7 +294,11 @@ export class ConversationsAllocationService {
     }
 
     const existingMessage = await this.conversationMessageRepo.findOne({
-      where: { externalId: mid, conversationId: conv.id },
+      where: {
+        externalId: mid,
+        conversationId: conv.id,
+        workspaceId: conv.workspaceId,
+      },
     });
     const messageRow = this.mergeMessageRowFromGraph(
       existingMessage,
@@ -435,7 +441,11 @@ export class ConversationsAllocationService {
     }
 
     const messageRow = await this.conversationMessageRepo.findOne({
-      where: { externalId: mid, conversationId: conv.id },
+      where: {
+        externalId: mid,
+        conversationId: conv.id,
+        workspaceId: conv.workspaceId,
+      },
     });
     if (messageRow) {
       if (
@@ -452,7 +462,7 @@ export class ConversationsAllocationService {
     } else {
       await this.messageNotify.notifyConversationForOwner(
         ctx.companyCtx.ownerId,
-        conv.id,
+        conv,
       );
     }
 
@@ -515,7 +525,10 @@ export class ConversationsAllocationService {
     }
 
     const conv = await this.conversationRepo.findOne({
-      where: { id: row.conversationId },
+      where: {
+        id: row.conversationId,
+        workspaceId: row.workspaceId,
+      },
     });
     if (conv) {
       await this.archiveInstagramMessageRow(row, ctx.accessToken, conv.id);
@@ -527,7 +540,7 @@ export class ConversationsAllocationService {
 
   private buildMessageRowFromGraph(
     msg: InstagramMessageDto,
-    conversationDbId: number,
+    conversation: Conversation,
     ev: InstagramWebhookMessagingItem,
     options?: {
       inheritReadAtFromConversation?: Date | null;
@@ -571,7 +584,8 @@ export class ConversationsAllocationService {
     });
 
     return this.conversationMessageRepo.create({
-      conversationId: conversationDbId,
+      workspaceId: conversation.workspaceId,
+      conversationId: conversation.id,
       externalId: ext,
       message: text,
       instagramJson,
@@ -600,7 +614,7 @@ export class ConversationsAllocationService {
       throw new Error("Message id missing from Graph");
     }
 
-    const fresh = this.buildMessageRowFromGraph(msg, conversation.id, ev, {
+    const fresh = this.buildMessageRowFromGraph(msg, conversation, ev, {
       inheritReadAtFromConversation: convReadAt,
       businessInstagramId: businessCtx?.businessInstagramId,
       pageId: businessCtx?.pageId,
@@ -919,7 +933,12 @@ export class ConversationsAllocationService {
     });
 
     if (!row) {
+      const id =
+        await this.conversationIdAllocation.allocateNextConversationId(
+          params.workspaceId,
+        );
       row = this.conversationRepo.create({
+        id,
         externalSourceId: businessInstagramId,
         externalId: graphConversationId,
         createdAt: new Date(),

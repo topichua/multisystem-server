@@ -85,17 +85,15 @@ export class ConversationsGateway
     @MessageBody() body: SubscribeConversationDto,
   ): Promise<{ ok: true; conversationId: number }> {
     const ownerId = client.data.ownerId;
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const conv = await this.conversationRepo.findOne({
-      where: { id: body.conversationId },
+      where: { id: body.conversationId, workspaceId: workspace.id },
     });
     if (!conv) {
       throw new UnauthorizedException("Conversation not found");
     }
-    await this.workspaceContext.requireWorkspaceOwner(
-      ownerId,
-      conv.workspaceId,
-    );
-    await client.join(this.realtime.conversationRoom(conv.id));
+    await client.join(this.realtime.conversationRoom(conv.workspaceId, conv.id));
     return { ok: true, conversationId: conv.id };
   }
 
@@ -105,7 +103,12 @@ export class ConversationsGateway
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: SubscribeConversationDto,
   ): Promise<{ ok: true; conversationId: number }> {
-    await client.leave(this.realtime.conversationRoom(body.conversationId));
+    const ownerId = client.data.ownerId;
+    const workspace =
+      await this.workspaceContext.requireWorkspaceForOwner(ownerId);
+    await client.leave(
+      this.realtime.conversationRoom(workspace.id, body.conversationId),
+    );
     return { ok: true, conversationId: body.conversationId };
   }
 

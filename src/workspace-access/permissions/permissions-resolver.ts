@@ -91,16 +91,6 @@ export function resolveOwnerPermissions(
       members: { view: true, invite: true, delete: true },
     },
     analytics: { view: true },
-    payments: {
-      integrationsView: true,
-      integrationsManage: true,
-      linksCreate: true,
-      linksCancel: true,
-      view: true,
-      manualCreate: true,
-      manualMethodsView: true,
-      manualMethodsManage: true,
-    },
     integrationGrants,
     productReferenceGrants,
   };
@@ -170,20 +160,6 @@ export function resolveRolePermissions(
     },
     analytics: {
       view: hasKey(keys, "analytics.read"),
-    },
-    payments: {
-      integrationsView:
-        hasKey(keys, "payments.integrations.view") ||
-        hasKey(keys, "payments.integrations.manage"),
-      integrationsManage: hasKey(keys, "payments.integrations.manage"),
-      linksCreate: hasKey(keys, "payments.links.create"),
-      linksCancel: hasKey(keys, "payments.links.cancel"),
-      view: hasKey(keys, "payments.view"),
-      manualCreate: hasKey(keys, "payments.manual.create"),
-      manualMethodsView:
-        hasKey(keys, "payments.manual_methods.view") ||
-        hasKey(keys, "payments.manual_methods.manage"),
-      manualMethodsManage: hasKey(keys, "payments.manual_methods.manage"),
     },
     integrationGrants: raw.integrationGrants ?? [],
     productReferenceGrants: raw.productReferenceGrants ?? [],
@@ -328,22 +304,6 @@ export function hasBooleanPermission(
       return resolved.workspace.settingsManagement;
     case "analytics.read":
       return resolved.analytics.view;
-    case "payments.integrations.view":
-      return resolved.payments.integrationsView;
-    case "payments.integrations.manage":
-      return resolved.payments.integrationsManage;
-    case "payments.links.create":
-      return resolved.payments.linksCreate;
-    case "payments.links.cancel":
-      return resolved.payments.linksCancel;
-    case "payments.view":
-      return resolved.payments.view;
-    case "payments.manual.create":
-      return resolved.payments.manualCreate;
-    case "payments.manual_methods.view":
-      return resolved.payments.manualMethodsView;
-    case "payments.manual_methods.manage":
-      return resolved.payments.manualMethodsManage;
     default:
       return false;
   }

@@ -44,7 +44,11 @@ export class ConversationMessagePresenterService {
       return this.mapRowToDto(row);
     }
     const parent = await this.conversationMessageRepo.findOne({
-      where: { conversationId: row.conversationId, externalId: parentId },
+      where: {
+        workspaceId: row.workspaceId,
+        conversationId: row.conversationId,
+        externalId: parentId,
+      },
     });
     return this.mapRowToDto(row, parent);
   }

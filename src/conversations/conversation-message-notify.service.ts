@@ -26,20 +26,24 @@ export class ConversationMessageNotifyService {
       ownerId,
       row.conversationId,
     );
-    this.realtime.emitUpdate(ownerId, row.conversationId, {
-      message,
-      conversation,
-    });
+    this.realtime.emitUpdate(
+      ownerId,
+      { id: row.conversationId, workspaceId: row.workspaceId },
+      {
+        message,
+        conversation,
+      },
+    );
   }
 
   async notifyConversationForOwner(
     ownerId: number,
-    conversationId: number,
+    conversation: { id: number; workspaceId: number },
   ): Promise<void> {
-    const conversation = await this.conversations.getConversationForOwnerById(
+    const row = await this.conversations.getConversationForOwnerById(
       ownerId,
-      conversationId,
+      conversation.id,
     );
-    this.realtime.emitUpdate(ownerId, conversationId, { conversation });
+    this.realtime.emitUpdate(ownerId, conversation, { conversation: row });
   }
 }

@@ -371,12 +371,9 @@ export class PaymentIntegrationsService {
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (
-      !hasBooleanPermission(resolved, "payments.integrations.view") &&
-      !hasBooleanPermission(resolved, "payments.integrations.manage")
-    ) {
+    if (!hasBooleanPermission(resolved, "orders.payments.manage")) {
       throw new ForbiddenException(
-        "Missing payments.integrations.view permission",
+        "Missing orders.payments.manage permission",
       );
     }
   }
@@ -385,12 +382,7 @@ export class PaymentIntegrationsService {
     userId: number,
     appRole?: string,
   ): Promise<void> {
-    const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (!hasBooleanPermission(resolved, "payments.integrations.manage")) {
-      throw new ForbiddenException(
-        "Missing payments.integrations.manage permission",
-      );
-    }
+    return this.requireViewPermission(userId, appRole);
   }
 
   private toDto(row: PaymentIntegration): PaymentIntegrationResponseDto {

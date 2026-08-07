@@ -89,7 +89,11 @@ export class TelegramConversationMessagingService {
       replyToMessageId = this.parseReplyToMessageId(replyRaw, recipient);
       repliedToExternalId = `tg:${recipient}:${replyToMessageId}`;
       const parentExists = await this.conversationMessageRepo.exist({
-        where: { conversationId: conv.id, externalId: repliedToExternalId },
+        where: {
+          conversationId: conv.id,
+          workspaceId: conv.workspaceId,
+          externalId: repliedToExternalId,
+        },
       });
       if (!parentExists) {
         throw new BadRequestException(

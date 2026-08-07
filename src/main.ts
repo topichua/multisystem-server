@@ -4,6 +4,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { LocationLogger } from "./location-logger";
+import { ParseProductFieldFiltersPipe } from "./products/pipes/parse-product-field-filters.pipe";
 import { setupSwagger } from "./swagger.setup";
 
 function assertStartupEnv(): void {
@@ -42,7 +43,11 @@ async function bootstrap() {
     next();
   });
 
+  // ParseProductFieldFiltersPipe MUST run before ValidationPipe. Global pipes
+  // run first-to-last: otherwise forbidNonWhitelisted rejects/drops `field:{id}`
+  // query keys and characteristic filters never reach the product list.
   app.useGlobalPipes(
+    new ParseProductFieldFiltersPipe(),
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,

@@ -254,44 +254,6 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
     ],
   },
   {
-    module: "payments",
-    label: "Платежі",
-    items: [
-      booleanPermission(
-        "payments.integrations.view",
-        "Перегляд платіжних інтеграцій",
-      ),
-      booleanPermission(
-        "payments.integrations.manage",
-        "Керування платіжними інтеграціями та обліковими даними",
-      ),
-      booleanPermission(
-        "payments.links.create",
-        "Створення платіжних посилань",
-      ),
-      booleanPermission(
-        "payments.links.cancel",
-        "Скасування платіжних посилань",
-      ),
-      booleanPermission(
-        "payments.view",
-        "Перегляд платежів і транзакцій",
-      ),
-      booleanPermission(
-        "payments.manual.create",
-        "Запис ручних / офлайн-платежів",
-      ),
-      booleanPermission(
-        "payments.manual_methods.view",
-        "Перегляд ручних способів оплати (IBAN / картка)",
-      ),
-      booleanPermission(
-        "payments.manual_methods.manage",
-        "Керування ручними способами оплати",
-      ),
-    ],
-  },
-  {
     module: "ai",
     label: "ШІ",
     items: [

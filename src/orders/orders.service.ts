@@ -243,13 +243,13 @@ export class OrdersService {
     let integrationId: number | null = null;
     if (conversationId != null) {
       const conv = await this.conversationRepo.findOne({
-        where: { id: conversationId },
+        where: { id: conversationId, workspaceId },
         relations: { group: true },
       });
       if (!conv) {
         throw new NotFoundException("Conversation not found");
       }
-      if (!conv.group || conv.group.workspaceId !== workspaceId) {
+      if (conv.workspaceId !== workspaceId) {
         throw new BadRequestException(
           "Conversation does not belong to your workspace",
         );
@@ -374,7 +374,10 @@ export class OrdersService {
 
     if (saved.conversationId != null) {
       await this.conversationEvents.append(
-        saved.conversationId,
+        {
+          id: saved.conversationId,
+          workspaceId: saved.workspaceId,
+        },
         ConversationEventType.ORDER_CREATED,
         ownerId,
         {

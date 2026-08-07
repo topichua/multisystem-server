@@ -32,6 +32,7 @@ import {
 } from "../conversations/conversation-message-reactions-json.util";
 import { ConversationWorkflowService } from "../conversations/conversation-workflow.service";
 import { ChatAutoDistributionService } from "../conversations/chat-auto-distribution.service";
+import { ConversationIdAllocationService } from "../conversations/conversation-id-allocation.service";
 import { CloudflareImagesService } from "../products/cloudflare-images.service";
 import { TelegramUsersService } from "./telegram-users.service";
 import {
@@ -58,6 +59,7 @@ export class TelegramMessagePersistenceService {
     private readonly telegramUsers: TelegramUsersService,
     private readonly conversationWorkflow: ConversationWorkflowService,
     private readonly chatAutoDistribution: ChatAutoDistributionService,
+    private readonly conversationIdAllocation: ConversationIdAllocationService,
   ) {}
 
   /**
@@ -474,6 +476,7 @@ export class TelegramMessagePersistenceService {
     );
 
     const row = this.conversationMessageRepo.create({
+      workspaceId: conv.workspaceId,
       conversationId: conv.id,
       externalId: externalMessageId,
       message: text,
@@ -590,6 +593,7 @@ export class TelegramMessagePersistenceService {
     );
 
     const row = this.conversationMessageRepo.create({
+      workspaceId: conversation.workspaceId,
       conversationId: conversation.id,
       externalId: externalMessageId,
       message: text,
@@ -654,7 +658,13 @@ export class TelegramMessagePersistenceService {
       .createQueryBuilder()
       .update(ConversationMessage)
       .set({ readAt })
-      .where("conversation_id = :conversationId", { conversationId: conv.id })
+      .where(
+        "workspace_id = :workspaceId AND conversation_id = :conversationId",
+        {
+          workspaceId: conv.workspaceId,
+          conversationId: conv.id,
+        },
+      )
       .andWhere("sender_id = :myUserId", { myUserId })
       .andWhere("read_at IS NULL")
       .andWhere("external_id LIKE :externalIdPrefix", {
@@ -672,7 +682,7 @@ export class TelegramMessagePersistenceService {
 
     await this.messageNotify.notifyConversationForOwner(
       integration.ownerId,
-      conv.id,
+      conv,
     );
 
     this.log.debug(
@@ -721,6 +731,9 @@ export class TelegramMessagePersistenceService {
     }
 
     row = this.conversationRepo.create({
+      id: await this.conversationIdAllocation.allocateNextConversationId(
+        integration.workspaceId,
+      ),
       externalSourceId: String(integration.id),
       externalId: externalConversationId,
       createdAt: new Date(),

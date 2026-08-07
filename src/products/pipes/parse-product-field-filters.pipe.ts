@@ -14,6 +14,9 @@ const FIELD_QUERY_KEY = /^field:(\d+)$/;
  * Parses dynamic `field:{id}=...` query keys into `fieldFilters`, then removes
  * those keys so global `forbidNonWhitelisted` ValidationPipe accepts the DTO.
  *
+ * **Must run before ValidationPipe** (register as a global pipe first in main.ts).
+ * If ValidationPipe runs earlier, `field:36` is stripped/rejected and the filter never applies.
+ *
  * - `field:12=all` → any product/variant that has field 12 set (options or text)
  * - `field:12=3,7` → options: match option ids 3 or 7
  * - `field:12=keyword` → text: case-insensitive contains

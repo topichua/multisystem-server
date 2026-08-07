@@ -375,10 +375,7 @@ export class OrderRefundsService {
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (
-      !hasBooleanPermission(resolved, "orders.payments.manage") &&
-      !hasBooleanPermission(resolved, "payments.manual.create")
-    ) {
+    if (!hasBooleanPermission(resolved, "orders.payments.manage")) {
       throw new ForbiddenException(
         "Missing orders.payments.manage permission",
       );

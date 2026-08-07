@@ -34,14 +34,6 @@ export const PERMISSION_KEYS = [
   "workspace.members.delete",
   "workspace.settings",
   "analytics.read",
-  "payments.integrations.view",
-  "payments.integrations.manage",
-  "payments.links.create",
-  "payments.links.cancel",
-  "payments.view",
-  "payments.manual.create",
-  "payments.manual_methods.view",
-  "payments.manual_methods.manage",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];

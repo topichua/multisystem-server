@@ -697,64 +697,44 @@ export class OrderPaymentsService {
     return payment;
   }
 
-  private async requireViewPayments(
+  private async requirePaymentsManage(
     userId: number,
     appRole?: string,
   ): Promise<void> {
     const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (
-      !hasBooleanPermission(resolved, "orders.payments.manage") &&
-      !hasBooleanPermission(resolved, "payments.view")
-    ) {
+    if (!hasBooleanPermission(resolved, "orders.payments.manage")) {
       throw new ForbiddenException(
         "Missing orders.payments.manage permission",
       );
     }
+  }
+
+  private async requireViewPayments(
+    userId: number,
+    appRole?: string,
+  ): Promise<void> {
+    return this.requirePaymentsManage(userId, appRole);
   }
 
   private async requireCreatePaymentLink(
     userId: number,
     appRole?: string,
   ): Promise<void> {
-    const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (
-      !hasBooleanPermission(resolved, "orders.payments.manage") &&
-      !hasBooleanPermission(resolved, "payments.links.create")
-    ) {
-      throw new ForbiddenException(
-        "Missing orders.payments.manage permission",
-      );
-    }
+    return this.requirePaymentsManage(userId, appRole);
   }
 
   private async requireManualPayment(
     userId: number,
     appRole?: string,
   ): Promise<void> {
-    const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (
-      !hasBooleanPermission(resolved, "orders.payments.manage") &&
-      !hasBooleanPermission(resolved, "payments.manual.create")
-    ) {
-      throw new ForbiddenException(
-        "Missing orders.payments.manage permission",
-      );
-    }
+    return this.requirePaymentsManage(userId, appRole);
   }
 
   private async requireCancelPaymentLink(
     userId: number,
     appRole?: string,
   ): Promise<void> {
-    const resolved = await this.permissions.getResolvedForUser(userId, appRole);
-    if (
-      !hasBooleanPermission(resolved, "orders.payments.manage") &&
-      !hasBooleanPermission(resolved, "payments.links.cancel")
-    ) {
-      throw new ForbiddenException(
-        "Missing orders.payments.manage permission",
-      );
-    }
+    return this.requirePaymentsManage(userId, appRole);
   }
 
   private toPaymentDto(

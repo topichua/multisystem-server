@@ -12,6 +12,10 @@ import { ConversationMessageType } from "./conversation-message-type.enum";
 
 @Entity("conversation_messages")
 @Index("IDX_conversation_messages_conversation_id", ["conversationId"])
+@Index("IDX_conversation_messages_workspace_conversation", [
+  "workspaceId",
+  "conversationId",
+])
 @Index("IDX_conversation_messages_replied_to_external_id", [
   "repliedToExternalId",
 ])
@@ -22,11 +26,17 @@ export class ConversationMessage {
   @PrimaryColumn({ name: "external_id", type: "varchar", length: 255 })
   externalId: string;
 
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
+
   @Column({ name: "conversation_id", type: "int" })
   conversationId: number;
 
   @ManyToOne(() => Conversation, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "conversation_id" })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "conversation_id", referencedColumnName: "id" },
+  ])
   conversation: Conversation;
 
   @Column({ name: "message", type: "text" })

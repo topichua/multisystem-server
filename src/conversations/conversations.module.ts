@@ -33,6 +33,7 @@ import { ConversationMessagePresenterService } from "./conversation-message-pres
 import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
 import { ConversationsController } from "./conversations.controller";
 import { ConversationsAllocationService } from "./conversations-allocation.service";
+import { ConversationIdAllocationService } from "./conversation-id-allocation.service";
 import { ConversationsGateway } from "./conversations.gateway";
 import { ConversationsRealtimeService } from "./conversations-realtime.service";
 import { ConversationsService } from "./conversations.service";
@@ -69,6 +70,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
   providers: [
     ConversationsService,
     ConversationsAllocationService,
+    ConversationIdAllocationService,
     ConversationGroupsService,
     ConversationWorkflowService,
     ChatAutoDistributionService,
@@ -82,6 +84,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
   exports: [
     ConversationsService,
     ConversationsAllocationService,
+    ConversationIdAllocationService,
     ConversationGroupsService,
     ConversationEventsModule,
     ConversationMessageNotifyService,

@@ -8,6 +8,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { In, IsNull, Repository, type EntityManager } from "typeorm";
 import {
   ProductVariantCustomFieldValue,
+  User,
   VariantCustomFieldType,
   WorkspaceVariantCustomField,
   WorkspaceVariantCustomFieldOption,
@@ -20,6 +21,7 @@ import type {
 } from "./dto/variant-custom-field-request.dto";
 import type {
   VariantCustomFieldDefinitionDto,
+  VariantCustomFieldUserDto,
   VariantCustomFieldsListResponseDto,
 } from "./dto/variant-custom-field-definition.dto";
 import type { VariantCustomFieldOptionDto } from "./dto/variant-custom-field-option.dto";
@@ -71,7 +73,11 @@ export class VariantCustomFieldsService {
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const rows = await this.fieldRepo.find({
       where: { workspaceId: workspace.id },
-      relations: { fieldOptions: true },
+      relations: {
+        fieldOptions: true,
+        createdByUser: true,
+        updatedByUser: true,
+      },
       order: { sortOrder: "ASC", id: "ASC" },
     });
     return {
@@ -330,6 +336,8 @@ export class VariantCustomFieldsService {
         type: dto.type,
         sortOrder: dto.sortOrder ?? 0,
         archivedAt: null,
+        createdByUserId: ownerId,
+        updatedByUserId: ownerId,
       }),
     );
     if (dto.type === VariantCustomFieldType.options && dto.options?.length) {
@@ -369,6 +377,7 @@ export class VariantCustomFieldsService {
       await this.syncOptionLabels(row.id, dto.options);
     }
 
+    row.updatedByUserId = ownerId;
     const saved = await this.fieldRepo.save(row);
     return this.toDto(await this.requireFieldWithOptions(saved.id));
   }
@@ -402,7 +411,10 @@ export class VariantCustomFieldsService {
     const now = new Date();
     if (row.archivedAt == null) {
       row.archivedAt = now;
+      row.updatedByUserId = ownerId;
       await this.fieldRepo.save(row);
+    } else {
+      await this.touchFieldEditor(row.id, ownerId);
     }
     await this.optionRepo
       .createQueryBuilder()
@@ -426,7 +438,10 @@ export class VariantCustomFieldsService {
     );
     if (row.archivedAt != null) {
       row.archivedAt = null;
+      row.updatedByUserId = ownerId;
       await this.fieldRepo.save(row);
+    } else {
+      await this.touchFieldEditor(row.id, ownerId);
     }
     return this.toDto(await this.requireFieldWithOptions(row.id));
   }
@@ -440,6 +455,7 @@ export class VariantCustomFieldsService {
     if (option.archivedAt == null) {
       option.archivedAt = new Date();
       await this.optionRepo.save(option);
+      await this.touchFieldEditor(fieldId, ownerId);
     }
     return this.toOptionDto(option);
   }
@@ -459,6 +475,7 @@ export class VariantCustomFieldsService {
     if (option.archivedAt != null) {
       option.archivedAt = null;
       await this.optionRepo.save(option);
+      await this.touchFieldEditor(fieldId, ownerId);
     }
     return this.toOptionDto(option);
   }
@@ -496,13 +513,15 @@ export class VariantCustomFieldsService {
       field.workspaceId,
     );
 
-    return this.optionRepo.save(
+    const saved = await this.optionRepo.save(
       this.optionRepo.create({
         fieldId: field.id,
         label: label.trim(),
         archivedAt: null,
       }),
     );
+    await this.touchFieldEditor(field.id, ownerId);
+    return saved;
   }
 
   async updateOptionForOwner(
@@ -541,7 +560,9 @@ export class VariantCustomFieldsService {
     }
 
     option.label = label.trim();
-    return this.optionRepo.save(option);
+    const saved = await this.optionRepo.save(option);
+    await this.touchFieldEditor(field.id, ownerId);
+    return saved;
   }
 
   async deleteOptionForOwner(
@@ -574,6 +595,7 @@ export class VariantCustomFieldsService {
     }
 
     await this.optionRepo.remove(option);
+    await this.touchFieldEditor(field.id, ownerId);
   }
 
   async getUsageForOwner(
@@ -931,6 +953,8 @@ export class VariantCustomFieldsService {
         type: storageType,
         sortOrder: await this.nextFieldSortOrder(workspaceId, fieldRepo),
         archivedAt: null,
+        createdByUserId: ownerId,
+        updatedByUserId: ownerId,
       }),
     );
     return created;
@@ -999,13 +1023,26 @@ export class VariantCustomFieldsService {
   ): Promise<WorkspaceVariantCustomField> {
     const row = await this.fieldRepo.findOne({
       where: { id: fieldId },
-      relations: { fieldOptions: true },
+      relations: {
+        fieldOptions: true,
+        createdByUser: true,
+        updatedByUser: true,
+      },
     });
     if (!row) {
       throw new NotFoundException("Custom field not found");
     }
     row.fieldOptions?.sort((a, b) => a.id - b.id);
     return row;
+  }
+
+  private async touchFieldEditor(
+    fieldId: number,
+    editorUserId: number,
+  ): Promise<void> {
+    await this.fieldRepo.update(fieldId, {
+      updatedByUserId: editorUserId,
+    });
   }
 
   private async insertOptionLabels(
@@ -1146,6 +1183,24 @@ export class VariantCustomFieldsService {
         : {}),
       sortOrder: row.sortOrder,
       archivedAt: row.archivedAt?.toISOString() ?? null,
+      createdAt: row.createdAt?.toISOString?.() ?? undefined,
+      updatedAt: row.updatedAt?.toISOString?.() ?? undefined,
+      createdBy: this.toUserDto(row.createdByUser),
+      updatedBy: this.toUserDto(row.updatedByUser),
+    };
+  }
+
+  private toUserDto(
+    user: User | null | undefined,
+  ): VariantCustomFieldUserDto | null {
+    if (!user) {
+      return null;
+    }
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName?.trim() || null,
+      avatar: user.avatarSrc?.trim() || null,
     };
   }
 }

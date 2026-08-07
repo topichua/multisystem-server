@@ -51,8 +51,15 @@ export class Order {
   @Column({ name: "conversation_id", type: "int", nullable: true })
   conversationId: number | null;
 
-  @ManyToOne(() => Conversation, { onDelete: "SET NULL", nullable: true })
-  @JoinColumn({ name: "conversation_id" })
+  /**
+   * FK is (workspace_id, conversation_id). ON DELETE RESTRICT — null conversation_id
+   * before deleting the conversation (workspace_id is order PK, cannot SET NULL).
+   */
+  @ManyToOne(() => Conversation, { onDelete: "RESTRICT", nullable: true })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "conversation_id", referencedColumnName: "id" },
+  ])
   conversation: Conversation | null;
 
   /**

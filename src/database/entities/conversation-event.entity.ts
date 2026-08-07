@@ -12,15 +12,25 @@ import { User } from "./user.entity";
 
 @Entity("conversation_events")
 @Index("IDX_conversation_events_conversation_id", ["conversationId"])
+@Index("IDX_conversation_events_workspace_conversation", [
+  "workspaceId",
+  "conversationId",
+])
 export class ConversationEvent {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
+
+  @Column({ name: "workspace_id", type: "int" })
+  workspaceId: number;
 
   @Column({ name: "conversation_id", type: "int" })
   conversationId: number;
 
   @ManyToOne(() => Conversation, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "conversation_id" })
+  @JoinColumn([
+    { name: "workspace_id", referencedColumnName: "workspaceId" },
+    { name: "conversation_id", referencedColumnName: "id" },
+  ])
   conversation: Conversation;
 
   @Column({ name: "type", type: "varchar", length: 64 })

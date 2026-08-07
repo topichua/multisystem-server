@@ -2,6 +2,23 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { VariantCustomFieldType } from "../../database/entities/variant-custom-field-type.enum";
 import { VariantCustomFieldOptionDto } from "./variant-custom-field-option.dto";
 
+export class VariantCustomFieldUserDto {
+  @ApiProperty()
+  id!: number;
+
+  @ApiProperty()
+  firstName!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  lastName!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Avatar CDN URL when set.",
+  })
+  avatar!: string | null;
+}
+
 export class VariantCustomFieldDefinitionDto {
   @ApiProperty()
   id!: number;
@@ -44,6 +61,30 @@ export class VariantCustomFieldDefinitionDto {
     description: "ISO timestamp when archived; null if active",
   })
   archivedAt!: string | null;
+
+  @ApiPropertyOptional({
+    description: "When the field definition was created (ISO).",
+  })
+  createdAt?: string;
+
+  @ApiPropertyOptional({
+    description: "When the field definition was last updated (ISO).",
+  })
+  updatedAt?: string;
+
+  @ApiPropertyOptional({
+    type: VariantCustomFieldUserDto,
+    nullable: true,
+    description: "User who created this field definition.",
+  })
+  createdBy!: VariantCustomFieldUserDto | null;
+
+  @ApiPropertyOptional({
+    type: VariantCustomFieldUserDto,
+    nullable: true,
+    description: "User who last edited this field definition.",
+  })
+  updatedBy!: VariantCustomFieldUserDto | null;
 }
 
 export class VariantCustomFieldsListResponseDto {

@@ -6,6 +6,7 @@ import type { InstagramMessageDto } from "./dto/http/instagram-messages-response
 /** Single WebSocket payload — client upserts `conversation` / `message` by `id`. */
 export type ConversationsRealtimePayload = {
   conversationId: number;
+  workspaceId?: number;
   conversation?: ConversationRowDto;
   message?: InstagramMessageDto;
 };
@@ -21,33 +22,37 @@ export class ConversationsRealtimeService {
 
   /**
    * `conversations.update` — same DTOs as REST list / message items.
-   * Emitted to `conversation:{id}` and `owner:{ownerId}` (inbox).
+   * Emitted to `conversation:{workspaceId}:{id}` and `owner:{ownerId}` (inbox).
    */
   emitUpdate(
     ownerId: number,
-    conversationId: number,
-    payload: Omit<ConversationsRealtimePayload, "conversationId">,
+    conversation: { id: number; workspaceId: number },
+    payload: Omit<
+      ConversationsRealtimePayload,
+      "conversationId" | "workspaceId"
+    >,
   ): void {
     if (!this.server) {
       this.log.debug(
-        `WebSocket server not ready; skip push conversationId=${conversationId}`,
+        `WebSocket server not ready; skip push conversationId=${conversation.id}`,
       );
       return;
     }
 
     const body: ConversationsRealtimePayload = {
-      conversationId,
+      conversationId: conversation.id,
+      workspaceId: conversation.workspaceId,
       ...payload,
     };
 
     this.server
-      .to(this.conversationRoom(conversationId))
+      .to(this.conversationRoom(conversation.workspaceId, conversation.id))
       .to(this.ownerRoom(ownerId))
       .emit("conversations.update", body);
   }
 
-  conversationRoom(conversationDbId: number): string {
-    return `conversation:${conversationDbId}`;
+  conversationRoom(workspaceId: number, conversationDbId: number): string {
+    return `conversation:${workspaceId}:${conversationDbId}`;
   }
 
   ownerRoom(ownerId: number): string {
