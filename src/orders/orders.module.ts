@@ -32,6 +32,7 @@ import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 import { OrderStatusTransitionService } from "./order-status-transition.service";
 import { OrderExportHandler } from "./order-export.handler";
+import { OrderStatusAutomationsModule } from "../order-status-automations/order-status-automations.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { OrderExportHandler } from "./order-export.handler";
     OrderStatusDefaultsModule,
     forwardRef(() => DeliveryModule),
     forwardRef(() => PaymentsModule),
+    forwardRef(() => OrderStatusAutomationsModule),
     TypeOrmModule.forFeature([
       Client,
       Conversation,

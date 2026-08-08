@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, forwardRef } from "@nestjs/common";
 import { AutomationSourceType } from "../database/entities";
 import { OrderStatusAutomationExecutorService } from "./order-status-automation-executor.service";
 
@@ -17,6 +17,7 @@ export class OrderStatusAutomationTriggerService {
   private readonly log = new Logger(OrderStatusAutomationTriggerService.name);
 
   constructor(
+    @Inject(forwardRef(() => OrderStatusAutomationExecutorService))
     private readonly executor: OrderStatusAutomationExecutorService,
   ) {}
 

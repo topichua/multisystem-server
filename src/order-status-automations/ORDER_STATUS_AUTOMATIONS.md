@@ -6,17 +6,34 @@
 - `order_status_automation_executions` — APPLIED / SKIPPED / FAILED audit log with idempotency key
 - `orders.payment_status_at` — when current `payment_status` was entered
 - `order_delivery_infos.delivery_status_at` — when current `delivery_status` was entered
+- `orders.status_changed_at` — when current order `status_id` was entered (`ORDER_STATUS` conditions)
 
 ## Rule builder criteria
 
 `GET /automation_rule/criteria` returns `delivery`, `payment`, and `statuses` arrays of `{ id, name }`.
 - Use delivery/payment `id` as `conditions[].sourceStatus` with the matching `sourceType` (`DELIVERY_STATUS` or `PAYMENT_STATUS`).
-- Use `statuses[].id` as `targetOrderStatusId` (automation action).
+- Use `statuses[].id` as `targetOrderStatusId` (automation action), **or** as `conditions[].sourceStatus` (string) with `sourceType: ORDER_STATUS`.
 
 ## Rule shape
 
-- `conditions[]` — OR trigger conditions (`sourceType` + `sourceStatus`, optional `durationValue` + `durationUnit` per condition)
+- `conditions[]` — OR/AND trigger conditions (`sourceType` + `sourceStatus`, optional `operator` EQ/NEQ, optional `durationValue` + `durationUnit` per condition)
 - `targetOrderStatusId` — single action: change order status
+
+Example: when order status is **not** 29 (immediate) → move order to another status:
+
+```json
+{
+  "name": "Not status 29",
+  "conditions": [
+    {
+      "sourceType": "ORDER_STATUS",
+      "sourceStatus": "29",
+      "operator": "NEQ"
+    }
+  ],
+  "targetOrderStatusId": 12
+}
+```
 
 Example: when delivery is `at_branch` for more than 3 days → move order to `completed`:
 
@@ -39,18 +56,19 @@ Example: when delivery is `at_branch` **OR** `delivered` (immediate) → move or
 
 ## Lifecycle: immediate rule
 
-1. Delivery or payment status changes through a centralized application service
-2. If value actually changed, timestamp is updated (`*StatusAt`)
-3. `OrderStatusAutomationTriggerService` loads active rules whose **conditions** include the changed source type + status
+1. Delivery, payment, or **order** status changes through a centralized application service
+2. If value actually changed, timestamp is updated (`*StatusAt` / `status_changed_at`)
+3. `OrderStatusAutomationTriggerService` loads active rules whose **conditions** include the changed source type + status (EQ match or NEQ match)
 4. Conditions with `duration_value IS NULL` are evaluated immediately via `OrderStatusAutomationExecutorService`
 5. Conditions with duration are not executed immediately
 6. Executor re-validates conditions and applies `OrderStatusTransitionService.changeOrderStatus` with `source: AUTOMATION`
+7. Order status changes with `source: AUTOMATION` do **not** re-fire `ORDER_STATUS` immediate rules (loop protection)
 
 ## Lifecycle: timed rule
 
 1. No per-rule delayed jobs are created
 2. `NovaPoshtaDeliverySyncWorkerService` runs hourly and syncs Nova Poshta deliveries with TTN + phone
-3. After sync, it asks the automation executor to evaluate due DELIVERY_STATUS timed rules
+3. After sync, it asks the automation executor to evaluate due DELIVERY_STATUS, PAYMENT_STATUS, and ORDER_STATUS timed rules
 4. Execution checks: automation active, status unchanged, timestamp unchanged, time elapsed
 5. Stale candidates end as SKIPPED (`SOURCE_STATUS_CHANGED`, `STALE_STATUS_TIMESTAMP`, etc.)
 
@@ -63,6 +81,7 @@ Example: when delivery is `at_branch` **OR** `delivered` (immediate) → move or
 | Manual delivery PATCH | `OrdersService.updateDeliveryInfo` → application service |
 | TTN removal | `NovaPoshtaWaybillService` → application service |
 | Payment webhook / sync / manual | `PaymentDomainService` → `OrderPaymentStatusApplicationService` |
+| Order status change (manual/confirm) | `OrderStatusTransitionService` → `ORDER_STATUS` trigger (not for AUTOMATION) |
 | Hourly Nova Poshta sync | `NovaPoshtaDeliverySyncWorkerService` |
 
 ## Idempotency

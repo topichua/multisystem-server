@@ -15,6 +15,7 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import { AutomationActionType } from "../../database/entities/automation-action-type.enum";
+import { AutomationConditionOperator } from "../../database/entities/automation-condition-operator.enum";
 import { AutomationConditionType } from "../../database/entities/automation-condition-type.enum";
 import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
@@ -34,7 +35,8 @@ export class OrderStatusAutomationConditionDto {
   @ApiProperty({
     enum: AutomationSourceType,
     example: AutomationSourceType.delivery_status,
-    description: "DELIVERY_STATUS or PAYMENT_STATUS.",
+    description:
+      "`DELIVERY_STATUS` / `PAYMENT_STATUS` (codes) or `ORDER_STATUS` (workspace order status id as string).",
   })
   @IsEnum(AutomationSourceType)
   sourceType!: AutomationSourceType;
@@ -42,14 +44,28 @@ export class OrderStatusAutomationConditionDto {
   @ApiProperty({
     example: "at_branch",
     description:
-      "Delivery: pending, waybill_created, shipped, at_branch, delivered, delivery_failed, returned. " +
-      "Payment: unpaid, partial, paid, overpaid, refunded. " +
-      "See GET /automation_rule/criteria for labels.",
+      "DELIVERY_STATUS: pending, waybill_created, shipped, at_branch, delivered, delivery_failed, returned. " +
+      "PAYMENT_STATUS: unpaid, partial, paid, overpaid, refunded. " +
+      "ORDER_STATUS: workspace order status **id** as string (e.g. \"29\" from GET /automation_rule/criteria `statuses`). " +
+      "See GET /automation_rule/criteria for options.",
   })
   @IsString()
   @MinLength(1)
   @MaxLength(64)
   sourceStatus!: string;
+
+  @ApiPropertyOptional({
+    enum: AutomationConditionOperator,
+    default: AutomationConditionOperator.eq,
+    description:
+      "`EQ` (default) — status equals `sourceStatus`. " +
+      "`NEQ` — status is anything except `sourceStatus`. " +
+      "Aliases: EQUALS, NOT_EQUALS, !=.",
+    example: AutomationConditionOperator.eq,
+  })
+  @IsOptional()
+  @IsString()
+  operator?: AutomationConditionOperator | string;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -109,11 +125,12 @@ export class CreateOrderStatusAutomationDto {
   @ApiProperty({
     type: [OrderStatusAutomationConditionDto],
     description:
-      "Trigger conditions combined by `conditionType`. Each may have its own optional delay.",
+      "Trigger conditions combined by `conditionType`. Each may have its own optional delay and operator.",
     example: [
       {
         sourceType: "DELIVERY_STATUS",
         sourceStatus: "at_branch",
+        operator: "EQ",
         durationValue: 3,
         durationUnit: "DAYS",
       },

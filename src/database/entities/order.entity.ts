@@ -84,6 +84,10 @@ export class Order {
   @JoinColumn({ name: "status_id" })
   status: OrderStatus;
 
+  /** When the current `statusId` was entered (for ORDER_STATUS automations). */
+  @Column({ name: "status_changed_at", type: "timestamptz", nullable: true })
+  statusChangedAt: Date | null;
+
   @Column({
     name: "payment_status",
     type: "enum",

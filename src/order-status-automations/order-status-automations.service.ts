@@ -9,6 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, Repository } from "typeorm";
 import {
   AutomationActionType,
+  AutomationConditionOperator,
   AutomationConditionType,
   AutomationOrigin,
   AutomationSourceType,
@@ -35,6 +36,7 @@ import {
   normalizeAutomationConditions,
   type NormalizedAutomationCondition,
 } from "./logic/automation-conditions.logic";
+import { parseOrderStatusConditionId } from "./logic/automation-source-status.logic";
 
 @Injectable()
 export class OrderStatusAutomationsService {
@@ -150,6 +152,11 @@ export class OrderStatusAutomationsService {
       resolveConditionType(dto) ?? AutomationConditionType.or;
     this.validateActionType(dto.actionType);
     await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
+    await this.assertOrderStatusConditions(
+      workspace.id,
+      conditions,
+      dto.targetOrderStatusId,
+    );
     await this.assertNoDuplicate({
       workspaceId: workspace.id,
       conditionType,
@@ -204,6 +211,11 @@ export class OrderStatusAutomationsService {
     if (dto.targetOrderStatusId != null) {
       await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
     }
+    await this.assertOrderStatusConditions(
+      workspace.id,
+      nextConditions,
+      nextTargetStatusId,
+    );
 
     await this.assertNoDuplicate(
       {
@@ -295,6 +307,7 @@ export class OrderStatusAutomationsService {
       this.conditionRepo.create({
         sourceType: condition.sourceType,
         sourceStatus: condition.sourceStatus,
+        operator: condition.operator,
         durationValue: condition.durationValue,
         durationUnit: condition.durationUnit,
         sortOrder: index,
@@ -310,6 +323,7 @@ export class OrderStatusAutomationsService {
       .map((condition) => ({
         sourceType: condition.sourceType,
         sourceStatus: condition.sourceStatus,
+        operator: condition.operator ?? AutomationConditionOperator.eq,
         durationValue: condition.durationValue,
         durationUnit: condition.durationUnit,
       }));
@@ -326,6 +340,44 @@ export class OrderStatusAutomationsService {
       throw new BadRequestException(
         "Target order status not found in workspace",
       );
+    }
+  }
+
+  /**
+   * ORDER_STATUS conditions must reference real workspace statuses.
+   * EQ + same id as target is a noop (always true when action would apply).
+   */
+  private async assertOrderStatusConditions(
+    workspaceId: number,
+    conditions: NormalizedAutomationCondition[],
+    targetOrderStatusId: number,
+  ): Promise<void> {
+    for (const condition of conditions) {
+      if (condition.sourceType !== AutomationSourceType.order_status) {
+        continue;
+      }
+      const statusId = parseOrderStatusConditionId(condition.sourceStatus);
+      if (statusId == null) {
+        throw new BadRequestException(
+          "Invalid sourceStatus for ORDER_STATUS: expected workspace order status id",
+        );
+      }
+      const status = await this.orderStatusRepo.findOne({
+        where: { id: statusId, workspaceId },
+      });
+      if (!status) {
+        throw new BadRequestException(
+          `Order status ${statusId} not found in workspace`,
+        );
+      }
+      if (
+        condition.operator === AutomationConditionOperator.eq &&
+        statusId === targetOrderStatusId
+      ) {
+        throw new BadRequestException(
+          "ORDER_STATUS EQ condition cannot equal targetOrderStatusId",
+        );
+      }
     }
   }
 
@@ -394,6 +446,7 @@ export class OrderStatusAutomationsService {
         id: condition.id,
         sourceType: condition.sourceType,
         sourceStatus: condition.sourceStatus,
+        operator: condition.operator ?? AutomationConditionOperator.eq,
         durationValue: condition.durationValue,
         durationUnit: condition.durationUnit,
         durationLabel: formatAutomationDuration(

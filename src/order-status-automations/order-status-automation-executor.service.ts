@@ -1,7 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Not, Repository } from "typeorm";
 import {
+  AutomationConditionOperator,
   AutomationConditionType,
   AutomationExecutionStatus,
   AutomationDurationUnit,
@@ -12,7 +13,10 @@ import {
   OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
 } from "../database/entities";
-import { isTimedCondition } from "./logic/automation-conditions.logic";
+import {
+  isTimedCondition,
+  matchesAutomationSourceStatus,
+} from "./logic/automation-conditions.logic";
 import {
   addDuration,
   buildIdempotencyKey,
@@ -46,6 +50,7 @@ export class OrderStatusAutomationExecutorService {
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(OrderDeliveryInfo)
     private readonly deliveryRepo: Repository<OrderDeliveryInfo>,
+    @Inject(forwardRef(() => OrderStatusTransitionService))
     private readonly orderStatusTransition: OrderStatusTransitionService,
   ) {}
 
@@ -68,7 +73,11 @@ export class OrderStatusAutomationExecutorService {
             AND c.duration_value IS NULL
             AND c.duration_unit IS NULL
             AND c.source_type = :sourceType
-            AND c.source_status = :sourceStatus
+            AND (
+              (COALESCE(c.operator, 'EQ') = 'EQ' AND c.source_status = :sourceStatus)
+              OR
+              (c.operator = 'NEQ' AND c.source_status <> :sourceStatus)
+            )
         )`,
         {
           sourceType: input.sourceType,
@@ -85,8 +94,12 @@ export class OrderStatusAutomationExecutorService {
       const matchingCondition = (rule.conditions ?? []).find(
         (condition) =>
           condition.sourceType === input.sourceType &&
-          condition.sourceStatus === input.sourceStatus &&
-          !isTimedCondition(condition),
+          !isTimedCondition(condition) &&
+          matchesAutomationSourceStatus(
+            condition.operator ?? AutomationConditionOperator.eq,
+            condition.sourceStatus,
+            input.sourceStatus,
+          ),
       );
       if (!matchingCondition) {
         continue;
@@ -97,7 +110,9 @@ export class OrderStatusAutomationExecutorService {
         workspaceId: input.workspaceId,
         orderId: input.orderId,
         sourceType: matchingCondition.sourceType,
-        sourceStatus: matchingCondition.sourceStatus,
+        conditionSourceStatus: matchingCondition.sourceStatus,
+        operator: matchingCondition.operator ?? AutomationConditionOperator.eq,
+        observedSourceStatus: input.sourceStatus,
         durationValue: matchingCondition.durationValue,
         durationUnit: matchingCondition.durationUnit,
         expectedStatusChangedAt: input.statusChangedAt,
@@ -155,7 +170,9 @@ export class OrderStatusAutomationExecutorService {
           const statusChangedAt =
             input.sourceType === AutomationSourceType.delivery_status
               ? candidate.deliveryStatusAt
-              : candidate.paymentStatusAt;
+              : input.sourceType === AutomationSourceType.payment_status
+                ? candidate.paymentStatusAt
+                : candidate.statusChangedAt;
           if (!statusChangedAt) {
             continue;
           }
@@ -169,12 +186,28 @@ export class OrderStatusAutomationExecutorService {
             continue;
           }
 
+          let observedSourceStatus: string | null;
+          if (input.sourceType === AutomationSourceType.delivery_status) {
+            observedSourceStatus =
+              candidate.deliveryStatus ??
+              (await this.resolveCurrentSourceStatus(
+                candidate,
+                input.sourceType,
+              ));
+          } else if (input.sourceType === AutomationSourceType.payment_status) {
+            observedSourceStatus = candidate.paymentStatus;
+          } else {
+            observedSourceStatus = String(candidate.statusId);
+          }
+
           await this.applyAutomation({
             automation: rule,
             workspaceId: candidate.workspaceId,
             orderId: candidate.id,
             sourceType: condition.sourceType,
-            sourceStatus: condition.sourceStatus,
+            conditionSourceStatus: condition.sourceStatus,
+            operator: condition.operator ?? AutomationConditionOperator.eq,
+            observedSourceStatus: String(observedSourceStatus ?? ""),
             durationValue: condition.durationValue,
             durationUnit: condition.durationUnit,
             expectedStatusChangedAt: statusChangedAt,
@@ -196,10 +229,24 @@ export class OrderStatusAutomationExecutorService {
     Array<
       Order & {
         deliveryStatusAt?: Date | null;
+        deliveryStatus?: string | null;
       }
     >
   > {
+    const operator = condition.operator ?? AutomationConditionOperator.eq;
+
     if (condition.sourceType === AutomationSourceType.payment_status) {
+      if (operator === AutomationConditionOperator.neq) {
+        return this.orderRepo.find({
+          where: {
+            workspaceId: rule.workspaceId,
+            paymentStatus: Not(
+              condition.sourceStatus as Order["paymentStatus"],
+            ),
+          },
+          take: limit,
+        });
+      }
       return this.orderRepo.find({
         where: {
           workspaceId: rule.workspaceId,
@@ -209,28 +256,62 @@ export class OrderStatusAutomationExecutorService {
       });
     }
 
-    const rows = await this.orderRepo
+    if (condition.sourceType === AutomationSourceType.order_status) {
+      const statusId = Number(condition.sourceStatus);
+      if (!Number.isInteger(statusId) || statusId <= 0) {
+        return [];
+      }
+      if (operator === AutomationConditionOperator.neq) {
+        return this.orderRepo.find({
+          where: {
+            workspaceId: rule.workspaceId,
+            statusId: Not(statusId),
+          },
+          take: limit,
+        });
+      }
+      return this.orderRepo.find({
+        where: {
+          workspaceId: rule.workspaceId,
+          statusId,
+        },
+        take: limit,
+      });
+    }
+
+    const qb = this.orderRepo
       .createQueryBuilder("o")
       .innerJoin(OrderDeliveryInfo, "d", "d.id = o.delivery_id")
       .addSelect("d.delivery_status_at", "delivery_status_at")
+      .addSelect("d.delivery_status", "delivery_status")
       .where("o.workspace_id = :workspaceId", {
         workspaceId: rule.workspaceId,
       })
-      .andWhere("d.delivery_status = :sourceStatus", {
-        sourceStatus: condition.sourceStatus,
-      })
       .andWhere("d.delivery_status_at IS NOT NULL")
-      .limit(limit)
-      .getRawAndEntities();
+      .limit(limit);
+
+    if (operator === AutomationConditionOperator.neq) {
+      qb.andWhere("d.delivery_status <> :sourceStatus", {
+        sourceStatus: condition.sourceStatus,
+      });
+    } else {
+      qb.andWhere("d.delivery_status = :sourceStatus", {
+        sourceStatus: condition.sourceStatus,
+      });
+    }
+
+    const rows = await qb.getRawAndEntities();
 
     return rows.entities.map((order, index) => {
       const raw = rows.raw[index] as {
         delivery_status_at?: Date | string | null;
+        delivery_status?: string | null;
       };
       const rawAt = raw.delivery_status_at ?? null;
       return Object.assign(order, {
         deliveryStatusAt:
           rawAt instanceof Date ? rawAt : rawAt ? new Date(rawAt) : null,
+        deliveryStatus: raw.delivery_status ?? null,
       });
     });
   }
@@ -240,7 +321,9 @@ export class OrderStatusAutomationExecutorService {
     workspaceId: number;
     orderId: number;
     sourceType: AutomationSourceType;
-    sourceStatus: string;
+    conditionSourceStatus: string;
+    operator: AutomationConditionOperator;
+    observedSourceStatus: string;
     durationValue: number | null;
     durationUnit: AutomationDurationUnit | null;
     expectedStatusChangedAt: Date;
@@ -251,12 +334,16 @@ export class OrderStatusAutomationExecutorService {
       workspaceId,
       orderId,
       sourceType,
-      sourceStatus,
+      conditionSourceStatus,
+      operator,
+      observedSourceStatus,
       durationValue,
       durationUnit,
       expectedStatusChangedAt,
       timed,
     } = input;
+
+    const sourceStatus = observedSourceStatus || conditionSourceStatus;
 
     if (!automation.isActive) {
       await this.logSkippedExecution({
@@ -321,7 +408,13 @@ export class OrderStatusAutomationExecutorService {
       sourceType,
     );
 
-    if (currentSourceStatus !== sourceStatus) {
+    if (
+      !matchesAutomationSourceStatus(
+        operator,
+        conditionSourceStatus,
+        currentSourceStatus,
+      )
+    ) {
       await this.logSkippedExecution({
         automation,
         workspaceId,
@@ -571,7 +664,13 @@ export class OrderStatusAutomationExecutorService {
       order,
       condition.sourceType,
     );
-    if (currentStatus !== condition.sourceStatus) {
+    if (
+      !matchesAutomationSourceStatus(
+        condition.operator ?? AutomationConditionOperator.eq,
+        condition.sourceStatus,
+        currentStatus,
+      )
+    ) {
       return false;
     }
 
@@ -602,6 +701,9 @@ export class OrderStatusAutomationExecutorService {
     if (sourceType === AutomationSourceType.payment_status) {
       return order.paymentStatus;
     }
+    if (sourceType === AutomationSourceType.order_status) {
+      return String(order.statusId);
+    }
     if (order.deliveryId == null) {
       return null;
     }
@@ -617,6 +719,9 @@ export class OrderStatusAutomationExecutorService {
   ): Promise<Date | null> {
     if (sourceType === AutomationSourceType.payment_status) {
       return order.paymentStatusAt;
+    }
+    if (sourceType === AutomationSourceType.order_status) {
+      return order.statusChangedAt;
     }
     if (order.deliveryId == null) {
       return null;

@@ -1,18 +1,23 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import {
+  AutomationSourceType,
   Order,
   OrderEvent,
   OrderStatus,
   OrderStatusCategory,
 } from "../database/entities";
 import { InventoryService } from "../inventory/inventory.service";
+import { OrderStatusAutomationTriggerService } from "../order-status-automations/order-status-automation-trigger.service";
 
 export const OrderStatusChangeSource = {
   MANUAL: "MANUAL",
@@ -45,6 +50,7 @@ export type ChangeOrderStatusResult = {
   applied: boolean;
   previousStatusId: number;
   newStatusId: number;
+  statusChangedAt?: Date | null;
   skippedReason?: string;
 };
 
@@ -59,6 +65,9 @@ export class OrderStatusTransitionService {
     private readonly orderStatusRepo: Repository<OrderStatus>,
     private readonly inventory: InventoryService,
     private readonly dataSource: DataSource,
+    @Optional()
+    @Inject(forwardRef(() => OrderStatusAutomationTriggerService))
+    private readonly automationTrigger?: OrderStatusAutomationTriggerService,
   ) {}
 
   async changeOrderStatus(
@@ -76,6 +85,7 @@ export class OrderStatusTransitionService {
         applied: false,
         previousStatusId: order.statusId,
         newStatusId: order.statusId,
+        statusChangedAt: order.statusChangedAt,
         skippedReason: "ORDER_ALREADY_IN_TARGET_STATUS",
       };
     }
@@ -94,6 +104,7 @@ export class OrderStatusTransitionService {
       where: { id: previousStatusId, workspaceId: input.workspaceId },
     });
 
+    const statusChangedAt = new Date();
     const payload: Record<string, unknown> = {
       previousStatusId,
       statusId: newStatus.id,
@@ -113,6 +124,7 @@ export class OrderStatusTransitionService {
 
     await this.dataSource.transaction(async (manager) => {
       order.statusId = newStatus.id;
+      order.statusChangedAt = statusChangedAt;
       if (input.actorId != null) {
         order.updatedById = input.actorId;
       }
@@ -141,10 +153,27 @@ export class OrderStatusTransitionService {
       previousStatus?.category ?? null,
     );
 
+    // Avoid automation→ORDER_STATUS→automation loops: never re-trigger on AUTOMATION source.
+    if (
+      input.changeSource !== OrderStatusChangeSource.AUTOMATION &&
+      this.automationTrigger
+    ) {
+      await this.automationTrigger.onSourceStatusChanged({
+        workspaceId: input.workspaceId,
+        orderId: input.orderId,
+        sourceType: AutomationSourceType.order_status,
+        sourceStatus: String(newStatus.id),
+        previousSourceStatus: String(previousStatusId),
+        statusChangedAt,
+        changed: true,
+      });
+    }
+
     return {
       applied: true,
       previousStatusId,
       newStatusId: newStatus.id,
+      statusChangedAt,
     };
   }
 

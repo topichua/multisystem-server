@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import { AutomationConditionOperator } from "../../database/entities/automation-condition-operator.enum";
 import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
 import {
@@ -9,6 +10,8 @@ import {
 export type AutomationConditionInput = {
   sourceType: AutomationSourceType;
   sourceStatus: string;
+  /** EQ (default) or NEQ. Also accepts lowercase / aliases. */
+  operator?: AutomationConditionOperator | string | null;
   durationValue?: number | null;
   durationUnit?: AutomationDurationUnit | null;
 };
@@ -16,6 +19,7 @@ export type AutomationConditionInput = {
 export type NormalizedAutomationCondition = {
   sourceType: AutomationSourceType;
   sourceStatus: string;
+  operator: AutomationConditionOperator;
   durationValue: number | null;
   durationUnit: AutomationDurationUnit | null;
 };
@@ -40,6 +44,53 @@ function validateDurationPair(
   };
 }
 
+export function normalizeAutomationConditionOperator(
+  raw: unknown,
+): AutomationConditionOperator {
+  if (raw == null || raw === "") {
+    return AutomationConditionOperator.eq;
+  }
+  const value = String(raw).trim().toUpperCase();
+  if (
+    value === AutomationConditionOperator.eq ||
+    value === "EQUALS" ||
+    value === "EQUAL" ||
+    value === "="
+  ) {
+    return AutomationConditionOperator.eq;
+  }
+  if (
+    value === AutomationConditionOperator.neq ||
+    value === "NOT_EQUALS" ||
+    value === "NOT_EQUAL" ||
+    value === "NE" ||
+    value === "!=" ||
+    value === "<>"
+  ) {
+    return AutomationConditionOperator.neq;
+  }
+  throw new BadRequestException(
+    `Invalid operator "${String(raw)}". Allowed: EQ, NEQ`,
+  );
+}
+
+/** True when observed status satisfies condition operator vs condition sourceStatus. */
+export function matchesAutomationSourceStatus(
+  operator: AutomationConditionOperator,
+  conditionSourceStatus: string,
+  observedSourceStatus: string | null | undefined,
+): boolean {
+  if (observedSourceStatus == null || observedSourceStatus === "") {
+    return false;
+  }
+  const observed = observedSourceStatus.trim().toLowerCase();
+  const expected = conditionSourceStatus.trim().toLowerCase();
+  if (operator === AutomationConditionOperator.neq) {
+    return observed !== expected;
+  }
+  return observed === expected;
+}
+
 export function normalizeAutomationConditions(
   conditions: AutomationConditionInput[],
 ): NormalizedAutomationCondition[] {
@@ -53,15 +104,23 @@ export function normalizeAutomationConditions(
   const normalized: NormalizedAutomationCondition[] = [];
 
   for (const condition of conditions) {
-    const sourceStatus = normalizeAutomationSourceStatus(condition.sourceStatus);
+    const sourceStatus = normalizeAutomationSourceStatus(
+      condition.sourceType,
+      condition.sourceStatus,
+    );
     if (!isValidAutomationSourceStatus(condition.sourceType, sourceStatus)) {
-      throw new BadRequestException("Invalid sourceStatus for sourceType");
+      throw new BadRequestException(
+        condition.sourceType === AutomationSourceType.order_status
+          ? "Invalid sourceStatus for ORDER_STATUS: expected workspace order status id (numeric string)"
+          : "Invalid sourceStatus for sourceType",
+      );
     }
+    const operator = normalizeAutomationConditionOperator(condition.operator);
     const duration = validateDurationPair(
       condition.durationValue,
       condition.durationUnit,
     );
-    const key = `${condition.sourceType}:${sourceStatus}:${duration.durationValue ?? ""}:${duration.durationUnit ?? ""}`;
+    const key = `${condition.sourceType}:${operator}:${sourceStatus}:${duration.durationValue ?? ""}:${duration.durationUnit ?? ""}`;
     if (seen.has(key)) {
       continue;
     }
@@ -69,6 +128,7 @@ export function normalizeAutomationConditions(
     normalized.push({
       sourceType: condition.sourceType,
       sourceStatus,
+      operator,
       durationValue: duration.durationValue,
       durationUnit: duration.durationUnit,
     });
@@ -88,15 +148,16 @@ export function buildConditionSignature(
 ): string {
   return [...conditions]
     .sort((a, b) => {
-      const left = `${a.sourceType}:${a.sourceStatus}:${a.durationValue ?? ""}:${a.durationUnit ?? ""}`;
-      const right = `${b.sourceType}:${b.sourceStatus}:${b.durationValue ?? ""}:${b.durationUnit ?? ""}`;
+      const left = conditionKey(a);
+      const right = conditionKey(b);
       return left.localeCompare(right);
     })
-    .map(
-      (condition) =>
-        `${condition.sourceType}:${condition.sourceStatus}:${condition.durationValue ?? ""}:${condition.durationUnit ?? ""}`,
-    )
+    .map(conditionKey)
     .join("|");
+}
+
+function conditionKey(condition: NormalizedAutomationCondition): string {
+  return `${condition.sourceType}:${condition.operator}:${condition.sourceStatus}:${condition.durationValue ?? ""}:${condition.durationUnit ?? ""}`;
 }
 
 export function isTimedCondition(condition: {

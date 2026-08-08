@@ -293,6 +293,7 @@ export class OrdersService {
         integrationId,
         source,
         statusId,
+        statusChangedAt: new Date(),
         customerNote: dto.customerNote?.trim() || null,
         internalNote: dto.internalNote?.trim() || null,
         currency,

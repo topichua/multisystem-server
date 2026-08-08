@@ -176,6 +176,8 @@ import { VariantCustomFieldAuditUsers1744200000178 } from "./migrations/17442000
 import { ProductAndClientIdStart10001744200000179 } from "./migrations/1744200000179-ProductAndClientIdStart1000";
 import { CollapsePaymentPermissionsToOrders1744200000180 } from "./migrations/1744200000180-CollapsePaymentPermissionsToOrders";
 import { ConversationWorkspaceLocalIds1744200000181 } from "./migrations/1744200000181-ConversationWorkspaceLocalIds";
+import { AutomationConditionOperator1744200000182 } from "./migrations/1744200000182-AutomationConditionOperator";
+import { AutomationOrderStatusSource1744200000183 } from "./migrations/1744200000183-AutomationOrderStatusSource";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -580,6 +582,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ProductAndClientIdStart10001744200000179,
       CollapsePaymentPermissionsToOrders1744200000180,
       ConversationWorkspaceLocalIds1744200000181,
+      AutomationConditionOperator1744200000182,
+      AutomationOrderStatusSource1744200000183,
     ],
   };
 }

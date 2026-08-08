@@ -152,6 +152,7 @@ export { OrderRefundStatus } from "./order-refund-status.enum";
 export { OrderRefund } from "./order-refund.entity";
 export { AutomationActionType } from "./automation-action-type.enum";
 export { AutomationConditionType } from "./automation-condition-type.enum";
+export { AutomationConditionOperator } from "./automation-condition-operator.enum";
 export { AutomationDurationUnit } from "./automation-duration-unit.enum";
 export { AutomationExecutionStatus } from "./automation-execution-status.enum";
 export { AutomationOrigin } from "./automation-origin.enum";

@@ -130,9 +130,14 @@ export class NovaPoshtaDeliverySyncWorkerService
           sourceType: AutomationSourceType.payment_status,
           limitPerRule: this.getBatchSize(),
         });
+      const evaluatedOrderStatusTimedRules =
+        await this.automationExecutor.evaluateDueTimedRules({
+          sourceType: AutomationSourceType.order_status,
+          limitPerRule: this.getBatchSize(),
+        });
 
       this.log.log(
-        `Nova Poshta sync finished synced=${synced} failed=${failed} deliveryTimedRulesEvaluated=${evaluatedTimedRules} paymentTimedRulesEvaluated=${evaluatedPaymentTimedRules}`,
+        `Nova Poshta sync finished synced=${synced} failed=${failed} deliveryTimedRulesEvaluated=${evaluatedTimedRules} paymentTimedRulesEvaluated=${evaluatedPaymentTimedRules} orderStatusTimedRulesEvaluated=${evaluatedOrderStatusTimedRules}`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

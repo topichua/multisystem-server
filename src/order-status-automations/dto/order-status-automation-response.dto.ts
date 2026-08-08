@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { AutomationActionType } from "../../database/entities/automation-action-type.enum";
+import { AutomationConditionOperator } from "../../database/entities/automation-condition-operator.enum";
 import { AutomationConditionType } from "../../database/entities/automation-condition-type.enum";
 import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
 import { AutomationOrigin } from "../../database/entities/automation-origin.enum";
@@ -29,6 +30,12 @@ export class OrderStatusAutomationConditionResponseDto {
 
   @ApiProperty({ example: "at_branch" })
   sourceStatus!: string;
+
+  @ApiProperty({
+    enum: AutomationConditionOperator,
+    description: "`EQ` equals status (default); `NEQ` not equals status.",
+  })
+  operator!: AutomationConditionOperator;
 
   @ApiPropertyOptional({
     nullable: true,

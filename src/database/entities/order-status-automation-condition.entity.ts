@@ -6,18 +6,20 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from "typeorm";
-import { AutomationSourceType } from "./automation-source-type.enum";
+import { AutomationConditionOperator } from "./automation-condition-operator.enum";
 import { AutomationDurationUnit } from "./automation-duration-unit.enum";
+import { AutomationSourceType } from "./automation-source-type.enum";
 import { OrderStatusAutomation } from "./order-status-automation.entity";
 
 @Entity("order_status_automation_conditions")
 @Index("IDX_order_status_automation_conditions_lookup", [
   "sourceType",
   "sourceStatus",
+  "operator",
 ])
 @Index(
-  "UQ_order_status_automation_conditions_automation_source",
-  ["automationId", "sourceType", "sourceStatus"],
+  "UQ_order_status_automation_conditions_automation_source_op",
+  ["automationId", "sourceType", "sourceStatus", "operator"],
   { unique: true },
 )
 export class OrderStatusAutomationCondition {
@@ -44,6 +46,19 @@ export class OrderStatusAutomationCondition {
   /** OrderDeliveryStatus or OrderPaymentStatus code as string. */
   @Column({ name: "source_status", type: "varchar", length: 64 })
   sourceStatus: string;
+
+  /**
+   * `EQ` — status equals `sourceStatus` (default).
+   * `NEQ` — status is anything except `sourceStatus`.
+   */
+  @Column({
+    name: "operator",
+    type: "enum",
+    enum: AutomationConditionOperator,
+    enumName: "automation_condition_operator_enum",
+    default: AutomationConditionOperator.eq,
+  })
+  operator: AutomationConditionOperator;
 
   @Column({ name: "sort_order", type: "int", default: 0 })
   sortOrder: number;
