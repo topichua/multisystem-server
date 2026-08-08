@@ -24,9 +24,9 @@ import { StorageModule } from "../storage/storage.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
 import { ConversationGroupDefaultsModule } from "./conversation-group-defaults.module";
 import { ConversationEventsModule } from "./conversation-events.module";
+import { ConversationWorkflowModule } from "./conversation-workflow.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
 import { ConversationGroupsService } from "./conversation-groups.service";
-import { ConversationWorkflowService } from "./conversation-workflow.service";
 import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
@@ -47,6 +47,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
     StorageModule,
     ConversationGroupDefaultsModule,
     ConversationEventsModule,
+    ConversationWorkflowModule,
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
       InstagramIntegration,
@@ -72,7 +73,6 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
     ConversationsAllocationService,
     ConversationIdAllocationService,
     ConversationGroupsService,
-    ConversationWorkflowService,
     ChatAutoDistributionService,
     ConversationMessagePresenterService,
     ConversationMediaArchiveService,
@@ -89,7 +89,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
     ConversationEventsModule,
     ConversationMessageNotifyService,
     ConversationMediaArchiveService,
-    ConversationWorkflowService,
+    ConversationWorkflowModule,
     ChatAutoDistributionService,
   ],
 })

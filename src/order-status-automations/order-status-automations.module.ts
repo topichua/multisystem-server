@@ -11,7 +11,7 @@ import {
   OrderStatusAutomationExecution,
 } from "../database/entities";
 import { ConversationGroupDefaultsModule } from "../conversations/conversation-group-defaults.module";
-import { ConversationsModule } from "../conversations/conversations.module";
+import { ConversationWorkflowModule } from "../conversations/conversation-workflow.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { OrdersModule } from "../orders/orders.module";
 import { DeliveryModule } from "../delivery/delivery.module";
@@ -31,7 +31,7 @@ import { OrderStatusAutomationsService } from "./order-status-automations.servic
     forwardRef(() => OrdersModule),
     OrderStatusDefaultsModule,
     ConversationGroupDefaultsModule,
-    forwardRef(() => ConversationsModule),
+    ConversationWorkflowModule,
     forwardRef(() => DeliveryModule),
     forwardRef(() => PaymentsModule),
     TypeOrmModule.forFeature([
