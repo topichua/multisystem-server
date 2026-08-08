@@ -12,12 +12,34 @@
 
 `GET /automation_rule/criteria` returns `delivery`, `payment`, and `statuses` arrays of `{ id, name }`.
 - Use delivery/payment `id` as `conditions[].sourceStatus` with the matching `sourceType` (`DELIVERY_STATUS` or `PAYMENT_STATUS`).
-- Use `statuses[].id` as `targetOrderStatusId` (automation action), **or** as `conditions[].sourceStatus` (string) with `sourceType: ORDER_STATUS`.
+- Use `statuses[].id` as `targetOrderStatusId` (automation action `CHANGE_ORDER_STATUS`), **or** as `conditions[].sourceStatus` (string) with `sourceType: ORDER_STATUS`.
+- Use `conversationGroups[].id` as `targetConversationGroupId` with `actionType: CHANGE_CONVERSATION_GROUP`.
 
 ## Rule shape
 
 - `conditions[]` — OR/AND trigger conditions (`sourceType` + `sourceStatus`, optional `operator` EQ/NEQ, optional `durationValue` + `durationUnit` per condition)
-- `targetOrderStatusId` — single action: change order status
+- **Actions**
+  - `CHANGE_ORDER_STATUS` + `targetOrderStatusId`
+  - `CHANGE_CONVERSATION_GROUP` + `targetConversationGroupId` (moves the **order-linked** conversation)
+
+Example: when order reaches completed status → archive chat:
+
+```json
+{
+  "name": "Archive chat when order completed",
+  "conditions": [
+    {
+      "sourceType": "ORDER_STATUS",
+      "sourceStatus": "12",
+      "operator": "EQ"
+    }
+  ],
+  "actionType": "CHANGE_CONVERSATION_GROUP",
+  "targetConversationGroupId": 5
+}
+```
+
+If the order has no `conversationId`, execution is SKIPPED (`ORDER_HAS_NO_CONVERSATION`).
 
 Example: when order status is **not** 29 (immediate) → move order to another status:
 

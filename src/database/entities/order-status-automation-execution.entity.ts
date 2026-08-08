@@ -47,8 +47,22 @@ export class OrderStatusAutomationExecution {
   @Column({ name: "previous_order_status_id", type: "int", nullable: true })
   previousOrderStatusId: number | null;
 
-  @Column({ name: "target_order_status_id", type: "int" })
-  targetOrderStatusId: number;
+  @Column({ name: "target_order_status_id", type: "int", nullable: true })
+  targetOrderStatusId: number | null;
+
+  @Column({
+    name: "previous_conversation_group_id",
+    type: "int",
+    nullable: true,
+  })
+  previousConversationGroupId: number | null;
+
+  @Column({
+    name: "target_conversation_group_id",
+    type: "int",
+    nullable: true,
+  })
+  targetConversationGroupId: number | null;
 
   @Column({
     name: "source_type",

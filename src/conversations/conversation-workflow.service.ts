@@ -16,7 +16,8 @@ export type ConversationWorkflowTrigger =
   | "outbound_reply"
   | "responsible_assigned"
   | "take"
-  | "manual";
+  | "manual"
+  | "automation";
 
 @Injectable()
 export class ConversationWorkflowService {
@@ -110,6 +111,51 @@ export class ConversationWorkflowService {
     nextGroupId: number | null,
     actorId: number | null,
   ): Promise<void> {
+    await this.applyGroupChange(conversation, nextGroupId, {
+      actorId,
+      trigger: "manual",
+    });
+  }
+
+  /**
+   * Automation action: move chat to a target group (e.g. archive when order completes).
+   */
+  async onAutomationGroupChange(
+    conversation: Conversation,
+    nextGroupId: number,
+    meta?: {
+      automationId?: number;
+      automationName?: string;
+    },
+  ): Promise<{ applied: boolean; previousGroupId: number | null }> {
+    if (conversation.groupId === nextGroupId) {
+      return {
+        applied: false,
+        previousGroupId: conversation.groupId,
+      };
+    }
+
+    const previousGroupId = conversation.groupId;
+    await this.applyGroupChange(conversation, nextGroupId, {
+      actorId: null,
+      trigger: "automation",
+      automationId: meta?.automationId,
+      automationName: meta?.automationName,
+    });
+
+    return { applied: true, previousGroupId };
+  }
+
+  private async applyGroupChange(
+    conversation: Conversation,
+    nextGroupId: number | null,
+    meta: {
+      actorId: number | null;
+      trigger: ConversationWorkflowTrigger;
+      automationId?: number;
+      automationName?: string;
+    },
+  ): Promise<void> {
     if (conversation.groupId === nextGroupId) {
       return;
     }
@@ -124,18 +170,24 @@ export class ConversationWorkflowService {
     await this.events.append(
       conversation,
       ConversationEventType.GROUP_CHANGED,
-      actorId,
+      meta.actorId,
       {
         fromGroupId,
         toGroupId: nextGroupId,
         fromSystemKey: fromMeta?.systemKey ?? null,
         toSystemKey: toMeta?.systemKey ?? null,
-        trigger: "manual",
+        trigger: meta.trigger,
+        ...(meta.automationId != null
+          ? { automationId: meta.automationId }
+          : {}),
+        ...(meta.automationName != null
+          ? { automationName: meta.automationName }
+          : {}),
       },
     );
 
     this.log.log(
-      `Conversation group changed id=${conversation.id} ${fromGroupId ?? "null"} → ${nextGroupId ?? "null"} (manual)`,
+      `Conversation group changed id=${conversation.id} ${fromGroupId ?? "null"} → ${nextGroupId ?? "null"} (trigger=${meta.trigger})`,
     );
   }
 

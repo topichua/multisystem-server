@@ -61,7 +61,8 @@ export class OrderStatusAutomationsController {
     summary: "List automation rule builder criteria",
     description:
       "Returns delivery and payment codes for `conditions[].sourceStatus`, " +
-      "and workspace order statuses for `targetOrderStatusId` or `ORDER_STATUS` conditions.",
+      "workspace order statuses for `targetOrderStatusId` / `ORDER_STATUS`, " +
+      "and conversation groups for `targetConversationGroupId` (CHANGE_CONVERSATION_GROUP).",
   })
   @ApiOkResponse({ type: OrderStatusAutomationCriteriaResponseDto })
   getCriteria(

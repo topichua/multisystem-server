@@ -21,6 +21,20 @@ export class OrderStatusAutomationTargetStatusDto {
   color!: string;
 }
 
+export class OrderStatusAutomationTargetConversationGroupDto {
+  @ApiProperty()
+  id!: number;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "System key when built-in (`new`, `processing`, `archived`, …).",
+  })
+  systemKey!: string | null;
+}
+
 export class OrderStatusAutomationConditionResponseDto {
   @ApiProperty()
   id!: number;
@@ -84,8 +98,7 @@ export class OrderStatusAutomationResponseDto {
 
   @ApiProperty({
     enum: AutomationConditionType,
-    description:
-      "Snake_case alias of `conditionType` (legacy clients).",
+    description: "Snake_case alias of `conditionType` (legacy clients).",
   })
   condition_type!: AutomationConditionType;
 
@@ -101,11 +114,31 @@ export class OrderStatusAutomationResponseDto {
   })
   actionType!: AutomationActionType;
 
-  @ApiProperty()
-  targetOrderStatusId!: number;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Set for CHANGE_ORDER_STATUS.",
+  })
+  targetOrderStatusId!: number | null;
 
-  @ApiProperty({ type: OrderStatusAutomationTargetStatusDto })
-  targetOrderStatus!: OrderStatusAutomationTargetStatusDto;
+  @ApiPropertyOptional({
+    type: OrderStatusAutomationTargetStatusDto,
+    nullable: true,
+    description: "Set for CHANGE_ORDER_STATUS.",
+  })
+  targetOrderStatus!: OrderStatusAutomationTargetStatusDto | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Set for CHANGE_CONVERSATION_GROUP.",
+  })
+  targetConversationGroupId!: number | null;
+
+  @ApiPropertyOptional({
+    type: OrderStatusAutomationTargetConversationGroupDto,
+    nullable: true,
+    description: "Set for CHANGE_CONVERSATION_GROUP.",
+  })
+  targetConversationGroup!: OrderStatusAutomationTargetConversationGroupDto | null;
 
   @ApiProperty({ enum: AutomationOrigin })
   origin!: AutomationOrigin;

@@ -13,10 +13,12 @@ import {
   AutomationConditionType,
   AutomationOrigin,
   AutomationSourceType,
+  ConversationGroup,
   OrderStatus,
   OrderStatusAutomation,
   OrderStatusAutomationCondition,
 } from "../database/entities";
+import { ConversationGroupDefaultsService } from "../conversations/conversation-group-defaults.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
 import { OrderStatusDefaultsService } from "../orders/order-status-defaults.service";
@@ -47,9 +49,12 @@ export class OrderStatusAutomationsService {
     private readonly conditionRepo: Repository<OrderStatusAutomationCondition>,
     @InjectRepository(OrderStatus)
     private readonly orderStatusRepo: Repository<OrderStatus>,
+    @InjectRepository(ConversationGroup)
+    private readonly conversationGroupRepo: Repository<ConversationGroup>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
+    private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
   ) {}
 
   async getCriteriaForUser(
@@ -62,10 +67,16 @@ export class OrderStatusAutomationsService {
       appRole,
     );
     await this.orderStatusDefaults.ensureSystemStatuses(workspace.id);
+    await this.conversationGroupDefaults.ensureSystemGroups(workspace.id);
     const statuses = await this.orderStatusRepo.find({
       where: { workspaceId: workspace.id },
       order: { sortOrder: "ASC", id: "ASC" },
       select: { id: true, name: true },
+    });
+    const conversationGroups = await this.conversationGroupRepo.find({
+      where: { workspaceId: workspace.id },
+      order: { sortOrder: "ASC", id: "ASC" },
+      select: { id: true, name: true, systemKey: true },
     });
 
     return {
@@ -73,6 +84,11 @@ export class OrderStatusAutomationsService {
       statuses: statuses.map((row) => ({
         id: row.id,
         name: row.name,
+      })),
+      conversationGroups: conversationGroups.map((row) => ({
+        id: row.id,
+        name: row.name,
+        systemKey: row.systemKey,
       })),
     };
   }
@@ -91,6 +107,7 @@ export class OrderStatusAutomationsService {
     const qb = this.automationRepo
       .createQueryBuilder("a")
       .leftJoinAndSelect("a.targetOrderStatus", "target")
+      .leftJoinAndSelect("a.targetConversationGroup", "targetGroup")
       .leftJoinAndSelect("a.conditions", "conditions")
       .where("a.workspace_id = :workspaceId", { workspaceId: workspace.id })
       .andWhere("a.deleted_at IS NULL");
@@ -150,18 +167,27 @@ export class OrderStatusAutomationsService {
     const conditions = normalizeAutomationConditions(dto.conditions);
     const conditionType =
       resolveConditionType(dto) ?? AutomationConditionType.or;
-    this.validateActionType(dto.actionType);
-    await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
+    const actionType =
+      dto.actionType ?? AutomationActionType.change_order_status;
+    this.validateActionType(actionType);
+    const targets = await this.resolveAndAssertActionTargets(
+      workspace.id,
+      actionType,
+      dto.targetOrderStatusId,
+      dto.targetConversationGroupId,
+    );
     await this.assertOrderStatusConditions(
       workspace.id,
       conditions,
-      dto.targetOrderStatusId,
+      targets.targetOrderStatusId,
     );
     await this.assertNoDuplicate({
       workspaceId: workspace.id,
       conditionType,
       conditions,
-      targetOrderStatusId: dto.targetOrderStatusId,
+      actionType,
+      targetOrderStatusId: targets.targetOrderStatusId,
+      targetConversationGroupId: targets.targetConversationGroupId,
     });
 
     const saved = await this.automationRepo.save(
@@ -170,8 +196,9 @@ export class OrderStatusAutomationsService {
         name: dto.name.trim(),
         isActive: dto.isActive ?? true,
         conditionType,
-        actionType: AutomationActionType.change_order_status,
-        targetOrderStatusId: dto.targetOrderStatusId,
+        actionType,
+        targetOrderStatusId: targets.targetOrderStatusId,
+        targetConversationGroupId: targets.targetConversationGroupId,
         origin: AutomationOrigin.user,
         createdById: userId,
         updatedById: userId,
@@ -202,19 +229,29 @@ export class OrderStatusAutomationsService {
         : this.normalizePersistedConditions(row.conditions ?? []);
     const nextConditionType =
       resolveConditionType(dto, row.conditionType) ?? row.conditionType;
-    const nextTargetStatusId =
-      dto.targetOrderStatusId ?? row.targetOrderStatusId;
+    const nextActionType = dto.actionType ?? row.actionType;
+    this.validateActionType(nextActionType);
 
-    if (dto.actionType != null) {
-      this.validateActionType(dto.actionType);
-    }
-    if (dto.targetOrderStatusId != null) {
-      await this.assertTargetStatus(workspace.id, dto.targetOrderStatusId);
-    }
+    const nextTargetOrderStatusId =
+      dto.targetOrderStatusId !== undefined
+        ? dto.targetOrderStatusId
+        : row.targetOrderStatusId;
+    const nextTargetConversationGroupId =
+      dto.targetConversationGroupId !== undefined
+        ? dto.targetConversationGroupId
+        : row.targetConversationGroupId;
+
+    const targets = await this.resolveAndAssertActionTargets(
+      workspace.id,
+      nextActionType,
+      nextTargetOrderStatusId,
+      nextTargetConversationGroupId,
+    );
+
     await this.assertOrderStatusConditions(
       workspace.id,
       nextConditions,
-      nextTargetStatusId,
+      targets.targetOrderStatusId,
     );
 
     await this.assertNoDuplicate(
@@ -222,7 +259,9 @@ export class OrderStatusAutomationsService {
         workspaceId: workspace.id,
         conditionType: nextConditionType,
         conditions: nextConditions,
-        targetOrderStatusId: nextTargetStatusId,
+        actionType: nextActionType,
+        targetOrderStatusId: targets.targetOrderStatusId,
+        targetConversationGroupId: targets.targetConversationGroupId,
       },
       row.id,
     );
@@ -232,9 +271,9 @@ export class OrderStatusAutomationsService {
     if (dto.conditionType != null || dto.condition_type != null) {
       row.conditionType = nextConditionType;
     }
-    if (dto.targetOrderStatusId != null) {
-      row.targetOrderStatusId = dto.targetOrderStatusId;
-    }
+    row.actionType = nextActionType;
+    row.targetOrderStatusId = targets.targetOrderStatusId;
+    row.targetConversationGroupId = targets.targetConversationGroupId;
     row.updatedById = userId;
 
     if (dto.conditions != null) {
@@ -268,7 +307,6 @@ export class OrderStatusAutomationsService {
       appRole,
     );
     const row = await this.findAutomationOrThrow(automationId, workspace.id);
-    // softDelete by id — softRemove cascades into conditions (no deleted_at) and fails
     await this.automationRepo.softDelete({ id: row.id });
   }
 
@@ -292,7 +330,11 @@ export class OrderStatusAutomationsService {
   ): Promise<OrderStatusAutomation> {
     const row = await this.automationRepo.findOne({
       where: { id: automationId, workspaceId, deletedAt: IsNull() },
-      relations: { targetOrderStatus: true, conditions: true },
+      relations: {
+        targetOrderStatus: true,
+        targetConversationGroup: true,
+        conditions: true,
+      },
     });
     if (!row) {
       throw new NotFoundException("Automation not found");
@@ -329,6 +371,47 @@ export class OrderStatusAutomationsService {
       }));
   }
 
+  private async resolveAndAssertActionTargets(
+    workspaceId: number,
+    actionType: AutomationActionType,
+    targetOrderStatusId: number | null | undefined,
+    targetConversationGroupId: number | null | undefined,
+  ): Promise<{
+    targetOrderStatusId: number | null;
+    targetConversationGroupId: number | null;
+  }> {
+    if (actionType === AutomationActionType.change_order_status) {
+      if (targetOrderStatusId == null) {
+        throw new BadRequestException(
+          "targetOrderStatusId is required for CHANGE_ORDER_STATUS",
+        );
+      }
+      await this.assertTargetStatus(workspaceId, targetOrderStatusId);
+      return {
+        targetOrderStatusId,
+        targetConversationGroupId: null,
+      };
+    }
+
+    if (actionType === AutomationActionType.change_conversation_group) {
+      if (targetConversationGroupId == null) {
+        throw new BadRequestException(
+          "targetConversationGroupId is required for CHANGE_CONVERSATION_GROUP",
+        );
+      }
+      await this.assertTargetConversationGroup(
+        workspaceId,
+        targetConversationGroupId,
+      );
+      return {
+        targetOrderStatusId: null,
+        targetConversationGroupId,
+      };
+    }
+
+    throw new BadRequestException(`Unsupported actionType: ${actionType}`);
+  }
+
   private async assertTargetStatus(
     workspaceId: number,
     targetOrderStatusId: number,
@@ -343,14 +426,28 @@ export class OrderStatusAutomationsService {
     }
   }
 
+  private async assertTargetConversationGroup(
+    workspaceId: number,
+    targetConversationGroupId: number,
+  ): Promise<void> {
+    const group = await this.conversationGroupRepo.findOne({
+      where: { id: targetConversationGroupId, workspaceId },
+    });
+    if (!group) {
+      throw new BadRequestException(
+        "Target conversation group not found in workspace",
+      );
+    }
+  }
+
   /**
    * ORDER_STATUS conditions must reference real workspace statuses.
-   * EQ + same id as target is a noop (always true when action would apply).
+   * EQ + same id as CHANGE_ORDER_STATUS target is a noop (rejected).
    */
   private async assertOrderStatusConditions(
     workspaceId: number,
     conditions: NormalizedAutomationCondition[],
-    targetOrderStatusId: number,
+    targetOrderStatusId: number | null,
   ): Promise<void> {
     for (const condition of conditions) {
       if (condition.sourceType !== AutomationSourceType.order_status) {
@@ -371,6 +468,7 @@ export class OrderStatusAutomationsService {
         );
       }
       if (
+        targetOrderStatusId != null &&
         condition.operator === AutomationConditionOperator.eq &&
         statusId === targetOrderStatusId
       ) {
@@ -382,9 +480,12 @@ export class OrderStatusAutomationsService {
   }
 
   private validateActionType(actionType: AutomationActionType): void {
-    if (actionType !== AutomationActionType.change_order_status) {
+    if (
+      actionType !== AutomationActionType.change_order_status &&
+      actionType !== AutomationActionType.change_conversation_group
+    ) {
       throw new BadRequestException(
-        "Only CHANGE_ORDER_STATUS action is supported in v1",
+        "Unsupported actionType. Allowed: CHANGE_ORDER_STATUS, CHANGE_CONVERSATION_GROUP",
       );
     }
   }
@@ -394,21 +495,39 @@ export class OrderStatusAutomationsService {
       workspaceId: number;
       conditionType: AutomationConditionType;
       conditions: NormalizedAutomationCondition[];
-      targetOrderStatusId: number;
+      actionType: AutomationActionType;
+      targetOrderStatusId: number | null;
+      targetConversationGroupId: number | null;
     },
     excludeId?: number,
   ): Promise<void> {
     const signature = buildConditionSignature(input.conditions);
-    const activeRows = await this.automationRepo.find({
-      where: {
+    const qb = this.automationRepo
+      .createQueryBuilder("a")
+      .leftJoinAndSelect("a.conditions", "conditions")
+      .where("a.workspace_id = :workspaceId", {
         workspaceId: input.workspaceId,
-        isActive: true,
-        deletedAt: IsNull(),
-        targetOrderStatusId: input.targetOrderStatusId,
+      })
+      .andWhere("a.is_active = true")
+      .andWhere("a.deleted_at IS NULL")
+      .andWhere("a.condition_type = :conditionType", {
         conditionType: input.conditionType,
-      },
-      relations: { conditions: true },
-    });
+      })
+      .andWhere("a.action_type = :actionType", {
+        actionType: input.actionType,
+      });
+
+    if (input.actionType === AutomationActionType.change_order_status) {
+      qb.andWhere("a.target_order_status_id = :targetOrderStatusId", {
+        targetOrderStatusId: input.targetOrderStatusId,
+      });
+    } else {
+      qb.andWhere("a.target_conversation_group_id = :targetConversationGroupId", {
+        targetConversationGroupId: input.targetConversationGroupId,
+      });
+    }
+
+    const activeRows = await qb.getMany();
 
     for (const row of activeRows) {
       if (excludeId != null && row.id === excludeId) {
@@ -428,13 +547,26 @@ export class OrderStatusAutomationsService {
   private toResponse(
     row: OrderStatusAutomation,
   ): OrderStatusAutomationResponseDto {
-    const target = row.targetOrderStatus;
-    if (!target) {
-      throw new NotFoundException("Target order status not found");
-    }
     const conditions = [...(row.conditions ?? [])].sort(
       (a, b) => a.sortOrder - b.sortOrder || a.id - b.id,
     );
+
+    const targetStatus = row.targetOrderStatus;
+    const targetGroup = row.targetConversationGroup;
+
+    if (
+      row.actionType === AutomationActionType.change_order_status &&
+      !targetStatus
+    ) {
+      throw new NotFoundException("Target order status not found");
+    }
+    if (
+      row.actionType === AutomationActionType.change_conversation_group &&
+      !targetGroup
+    ) {
+      throw new NotFoundException("Target conversation group not found");
+    }
+
     return {
       id: row.id,
       workspaceId: row.workspaceId,
@@ -457,12 +589,22 @@ export class OrderStatusAutomationsService {
       })),
       actionType: row.actionType,
       targetOrderStatusId: row.targetOrderStatusId,
-      targetOrderStatus: {
-        id: target.id,
-        name: target.name,
-        category: target.category,
-        color: target.color ?? "",
-      },
+      targetOrderStatus: targetStatus
+        ? {
+            id: targetStatus.id,
+            name: targetStatus.name,
+            category: targetStatus.category,
+            color: targetStatus.color ?? "",
+          }
+        : null,
+      targetConversationGroupId: row.targetConversationGroupId,
+      targetConversationGroup: targetGroup
+        ? {
+            id: targetGroup.id,
+            name: targetGroup.name,
+            systemKey: targetGroup.systemKey,
+          }
+        : null,
       origin: row.origin,
       templateKey: row.templateKey,
       version: row.version,

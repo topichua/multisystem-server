@@ -178,6 +178,7 @@ import { CollapsePaymentPermissionsToOrders1744200000180 } from "./migrations/17
 import { ConversationWorkspaceLocalIds1744200000181 } from "./migrations/1744200000181-ConversationWorkspaceLocalIds";
 import { AutomationConditionOperator1744200000182 } from "./migrations/1744200000182-AutomationConditionOperator";
 import { AutomationOrderStatusSource1744200000183 } from "./migrations/1744200000183-AutomationOrderStatusSource";
+import { AutomationChangeConversationGroup1744200000184 } from "./migrations/1744200000184-AutomationChangeConversationGroup";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -584,6 +585,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationWorkspaceLocalIds1744200000181,
       AutomationConditionOperator1744200000182,
       AutomationOrderStatusSource1744200000183,
+      AutomationChangeConversationGroup1744200000184,
     ],
   };
 }

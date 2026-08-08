@@ -2,17 +2,20 @@ import { Inject, Injectable, Logger, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Not, Repository } from "typeorm";
 import {
+  AutomationActionType,
   AutomationConditionOperator,
   AutomationConditionType,
   AutomationExecutionStatus,
   AutomationDurationUnit,
   AutomationSourceType,
+  Conversation,
   Order,
   OrderDeliveryInfo,
   OrderStatusAutomation,
   OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
 } from "../database/entities";
+import { ConversationWorkflowService } from "../conversations/conversation-workflow.service";
 import {
   isTimedCondition,
   matchesAutomationSourceStatus,
@@ -50,8 +53,11 @@ export class OrderStatusAutomationExecutorService {
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(OrderDeliveryInfo)
     private readonly deliveryRepo: Repository<OrderDeliveryInfo>,
+    @InjectRepository(Conversation)
+    private readonly conversationRepo: Repository<Conversation>,
     @Inject(forwardRef(() => OrderStatusTransitionService))
     private readonly orderStatusTransition: OrderStatusTransitionService,
+    private readonly conversationWorkflow: ConversationWorkflowService,
   ) {}
 
   async evaluateImmediateRules(
@@ -495,6 +501,7 @@ export class OrderStatusAutomationExecutorService {
           timed,
           reason: AutomationSkipReason.CONDITIONS_NOT_MATCHED,
           targetOrderStatusId: automation.targetOrderStatusId,
+          targetConversationGroupId: automation.targetConversationGroupId,
           automationName: automation.name,
           durationValue,
           durationUnit,
@@ -518,6 +525,7 @@ export class OrderStatusAutomationExecutorService {
           timed,
           reason: AutomationSkipReason.TIME_NOT_ELAPSED,
           targetOrderStatusId: automation.targetOrderStatusId,
+          targetConversationGroupId: automation.targetConversationGroupId,
           automationName: automation.name,
           durationValue,
           durationUnit,
@@ -527,7 +535,29 @@ export class OrderStatusAutomationExecutorService {
       }
     }
 
-    if (order.statusId === automation.targetOrderStatusId) {
+    if (
+      automation.actionType === AutomationActionType.change_conversation_group
+    ) {
+      await this.applyConversationGroupAction({
+        automation,
+        order,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+      });
+      return;
+    }
+
+    if (
+      automation.targetOrderStatusId == null ||
+      order.statusId === automation.targetOrderStatusId
+    ) {
       await this.logSkippedExecution({
         automation,
         workspaceId,
@@ -536,8 +566,12 @@ export class OrderStatusAutomationExecutorService {
         sourceStatus,
         expectedStatusChangedAt,
         timed,
-        reason: AutomationSkipReason.ORDER_ALREADY_IN_TARGET_STATUS,
+        reason:
+          automation.targetOrderStatusId == null
+            ? AutomationSkipReason.TARGET_STATUS_DELETED
+            : AutomationSkipReason.ORDER_ALREADY_IN_TARGET_STATUS,
         targetOrderStatusId: automation.targetOrderStatusId,
+        targetConversationGroupId: null,
         automationName: automation.name,
         durationValue,
         durationUnit,
@@ -576,6 +610,7 @@ export class OrderStatusAutomationExecutorService {
             result.skippedReason ??
             AutomationSkipReason.ORDER_ALREADY_IN_TARGET_STATUS,
           targetOrderStatusId: automation.targetOrderStatusId,
+          targetConversationGroupId: null,
           automationName: automation.name,
           durationValue,
           durationUnit,
@@ -593,6 +628,8 @@ export class OrderStatusAutomationExecutorService {
           reason: null,
           previousOrderStatusId: result.previousStatusId,
           targetOrderStatusId: automation.targetOrderStatusId,
+          previousConversationGroupId: null,
+          targetConversationGroupId: null,
           sourceType,
           sourceStatusSnapshot: sourceStatus,
           expectedStatusChangedAt,
@@ -622,6 +659,193 @@ export class OrderStatusAutomationExecutorService {
             reason: "FAILED",
             previousOrderStatusId: order.statusId,
             targetOrderStatusId: automation.targetOrderStatusId,
+            previousConversationGroupId: null,
+            targetConversationGroupId: null,
+            sourceType,
+            sourceStatusSnapshot: sourceStatus,
+            expectedStatusChangedAt,
+            idempotencyKey,
+            automationNameSnapshot: automation.name,
+            durationValue,
+            durationUnit,
+            errorCode: "APPLY_FAILED",
+            errorMessage: message,
+            executedAt: new Date(),
+          }),
+        );
+      } catch (dupError) {
+        const pgCode = (dupError as { code?: string })?.code;
+        if (pgCode !== "23505") {
+          throw dupError;
+        }
+      }
+    }
+  }
+
+  private async applyConversationGroupAction(input: {
+    automation: OrderStatusAutomation;
+    order: Order;
+    workspaceId: number;
+    orderId: number;
+    sourceType: AutomationSourceType;
+    sourceStatus: string;
+    expectedStatusChangedAt: Date;
+    timed: boolean;
+    durationValue: number | null;
+    durationUnit: AutomationDurationUnit | null;
+    idempotencyKey: string;
+  }): Promise<void> {
+    const {
+      automation,
+      order,
+      workspaceId,
+      orderId,
+      sourceType,
+      sourceStatus,
+      expectedStatusChangedAt,
+      timed,
+      durationValue,
+      durationUnit,
+      idempotencyKey,
+    } = input;
+
+    const targetGroupId = automation.targetConversationGroupId;
+    if (targetGroupId == null) {
+      await this.logSkippedExecution({
+        automation,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        reason: AutomationSkipReason.TARGET_GROUP_MISSING,
+        targetOrderStatusId: null,
+        targetConversationGroupId: null,
+        automationName: automation.name,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+      });
+      return;
+    }
+
+    if (order.conversationId == null) {
+      await this.logSkippedExecution({
+        automation,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        reason: AutomationSkipReason.ORDER_HAS_NO_CONVERSATION,
+        targetOrderStatusId: null,
+        targetConversationGroupId: targetGroupId,
+        automationName: automation.name,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+      });
+      return;
+    }
+
+    const conversation = await this.conversationRepo.findOne({
+      where: { workspaceId, id: order.conversationId },
+    });
+    if (!conversation) {
+      await this.logSkippedExecution({
+        automation,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        reason: AutomationSkipReason.CONVERSATION_NOT_FOUND,
+        targetOrderStatusId: null,
+        targetConversationGroupId: targetGroupId,
+        automationName: automation.name,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+      });
+      return;
+    }
+
+    try {
+      const result = await this.conversationWorkflow.onAutomationGroupChange(
+        conversation,
+        targetGroupId,
+        {
+          automationId: automation.id,
+          automationName: automation.name,
+        },
+      );
+
+      if (!result.applied) {
+        await this.logSkippedExecution({
+          automation,
+          workspaceId,
+          orderId,
+          sourceType,
+          sourceStatus,
+          expectedStatusChangedAt,
+          timed,
+          reason: AutomationSkipReason.CONVERSATION_ALREADY_IN_TARGET_GROUP,
+          targetOrderStatusId: null,
+          targetConversationGroupId: targetGroupId,
+          previousConversationGroupId: result.previousGroupId,
+          automationName: automation.name,
+          durationValue,
+          durationUnit,
+          idempotencyKey,
+        });
+        return;
+      }
+
+      await this.executionRepo.save(
+        this.executionRepo.create({
+          automationId: automation.id,
+          workspaceId,
+          orderId,
+          status: AutomationExecutionStatus.applied,
+          reason: null,
+          previousOrderStatusId: null,
+          targetOrderStatusId: null,
+          previousConversationGroupId: result.previousGroupId,
+          targetConversationGroupId: targetGroupId,
+          sourceType,
+          sourceStatusSnapshot: sourceStatus,
+          expectedStatusChangedAt,
+          idempotencyKey,
+          automationNameSnapshot: automation.name,
+          durationValue,
+          durationUnit,
+          executedAt: new Date(),
+        }),
+      );
+      this.log.log(
+        `Automation applied id=${automation.id} name="${automation.name}" workspace=${workspaceId} order=${orderId} conversation=${conversation.id} group ${result.previousGroupId ?? "null"}→${targetGroupId} via ${sourceType}:${sourceStatus}`,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown automation error";
+      this.log.error(
+        `Automation ${automation.id} failed for order ${orderId} (conversation group): ${message}`,
+      );
+      try {
+        await this.executionRepo.save(
+          this.executionRepo.create({
+            automationId: automation.id,
+            workspaceId,
+            orderId,
+            status: AutomationExecutionStatus.failed,
+            reason: "FAILED",
+            previousOrderStatusId: null,
+            targetOrderStatusId: null,
+            previousConversationGroupId: conversation.groupId,
+            targetConversationGroupId: targetGroupId,
             sourceType,
             sourceStatusSnapshot: sourceStatus,
             expectedStatusChangedAt,
@@ -741,7 +965,9 @@ export class OrderStatusAutomationExecutorService {
     expectedStatusChangedAt: Date;
     timed: boolean;
     reason: string;
-    targetOrderStatusId: number;
+    targetOrderStatusId: number | null;
+    targetConversationGroupId?: number | null;
+    previousConversationGroupId?: number | null;
     automationName: string;
     durationValue: number | null;
     durationUnit: string | null;
@@ -772,6 +998,9 @@ export class OrderStatusAutomationExecutorService {
           reason: input.reason,
           previousOrderStatusId: null,
           targetOrderStatusId: input.targetOrderStatusId,
+          previousConversationGroupId:
+            input.previousConversationGroupId ?? null,
+          targetConversationGroupId: input.targetConversationGroupId ?? null,
           sourceType: input.sourceType,
           sourceStatusSnapshot: input.sourceStatus,
           expectedStatusChangedAt: input.expectedStatusChangedAt,

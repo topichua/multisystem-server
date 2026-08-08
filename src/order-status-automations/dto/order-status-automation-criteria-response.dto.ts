@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class OrderStatusAutomationCriteriaItemDto {
   @ApiProperty({
@@ -25,6 +25,26 @@ export class OrderStatusAutomationTargetCriteriaItemDto {
   name!: string;
 }
 
+export class OrderStatusAutomationConversationGroupCriteriaItemDto {
+  @ApiProperty({
+    example: 5,
+    description:
+      "Conversation group id. Use as `targetConversationGroupId` with " +
+      "`actionType: CHANGE_CONVERSATION_GROUP`.",
+  })
+  id!: number;
+
+  @ApiProperty({ example: "Архів" })
+  name!: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "archived",
+    description: "Built-in system key when present (`new`, `processing`, `archived`, …).",
+  })
+  systemKey!: string | null;
+}
+
 export class OrderStatusAutomationCriteriaResponseDto {
   @ApiProperty({
     type: [OrderStatusAutomationCriteriaItemDto],
@@ -43,8 +63,16 @@ export class OrderStatusAutomationCriteriaResponseDto {
   @ApiProperty({
     type: [OrderStatusAutomationTargetCriteriaItemDto],
     description:
-      "Workspace order statuses. Use `id` as `targetOrderStatusId` (action), " +
+      "Workspace order statuses. Use `id` as `targetOrderStatusId` (CHANGE_ORDER_STATUS), " +
       "or as `conditions[].sourceStatus` (string) with `sourceType: ORDER_STATUS`.",
   })
   statuses!: OrderStatusAutomationTargetCriteriaItemDto[];
+
+  @ApiProperty({
+    type: [OrderStatusAutomationConversationGroupCriteriaItemDto],
+    description:
+      "Workspace conversation groups. Use `id` as `targetConversationGroupId` " +
+      "with `actionType: CHANGE_CONVERSATION_GROUP`.",
+  })
+  conversationGroups!: OrderStatusAutomationConversationGroupCriteriaItemDto[];
 }

@@ -146,15 +146,40 @@ export class CreateOrderStatusAutomationDto {
     enum: AutomationActionType,
     default: AutomationActionType.change_order_status,
     example: AutomationActionType.change_order_status,
-    description: "V1 supports only CHANGE_ORDER_STATUS.",
+    description:
+      "`CHANGE_ORDER_STATUS` — set order status (`targetOrderStatusId`). " +
+      "`CHANGE_CONVERSATION_GROUP` — move order's linked chat to a group (`targetConversationGroupId`), e.g. archive.",
   })
   @IsEnum(AutomationActionType)
   actionType: AutomationActionType = AutomationActionType.change_order_status;
 
-  @ApiProperty({ example: 12, description: "Workspace order status id to apply." })
+  @ApiPropertyOptional({
+    example: 12,
+    description:
+      "Required when `actionType` is `CHANGE_ORDER_STATUS`. Workspace order status id.",
+  })
+  @ValidateIf(
+    (o: CreateOrderStatusAutomationDto) =>
+      (o.actionType ?? AutomationActionType.change_order_status) ===
+      AutomationActionType.change_order_status,
+  )
   @IsInt()
   @IsPositive()
-  targetOrderStatusId!: number;
+  targetOrderStatusId?: number;
+
+  @ApiPropertyOptional({
+    example: 5,
+    description:
+      "Required when `actionType` is `CHANGE_CONVERSATION_GROUP`. " +
+      "Workspace conversation group id (from criteria `conversationGroups`, e.g. archived).",
+  })
+  @ValidateIf(
+    (o: CreateOrderStatusAutomationDto) =>
+      o.actionType === AutomationActionType.change_conversation_group,
+  )
+  @IsInt()
+  @IsPositive()
+  targetConversationGroupId?: number;
 }
 
 export class UpdateOrderStatusAutomationDto {
@@ -203,11 +228,22 @@ export class UpdateOrderStatusAutomationDto {
   @IsEnum(AutomationActionType)
   actionType?: AutomationActionType;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: "Required for CHANGE_ORDER_STATUS (when that action is selected).",
+  })
   @IsOptional()
   @IsInt()
   @IsPositive()
   targetOrderStatusId?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Required for CHANGE_CONVERSATION_GROUP (when that action is selected).",
+  })
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  targetConversationGroupId?: number;
 }
 
 export class SetOrderStatusAutomationActiveDto {

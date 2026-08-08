@@ -1,6 +1,8 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import {
+  Conversation,
+  ConversationGroup,
   Order,
   OrderDeliveryInfo,
   OrderStatus,
@@ -8,6 +10,8 @@ import {
   OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
 } from "../database/entities";
+import { ConversationGroupDefaultsModule } from "../conversations/conversation-group-defaults.module";
+import { ConversationsModule } from "../conversations/conversations.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { OrdersModule } from "../orders/orders.module";
 import { DeliveryModule } from "../delivery/delivery.module";
@@ -26,6 +30,8 @@ import { OrderStatusAutomationsService } from "./order-status-automations.servic
     InventoryModule,
     forwardRef(() => OrdersModule),
     OrderStatusDefaultsModule,
+    ConversationGroupDefaultsModule,
+    forwardRef(() => ConversationsModule),
     forwardRef(() => DeliveryModule),
     forwardRef(() => PaymentsModule),
     TypeOrmModule.forFeature([
@@ -35,6 +41,8 @@ import { OrderStatusAutomationsService } from "./order-status-automations.servic
       OrderStatus,
       Order,
       OrderDeliveryInfo,
+      Conversation,
+      ConversationGroup,
     ]),
   ],
   controllers: [OrderStatusAutomationsController],

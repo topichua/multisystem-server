@@ -14,6 +14,7 @@ import {
 import { AutomationActionType } from "./automation-action-type.enum";
 import { AutomationConditionType } from "./automation-condition-type.enum";
 import { AutomationOrigin } from "./automation-origin.enum";
+import { ConversationGroup } from "./conversation-group.entity";
 import { OrderStatus } from "./order-status.entity";
 import { OrderStatusAutomationCondition } from "./order-status-automation-condition.entity";
 import { User } from "./user.entity";
@@ -67,12 +68,28 @@ export class OrderStatusAutomation {
   })
   actionType: AutomationActionType;
 
-  @Column({ name: "target_order_status_id", type: "int" })
-  targetOrderStatusId: number;
+  /** Required when actionType is CHANGE_ORDER_STATUS. */
+  @Column({ name: "target_order_status_id", type: "int", nullable: true })
+  targetOrderStatusId: number | null;
 
-  @ManyToOne(() => OrderStatus, { onDelete: "RESTRICT" })
+  @ManyToOne(() => OrderStatus, { onDelete: "RESTRICT", nullable: true })
   @JoinColumn({ name: "target_order_status_id" })
-  targetOrderStatus: OrderStatus;
+  targetOrderStatus: OrderStatus | null;
+
+  /** Required when actionType is CHANGE_CONVERSATION_GROUP. */
+  @Column({
+    name: "target_conversation_group_id",
+    type: "int",
+    nullable: true,
+  })
+  targetConversationGroupId: number | null;
+
+  @ManyToOne(() => ConversationGroup, {
+    onDelete: "RESTRICT",
+    nullable: true,
+  })
+  @JoinColumn({ name: "target_conversation_group_id" })
+  targetConversationGroup: ConversationGroup | null;
 
   @Column({
     name: "origin",
