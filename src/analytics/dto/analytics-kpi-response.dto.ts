@@ -17,6 +17,13 @@ export class AnalyticsOverviewKpiResponseDto {
   @ApiProperty({ type: AnalyticsCurrencyKpiValueDto })
   revenue: AnalyticsCurrencyKpiValueDto;
 
+  @ApiProperty({
+    type: AnalyticsCurrencyKpiValueDto,
+    description:
+      "Валовий прибуток: сума по order_items (ціна продажу − закупівельна/собівартість).",
+  })
+  grossProfit: AnalyticsCurrencyKpiValueDto;
+
   @ApiProperty({ type: AnalyticsKpiValueDto })
   orders: AnalyticsKpiValueDto;
 

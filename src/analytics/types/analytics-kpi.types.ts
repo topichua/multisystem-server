@@ -9,6 +9,8 @@ export type AnalyticsCurrencyKpiValue = AnalyticsKpiValue & {
 
 export type AnalyticsOverviewKpiResult = {
   revenue: AnalyticsCurrencyKpiValue;
+  /** Sale − cost across order items (валовий прибуток). */
+  grossProfit: AnalyticsCurrencyKpiValue;
   orders: AnalyticsKpiValue;
   averageOrderValue: AnalyticsCurrencyKpiValue;
   newClients: AnalyticsKpiValue;

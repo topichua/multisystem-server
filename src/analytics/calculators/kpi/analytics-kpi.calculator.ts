@@ -10,6 +10,7 @@ import type {
   AnalyticsOverviewKpiResult,
 } from "../../types/analytics-kpi.types";
 import type { AnalyticsMetricCalculator } from "../analytics-metric-calculator.interface";
+import { GrossProfitKpiCalculator } from "./gross-profit-kpi.calculator";
 import { NewClientsKpiCalculator } from "./new-clients-kpi.calculator";
 import { OrdersKpiCalculator } from "./orders-kpi.calculator";
 import { RevenueKpiCalculator } from "./revenue-kpi.calculator";
@@ -18,6 +19,7 @@ import { RevenueKpiCalculator } from "./revenue-kpi.calculator";
 export class AnalyticsKpiCalculator implements AnalyticsMetricCalculator<AnalyticsOverviewKpiResult> {
   constructor(
     private readonly revenueCalculator: RevenueKpiCalculator,
+    private readonly grossProfitCalculator: GrossProfitKpiCalculator,
     private readonly ordersCalculator: OrdersKpiCalculator,
     private readonly newClientsCalculator: NewClientsKpiCalculator,
   ) {}
@@ -28,6 +30,8 @@ export class AnalyticsKpiCalculator implements AnalyticsMetricCalculator<Analyti
     const [
       currentRevenue,
       previousRevenue,
+      currentGrossProfit,
+      previousGrossProfit,
       currentOrders,
       previousOrders,
       currentNewClients,
@@ -35,6 +39,14 @@ export class AnalyticsKpiCalculator implements AnalyticsMetricCalculator<Analyti
     ] = await Promise.all([
       this.revenueCalculator.calculateForRange(context, context.ranges.current),
       this.revenueCalculator.calculateForRange(
+        context,
+        context.ranges.previous,
+      ),
+      this.grossProfitCalculator.calculateForRange(
+        context,
+        context.ranges.current,
+      ),
+      this.grossProfitCalculator.calculateForRange(
         context,
         context.ranges.previous,
       ),
@@ -54,6 +66,15 @@ export class AnalyticsKpiCalculator implements AnalyticsMetricCalculator<Analyti
       value: currentRevenue,
       currency: context.currency,
       changePercent: calculateChangePercent(currentRevenue, previousRevenue),
+    };
+
+    const grossProfit: AnalyticsCurrencyKpiValue = {
+      value: currentGrossProfit,
+      currency: context.currency,
+      changePercent: calculateChangePercent(
+        currentGrossProfit,
+        previousGrossProfit,
+      ),
     };
 
     const orders: AnalyticsKpiValue = {
@@ -80,6 +101,7 @@ export class AnalyticsKpiCalculator implements AnalyticsMetricCalculator<Analyti
 
     return {
       revenue,
+      grossProfit,
       orders,
       averageOrderValue,
       newClients,

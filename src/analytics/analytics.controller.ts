@@ -36,7 +36,9 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Analytics overview KPI",
     description:
-      "Returns revenue, orders, average order value, and new clients for the selected period with changePercent vs the previous period of equal length.",
+      "Returns revenue, gross profit (валовий прибуток: sale − cost on order items), " +
+      "orders, average order value, and new clients for the selected period with " +
+      "changePercent vs the previous period of equal length.",
   })
   @ApiOkResponse({ type: AnalyticsOverviewKpiResponseDto })
   async getKpi(
