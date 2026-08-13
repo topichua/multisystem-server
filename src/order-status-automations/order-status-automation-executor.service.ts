@@ -750,6 +750,56 @@ export class OrderStatusAutomationExecutorService {
       return;
     }
 
+    const lastOrder = await this.findLastOrderForConversation(
+      workspaceId,
+      order.conversationId,
+    );
+    if (!lastOrder || lastOrder.id !== order.id) {
+      await this.logSkippedExecution({
+        automation,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        reason: AutomationSkipReason.NOT_LAST_ORDER_FOR_CONVERSATION,
+        targetOrderStatusId: null,
+        targetConversationGroupId: targetGroupId,
+        automationName: automation.name,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+      });
+      return;
+    }
+
+    // Re-check every condition against the conversation's latest order
+    // (order status + payment status + delivery, timed delays, etc.).
+    const lastOrderMatched = await this.areAllConditionsSatisfied(
+      lastOrder,
+      automation.conditions ?? [],
+    );
+    if (!lastOrderMatched) {
+      await this.logSkippedExecution({
+        automation,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        reason: AutomationSkipReason.CONDITIONS_NOT_MATCHED,
+        targetOrderStatusId: null,
+        targetConversationGroupId: targetGroupId,
+        automationName: automation.name,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+      });
+      return;
+    }
+
     const conversation = await this.conversationRepo.findOne({
       where: { workspaceId, id: order.conversationId },
     });
@@ -808,7 +858,7 @@ export class OrderStatusAutomationExecutorService {
         this.executionRepo.create({
           automationId: automation.id,
           workspaceId,
-          orderId,
+          orderId: lastOrder.id,
           status: AutomationExecutionStatus.applied,
           reason: null,
           previousOrderStatusId: null,
@@ -826,7 +876,7 @@ export class OrderStatusAutomationExecutorService {
         }),
       );
       this.log.log(
-        `Automation applied id=${automation.id} name="${automation.name}" workspace=${workspaceId} order=${orderId} conversation=${conversation.id} group ${result.previousGroupId ?? "null"}→${targetGroupId} via ${sourceType}:${sourceStatus}`,
+        `Automation applied id=${automation.id} name="${automation.name}" workspace=${workspaceId} order=${lastOrder.id} conversation=${conversation.id} group ${result.previousGroupId ?? "null"}→${targetGroupId} via ${sourceType}:${sourceStatus}`,
       );
     } catch (error) {
       const message =
@@ -865,6 +915,17 @@ export class OrderStatusAutomationExecutorService {
         }
       }
     }
+  }
+
+  /** Latest order linked to a conversation (by created_at, then id). */
+  private async findLastOrderForConversation(
+    workspaceId: number,
+    conversationId: number,
+  ): Promise<Order | null> {
+    return this.orderRepo.findOne({
+      where: { workspaceId, conversationId },
+      order: { createdAt: "DESC", id: "DESC" },
+    });
   }
 
   private async areAllConditionsSatisfied(

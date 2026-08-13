@@ -39,6 +39,37 @@ Example: when order reaches completed status → archive chat:
 }
 ```
 
+**`CHANGE_CONVERSATION_GROUP` always uses the conversation’s latest order:**
+
+1. Resolve `order.conversationId`
+2. Find last order for that chat (`created_at DESC`, then `id DESC`)
+3. If the triggering order is **not** that last order → SKIP `NOT_LAST_ORDER_FOR_CONVERSATION`
+4. Re-check **all** rule conditions against that last order (so `ORDER_STATUS` + `PAYMENT_STATUS` = status and payment of the **last** order)
+5. If the order has no `conversationId` → SKIP `ORDER_HAS_NO_CONVERSATION`
+
+Recommended pattern for archiving (status **and** payment of last order):
+
+```json
+{
+  "name": "Archive when last order completed and paid",
+  "conditionType": "AND",
+  "conditions": [
+    {
+      "sourceType": "ORDER_STATUS",
+      "sourceStatus": "12",
+      "operator": "EQ"
+    },
+    {
+      "sourceType": "PAYMENT_STATUS",
+      "sourceStatus": "paid",
+      "operator": "EQ"
+    }
+  ],
+  "actionType": "CHANGE_CONVERSATION_GROUP",
+  "targetConversationGroupId": 5
+}
+```
+
 If the order has no `conversationId`, execution is SKIPPED (`ORDER_HAS_NO_CONVERSATION`).
 
 Example: when order status is **not** 29 (immediate) → move order to another status:

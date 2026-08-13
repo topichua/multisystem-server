@@ -148,7 +148,8 @@ export class CreateOrderStatusAutomationDto {
     example: AutomationActionType.change_order_status,
     description:
       "`CHANGE_ORDER_STATUS` — set order status (`targetOrderStatusId`). " +
-      "`CHANGE_CONVERSATION_GROUP` — move order's linked chat to a group (`targetConversationGroupId`), e.g. archive.",
+      "`CHANGE_CONVERSATION_GROUP` — move chat linked to the order; conditions are evaluated on the " +
+      "conversation's **latest** order (use `conditionType: AND` with `ORDER_STATUS` + `PAYMENT_STATUS`).",
   })
   @IsEnum(AutomationActionType)
   actionType: AutomationActionType = AutomationActionType.change_order_status;
