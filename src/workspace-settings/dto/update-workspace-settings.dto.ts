@@ -1,16 +1,28 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Transform } from "class-transformer";
+import { ApiPropertyOptional } from "@nestjs/swagger";
+import { Transform, Type } from "class-transformer";
 import {
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from "class-validator";
 import { InventoryMode } from "../../database/entities/inventory-mode.enum";
 import { WorkspaceLanguage } from "../../database/entities/workspace-language.enum";
+import { WorkDayHoursDto } from "./workspace-settings-response.dto";
+import {
+  WORK_WEEKDAY_KEYS,
+  type WorkWeekdayKey,
+} from "../work-schedule/work-schedule.types";
+
+const HH_MM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 function pickInventoryMode(
   obj: Record<string, unknown>,
@@ -36,6 +48,47 @@ function pickWishlistEnabled(
     return obj.wishlist_enabled as boolean;
   }
   return undefined;
+}
+
+export class UpdateWorkspaceWorkScheduleDto {
+  @ApiPropertyOptional({ example: "09:00" })
+  @IsOptional()
+  @IsString()
+  @Matches(HH_MM, { message: "dayStart must be HH:mm" })
+  dayStart?: string;
+
+  @ApiPropertyOptional({ example: "19:00" })
+  @IsOptional()
+  @IsString()
+  @Matches(HH_MM, { message: "dayEnd must be HH:mm" })
+  dayEnd?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: WORK_WEEKDAY_KEYS,
+    example: ["wed", "thu", "fri", "sat"],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsIn([...WORK_WEEKDAY_KEYS], { each: true })
+  workDays?: WorkWeekdayKey[];
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  differentHoursPerDay?: boolean;
+
+  @ApiPropertyOptional({
+    description: "Map of weekday → { start, end }",
+    example: {
+      wed: { start: "09:00", end: "19:00" },
+      sat: { start: "10:00", end: "16:00" },
+    },
+  })
+  @IsOptional()
+  @IsObject()
+  dayHours?: Record<string, WorkDayHoursDto>;
 }
 
 export class UpdateWorkspaceSettingsDto {
@@ -95,4 +148,22 @@ export class UpdateWorkspaceSettingsDto {
   @IsOptional()
   @IsBoolean()
   wishlist_enabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: "Europe/Kyiv",
+    description: "IANA timezone used for work schedule.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timezone?: string;
+
+  @ApiPropertyOptional({
+    type: UpdateWorkspaceWorkScheduleDto,
+    description: "Work schedule (графіфік роботи). Partial merge with current.",
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateWorkspaceWorkScheduleDto)
+  workSchedule?: UpdateWorkspaceWorkScheduleDto;
 }

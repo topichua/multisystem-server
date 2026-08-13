@@ -55,6 +55,33 @@ export class Workspace {
   @Column({ name: "wishlist_enabled", type: "boolean", default: false })
   wishlistEnabled: boolean;
 
+  /** IANA timezone for work schedule / deferred messaging. */
+  @Column({
+    name: "timezone",
+    type: "varchar",
+    length: 64,
+    default: "Europe/Kyiv",
+  })
+  timezone: string;
+
+  /**
+   * Business hours for automatic messages/reminders.
+   * Shape: `{ dayStart, dayEnd, workDays, differentHoursPerDay, dayHours }`.
+   */
+  @Column({
+    name: "work_schedule",
+    type: "jsonb",
+    default: () =>
+      `'{"dayStart":"09:00","dayEnd":"19:00","workDays":["mon","tue","wed","thu","fri"],"differentHoursPerDay":false,"dayHours":{}}'`,
+  })
+  workSchedule: {
+    dayStart: string;
+    dayEnd: string;
+    workDays: string[];
+    differentHoursPerDay: boolean;
+    dayHours: Record<string, { start: string; end: string }>;
+  };
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 

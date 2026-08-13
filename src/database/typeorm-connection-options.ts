@@ -179,6 +179,8 @@ import { ConversationWorkspaceLocalIds1744200000181 } from "./migrations/1744200
 import { AutomationConditionOperator1744200000182 } from "./migrations/1744200000182-AutomationConditionOperator";
 import { AutomationOrderStatusSource1744200000183 } from "./migrations/1744200000183-AutomationOrderStatusSource";
 import { AutomationChangeConversationGroup1744200000184 } from "./migrations/1744200000184-AutomationChangeConversationGroup";
+import { WorkspaceTemplateType1744200000185 } from "./migrations/1744200000185-WorkspaceTemplateType";
+import { WorkspaceWorkSchedule1744200000186 } from "./migrations/1744200000186-WorkspaceWorkSchedule";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -586,6 +588,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       AutomationConditionOperator1744200000182,
       AutomationOrderStatusSource1744200000183,
       AutomationChangeConversationGroup1744200000184,
+      WorkspaceTemplateType1744200000185,
+      WorkspaceWorkSchedule1744200000186,
     ],
   };
 }

@@ -31,7 +31,7 @@ export class WorkspaceSettingsController {
   @ApiOperation({
     summary: "Get workspace settings",
     description:
-      "Resolves the workspace from your latest integration (`integration.workspace_id`).",
+      "Includes currency, inventory, language, wishlist, timezone, and work schedule (графіфік роботи).",
   })
   @ApiOkResponse({ type: WorkspaceSettingsResponseDto })
   async get(

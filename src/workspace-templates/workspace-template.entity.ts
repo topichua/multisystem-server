@@ -9,9 +9,11 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { User, Workspace } from "../database/entities";
+import { WorkspaceTemplateType } from "./workspace-template-type.enum";
 
 @Entity("workspace_templates")
 @Index("IDX_workspace_templates_workspace_id", ["workspaceId"])
+@Index("IDX_workspace_templates_workspace_type", ["workspaceId", "type"])
 export class WorkspaceTemplate {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;
@@ -22,6 +24,15 @@ export class WorkspaceTemplate {
   @ManyToOne(() => Workspace, { onDelete: "CASCADE" })
   @JoinColumn({ name: "workspace_id" })
   workspace: Workspace;
+
+  @Column({
+    name: "type",
+    type: "enum",
+    enum: WorkspaceTemplateType,
+    enumName: "workspace_template_type_enum",
+    default: WorkspaceTemplateType.chat,
+  })
+  type: WorkspaceTemplateType;
 
   @Column({ name: "name", type: "varchar", length: 255 })
   name: string;

@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -27,9 +28,15 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
   CreateWorkspaceTemplateDto,
+  ListWorkspaceTemplatesQueryDto,
+  RenderWorkspaceTemplateDto,
   UpdateWorkspaceTemplateDto,
 } from "./dto/workspace-template-request.dto";
-import { WorkspaceTemplateResponseDto } from "./dto/workspace-template-response.dto";
+import {
+  WorkspaceTemplateRenderResponseDto,
+  WorkspaceTemplateResponseDto,
+  WorkspaceTemplateVariablesResponseDto,
+} from "./dto/workspace-template-response.dto";
 import { WorkspaceTemplatesService } from "./workspace-templates.service";
 
 @ApiTags("workspace — templates")
@@ -39,11 +46,48 @@ import { WorkspaceTemplatesService } from "./workspace-templates.service";
 export class WorkspaceTemplatesController {
   constructor(private readonly templates: WorkspaceTemplatesService) {}
 
+  @Get("variables")
+  @ApiOperation({
+    summary: "List available template variables by type",
+    description:
+      "Returns keys + placeholders for `chat` and `order` templates. " +
+      "Use `key` for client-side localization labels.",
+  })
+  @ApiOkResponse({ type: WorkspaceTemplateVariablesResponseDto })
+  getVariables(): WorkspaceTemplateVariablesResponseDto {
+    return this.templates.getVariablesCatalog();
+  }
+
   @Get()
   @ApiOperation({ summary: "List workspace templates" })
   @ApiOkResponse({ type: [WorkspaceTemplateResponseDto] })
-  async list(@Req() req: { user?: AuthUser }) {
-    return this.templates.listForOwner(this.requireNumericOwnerId(req));
+  async list(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListWorkspaceTemplatesQueryDto,
+  ) {
+    return this.templates.listForOwner(this.requireNumericOwnerId(req), query);
+  }
+
+  @Post(":templateId/render")
+  @ApiOperation({
+    summary: "Render template text for an entity",
+    description:
+      "Substitutes `{placeholders}`. For `order` templates send `orderId`; " +
+      "for `chat` templates send `conversationId`.",
+  })
+  @ApiParam({ name: "templateId", type: Number })
+  @ApiBody({ type: RenderWorkspaceTemplateDto })
+  @ApiOkResponse({ type: WorkspaceTemplateRenderResponseDto })
+  async render(
+    @Req() req: { user?: AuthUser },
+    @Param("templateId", ParseIntPipe) templateId: number,
+    @Body() dto: RenderWorkspaceTemplateDto,
+  ): Promise<WorkspaceTemplateRenderResponseDto> {
+    return this.templates.renderForOwner(
+      this.requireNumericOwnerId(req),
+      templateId,
+      dto,
+    );
   }
 
   @Get(":templateId")
