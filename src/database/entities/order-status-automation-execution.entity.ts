@@ -64,6 +64,15 @@ export class OrderStatusAutomationExecution {
   })
   targetConversationGroupId: number | null;
 
+  @Column({ name: "target_template_id", type: "int", nullable: true })
+  targetTemplateId: number | null;
+
+  @Column({ name: "conversation_id", type: "int", nullable: true })
+  conversationId: number | null;
+
+  @Column({ name: "message_preview", type: "text", nullable: true })
+  messagePreview: string | null;
+
   @Column({
     name: "source_type",
     type: "enum",

@@ -35,6 +35,17 @@ export class OrderStatusAutomationTargetConversationGroupDto {
   systemKey!: string | null;
 }
 
+export class OrderStatusAutomationTargetTemplateDto {
+  @ApiProperty()
+  id!: number;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty({ example: "order" })
+  type!: string;
+}
+
 export class OrderStatusAutomationConditionResponseDto {
   @ApiProperty()
   id!: number;
@@ -139,6 +150,43 @@ export class OrderStatusAutomationResponseDto {
     description: "Set for CHANGE_CONVERSATION_GROUP.",
   })
   targetConversationGroup!: OrderStatusAutomationTargetConversationGroupDto | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Set for SEND_MESSAGE (order template id).",
+  })
+  targetTemplateId!: number | null;
+
+  @ApiPropertyOptional({
+    type: OrderStatusAutomationTargetTemplateDto,
+    nullable: true,
+    description: "Set for SEND_MESSAGE.",
+  })
+  targetTemplate!: OrderStatusAutomationTargetTemplateDto | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "SEND_MESSAGE action delay value.",
+  })
+  actionDelayValue!: number | null;
+
+  @ApiPropertyOptional({
+    enum: AutomationDurationUnit,
+    nullable: true,
+    description: "SEND_MESSAGE action delay unit.",
+  })
+  actionDelayUnit!: AutomationDurationUnit | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Human-readable action delay (e.g. `2 год`).",
+  })
+  actionDelayLabel!: string | null;
+
+  @ApiProperty({
+    description: "SEND_MESSAGE: wait for workspace work schedule after delay.",
+  })
+  waitForBusinessHours!: boolean;
 
   @ApiProperty({ enum: AutomationOrigin })
   origin!: AutomationOrigin;

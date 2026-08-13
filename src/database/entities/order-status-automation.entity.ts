@@ -13,12 +13,14 @@ import {
 } from "typeorm";
 import { AutomationActionType } from "./automation-action-type.enum";
 import { AutomationConditionType } from "./automation-condition-type.enum";
+import { AutomationDurationUnit } from "./automation-duration-unit.enum";
 import { AutomationOrigin } from "./automation-origin.enum";
 import { ConversationGroup } from "./conversation-group.entity";
 import { OrderStatus } from "./order-status.entity";
 import { OrderStatusAutomationCondition } from "./order-status-automation-condition.entity";
 import { User } from "./user.entity";
 import { Workspace } from "./workspace.entity";
+import { WorkspaceTemplate } from "../../workspace-templates/workspace-template.entity";
 
 @Entity("order_status_automations")
 @Index("IDX_order_status_automations_workspace_active", [
@@ -90,6 +92,41 @@ export class OrderStatusAutomation {
   })
   @JoinColumn({ name: "target_conversation_group_id" })
   targetConversationGroup: ConversationGroup | null;
+
+  /** Required when actionType is SEND_MESSAGE (order template). */
+  @Column({ name: "target_template_id", type: "int", nullable: true })
+  targetTemplateId: number | null;
+
+  @ManyToOne(() => WorkspaceTemplate, {
+    onDelete: "RESTRICT",
+    nullable: true,
+  })
+  @JoinColumn({ name: "target_template_id" })
+  targetTemplate: WorkspaceTemplate | null;
+
+  /**
+   * Optional delay after conditions match before SEND_MESSAGE runs.
+   * Null = no action delay (still may wait for business hours).
+   */
+  @Column({ name: "action_delay_value", type: "int", nullable: true })
+  actionDelayValue: number | null;
+
+  @Column({
+    name: "action_delay_unit",
+    type: "enum",
+    enum: AutomationDurationUnit,
+    enumName: "automation_duration_unit_enum",
+    nullable: true,
+  })
+  actionDelayUnit: AutomationDurationUnit | null;
+
+  /** When true, SEND_MESSAGE waits until workspace work schedule. */
+  @Column({
+    name: "wait_for_business_hours",
+    type: "boolean",
+    default: false,
+  })
+  waitForBusinessHours: boolean;
 
   @Column({
     name: "origin",

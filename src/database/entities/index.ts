@@ -156,7 +156,9 @@ export { AutomationConditionOperator } from "./automation-condition-operator.enu
 export { AutomationDurationUnit } from "./automation-duration-unit.enum";
 export { AutomationExecutionStatus } from "./automation-execution-status.enum";
 export { AutomationOrigin } from "./automation-origin.enum";
+export { AutomationScheduledJobStatus } from "./automation-scheduled-job-status.enum";
 export { AutomationSourceType } from "./automation-source-type.enum";
 export { OrderStatusAutomation } from "./order-status-automation.entity";
 export { OrderStatusAutomationCondition } from "./order-status-automation-condition.entity";
 export { OrderStatusAutomationExecution } from "./order-status-automation-execution.entity";
+export { OrderStatusAutomationScheduledJob } from "./order-status-automation-scheduled-job.entity";

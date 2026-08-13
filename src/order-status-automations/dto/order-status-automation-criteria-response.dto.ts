@@ -45,6 +45,18 @@ export class OrderStatusAutomationConversationGroupCriteriaItemDto {
   systemKey!: string | null;
 }
 
+export class OrderStatusAutomationOrderTemplateCriteriaItemDto {
+  @ApiProperty({
+    example: 7,
+    description:
+      "Order template id. Use as `targetTemplateId` with `actionType: SEND_MESSAGE`.",
+  })
+  id!: number;
+
+  @ApiProperty({ example: "Дякуємо за оплату" })
+  name!: string;
+}
+
 export class OrderStatusAutomationCriteriaResponseDto {
   @ApiProperty({
     type: [OrderStatusAutomationCriteriaItemDto],
@@ -75,4 +87,11 @@ export class OrderStatusAutomationCriteriaResponseDto {
       "with `actionType: CHANGE_CONVERSATION_GROUP`.",
   })
   conversationGroups!: OrderStatusAutomationConversationGroupCriteriaItemDto[];
+
+  @ApiProperty({
+    type: [OrderStatusAutomationOrderTemplateCriteriaItemDto],
+    description:
+      "Order templates. Use `id` as `targetTemplateId` with `actionType: SEND_MESSAGE`.",
+  })
+  orderTemplates!: OrderStatusAutomationOrderTemplateCriteriaItemDto[];
 }

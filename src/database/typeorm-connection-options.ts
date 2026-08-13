@@ -181,6 +181,7 @@ import { AutomationOrderStatusSource1744200000183 } from "./migrations/174420000
 import { AutomationChangeConversationGroup1744200000184 } from "./migrations/1744200000184-AutomationChangeConversationGroup";
 import { WorkspaceTemplateType1744200000185 } from "./migrations/1744200000185-WorkspaceTemplateType";
 import { WorkspaceWorkSchedule1744200000186 } from "./migrations/1744200000186-WorkspaceWorkSchedule";
+import { AutomationSendMessage1744200000187 } from "./migrations/1744200000187-AutomationSendMessage";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -247,6 +248,7 @@ import {
   OrderStatusAutomation,
   OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
+  OrderStatusAutomationScheduledJob,
 } from "./entities";
 import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
 
@@ -364,6 +366,7 @@ const entities = [
   OrderStatusAutomation,
   OrderStatusAutomationCondition,
   OrderStatusAutomationExecution,
+  OrderStatusAutomationScheduledJob,
 ];
 
 function baseOptions(env: DatabaseEnv) {
@@ -590,6 +593,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       AutomationChangeConversationGroup1744200000184,
       WorkspaceTemplateType1744200000185,
       WorkspaceWorkSchedule1744200000186,
+      AutomationSendMessage1744200000187,
     ],
   };
 }

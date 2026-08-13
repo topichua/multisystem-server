@@ -18,6 +18,8 @@ import { AutomationActionType } from "../../database/entities/automation-action-
 import { AutomationConditionOperator } from "../../database/entities/automation-condition-operator.enum";
 import { AutomationConditionType } from "../../database/entities/automation-condition-type.enum";
 import { AutomationDurationUnit } from "../../database/entities/automation-duration-unit.enum";
+import { AutomationExecutionStatus } from "../../database/entities/automation-execution-status.enum";
+import { AutomationScheduledJobStatus } from "../../database/entities/automation-scheduled-job-status.enum";
 import { AutomationSourceType } from "../../database/entities/automation-source-type.enum";
 
 /** Prefer camelCase; keep snake_case for older clients. */
@@ -149,7 +151,9 @@ export class CreateOrderStatusAutomationDto {
     description:
       "`CHANGE_ORDER_STATUS` — set order status (`targetOrderStatusId`). " +
       "`CHANGE_CONVERSATION_GROUP` — move chat linked to the order; conditions are evaluated on the " +
-      "conversation's **latest** order (use `conditionType: AND` with `ORDER_STATUS` + `PAYMENT_STATUS`).",
+      "conversation's **latest** order (use `conditionType: AND` with `ORDER_STATUS` + `PAYMENT_STATUS`). " +
+      "`SEND_MESSAGE` — render order template (`targetTemplateId`) and send to the order-linked chat; " +
+      "optional `actionDelayValue`/`actionDelayUnit` and `waitForBusinessHours`.",
   })
   @IsEnum(AutomationActionType)
   actionType: AutomationActionType = AutomationActionType.change_order_status;
@@ -181,6 +185,61 @@ export class CreateOrderStatusAutomationDto {
   @IsInt()
   @IsPositive()
   targetConversationGroupId?: number;
+
+  @ApiPropertyOptional({
+    example: 7,
+    description:
+      "Required when `actionType` is `SEND_MESSAGE`. Workspace **order** template id " +
+      "(from criteria `orderTemplates` or GET /workplace/templates?type=order).",
+  })
+  @ValidateIf(
+    (o: CreateOrderStatusAutomationDto) =>
+      o.actionType === AutomationActionType.send_message,
+  )
+  @IsInt()
+  @IsPositive()
+  targetTemplateId?: number;
+
+  @ApiPropertyOptional({
+    example: 2,
+    nullable: true,
+    description:
+      "Optional SEND_MESSAGE action delay after conditions match. " +
+      "Omit both value and unit for no delay. Use with `actionDelayUnit`.",
+  })
+  @ValidateIf(
+    (o: CreateOrderStatusAutomationDto) =>
+      o.actionType === AutomationActionType.send_message &&
+      o.actionDelayUnit != null,
+  )
+  @IsInt()
+  @IsPositive()
+  actionDelayValue?: number | null;
+
+  @ApiPropertyOptional({
+    enum: AutomationDurationUnit,
+    example: AutomationDurationUnit.hours,
+    nullable: true,
+    description:
+      "MINUTES, HOURS, or DAYS. Required together with `actionDelayValue` for SEND_MESSAGE delay.",
+  })
+  @ValidateIf(
+    (o: CreateOrderStatusAutomationDto) =>
+      o.actionType === AutomationActionType.send_message &&
+      o.actionDelayValue != null,
+  )
+  @IsEnum(AutomationDurationUnit)
+  actionDelayUnit?: AutomationDurationUnit | null;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      "SEND_MESSAGE only. When true, send waits until workspace work schedule " +
+      "(after optional action delay). Default false.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  waitForBusinessHours?: boolean;
 }
 
 export class UpdateOrderStatusAutomationDto {
@@ -245,6 +304,41 @@ export class UpdateOrderStatusAutomationDto {
   @IsInt()
   @IsPositive()
   targetConversationGroupId?: number;
+
+  @ApiPropertyOptional({
+    description: "Required for SEND_MESSAGE (when that action is selected).",
+  })
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  targetTemplateId?: number;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "SEND_MESSAGE action delay value (with actionDelayUnit).",
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.actionDelayUnit != null)
+  @IsInt()
+  @IsPositive()
+  actionDelayValue?: number | null;
+
+  @ApiPropertyOptional({
+    enum: AutomationDurationUnit,
+    nullable: true,
+    description: "SEND_MESSAGE action delay unit.",
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.actionDelayValue != null)
+  @IsEnum(AutomationDurationUnit)
+  actionDelayUnit?: AutomationDurationUnit | null;
+
+  @ApiPropertyOptional({
+    description: "SEND_MESSAGE: wait for workspace work schedule.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  waitForBusinessHours?: boolean;
 }
 
 export class SetOrderStatusAutomationActiveDto {
@@ -266,4 +360,71 @@ export class ListOrderStatusAutomationsQueryDto {
   @IsOptional()
   @IsEnum(AutomationSourceType)
   sourceType?: AutomationSourceType;
+}
+
+export class ListAutomationHistoryQueryDto {
+  @ApiPropertyOptional({ description: "Filter by automation id." })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  automationId?: number;
+
+  @ApiPropertyOptional({ description: "Filter by order id." })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  orderId?: number;
+
+  @ApiPropertyOptional({
+    enum: AutomationExecutionStatus,
+    description: "APPLIED | SKIPPED | FAILED",
+  })
+  @IsOptional()
+  @IsEnum(AutomationExecutionStatus)
+  status?: AutomationExecutionStatus;
+
+  @ApiPropertyOptional({ default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  limit?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  offset?: number;
+}
+
+export class ListAutomationScheduledQueryDto {
+  @ApiPropertyOptional({ description: "Filter by automation id." })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  automationId?: number;
+
+  @ApiPropertyOptional({
+    enum: AutomationScheduledJobStatus,
+    description: "Default PENDING. Pass to filter other statuses.",
+  })
+  @IsOptional()
+  @IsEnum(AutomationScheduledJobStatus)
+  status?: AutomationScheduledJobStatus;
+
+  @ApiPropertyOptional({ default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  limit?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  offset?: number;
 }

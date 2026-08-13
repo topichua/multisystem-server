@@ -11,26 +11,39 @@ import {
   AutomationActionType,
   AutomationConditionOperator,
   AutomationConditionType,
+  AutomationDurationUnit,
+  AutomationExecutionStatus,
   AutomationOrigin,
+  AutomationScheduledJobStatus,
   AutomationSourceType,
   ConversationGroup,
   OrderStatus,
   OrderStatusAutomation,
   OrderStatusAutomationCondition,
+  OrderStatusAutomationExecution,
+  OrderStatusAutomationScheduledJob,
 } from "../database/entities";
 import { ConversationGroupDefaultsService } from "../conversations/conversation-group-defaults.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
 import { OrderStatusDefaultsService } from "../orders/order-status-defaults.service";
 import { hasBooleanPermission } from "../workspace-access/permissions";
+import { WorkspaceTemplate } from "../workspace-templates/workspace-template.entity";
+import { WorkspaceTemplateType } from "../workspace-templates/workspace-template-type.enum";
 import type {
   CreateOrderStatusAutomationDto,
+  ListAutomationHistoryQueryDto,
+  ListAutomationScheduledQueryDto,
   ListOrderStatusAutomationsQueryDto,
   UpdateOrderStatusAutomationDto,
 } from "./dto/order-status-automation.dto";
 import { resolveConditionType } from "./dto/order-status-automation.dto";
 import type { OrderStatusAutomationResponseDto } from "./dto/order-status-automation-response.dto";
 import type { OrderStatusAutomationCriteriaResponseDto } from "./dto/order-status-automation-criteria-response.dto";
+import type {
+  AutomationHistoryListResponseDto,
+  AutomationScheduledListResponseDto,
+} from "./dto/automation-activity-response.dto";
 import { formatAutomationDuration } from "./logic/automation-duration.logic";
 import { buildAutomationRuleCriteria } from "./logic/automation-criteria.logic";
 import {
@@ -39,6 +52,8 @@ import {
   type NormalizedAutomationCondition,
 } from "./logic/automation-conditions.logic";
 import { parseOrderStatusConditionId } from "./logic/automation-source-status.logic";
+import { AutomationSendMessageService } from "./automation-send-message.service";
+import { AutomationSkipReason } from "./order-status-automation.constants";
 
 @Injectable()
 export class OrderStatusAutomationsService {
@@ -51,10 +66,17 @@ export class OrderStatusAutomationsService {
     private readonly orderStatusRepo: Repository<OrderStatus>,
     @InjectRepository(ConversationGroup)
     private readonly conversationGroupRepo: Repository<ConversationGroup>,
+    @InjectRepository(WorkspaceTemplate)
+    private readonly templateRepo: Repository<WorkspaceTemplate>,
+    @InjectRepository(OrderStatusAutomationExecution)
+    private readonly executionRepo: Repository<OrderStatusAutomationExecution>,
+    @InjectRepository(OrderStatusAutomationScheduledJob)
+    private readonly scheduledJobRepo: Repository<OrderStatusAutomationScheduledJob>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly permissions: WorkspacePermissionsService,
     private readonly orderStatusDefaults: OrderStatusDefaultsService,
     private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
+    private readonly sendMessage: AutomationSendMessageService,
   ) {}
 
   async getCriteriaForUser(
@@ -78,6 +100,11 @@ export class OrderStatusAutomationsService {
       order: { sortOrder: "ASC", id: "ASC" },
       select: { id: true, name: true, systemKey: true },
     });
+    const orderTemplates = await this.templateRepo.find({
+      where: { workspaceId: workspace.id, type: WorkspaceTemplateType.order },
+      order: { id: "ASC" },
+      select: { id: true, name: true },
+    });
 
     return {
       ...buildAutomationRuleCriteria(),
@@ -89,6 +116,10 @@ export class OrderStatusAutomationsService {
         id: row.id,
         name: row.name,
         systemKey: row.systemKey,
+      })),
+      orderTemplates: orderTemplates.map((row) => ({
+        id: row.id,
+        name: row.name,
       })),
     };
   }
@@ -108,6 +139,7 @@ export class OrderStatusAutomationsService {
       .createQueryBuilder("a")
       .leftJoinAndSelect("a.targetOrderStatus", "target")
       .leftJoinAndSelect("a.targetConversationGroup", "targetGroup")
+      .leftJoinAndSelect("a.targetTemplate", "targetTemplate")
       .leftJoinAndSelect("a.conditions", "conditions")
       .where("a.workspace_id = :workspaceId", { workspaceId: workspace.id })
       .andWhere("a.deleted_at IS NULL");
@@ -170,11 +202,18 @@ export class OrderStatusAutomationsService {
     const actionType =
       dto.actionType ?? AutomationActionType.change_order_status;
     this.validateActionType(actionType);
+    const delay = this.normalizeActionDelay(
+      actionType,
+      dto.actionDelayValue,
+      dto.actionDelayUnit,
+      dto.waitForBusinessHours,
+    );
     const targets = await this.resolveAndAssertActionTargets(
       workspace.id,
       actionType,
       dto.targetOrderStatusId,
       dto.targetConversationGroupId,
+      dto.targetTemplateId,
     );
     await this.assertOrderStatusConditions(
       workspace.id,
@@ -188,6 +227,7 @@ export class OrderStatusAutomationsService {
       actionType,
       targetOrderStatusId: targets.targetOrderStatusId,
       targetConversationGroupId: targets.targetConversationGroupId,
+      targetTemplateId: targets.targetTemplateId,
     });
 
     const saved = await this.automationRepo.save(
@@ -199,6 +239,10 @@ export class OrderStatusAutomationsService {
         actionType,
         targetOrderStatusId: targets.targetOrderStatusId,
         targetConversationGroupId: targets.targetConversationGroupId,
+        targetTemplateId: targets.targetTemplateId,
+        actionDelayValue: delay.actionDelayValue,
+        actionDelayUnit: delay.actionDelayUnit,
+        waitForBusinessHours: delay.waitForBusinessHours,
         origin: AutomationOrigin.user,
         createdById: userId,
         updatedById: userId,
@@ -240,12 +284,30 @@ export class OrderStatusAutomationsService {
       dto.targetConversationGroupId !== undefined
         ? dto.targetConversationGroupId
         : row.targetConversationGroupId;
+    const nextTargetTemplateId =
+      dto.targetTemplateId !== undefined
+        ? dto.targetTemplateId
+        : row.targetTemplateId;
+
+    const delay = this.normalizeActionDelay(
+      nextActionType,
+      dto.actionDelayValue !== undefined
+        ? dto.actionDelayValue
+        : row.actionDelayValue,
+      dto.actionDelayUnit !== undefined
+        ? dto.actionDelayUnit
+        : row.actionDelayUnit,
+      dto.waitForBusinessHours !== undefined
+        ? dto.waitForBusinessHours
+        : row.waitForBusinessHours,
+    );
 
     const targets = await this.resolveAndAssertActionTargets(
       workspace.id,
       nextActionType,
       nextTargetOrderStatusId,
       nextTargetConversationGroupId,
+      nextTargetTemplateId,
     );
 
     await this.assertOrderStatusConditions(
@@ -262,10 +324,12 @@ export class OrderStatusAutomationsService {
         actionType: nextActionType,
         targetOrderStatusId: targets.targetOrderStatusId,
         targetConversationGroupId: targets.targetConversationGroupId,
+        targetTemplateId: targets.targetTemplateId,
       },
       row.id,
     );
 
+    const wasActive = row.isActive;
     if (dto.name != null) row.name = dto.name.trim();
     if (dto.isActive != null) row.isActive = dto.isActive;
     if (dto.conditionType != null || dto.condition_type != null) {
@@ -274,6 +338,10 @@ export class OrderStatusAutomationsService {
     row.actionType = nextActionType;
     row.targetOrderStatusId = targets.targetOrderStatusId;
     row.targetConversationGroupId = targets.targetConversationGroupId;
+    row.targetTemplateId = targets.targetTemplateId;
+    row.actionDelayValue = delay.actionDelayValue;
+    row.actionDelayUnit = delay.actionDelayUnit;
+    row.waitForBusinessHours = delay.waitForBusinessHours;
     row.updatedById = userId;
 
     if (dto.conditions != null) {
@@ -282,6 +350,21 @@ export class OrderStatusAutomationsService {
     }
 
     await this.automationRepo.save(row);
+
+    if (wasActive && !row.isActive) {
+      await this.sendMessage.cancelPendingForAutomation(
+        row.id,
+        AutomationSkipReason.AUTOMATION_DISABLED,
+      );
+    } else if (row.actionType === AutomationActionType.send_message) {
+      // Drop queued jobs so edited rules don't send with stale config.
+      await this.sendMessage.cancelPendingForAutomation(
+        row.id,
+        AutomationSkipReason.STALE_AUTOMATION_VERSION,
+        { deleteJobs: true, logSkip: false },
+      );
+    }
+
     return this.toResponse(
       await this.findAutomationOrThrow(row.id, workspace.id),
     );
@@ -307,7 +390,185 @@ export class OrderStatusAutomationsService {
       appRole,
     );
     const row = await this.findAutomationOrThrow(automationId, workspace.id);
+    await this.sendMessage.cancelPendingForAutomation(
+      row.id,
+      AutomationSkipReason.AUTOMATION_DISABLED,
+    );
     await this.automationRepo.softDelete({ id: row.id });
+  }
+
+  async listHistoryForUser(
+    userId: number,
+    query: ListAutomationHistoryQueryDto,
+    appRole?: string,
+  ): Promise<AutomationHistoryListResponseDto> {
+    await this.requireView(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
+    const limit = query.limit ?? 50;
+    const offset = query.offset ?? 0;
+
+    const qb = this.executionRepo
+      .createQueryBuilder("e")
+      .leftJoin(OrderStatusAutomation, "a", "a.id = e.automation_id")
+      .where("e.workspace_id = :workspaceId", { workspaceId: workspace.id });
+
+    if (query.automationId != null) {
+      qb.andWhere("e.automation_id = :automationId", {
+        automationId: query.automationId,
+      });
+    }
+    if (query.orderId != null) {
+      qb.andWhere("e.order_id = :orderId", { orderId: query.orderId });
+    }
+    if (query.status != null) {
+      qb.andWhere("e.status = :status", { status: query.status });
+    }
+
+    qb.orderBy("e.executed_at", "DESC")
+      .addOrderBy("e.id", "DESC")
+      .skip(offset)
+      .take(limit)
+      .select([
+        "e.id AS id",
+        "e.automation_id AS \"automationId\"",
+        "e.automation_name_snapshot AS \"automationName\"",
+        "a.action_type AS \"actionType\"",
+        "e.order_id AS \"orderId\"",
+        "e.status AS status",
+        "e.reason AS reason",
+        "e.source_type AS \"sourceType\"",
+        "e.source_status_snapshot AS \"sourceStatus\"",
+        "e.target_order_status_id AS \"targetOrderStatusId\"",
+        "e.target_conversation_group_id AS \"targetConversationGroupId\"",
+        "e.target_template_id AS \"targetTemplateId\"",
+        "e.conversation_id AS \"conversationId\"",
+        "e.message_preview AS \"messagePreview\"",
+        "e.error_code AS \"errorCode\"",
+        "e.error_message AS \"errorMessage\"",
+        "e.executed_at AS \"executedAt\"",
+      ]);
+
+    const [rows, total] = await Promise.all([
+      qb.getRawMany<{
+        id: number;
+        automationId: number;
+        automationName: string;
+        actionType: AutomationActionType | null;
+        orderId: number;
+        status: AutomationExecutionStatus;
+        reason: string | null;
+        sourceType: AutomationSourceType;
+        sourceStatus: string;
+        targetOrderStatusId: number | null;
+        targetConversationGroupId: number | null;
+        targetTemplateId: number | null;
+        conversationId: number | null;
+        messagePreview: string | null;
+        errorCode: string | null;
+        errorMessage: string | null;
+        executedAt: Date;
+      }>(),
+      this.executionRepo
+        .createQueryBuilder("e")
+        .where("e.workspace_id = :workspaceId", { workspaceId: workspace.id })
+        .andWhere(
+          query.automationId != null
+            ? "e.automation_id = :automationId"
+            : "1=1",
+          query.automationId != null
+            ? { automationId: query.automationId }
+            : {},
+        )
+        .andWhere(
+          query.orderId != null ? "e.order_id = :orderId" : "1=1",
+          query.orderId != null ? { orderId: query.orderId } : {},
+        )
+        .andWhere(
+          query.status != null ? "e.status = :status" : "1=1",
+          query.status != null ? { status: query.status } : {},
+        )
+        .getCount(),
+    ]);
+
+    return {
+      items: rows.map((row) => ({
+        id: Number(row.id),
+        automationId: Number(row.automationId),
+        automationName: row.automationName,
+        actionType: row.actionType,
+        orderId: Number(row.orderId),
+        status: row.status,
+        reason: row.reason,
+        sourceType: row.sourceType,
+        sourceStatus: row.sourceStatus,
+        targetOrderStatusId: row.targetOrderStatusId,
+        targetConversationGroupId: row.targetConversationGroupId,
+        targetTemplateId: row.targetTemplateId,
+        conversationId: row.conversationId,
+        messagePreview: row.messagePreview,
+        errorCode: row.errorCode,
+        errorMessage: row.errorMessage,
+        executedAt: row.executedAt,
+      })),
+      total,
+    };
+  }
+
+  async listScheduledForUser(
+    userId: number,
+    query: ListAutomationScheduledQueryDto,
+    appRole?: string,
+  ): Promise<AutomationScheduledListResponseDto> {
+    await this.requireView(userId, appRole);
+    const workspace = await this.workspaceContext.requireWorkspaceForOwner(
+      userId,
+      appRole,
+    );
+    const limit = query.limit ?? 50;
+    const offset = query.offset ?? 0;
+    const status = query.status ?? AutomationScheduledJobStatus.pending;
+
+    const qb = this.scheduledJobRepo
+      .createQueryBuilder("j")
+      .where("j.workspace_id = :workspaceId", { workspaceId: workspace.id })
+      .andWhere("j.status = :status", { status });
+
+    if (query.automationId != null) {
+      qb.andWhere("j.automation_id = :automationId", {
+        automationId: query.automationId,
+      });
+    }
+
+    const [items, total] = await qb
+      .orderBy("j.run_at", "ASC")
+      .addOrderBy("j.id", "ASC")
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      items: items.map((job) => ({
+        id: job.id,
+        automationId: job.automationId,
+        automationName: job.automationNameSnapshot,
+        orderId: job.orderId,
+        conversationId: job.conversationId,
+        templateId: job.templateId,
+        status: job.status,
+        runAt: job.runAt,
+        actionDelayValue: job.actionDelayValue,
+        actionDelayUnit: job.actionDelayUnit,
+        waitForBusinessHours: job.waitForBusinessHours,
+        cancelReason: job.cancelReason,
+        messagePreview: job.messagePreview,
+        sentAt: job.sentAt,
+        createdAt: job.createdAt,
+      })),
+      total,
+    };
   }
 
   async countActiveByTargetStatusId(
@@ -333,6 +594,7 @@ export class OrderStatusAutomationsService {
       relations: {
         targetOrderStatus: true,
         targetConversationGroup: true,
+        targetTemplate: true,
         conditions: true,
       },
     });
@@ -376,9 +638,11 @@ export class OrderStatusAutomationsService {
     actionType: AutomationActionType,
     targetOrderStatusId: number | null | undefined,
     targetConversationGroupId: number | null | undefined,
+    targetTemplateId: number | null | undefined,
   ): Promise<{
     targetOrderStatusId: number | null;
     targetConversationGroupId: number | null;
+    targetTemplateId: number | null;
   }> {
     if (actionType === AutomationActionType.change_order_status) {
       if (targetOrderStatusId == null) {
@@ -390,6 +654,7 @@ export class OrderStatusAutomationsService {
       return {
         targetOrderStatusId,
         targetConversationGroupId: null,
+        targetTemplateId: null,
       };
     }
 
@@ -406,10 +671,61 @@ export class OrderStatusAutomationsService {
       return {
         targetOrderStatusId: null,
         targetConversationGroupId,
+        targetTemplateId: null,
+      };
+    }
+
+    if (actionType === AutomationActionType.send_message) {
+      if (targetTemplateId == null) {
+        throw new BadRequestException(
+          "targetTemplateId is required for SEND_MESSAGE",
+        );
+      }
+      await this.assertTargetOrderTemplate(workspaceId, targetTemplateId);
+      return {
+        targetOrderStatusId: null,
+        targetConversationGroupId: null,
+        targetTemplateId,
       };
     }
 
     throw new BadRequestException(`Unsupported actionType: ${actionType}`);
+  }
+
+  private normalizeActionDelay(
+    actionType: AutomationActionType,
+    actionDelayValue: number | null | undefined,
+    actionDelayUnit: AutomationDurationUnit | null | undefined,
+    waitForBusinessHours: boolean | undefined,
+  ): {
+    actionDelayValue: number | null;
+    actionDelayUnit: AutomationDurationUnit | null;
+    waitForBusinessHours: boolean;
+  } {
+    if (actionType !== AutomationActionType.send_message) {
+      return {
+        actionDelayValue: null,
+        actionDelayUnit: null,
+        waitForBusinessHours: false,
+      };
+    }
+
+    const hasValue = actionDelayValue != null;
+    const hasUnit = actionDelayUnit != null;
+    if (hasValue !== hasUnit) {
+      throw new BadRequestException(
+        "actionDelayValue and actionDelayUnit must be provided together (or both omitted)",
+      );
+    }
+    if (hasValue && (!Number.isInteger(actionDelayValue) || actionDelayValue! < 1)) {
+      throw new BadRequestException("actionDelayValue must be a positive integer");
+    }
+
+    return {
+      actionDelayValue: hasValue ? actionDelayValue! : null,
+      actionDelayUnit: hasUnit ? actionDelayUnit! : null,
+      waitForBusinessHours: waitForBusinessHours ?? false,
+    };
   }
 
   private async assertTargetStatus(
@@ -436,6 +752,25 @@ export class OrderStatusAutomationsService {
     if (!group) {
       throw new BadRequestException(
         "Target conversation group not found in workspace",
+      );
+    }
+  }
+
+  private async assertTargetOrderTemplate(
+    workspaceId: number,
+    targetTemplateId: number,
+  ): Promise<void> {
+    const template = await this.templateRepo.findOne({
+      where: { id: targetTemplateId, workspaceId },
+    });
+    if (!template) {
+      throw new BadRequestException(
+        "Target template not found in workspace",
+      );
+    }
+    if (template.type !== WorkspaceTemplateType.order) {
+      throw new BadRequestException(
+        "SEND_MESSAGE requires an order template (type=order)",
       );
     }
   }
@@ -482,10 +817,11 @@ export class OrderStatusAutomationsService {
   private validateActionType(actionType: AutomationActionType): void {
     if (
       actionType !== AutomationActionType.change_order_status &&
-      actionType !== AutomationActionType.change_conversation_group
+      actionType !== AutomationActionType.change_conversation_group &&
+      actionType !== AutomationActionType.send_message
     ) {
       throw new BadRequestException(
-        "Unsupported actionType. Allowed: CHANGE_ORDER_STATUS, CHANGE_CONVERSATION_GROUP",
+        "Unsupported actionType. Allowed: CHANGE_ORDER_STATUS, CHANGE_CONVERSATION_GROUP, SEND_MESSAGE",
       );
     }
   }
@@ -498,6 +834,7 @@ export class OrderStatusAutomationsService {
       actionType: AutomationActionType;
       targetOrderStatusId: number | null;
       targetConversationGroupId: number | null;
+      targetTemplateId: number | null;
     },
     excludeId?: number,
   ): Promise<void> {
@@ -521,9 +858,15 @@ export class OrderStatusAutomationsService {
       qb.andWhere("a.target_order_status_id = :targetOrderStatusId", {
         targetOrderStatusId: input.targetOrderStatusId,
       });
-    } else {
+    } else if (
+      input.actionType === AutomationActionType.change_conversation_group
+    ) {
       qb.andWhere("a.target_conversation_group_id = :targetConversationGroupId", {
         targetConversationGroupId: input.targetConversationGroupId,
+      });
+    } else {
+      qb.andWhere("a.target_template_id = :targetTemplateId", {
+        targetTemplateId: input.targetTemplateId,
       });
     }
 
@@ -553,6 +896,7 @@ export class OrderStatusAutomationsService {
 
     const targetStatus = row.targetOrderStatus;
     const targetGroup = row.targetConversationGroup;
+    const targetTemplate = row.targetTemplate;
 
     if (
       row.actionType === AutomationActionType.change_order_status &&
@@ -565,6 +909,12 @@ export class OrderStatusAutomationsService {
       !targetGroup
     ) {
       throw new NotFoundException("Target conversation group not found");
+    }
+    if (
+      row.actionType === AutomationActionType.send_message &&
+      !targetTemplate
+    ) {
+      throw new NotFoundException("Target template not found");
     }
 
     return {
@@ -605,6 +955,21 @@ export class OrderStatusAutomationsService {
             systemKey: targetGroup.systemKey,
           }
         : null,
+      targetTemplateId: row.targetTemplateId,
+      targetTemplate: targetTemplate
+        ? {
+            id: targetTemplate.id,
+            name: targetTemplate.name,
+            type: targetTemplate.type,
+          }
+        : null,
+      actionDelayValue: row.actionDelayValue,
+      actionDelayUnit: row.actionDelayUnit,
+      actionDelayLabel: formatAutomationDuration(
+        row.actionDelayValue,
+        row.actionDelayUnit,
+      ),
+      waitForBusinessHours: row.waitForBusinessHours ?? false,
       origin: row.origin,
       templateKey: row.templateKey,
       version: row.version,

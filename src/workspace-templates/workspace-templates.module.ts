@@ -27,6 +27,6 @@ import { WorkspaceTemplateRenderService } from "./workspace-template-render.serv
   ],
   controllers: [WorkspaceTemplatesController],
   providers: [WorkspaceTemplatesService, WorkspaceTemplateRenderService],
-  exports: [WorkspaceTemplatesService],
+  exports: [WorkspaceTemplatesService, WorkspaceTemplateRenderService],
 })
 export class WorkspaceTemplatesModule {}

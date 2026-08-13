@@ -29,6 +29,8 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import {
   CreateOrderStatusAutomationDto,
+  ListAutomationHistoryQueryDto,
+  ListAutomationScheduledQueryDto,
   ListOrderStatusAutomationsQueryDto,
   SetOrderStatusAutomationActiveDto,
   UpdateOrderStatusAutomationDto,
@@ -40,8 +42,15 @@ import {
 import {
   OrderStatusAutomationCriteriaItemDto,
   OrderStatusAutomationCriteriaResponseDto,
+  OrderStatusAutomationOrderTemplateCriteriaItemDto,
   OrderStatusAutomationTargetCriteriaItemDto,
 } from "./dto/order-status-automation-criteria-response.dto";
+import {
+  AutomationHistoryItemDto,
+  AutomationHistoryListResponseDto,
+  AutomationScheduledItemDto,
+  AutomationScheduledListResponseDto,
+} from "./dto/automation-activity-response.dto";
 import { OrderStatusAutomationsService } from "./order-status-automations.service";
 
 @ApiTags("automation_rule")
@@ -50,6 +59,9 @@ import { OrderStatusAutomationsService } from "./order-status-automations.servic
   OrderStatusAutomationCriteriaResponseDto,
   OrderStatusAutomationCriteriaItemDto,
   OrderStatusAutomationTargetCriteriaItemDto,
+  OrderStatusAutomationOrderTemplateCriteriaItemDto,
+  AutomationHistoryItemDto,
+  AutomationScheduledItemDto,
 )
 @UseGuards(JwtAuthGuard)
 @Controller("automation_rule")
@@ -62,7 +74,8 @@ export class OrderStatusAutomationsController {
     description:
       "Returns delivery and payment codes for `conditions[].sourceStatus`, " +
       "workspace order statuses for `targetOrderStatusId` / `ORDER_STATUS`, " +
-      "and conversation groups for `targetConversationGroupId` (CHANGE_CONVERSATION_GROUP).",
+      "conversation groups for `targetConversationGroupId` (CHANGE_CONVERSATION_GROUP), " +
+      "and order templates for `targetTemplateId` (SEND_MESSAGE).",
   })
   @ApiOkResponse({ type: OrderStatusAutomationCriteriaResponseDto })
   getCriteria(
@@ -70,6 +83,42 @@ export class OrderStatusAutomationsController {
   ): Promise<OrderStatusAutomationCriteriaResponseDto> {
     return this.automations.getCriteriaForUser(
       this.requireUserId(req),
+      req.user?.role,
+    );
+  }
+
+  @Get("history")
+  @ApiOperation({
+    summary: "List automation execution history",
+    description:
+      "APPLIED / SKIPPED / FAILED audit log for all action types (including SEND_MESSAGE).",
+  })
+  @ApiOkResponse({ type: AutomationHistoryListResponseDto })
+  listHistory(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListAutomationHistoryQueryDto,
+  ): Promise<AutomationHistoryListResponseDto> {
+    return this.automations.listHistoryForUser(
+      this.requireUserId(req),
+      query,
+      req.user?.role,
+    );
+  }
+
+  @Get("scheduled")
+  @ApiOperation({
+    summary: "List scheduled SEND_MESSAGE jobs",
+    description:
+      "Upcoming (and optionally past) deferred message jobs. Default status filter: PENDING.",
+  })
+  @ApiOkResponse({ type: AutomationScheduledListResponseDto })
+  listScheduled(
+    @Req() req: { user?: AuthUser },
+    @Query() query: ListAutomationScheduledQueryDto,
+  ): Promise<AutomationScheduledListResponseDto> {
+    return this.automations.listScheduledForUser(
+      this.requireUserId(req),
+      query,
       req.user?.role,
     );
   }
@@ -108,8 +157,8 @@ export class OrderStatusAutomationsController {
   @ApiOperation({
     summary: "Create order status automation",
     description:
-      "Creates a rule with conditions combined by `conditionType` (`OR` or `AND`; alias `condition_type`) " +
-      "and a single action: change order status.",
+      "Creates a rule with conditions combined by `conditionType` (`OR` or `AND`) " +
+      "and one action: CHANGE_ORDER_STATUS, CHANGE_CONVERSATION_GROUP, or SEND_MESSAGE.",
   })
   @ApiBody({ type: CreateOrderStatusAutomationDto })
   @ApiCreatedResponse({ type: OrderStatusAutomationResponseDto })

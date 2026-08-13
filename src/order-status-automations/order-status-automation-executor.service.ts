@@ -27,6 +27,7 @@ import {
 import { AutomationSkipReason } from "./order-status-automation.constants";
 import { OrderStatusChangeSource } from "../orders/order-status-transition.service";
 import { OrderStatusTransitionService } from "../orders/order-status-transition.service";
+import { AutomationSendMessageService } from "./automation-send-message.service";
 
 export type EvaluateImmediateRulesInput = {
   workspaceId: number;
@@ -58,6 +59,7 @@ export class OrderStatusAutomationExecutorService {
     @Inject(forwardRef(() => OrderStatusTransitionService))
     private readonly orderStatusTransition: OrderStatusTransitionService,
     private readonly conversationWorkflow: ConversationWorkflowService,
+    private readonly sendMessage: AutomationSendMessageService,
   ) {}
 
   async evaluateImmediateRules(
@@ -539,6 +541,23 @@ export class OrderStatusAutomationExecutorService {
       automation.actionType === AutomationActionType.change_conversation_group
     ) {
       await this.applyConversationGroupAction({
+        automation,
+        order,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+      });
+      return;
+    }
+
+    if (automation.actionType === AutomationActionType.send_message) {
+      await this.sendMessage.scheduleOrSend({
         automation,
         order,
         workspaceId,
