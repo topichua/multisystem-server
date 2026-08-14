@@ -26,7 +26,7 @@ describe("ProductExportsService", () => {
         }
         return row;
       }),
-      find: jest.fn(async () => []),
+      find: jest.fn(async (): Promise<ProductExport[]> => []),
       update: jest.fn(async () => ({ affected: 1 })),
       manager: {
         transaction: jest.fn(async (fn: (em: unknown) => Promise<unknown>) => {

@@ -41,7 +41,7 @@ function makeFieldDef(
     fieldOptions: [],
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as WorkspaceVariantCustomField;
+  } as unknown as WorkspaceVariantCustomField;
 }
 
 function makeVariant(
@@ -83,7 +83,7 @@ function makeProduct(
     createdAt: partial.createdAt ?? new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: partial.updatedAt ?? new Date("2026-01-03T00:00:00.000Z"),
     price: partial.price ?? 100,
-  } as Product;
+  } as unknown as Product;
 }
 
 function stock(
@@ -137,7 +137,6 @@ describe("product-export-query.mapper", () => {
     expect(
       mapExportPayloadToListQuery({
         scope: ProductExportScope.all,
-        format: ProductExportFormat.csv,
         filters: { search: "y" },
       }),
     ).toEqual({});
@@ -303,7 +302,7 @@ describe("buildProductExportXlsx", () => {
     });
 
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(file.buffer);
+    await wb.xlsx.load(file.buffer as never);
     expect(wb.worksheets.map((s) => s.name)).toEqual(["Товари", "Варіанти"]);
 
     const productsSheet = wb.getWorksheet("Товари")!;

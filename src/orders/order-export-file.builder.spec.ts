@@ -17,7 +17,6 @@ import {
 function makeOrder(partial: Partial<Order> & { id: number }): Order {
   return {
     workspaceId: 1,
-    id: partial.id,
     customerId: 1,
     statusId: 1,
     source: OrderSource.manual,
@@ -54,7 +53,6 @@ function makeOrder(partial: Partial<Order> & { id: number }): Order {
 
 function makeItem(partial: Partial<OrderItem> & { id: number }): OrderItem {
   return {
-    id: partial.id,
     workspaceId: 1,
     orderId: 1001,
     quantity: 2,
