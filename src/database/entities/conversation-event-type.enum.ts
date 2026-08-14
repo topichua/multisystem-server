@@ -4,4 +4,8 @@ export enum ConversationEventType {
   GROUP_CHANGED = "group_changed",
   RESPONSIBLE_CHANGED = "responsible_changed",
   ORDER_CREATED = "order_created",
+  FOLLOW_UP_CREATED = "follow_up_created",
+  FOLLOW_UP_CHANGED = "follow_up_changed",
+  FOLLOW_UP_DECLINED = "follow_up_declined",
+  FOLLOW_UP_APPLIED = "follow_up_applied",
 }

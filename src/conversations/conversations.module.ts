@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   InstagramIntegration,
   Conversation,
+  ConversationFollowUp,
   ConversationGroup,
   ConversationEvent,
   ConversationMessage,
@@ -24,6 +25,7 @@ import { StorageModule } from "../storage/storage.module";
 import { TelegramIntegrationsModule } from "../telegram-integrations/telegram-integrations.module";
 import { ConversationGroupDefaultsModule } from "./conversation-group-defaults.module";
 import { ConversationEventsModule } from "./conversation-events.module";
+import { ConversationFollowUpsModule } from "./conversation-follow-ups.module";
 import { ConversationWorkflowModule } from "./conversation-workflow.module";
 import { ConversationGroupsController } from "./conversation-groups.controller";
 import { ConversationGroupsService } from "./conversation-groups.service";
@@ -48,10 +50,12 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
     ConversationGroupDefaultsModule,
     ConversationEventsModule,
     ConversationWorkflowModule,
+    forwardRef(() => ConversationFollowUpsModule),
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
       InstagramIntegration,
       Conversation,
+      ConversationFollowUp,
       ConversationGroup,
       ConversationEvent,
       ConversationMessage,

@@ -22,6 +22,18 @@ export class ConversationParticipantDto {
   phone: string;
 }
 
+export class ConversationPendingFollowUpDto {
+  @ApiProperty()
+  id!: number;
+
+  @ApiProperty({
+    type: String,
+    format: "date-time",
+    description: "When the follow-up message will be sent.",
+  })
+  scheduledAt!: Date;
+}
+
 export class ConversationRowDto {
   @ApiProperty()
   id: number;
@@ -84,6 +96,14 @@ export class ConversationRowDto {
       "True when the user may assign or change responsible member on this conversation (grant `assignResponsibility` or owner / conversations.full_access).",
   })
   canAssignResponsible: boolean;
+
+  @ApiPropertyOptional({
+    type: ConversationPendingFollowUpDto,
+    nullable: true,
+    description:
+      "Pending follow-up reminder, or null if none. `scheduledAt` is when it will be sent.",
+  })
+  followUp!: ConversationPendingFollowUpDto | null;
 }
 
 export class ConversationsListCountersDto {

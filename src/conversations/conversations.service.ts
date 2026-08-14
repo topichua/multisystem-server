@@ -23,6 +23,8 @@ import {
   InstagramIntegration,
   InstagramSynchronization,
   Conversation,
+  ConversationFollowUp,
+  ConversationFollowUpStatus,
   ConversationGroup,
   ConversationMessage,
   ConversationMessageType,
@@ -111,6 +113,11 @@ import {
   resolveConversationCreatedAtBucket,
   type ConversationCreatedAtBucket,
 } from "./conversation-created-at-bucket.logic";
+import {
+  ConversationSyntheticGroupId,
+  isConversationSyntheticGroupId,
+} from "./conversation-synthetic-group-id";
+
 type InstagramErrorResponse = {
   error?: {
     message?: string;
@@ -143,6 +150,8 @@ export class ConversationsService {
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationGroup)
     private readonly conversationGroupRepo: Repository<ConversationGroup>,
+    @InjectRepository(ConversationFollowUp)
+    private readonly followUpRepo: Repository<ConversationFollowUp>,
     @InjectRepository(ConversationMessage)
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
     @InjectRepository(InstagramUser)
@@ -312,7 +321,15 @@ export class ConversationsService {
       const rows = await this.countConversationsByGroupQuery(workspaceId);
       const hiddenGroupIds =
         await this.resolveHiddenSystemGroupIds(workspaceId);
-      return this.mapConversationDistributionRows(rows, hiddenGroupIds);
+      const mapped = this.mapConversationDistributionRows(rows, hiddenGroupIds);
+      mapped.byGroupId.set(
+        ConversationSyntheticGroupId.pendingFollowUp,
+        await this.countPendingFollowUpsForWorkspace(workspaceId, {
+          userId,
+          permissions,
+        }),
+      );
+      return mapped;
     }
 
     const grantContext = await this.prepareIntegrationGrantListContext(
@@ -321,7 +338,12 @@ export class ConversationsService {
       permissions.integrationGrants,
     );
     if (grantContext == null) {
-      return { byGroupId: new Map(), total: 0 };
+      return {
+        byGroupId: new Map([
+          [ConversationSyntheticGroupId.pendingFollowUp, 0],
+        ]),
+        total: 0,
+      };
     }
 
     const qb = this.conversationRepo
@@ -347,7 +369,70 @@ export class ConversationsService {
       count: string;
     }>();
     const hiddenGroupIds = await this.resolveHiddenSystemGroupIds(workspaceId);
-    return this.mapConversationDistributionRows(rows, hiddenGroupIds);
+    const mapped = this.mapConversationDistributionRows(rows, hiddenGroupIds);
+    mapped.byGroupId.set(
+      ConversationSyntheticGroupId.pendingFollowUp,
+      await this.countPendingFollowUpsForWorkspace(workspaceId, {
+        userId,
+        permissions,
+      }),
+    );
+    return mapped;
+  }
+
+  private async countPendingFollowUpsForWorkspace(
+    workspaceId: number,
+    access: {
+      userId: number;
+      permissions: Awaited<
+        ReturnType<WorkspacePermissionsService["getResolvedForUser"]>
+      >;
+    },
+  ): Promise<number> {
+    if (
+      access.permissions.isOwner ||
+      access.permissions.conversations.fullAccess
+    ) {
+      return this.followUpRepo.count({
+        where: {
+          workspaceId,
+          status: ConversationFollowUpStatus.pending,
+        },
+      });
+    }
+
+    const grantContext = await this.prepareIntegrationGrantListContext(
+      workspaceId,
+      access.userId,
+      access.permissions.integrationGrants,
+    );
+    if (grantContext == null) {
+      return 0;
+    }
+
+    const qb = this.followUpRepo
+      .createQueryBuilder("fu")
+      .innerJoin(
+        Conversation,
+        "c",
+        "c.workspace_id = fu.workspace_id AND c.id = fu.conversation_id",
+      )
+      .where("fu.workspace_id = :workspaceId", { workspaceId })
+      .andWhere("fu.status = :status", {
+        status: ConversationFollowUpStatus.pending,
+      })
+      .andWhere(
+        new Brackets((sub) => {
+          this.applyIntegrationGrantAccessWhere(
+            sub,
+            grantContext.effectiveGrants,
+            grantContext.memberId,
+            grantContext.instagramById,
+            grantContext.telegramById,
+          );
+        }),
+      );
+    return qb.getCount();
   }
 
   async listConversationsForOwner(
@@ -510,6 +595,11 @@ export class ConversationsService {
       );
     const { instagramById, telegramById } =
       await this.getParticipantMapsForRows(baseRows, { maxTelegramSync: 10 });
+    const pendingFollowUpByConversationId =
+      await this.getPendingFollowUpByConversationIds(
+        workspaceId,
+        baseRows.map((r) => r.id),
+      );
 
     const allItems = baseRows.map((r) =>
       this.toConversationRowDto(
@@ -525,6 +615,7 @@ export class ConversationsService {
               listAccessContext,
             )
           : this.resolveConversationActionFlags(r, permissions, null),
+        pendingFollowUpByConversationId.get(r.id) ?? null,
       ),
     );
 
@@ -1205,6 +1296,8 @@ export class ConversationsService {
       await this.getLastMessageByConversationIds(workspaceId, [row.id]);
     const { instagramById, telegramById } =
       await this.getParticipantMapsForRows([row], { maxTelegramSync: 1 });
+    const pendingFollowUpByConversationId =
+      await this.getPendingFollowUpByConversationIds(workspaceId, [row.id]);
 
     const listAccessContext =
       permissions.isOwner || permissions.conversations.fullAccess
@@ -1228,6 +1321,7 @@ export class ConversationsService {
             listAccessContext,
           )
         : this.resolveConversationActionFlags(row, permissions, null),
+      pendingFollowUpByConversationId.get(row.id) ?? null,
     );
   }
 
@@ -1485,6 +1579,7 @@ export class ConversationsService {
     telegramById: Map<string, TelegramUser>,
     myAccountIds: Set<string>,
     actions: { canTakeChat: boolean; canAssignResponsible: boolean },
+    pendingFollowUp: { id: number; scheduledAt: Date } | null,
   ): ConversationRowDto {
     const participant = this.toConversationParticipantDto(
       row,
@@ -1512,7 +1607,34 @@ export class ConversationsService {
       participant,
       canTakeChat: actions.canTakeChat,
       canAssignResponsible: actions.canAssignResponsible,
+      followUp: pendingFollowUp,
     };
+  }
+
+  private async getPendingFollowUpByConversationIds(
+    workspaceId: number,
+    conversationIds: number[],
+  ): Promise<Map<number, { id: number; scheduledAt: Date }>> {
+    const uniqIds = [...new Set(conversationIds)];
+    const out = new Map<number, { id: number; scheduledAt: Date }>();
+    if (uniqIds.length === 0) {
+      return out;
+    }
+    const rows = await this.followUpRepo.find({
+      where: {
+        workspaceId,
+        conversationId: In(uniqIds),
+        status: ConversationFollowUpStatus.pending,
+      },
+      select: { id: true, conversationId: true, scheduledAt: true },
+    });
+    for (const row of rows) {
+      out.set(row.conversationId, {
+        id: row.id,
+        scheduledAt: row.scheduledAt,
+      });
+    }
+    return out;
   }
 
   private async buildConversationListAccessContext(
@@ -1808,17 +1930,30 @@ export class ConversationsService {
     includeGroupIds?: number[];
     excludeGroupIds?: number[];
     onlyUngrouped?: boolean;
+    pendingFollowUpOnly?: boolean;
   }> {
     if (onlyUngrouped) {
       return { onlyUngrouped: true };
     }
-    const explicit = await this.validateOptionalGroupIds(
-      workspaceId,
-      groupIdsRaw,
+
+    const synthetic = (groupIdsRaw ?? []).filter((id) =>
+      isConversationSyntheticGroupId(id),
     );
-    if (explicit != null) {
-      return { includeGroupIds: explicit };
+    const pendingFollowUpOnly = synthetic.includes(
+      ConversationSyntheticGroupId.pendingFollowUp,
+    );
+    const realIds = (groupIdsRaw ?? []).filter(
+      (id) => Number.isInteger(id) && id > 0,
+    );
+
+    const explicit = await this.validateOptionalGroupIds(workspaceId, realIds);
+    if (explicit != null || pendingFollowUpOnly) {
+      return {
+        ...(explicit != null ? { includeGroupIds: explicit } : {}),
+        ...(pendingFollowUpOnly ? { pendingFollowUpOnly: true } : {}),
+      };
     }
+
     const excludeGroupIds =
       await this.conversationGroupDefaults.resolveSystemGroupIds(
         workspaceId,
@@ -1847,9 +1982,14 @@ export class ConversationsService {
         if (groupingId === "ungrouped") {
           return { onlyUngrouped: true };
         }
+        if (groupingId === String(ConversationSyntheticGroupId.pendingFollowUp)) {
+          return {
+            groupIds: [ConversationSyntheticGroupId.pendingFollowUp],
+          };
+        }
         if (!/^\d+$/.test(groupingId)) {
           throw new BadRequestException(
-            "grouping_id for status must be a conversation group id or ungrouped",
+            "grouping_id for status must be a conversation group id, -1 (follow-ups), or ungrouped",
           );
         }
         return { groupIds: [Number(groupingId)] };
@@ -1895,19 +2035,22 @@ export class ConversationsService {
       includeGroupIds?: number[];
       excludeGroupIds?: number[];
       onlyUngrouped?: boolean;
+      pendingFollowUpOnly?: boolean;
     },
   ): void {
     if (filter.onlyUngrouped) {
       qb.andWhere("c.group_id IS NULL");
-      return;
-    }
-    if (filter.includeGroupIds != null && filter.includeGroupIds.length > 0) {
+    } else if (
+      filter.includeGroupIds != null &&
+      filter.includeGroupIds.length > 0
+    ) {
       qb.andWhere("c.group_id IN (:...includeGroupIds)", {
         includeGroupIds: filter.includeGroupIds,
       });
-      return;
-    }
-    if (filter.excludeGroupIds != null && filter.excludeGroupIds.length > 0) {
+    } else if (
+      filter.excludeGroupIds != null &&
+      filter.excludeGroupIds.length > 0
+    ) {
       qb.andWhere(
         new Brackets((sub) => {
           sub
@@ -1916,6 +2059,19 @@ export class ConversationsService {
               excludeGroupIds: filter.excludeGroupIds,
             });
         }),
+      );
+    }
+
+    if (filter.pendingFollowUpOnly) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM conversation_follow_ups fu
+          WHERE fu.workspace_id = c.workspace_id
+            AND fu.conversation_id = c.id
+            AND fu.status = :pendingFollowUpStatus
+        )`,
+        { pendingFollowUpStatus: ConversationFollowUpStatus.pending },
       );
     }
   }
@@ -2362,8 +2518,32 @@ export class ConversationsService {
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
 
-    const items: ConversationGroupBucketItemDto[] = nonSpamGroups.map(
-      (group) => ({
+    const pendingFollowUpCount =
+      rows.length === 0
+        ? 0
+        : await this.followUpRepo
+            .createQueryBuilder("fu")
+            .where("fu.workspace_id = :workspaceId", { workspaceId })
+            .andWhere("fu.status = :status", {
+              status: ConversationFollowUpStatus.pending,
+            })
+            .andWhere("fu.conversation_id IN (:...conversationIds)", {
+              conversationIds: rows.map((row) => row.id),
+            })
+            .getCount();
+
+    const items: ConversationGroupBucketItemDto[] = [
+      {
+        key: String(ConversationSyntheticGroupId.pendingFollowUp),
+        label: "Нагадування",
+        count: pendingFollowUpCount,
+        meta: {
+          groupId: ConversationSyntheticGroupId.pendingFollowUp,
+          systemKey: "pending_follow_up",
+          color: null,
+        },
+      },
+      ...nonSpamGroups.map((group) => ({
         key: String(group.id),
         label: group.name,
         count: counts.get(group.id) ?? 0,
@@ -2372,17 +2552,19 @@ export class ConversationsService {
           systemKey: group.systemKey,
           color: group.color,
         },
-      }),
-    );
+      })),
+      {
+        key: "ungrouped",
+        label: "Без статусу",
+        count: counts.get("ungrouped") ?? 0,
+        meta: { groupId: null, systemKey: null, color: null },
+      },
+    ];
 
-    items.push({
-      key: "ungrouped",
-      label: "Без статусу",
-      count: counts.get("ungrouped") ?? 0,
-      meta: { groupId: null, systemKey: null, color: null },
-    });
-
-    const total = items.reduce((sum, item) => sum + item.count, 0);
+    const total = nonSpamGroups.reduce(
+      (sum, group) => sum + (counts.get(group.id) ?? 0),
+      0,
+    ) + (counts.get("ungrouped") ?? 0);
     return { total, items };
   }
 
@@ -2896,6 +3078,7 @@ export class ConversationsService {
       includeGroupIds?: number[];
       excludeGroupIds?: number[];
       onlyUngrouped?: boolean;
+      pendingFollowUpOnly?: boolean;
     } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {
@@ -2913,6 +3096,7 @@ export class ConversationsService {
       (groupFilter.excludeGroupIds != null &&
         groupFilter.excludeGroupIds.length > 0) ||
       groupFilter.onlyUngrouped === true ||
+      groupFilter.pendingFollowUpOnly === true ||
       createdAtBucket != null;
 
     if (!useQueryBuilder) {
@@ -3140,6 +3324,7 @@ export class ConversationsService {
       includeGroupIds?: number[];
       excludeGroupIds?: number[];
       onlyUngrouped?: boolean;
+      pendingFollowUpOnly?: boolean;
     } = {},
     showWithoutResponsibleOnly?: boolean,
     channelFilter?: {

@@ -41,9 +41,10 @@ export class ConversationGroupsController {
   @ApiOperation({
     summary: "List conversation groups for the current user workspace",
     description:
-      "Uses `workspaceId` from the JWT session. With `include_distribution=true`, each group includes " +
+      "Uses `workspaceId` from the JWT session. The first item is the synthetic follow-up group `id: -1` " +
+      "(`systemKey: pending_follow_up`). With `include_distribution=true`, each group includes " +
       "`conversationCount` (respecting full access or integration grants) and the response includes `totalConversations` " +
-      "(active groups only — excludes archived and spam).",
+      "(active groups only — excludes archived and spam; follow-up count is not added to that total).",
   })
   @ApiQuery({
     name: "include_distribution",

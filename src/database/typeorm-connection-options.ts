@@ -182,6 +182,7 @@ import { AutomationChangeConversationGroup1744200000184 } from "./migrations/174
 import { WorkspaceTemplateType1744200000185 } from "./migrations/1744200000185-WorkspaceTemplateType";
 import { WorkspaceWorkSchedule1744200000186 } from "./migrations/1744200000186-WorkspaceWorkSchedule";
 import { AutomationSendMessage1744200000187 } from "./migrations/1744200000187-AutomationSendMessage";
+import { ConversationFollowUps1744200000188 } from "./migrations/1744200000188-ConversationFollowUps";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -196,6 +197,7 @@ import {
   TikTokOAuthPendingSession,
   Conversation,
   ConversationEvent,
+  ConversationFollowUp,
   ConversationGroup,
   ConversationMessage,
   InstagramUser,
@@ -325,6 +327,7 @@ const entities = [
   ConversationGroup,
   Conversation,
   ConversationEvent,
+  ConversationFollowUp,
   ChatAutoDistributionLog,
   ConversationMessage,
   ProductCategory,
@@ -594,6 +597,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceTemplateType1744200000185,
       WorkspaceWorkSchedule1744200000186,
       AutomationSendMessage1744200000187,
+      ConversationFollowUps1744200000188,
     ],
   };
 }

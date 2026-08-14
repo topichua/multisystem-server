@@ -8,6 +8,7 @@ import { Repository } from "typeorm";
 import { ConversationGroup } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { ConversationGroupDefaultsService } from "./conversation-group-defaults.service";
+import { ConversationSyntheticGroupId } from "./conversation-synthetic-group-id";
 import { ConversationsService } from "./conversations.service";
 import type { ConversationGroupResponseDto } from "./dto/http/conversation-group-response.dto";
 import type { ConversationGroupsListResponseDto } from "./dto/http/conversation-groups-list-response.dto";
@@ -44,8 +45,10 @@ export class ConversationGroupsService {
       order: { sortOrder: "ASC", id: "ASC" },
     });
 
+    const followUpItem = this.syntheticFollowUpGroupDto(workspaceId);
+
     if (!options.includeDistribution) {
-      return { items: rows.map((r) => this.toDto(r)) };
+      return { items: [followUpItem, ...rows.map((r) => this.toDto(r))] };
     }
 
     const distribution =
@@ -57,10 +60,16 @@ export class ConversationGroupsService {
         },
       );
 
+    followUpItem.conversationCount =
+      distribution.byGroupId.get(
+        ConversationSyntheticGroupId.pendingFollowUp,
+      ) ?? 0;
+
     return {
-      items: rows.map((r) =>
-        this.toDto(r, distribution.byGroupId.get(r.id) ?? 0),
-      ),
+      items: [
+        followUpItem,
+        ...rows.map((r) => this.toDto(r, distribution.byGroupId.get(r.id) ?? 0)),
+      ],
       totalConversations: distribution.total,
     };
   }
@@ -186,6 +195,25 @@ export class ConversationGroupsService {
       );
     }
     await this.groupRepo.delete({ id: groupId, workspaceId });
+  }
+
+  private syntheticFollowUpGroupDto(
+    workspaceId: number,
+    conversationCount?: number,
+  ): ConversationGroupResponseDto {
+    return {
+      id: ConversationSyntheticGroupId.pendingFollowUp,
+      workspaceId,
+      name: "Нагадування",
+      description: null,
+      color: null,
+      createdAt: new Date(0),
+      createdById: null,
+      sortOrder: -1,
+      systemKey: "pending_follow_up",
+      isSystem: true,
+      ...(conversationCount !== undefined ? { conversationCount } : {}),
+    };
   }
 
   private toDto(

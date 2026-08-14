@@ -1,7 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class ConversationGroupResponseDto {
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      "Workspace group id, or synthetic `-1` for chats with a pending follow-up.",
+    example: -1,
+  })
   id: number;
 
   @ApiProperty()
@@ -27,7 +31,8 @@ export class ConversationGroupResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: "Built-in status key: new, processing, archived, spam",
+    description:
+      "Built-in status key: new, processing, archived, spam, pending_follow_up",
     example: "new",
   })
   systemKey?: string | null;

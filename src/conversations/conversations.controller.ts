@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -31,7 +32,16 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { SuperAdminGuard } from "../auth/super-admin.guard";
 import type { AuthUser } from "../auth/types/auth-user.type";
 import { ConversationsService } from "./conversations.service";
+import { ConversationFollowUpsService } from "./conversation-follow-ups.service";
 import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
+import {
+  CreateConversationFollowUpDto,
+  UpdateConversationFollowUpDto,
+} from "./dto/http/conversation-follow-up-request.dto";
+import {
+  ConversationFollowUpOptionalResponseDto,
+  ConversationFollowUpResponseDto,
+} from "./dto/http/conversation-follow-up-response.dto";
 import {
   ConversationRowDto,
   ConversationsListResponseDto,
@@ -73,6 +83,7 @@ export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
     private readonly chatAutoDistribution: ChatAutoDistributionService,
+    private readonly followUps: ConversationFollowUpsService,
   ) {}
 
   @Get("chat-auto-distribution")
@@ -111,7 +122,8 @@ export class ConversationsController {
       "Returns conversations for the workspace from JWT session `workspaceId`. " +
       "Owners and roles with `conversations.full_access` see all chats. " +
       "Otherwise, results are built from the role's integration grants: each grant matches conversations by integration source and `external_source_id`; `read=all` returns all chats on that integration, `read=mine` only chats where you are responsible. " +
-      "Optional `groupIds`: comma-separated positive integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every id must exist in the workspace. " +
+      "Optional `groupIds`: comma-separated integers (e.g. `1,2,3`). Only conversations whose `group_id` is in that set are returned. Every positive id must exist in the workspace. " +
+      "Synthetic id `-1` returns chats that have a PENDING follow-up reminder (can combine with real group ids). " +
       "Optional `grouping_by` and `grouping_id`: pass `by` and an item `key` returned by GET /conversations/groups. " +
       "This supports responsible, status, createdAt, and channel buckets. " +
       "Existing `groupIds` conversation-group filtering remains supported. " +
@@ -127,7 +139,9 @@ export class ConversationsController {
     name: "groupIds",
     required: false,
     description:
-      "Comma-separated conversation group ids, e.g. `1,2`. Omit for all active groups (excludes archived and spam).",
+      "Comma-separated conversation group ids, e.g. `1,2`. " +
+      "Synthetic: `-1` = chats with a PENDING follow-up reminder. " +
+      "Omit for all active groups (excludes archived and spam).",
     example: "1,2",
   })
   @ApiQuery({
@@ -209,10 +223,7 @@ export class ConversationsController {
     if (sessionWorkspaceId == null) {
       throw new BadRequestException("workspaceId is required in JWT session");
     }
-    const groupIds = this.parseOptionalPositiveIntIdsQuery(
-      groupIdsRaw,
-      "groupIds",
-    );
+    const groupIds = this.parseOptionalGroupIdsQuery(groupIdsRaw);
     const groupingBy =
       this.parseOptionalConversationGroupingByQuery(groupingByRaw);
     const groupingId = this.parseOptionalKeywordQuery(groupingIdRaw);
@@ -389,6 +400,36 @@ export class ConversationsController {
       );
     }
     return value;
+  }
+
+  /**
+   * Accepts real workspace group ids and synthetic ids (e.g. `-1` = pending follow-up).
+   */
+  private parseOptionalGroupIdsQuery(
+    raw: string | string[] | undefined,
+  ): number[] | undefined {
+    if (raw == null) return undefined;
+    const chunks = Array.isArray(raw) ? raw : [raw];
+    const ids: number[] = [];
+    for (const chunk of chunks) {
+      for (const part of chunk.split(",")) {
+        const t = part.trim();
+        if (!t) continue;
+        if (!/^-?\d+$/.test(t)) {
+          throw new BadRequestException(
+            `groupIds must be comma-separated integers; invalid segment: "${part.trim()}"`,
+          );
+        }
+        const n = Number(t);
+        if (!Number.isInteger(n) || n === 0) {
+          throw new BadRequestException(
+            `groupIds must be comma-separated integers; invalid segment: "${part.trim()}"`,
+          );
+        }
+        ids.push(n);
+      }
+    }
+    return ids.length > 0 ? [...new Set(ids)] : undefined;
   }
 
   private parseOptionalPositiveIntIdsQuery(
@@ -772,7 +813,8 @@ export class ConversationsController {
   @ApiOperation({
     summary: "Conversation change history",
     description:
-      "Append-only log of group/status and responsible-member changes for this conversation.",
+      "Append-only log of group/status, responsible-member, and follow-up " +
+      "events (follow_up_created / changed / declined / applied).",
   })
   @ApiOkResponse({ type: ConversationEventsListResponseDto })
   async listConversationEvents(
@@ -797,6 +839,102 @@ export class ConversationsController {
       ownerId,
       numericId,
     );
+  }
+
+  @Get(":id/follow-up")
+  @ApiOperation({
+    summary: "Get pending follow-up reminder for conversation",
+    description:
+      "Returns the PENDING follow-up (remind customer later), or null.",
+  })
+  @ApiOkResponse({ type: ConversationFollowUpOptionalResponseDto })
+  async getFollowUp(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ConversationFollowUpOptionalResponseDto> {
+    const ownerId = this.requireOwnerId(req);
+    const conversationId = this.requireNumericId(id);
+    const followUp = await this.followUps.getPendingForOwner(
+      ownerId,
+      conversationId,
+    );
+    return { followUp };
+  }
+
+  @Post(":id/follow-up")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Create follow-up reminder",
+    description:
+      "Schedule a message to the customer. One PENDING follow-up per conversation. " +
+      "If the customer replies and cancelOnReply is true, the reminder is declined.",
+  })
+  @ApiBody({ type: CreateConversationFollowUpDto })
+  @ApiCreatedResponse({ type: ConversationFollowUpResponseDto })
+  async createFollowUp(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+    @Body() dto: CreateConversationFollowUpDto,
+  ): Promise<ConversationFollowUpResponseDto> {
+    return this.followUps.createForOwner(
+      this.requireOwnerId(req),
+      this.requireNumericId(id),
+      dto,
+    );
+  }
+
+  @Patch(":id/follow-up")
+  @ApiOperation({ summary: "Update pending follow-up reminder" })
+  @ApiBody({ type: UpdateConversationFollowUpDto })
+  @ApiOkResponse({ type: ConversationFollowUpResponseDto })
+  async updateFollowUp(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+    @Body() dto: UpdateConversationFollowUpDto,
+  ): Promise<ConversationFollowUpResponseDto> {
+    return this.followUps.updateForOwner(
+      this.requireOwnerId(req),
+      this.requireNumericId(id),
+      dto,
+    );
+  }
+
+  @Delete(":id/follow-up")
+  @ApiOperation({
+    summary: "Cancel pending follow-up reminder",
+    description: "Marks as CANCELLED and emits follow_up_declined (reason=manual).",
+  })
+  @ApiOkResponse({ type: ConversationFollowUpResponseDto })
+  async cancelFollowUp(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ConversationFollowUpResponseDto> {
+    return this.followUps.cancelForOwner(
+      this.requireOwnerId(req),
+      this.requireNumericId(id),
+    );
+  }
+
+  private requireOwnerId(req: { user?: AuthUser }): number {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    return ownerId;
+  }
+
+  private requireNumericId(id: string): number {
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    return numericId;
   }
 
   @Get(":id/suggestions")

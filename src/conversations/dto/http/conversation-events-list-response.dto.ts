@@ -9,7 +9,8 @@ export class ConversationEventResponseDto {
 
   @ApiProperty({
     description:
-      "Event type: conversation_created, group_changed, responsible_changed, order_created",
+      "Event type: conversation_created, group_changed, responsible_changed, order_created, " +
+      "follow_up_created, follow_up_changed, follow_up_declined, follow_up_applied",
   })
   type: string;
 

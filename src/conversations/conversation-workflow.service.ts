@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import {
@@ -8,6 +8,7 @@ import {
   ConversationGroupSystemKey,
 } from "../database/entities";
 import { ConversationEventsService } from "./conversation-events.service";
+import { ConversationFollowUpsService } from "./conversation-follow-ups.service";
 import { ConversationGroupDefaultsService } from "./conversation-group-defaults.service";
 
 export type ConversationWorkflowTrigger =
@@ -30,6 +31,9 @@ export class ConversationWorkflowService {
     private readonly groupRepo: Repository<ConversationGroup>,
     private readonly groupDefaults: ConversationGroupDefaultsService,
     private readonly events: ConversationEventsService,
+    @Optional()
+    @Inject(forwardRef(() => ConversationFollowUpsService))
+    private readonly followUps: ConversationFollowUpsService | null,
   ) {}
 
   async onConversationCreated(
@@ -61,6 +65,10 @@ export class ConversationWorkflowService {
   }
 
   async onInboundCustomerMessage(conversation: Conversation): Promise<void> {
+    if (this.followUps) {
+      await this.followUps.cancelOnCustomerReply(conversation);
+    }
+
     const current = await this.describeGroup(conversation.groupId);
     if (current?.systemKey === ConversationGroupSystemKey.SPAM) {
       return;

@@ -1,7 +1,8 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { Conversation, ConversationGroup } from "../database/entities";
 import { ConversationEventsModule } from "./conversation-events.module";
+import { ConversationFollowUpsModule } from "./conversation-follow-ups.module";
 import { ConversationGroupDefaultsModule } from "./conversation-group-defaults.module";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
 
@@ -14,6 +15,7 @@ import { ConversationWorkflowService } from "./conversation-workflow.service";
     TypeOrmModule.forFeature([Conversation, ConversationGroup]),
     ConversationGroupDefaultsModule,
     ConversationEventsModule,
+    forwardRef(() => ConversationFollowUpsModule),
   ],
   providers: [ConversationWorkflowService],
   exports: [ConversationWorkflowService],
