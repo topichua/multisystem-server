@@ -11,7 +11,6 @@ import {
 import { Conversation } from "./conversation.entity";
 import { ConversationFollowUpStatus } from "./conversation-follow-up-status.enum";
 import { User } from "./user.entity";
-import { Workspace } from "./workspace.entity";
 
 @Entity("conversation_follow_ups")
 @Index("IDX_conversation_follow_ups_due", ["status", "scheduledAt"])
@@ -25,10 +24,6 @@ export class ConversationFollowUp {
 
   @Column({ name: "workspace_id", type: "int" })
   workspaceId: number;
-
-  @ManyToOne(() => Workspace, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "workspace_id" })
-  workspace: Workspace;
 
   @Column({ name: "conversation_id", type: "int" })
   conversationId: number;
@@ -84,7 +79,12 @@ export class ConversationFollowUp {
   @JoinColumn({ name: "updated_by_id" })
   updatedBy: User | null;
 
-  @Column({ name: "cancel_reason", type: "varchar", length: 64, nullable: true })
+  @Column({
+    name: "cancel_reason",
+    type: "varchar",
+    length: 64,
+    nullable: true,
+  })
   cancelReason: string | null;
 
   @Column({ name: "error_code", type: "varchar", length: 64, nullable: true })

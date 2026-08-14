@@ -50,7 +50,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
     ConversationGroupDefaultsModule,
     ConversationEventsModule,
     ConversationWorkflowModule,
-    forwardRef(() => ConversationFollowUpsModule),
+    ConversationFollowUpsModule,
     forwardRef(() => TelegramIntegrationsModule),
     TypeOrmModule.forFeature([
       InstagramIntegration,

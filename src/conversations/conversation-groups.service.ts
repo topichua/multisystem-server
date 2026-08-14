@@ -68,7 +68,9 @@ export class ConversationGroupsService {
     return {
       items: [
         followUpItem,
-        ...rows.map((r) => this.toDto(r, distribution.byGroupId.get(r.id) ?? 0)),
+        ...rows.map((r) =>
+          this.toDto(r, distribution.byGroupId.get(r.id) ?? 0),
+        ),
       ],
       totalConversations: distribution.total,
     };

@@ -22,6 +22,11 @@ import { Workspace } from "./workspace.entity";
 @Index("IDX_client_wishlist_items_client_id", ["clientId"])
 @Index("IDX_client_wishlist_items_workspace_id", ["workspaceId"])
 @Index("IDX_client_wishlist_items_conversation_id", ["conversationId"])
+@Index("IDX_client_wishlist_items_workspace_id_at", ["workspaceId", "at"])
+@Index("IDX_client_wishlist_items_workspace_id_variant_id", [
+  "workspaceId",
+  "variantId",
+])
 export class ClientWishlistItem {
   @PrimaryGeneratedColumn({ name: "id" })
   id: number;

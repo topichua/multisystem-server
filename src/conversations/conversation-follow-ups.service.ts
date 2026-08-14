@@ -59,7 +59,10 @@ export class ConversationFollowUpsService {
     ownerId: number,
     conversationId: number,
   ): Promise<ConversationFollowUpResponseDto | null> {
-    const conversation = await this.requireConversation(ownerId, conversationId);
+    const conversation = await this.requireConversation(
+      ownerId,
+      conversationId,
+    );
     const row = await this.findPending(
       conversation.workspaceId,
       conversation.id,
@@ -72,7 +75,10 @@ export class ConversationFollowUpsService {
     conversationId: number,
     dto: CreateConversationFollowUpDto,
   ): Promise<ConversationFollowUpResponseDto> {
-    const conversation = await this.requireConversation(ownerId, conversationId);
+    const conversation = await this.requireConversation(
+      ownerId,
+      conversationId,
+    );
     await this.assertCanWrite(ownerId, conversation);
 
     const existing = await this.findPending(
@@ -128,7 +134,10 @@ export class ConversationFollowUpsService {
     conversationId: number,
     dto: UpdateConversationFollowUpDto,
   ): Promise<ConversationFollowUpResponseDto> {
-    const conversation = await this.requireConversation(ownerId, conversationId);
+    const conversation = await this.requireConversation(
+      ownerId,
+      conversationId,
+    );
     await this.assertCanWrite(ownerId, conversation);
 
     const row = await this.findPending(
@@ -189,7 +198,10 @@ export class ConversationFollowUpsService {
     ownerId: number,
     conversationId: number,
   ): Promise<ConversationFollowUpResponseDto> {
-    const conversation = await this.requireConversation(ownerId, conversationId);
+    const conversation = await this.requireConversation(
+      ownerId,
+      conversationId,
+    );
     await this.assertCanWrite(ownerId, conversation);
 
     const row = await this.findPending(
@@ -406,7 +418,9 @@ export class ConversationFollowUpsService {
     return at;
   }
 
-  private toResponse(row: ConversationFollowUp): ConversationFollowUpResponseDto {
+  private toResponse(
+    row: ConversationFollowUp,
+  ): ConversationFollowUpResponseDto {
     return {
       id: row.id,
       workspaceId: row.workspaceId,

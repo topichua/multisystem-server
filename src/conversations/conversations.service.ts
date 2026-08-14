@@ -339,9 +339,7 @@ export class ConversationsService {
     );
     if (grantContext == null) {
       return {
-        byGroupId: new Map([
-          [ConversationSyntheticGroupId.pendingFollowUp, 0],
-        ]),
+        byGroupId: new Map([[ConversationSyntheticGroupId.pendingFollowUp, 0]]),
         total: 0,
       };
     }
@@ -829,7 +827,7 @@ export class ConversationsService {
     const ownerId = integration.ownerId;
 
     for (const ig of inWindow) {
-      const externalId = ig.id!.trim();
+      const externalId = ig.id.trim();
       try {
         const participantId = this.pickCustomerParticipantId(
           ig.participants?.data ?? [],
@@ -1982,7 +1980,9 @@ export class ConversationsService {
         if (groupingId === "ungrouped") {
           return { onlyUngrouped: true };
         }
-        if (groupingId === String(ConversationSyntheticGroupId.pendingFollowUp)) {
+        if (
+          groupingId === String(ConversationSyntheticGroupId.pendingFollowUp)
+        ) {
           return {
             groupIds: [ConversationSyntheticGroupId.pendingFollowUp],
           };
@@ -2561,10 +2561,11 @@ export class ConversationsService {
       },
     ];
 
-    const total = nonSpamGroups.reduce(
-      (sum, group) => sum + (counts.get(group.id) ?? 0),
-      0,
-    ) + (counts.get("ungrouped") ?? 0);
+    const total =
+      nonSpamGroups.reduce(
+        (sum, group) => sum + (counts.get(group.id) ?? 0),
+        0,
+      ) + (counts.get("ungrouped") ?? 0);
     return { total, items };
   }
 

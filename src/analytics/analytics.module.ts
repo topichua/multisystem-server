@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import {
   Client,
   ClientLink,
+  ClientWishlistItem,
   InstagramUser,
   Order,
   OrderItem,
@@ -12,8 +13,10 @@ import {
 import { WorkspaceSettingsModule } from "../workspace-settings/workspace-settings.module";
 import { AnalyticsController } from "./analytics.controller";
 import { AnalyticsClientsController } from "./analytics-clients.controller";
+import { AnalyticsWishlistController } from "./analytics-wishlist.controller";
 import { AnalyticsOverviewService } from "./analytics-overview.service";
 import { AnalyticsClientsService } from "./analytics-clients.service";
+import { WishlistAnalyticsService } from "./wishlist/wishlist-analytics.service";
 import { AnalyticsDateRangeService } from "./date-range/analytics-date-range.service";
 import { AnalyticsFilterBuilder } from "./filters/analytics-filter.builder";
 import { AnalyticsKpiCalculator } from "./calculators/kpi/analytics-kpi.calculator";
@@ -47,12 +50,18 @@ import { OneTimeBuyersCalculator } from "./calculators/clients/one-time-buyers.c
       ClientLink,
       InstagramUser,
       TelegramUser,
+      ClientWishlistItem,
     ]),
   ],
-  controllers: [AnalyticsController, AnalyticsClientsController],
+  controllers: [
+    AnalyticsController,
+    AnalyticsClientsController,
+    AnalyticsWishlistController,
+  ],
   providers: [
     AnalyticsOverviewService,
     AnalyticsClientsService,
+    WishlistAnalyticsService,
     AnalyticsDateRangeService,
     AnalyticsFilterBuilder,
     AnalyticsKpiCalculator,
@@ -75,6 +84,10 @@ import { OneTimeBuyersCalculator } from "./calculators/clients/one-time-buyers.c
     ClientAcquisitionSourcesCalculator,
     OneTimeBuyersCalculator,
   ],
-  exports: [AnalyticsOverviewService, AnalyticsClientsService],
+  exports: [
+    AnalyticsOverviewService,
+    AnalyticsClientsService,
+    WishlistAnalyticsService,
+  ],
 })
 export class AnalyticsModule {}

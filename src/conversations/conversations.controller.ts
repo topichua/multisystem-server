@@ -902,7 +902,8 @@ export class ConversationsController {
   @Delete(":id/follow-up")
   @ApiOperation({
     summary: "Cancel pending follow-up reminder",
-    description: "Marks as CANCELLED and emits follow_up_declined (reason=manual).",
+    description:
+      "Marks as CANCELLED and emits follow_up_declined (reason=manual).",
   })
   @ApiOkResponse({ type: ConversationFollowUpResponseDto })
   async cancelFollowUp(

@@ -26,7 +26,11 @@ export type AutomationConditionStatusResolver = {
 export async function resolveSourceStatusFromOrder(
   order: Order,
   sourceType: AutomationSourceType,
-  deliveryRepo: { findOne: (opts: { where: { id: number } }) => Promise<OrderDeliveryInfo | null> },
+  deliveryRepo: {
+    findOne: (opts: {
+      where: { id: number };
+    }) => Promise<OrderDeliveryInfo | null>;
+  },
 ): Promise<string | null> {
   if (sourceType === AutomationSourceType.payment_status) {
     return order.paymentStatus;
@@ -46,7 +50,11 @@ export async function resolveSourceStatusFromOrder(
 export async function resolveStatusChangedAtFromOrder(
   order: Order,
   sourceType: AutomationSourceType,
-  deliveryRepo: { findOne: (opts: { where: { id: number } }) => Promise<OrderDeliveryInfo | null> },
+  deliveryRepo: {
+    findOne: (opts: {
+      where: { id: number };
+    }) => Promise<OrderDeliveryInfo | null>;
+  },
 ): Promise<Date | null> {
   if (sourceType === AutomationSourceType.payment_status) {
     return order.paymentStatusAt;

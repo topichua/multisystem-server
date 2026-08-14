@@ -76,7 +76,9 @@ export class ConversationFollowUpsWorkerService
 
   private async tick(): Promise<void> {
     try {
-      const processed = await this.followUps.processDueJobs(this.getBatchSize());
+      const processed = await this.followUps.processDueJobs(
+        this.getBatchSize(),
+      );
       if (processed > 0) {
         this.log.log(`Conversation follow-up worker processed=${processed}`);
       }
