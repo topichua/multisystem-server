@@ -19,6 +19,11 @@ export class WorkspaceTemplateResponseDto {
   })
   template!: string;
 
+  @ApiProperty({
+    description: "Whether the template is available for use in the UI and automations.",
+  })
+  isActive!: boolean;
+
   @ApiProperty()
   createdById!: number;
 

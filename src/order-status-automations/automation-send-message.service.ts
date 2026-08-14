@@ -140,6 +140,23 @@ export class AutomationSendMessageService {
       });
       return;
     }
+    if (!template.isActive) {
+      await this.logSkipped({
+        automation,
+        workspaceId,
+        orderId,
+        sourceType,
+        sourceStatus,
+        expectedStatusChangedAt,
+        timed,
+        durationValue,
+        durationUnit,
+        idempotencyKey,
+        reason: AutomationSkipReason.TARGET_TEMPLATE_MISSING,
+        targetTemplateId: templateId,
+      });
+      return;
+    }
     if (template.type !== WorkspaceTemplateType.order) {
       await this.logSkipped({
         automation,
@@ -348,12 +365,16 @@ export class AutomationSendMessageService {
     const template = await this.templateRepo.findOne({
       where: { id: job.templateId, workspaceId: job.workspaceId },
     });
-    if (!template || template.type !== WorkspaceTemplateType.order) {
+    if (
+      !template ||
+      !template.isActive ||
+      template.type !== WorkspaceTemplateType.order
+    ) {
       await this.cancelJob(
         job,
-        template
-          ? AutomationSkipReason.TARGET_TEMPLATE_WRONG_TYPE
-          : AutomationSkipReason.TARGET_TEMPLATE_MISSING,
+        !template || !template.isActive
+          ? AutomationSkipReason.TARGET_TEMPLATE_MISSING
+          : AutomationSkipReason.TARGET_TEMPLATE_WRONG_TYPE,
       );
       return;
     }

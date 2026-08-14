@@ -43,6 +43,7 @@ export class WorkspaceTemplatesService {
       where: {
         workspaceId: workspace.id,
         ...(query?.type != null ? { type: query.type } : {}),
+        ...(query?.isActive != null ? { isActive: query.isActive } : {}),
       },
       order: { id: "ASC" },
     });
@@ -74,6 +75,7 @@ export class WorkspaceTemplatesService {
       type: dto.type,
       name: dto.name.trim(),
       template: dto.template.trim(),
+      isActive: dto.isActive ?? true,
       createdById: ownerId,
       updatedById: ownerId,
     });
@@ -101,6 +103,9 @@ export class WorkspaceTemplatesService {
     }
     if (dto.template !== undefined) {
       template.template = dto.template.trim();
+    }
+    if (dto.isActive !== undefined) {
+      template.isActive = dto.isActive;
     }
     template.updatedById = ownerId;
     return this.templateRepo.save(template);

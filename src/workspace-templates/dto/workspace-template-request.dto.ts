@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -33,6 +34,14 @@ export class CreateWorkspaceTemplateDto {
   @IsString()
   @IsNotEmpty()
   template!: string;
+
+  @ApiPropertyOptional({
+    description: "Defaults to true.",
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class UpdateWorkspaceTemplateDto {
@@ -53,6 +62,13 @@ export class UpdateWorkspaceTemplateDto {
   @IsOptional()
   @IsString()
   template?: string;
+
+  @ApiPropertyOptional({
+    description: "Set false to deactivate without deleting.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class ListWorkspaceTemplatesQueryDto {
@@ -63,6 +79,13 @@ export class ListWorkspaceTemplatesQueryDto {
   @IsOptional()
   @IsEnum(WorkspaceTemplateType)
   type?: WorkspaceTemplateType;
+
+  @ApiPropertyOptional({
+    description: "Filter by active flag.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class RenderWorkspaceTemplateDto {

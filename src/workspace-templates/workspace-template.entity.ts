@@ -40,6 +40,9 @@ export class WorkspaceTemplate {
   @Column({ name: "template", type: "text" })
   template: string;
 
+  @Column({ name: "is_active", type: "boolean", default: true })
+  isActive: boolean;
+
   @Column({ name: "created_by", type: "int" })
   createdById: number;
 
