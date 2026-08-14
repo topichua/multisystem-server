@@ -43,7 +43,7 @@ import { InstagramSynchronizationWorkerService } from "./instagram-synchronizati
 
 @Module({
   imports: [
-    AuthModule,
+    forwardRef(() => AuthModule),
     InstagramModule,
     ProductsModule,
     StorageModule,
