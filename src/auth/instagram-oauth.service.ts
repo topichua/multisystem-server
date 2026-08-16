@@ -19,21 +19,15 @@ import {
   INSTAGRAM_OAUTH_PROVIDER,
 } from "../instagram/instagram-graph.util";
 
-const STATE_TTL_SECONDS = 15 * 60;
 const PENDING_SESSION_TTL_MS = 30 * 60 * 1000;
 
 const DEFAULT_INSTAGRAM_LOGIN_SCOPES = [
   "instagram_business_basic",
   "instagram_business_manage_messages",
   "instagram_business_manage_comments",
+  "instagram_business_content_publish",
+  "instagram_business_manage_insights",
 ];
-
-type OAuthStatePayload = {
-  sub: "instagram-oauth";
-  userId: number;
-  workspaceId: number;
-  sessionId: string;
-};
 
 type MetaErrorBody = {
   error?: { message?: string; type?: string; code?: number };
@@ -77,8 +71,8 @@ export class InstagramOAuthService {
     ownerId: number,
     workspaceId?: number,
   ): Promise<{ url: string; sessionId: string; expiresAt: string }> {
-    const appId = this.requireInstagramAppId();
-    const redirectUri = this.requireInstagramRedirectUri();
+    this.requireInstagramAppId();
+    this.requireInstagramRedirectUri();
     if (!Number.isInteger(ownerId) || ownerId <= 0) {
       throw new BadRequestException("owner id must be a positive integer");
     }
@@ -107,13 +101,7 @@ export class InstagramOAuthService {
       }),
     );
 
-    const url = this.buildAuthorizeUrl(
-      ownerId,
-      workspace.id,
-      session.id,
-      appId,
-      redirectUri,
-    );
+    const url = this.buildContinueUrl(session.id);
 
     return {
       url,
@@ -155,23 +143,39 @@ export class InstagramOAuthService {
     return started.url;
   }
 
+  async getInstagramAuthorizeUrlForSession(sessionId: string): Promise<string> {
+    const session = await this.pendingSessionRepo.findOne({
+      where: { id: sessionId },
+    });
+    if (!session) {
+      throw new BadRequestException(
+        "Instagram OAuth session not found. Start again from POST /integrations.",
+      );
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      await this.pendingSessionRepo.delete({ id: session.id });
+      throw new BadRequestException(
+        "Instagram OAuth session expired; start again from POST /integrations",
+      );
+    }
+    return this.buildAuthorizeUrl(
+      session.id,
+      this.requireInstagramAppId(),
+      this.requireInstagramRedirectUri(),
+    );
+  }
+
   async handleCallback(
     code: string | undefined,
     state: string | undefined,
     oauthError: string | undefined,
     oauthErrorDescription: string | undefined,
+    cookieSessionId?: string,
   ): Promise<{ ok: true; sessionId: string; status: "select_page" | "failed" }> {
-    let pending: OAuthStatePayload | null = null;
-    if (state?.trim()) {
-      try {
-        const decoded = this.jwtService.verify<OAuthStatePayload>(state.trim());
-        if (decoded.sub === "instagram-oauth" && decoded.sessionId) {
-          pending = decoded;
-        }
-      } catch {
-        pending = null;
-      }
-    }
+    const sessionId =
+      this.parseSessionIdFromState(state) ??
+      this.parseSessionIdFromState(cookieSessionId);
+    const authCode = this.parseAuthorizationCode(code);
 
     if (oauthError) {
       const message =
@@ -179,20 +183,43 @@ export class InstagramOAuthService {
       this.log.warn(
         `Instagram Login error from provider error=${oauthError} description=${oauthErrorDescription ?? ""}`,
       );
-      if (pending?.sessionId) {
-        await this.markPendingFailed(pending.sessionId, pending.userId, message);
-        return { ok: true, sessionId: pending.sessionId, status: "failed" };
+      if (sessionId) {
+        const session = await this.pendingSessionRepo.findOne({
+          where: { id: sessionId },
+        });
+        if (session) {
+          await this.markPendingFailed(session.id, session.userId, message);
+          return { ok: true, sessionId: session.id, status: "failed" };
+        }
       }
       throw new BadRequestException(message);
     }
 
-    if (!code?.trim() || !pending) {
-      const message = "Instagram Login callback is missing code or state";
-      if (pending?.sessionId) {
-        await this.markPendingFailed(pending.sessionId, pending.userId, message);
-        return { ok: true, sessionId: pending.sessionId, status: "failed" };
-      }
-      throw new BadRequestException(message);
+    if (!sessionId) {
+      throw new BadRequestException(
+        "Instagram Login callback is missing state. Start connect from the app (POST /integrations with auth_flow=instagram_login), not the Meta embed URL.",
+      );
+    }
+
+    const session = await this.pendingSessionRepo.findOne({
+      where: { id: sessionId },
+    });
+    if (!session) {
+      throw new BadRequestException(
+        "Instagram OAuth session not found or expired. Start again from POST /integrations.",
+      );
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      await this.pendingSessionRepo.delete({ id: session.id });
+      throw new BadRequestException(
+        "Instagram OAuth session expired; start again from POST /integrations",
+      );
+    }
+
+    if (!authCode) {
+      const message = "Instagram Login callback is missing code";
+      await this.markPendingFailed(session.id, session.userId, message);
+      return { ok: true, sessionId: session.id, status: "failed" };
     }
 
     try {
@@ -204,7 +231,7 @@ export class InstagramOAuthService {
         appId,
         appSecret,
         redirectUri,
-        code.trim(),
+        authCode,
       );
       const longLived = await this.exchangeForLongLivedToken(
         appSecret,
@@ -227,13 +254,6 @@ export class InstagramOAuthService {
         profile.name?.trim() ||
         (username ? `@${username}` : `Instagram ${igUserId}`);
 
-      const session = await this.pendingSessionRepo.findOne({
-        where: { id: pending.sessionId, userId: pending.userId },
-      });
-      if (!session) {
-        throw new NotFoundException("Instagram OAuth session not found");
-      }
-
       session.status = "select_page";
       session.oauthProvider = INSTAGRAM_OAUTH_PROVIDER.instagram;
       session.userAccessToken = longLived;
@@ -255,37 +275,71 @@ export class InstagramOAuthService {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Instagram Login failed";
-      await this.markPendingFailed(pending.sessionId, pending.userId, message);
+      await this.markPendingFailed(session.id, session.userId, message);
       this.log.warn(`Instagram Login callback failed: ${message}`);
-      return { ok: true, sessionId: pending.sessionId, status: "failed" };
+      return { ok: true, sessionId: session.id, status: "failed" };
     }
   }
 
+  private parseSessionIdFromState(state: string | undefined): string | null {
+    if (state == null || state.trim() === "") {
+      return null;
+    }
+    let value = state.trim();
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      // already decoded
+    }
+    const uuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuid.test(value)) {
+      return value;
+    }
+    try {
+      const decoded = this.jwtService.verify<{
+        sub?: string;
+        sessionId?: string;
+      }>(value);
+      if (decoded.sub === "instagram-oauth" && decoded.sessionId) {
+        return decoded.sessionId;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  /** Meta appends `#_` to the code in the redirect URI; it is not part of the code. */
+  private parseAuthorizationCode(code: string | undefined): string | null {
+    const raw = code?.trim();
+    if (!raw) {
+      return null;
+    }
+    return raw.replace(/#_$/u, "").split("#")[0]?.trim() || null;
+  }
+
   private buildAuthorizeUrl(
-    userId: number,
-    workspaceId: number,
     sessionId: string,
     appId: string,
     redirectUri: string,
   ): string {
-    const state = this.jwtService.sign(
-      {
-        sub: "instagram-oauth",
-        userId,
-        workspaceId,
-        sessionId,
-      } satisfies OAuthStatePayload,
-      { expiresIn: STATE_TTL_SECONDS },
+    const scope = encodeURIComponent(this.getOAuthScopeQueryValue());
+    return (
+      "https://www.instagram.com/oauth/authorize" +
+      "?force_reauth=true" +
+      `&client_id=${appId}` +
+      `&redirect_uri=${redirectUri}` +
+      "&response_type=code" +
+      `&scope=${scope}` +
+      `&state=${sessionId}`
     );
+  }
 
-    const u = new URL("https://www.instagram.com/oauth/authorize");
-    u.searchParams.set("client_id", appId);
-    u.searchParams.set("redirect_uri", redirectUri);
-    u.searchParams.set("response_type", "code");
-    u.searchParams.set("scope", this.getOAuthScopeQueryValue());
-    u.searchParams.set("state", state);
-    u.searchParams.set("enable_fb_login", "0");
-    return u.toString();
+  private buildContinueUrl(sessionId: string): string {
+    const callback = this.requireInstagramRedirectUri();
+    const origin = callback.replace(/\/auth\/instagram\/callback\/?$/i, "");
+    return `${origin}/auth/instagram/continue?sessionId=${sessionId}`;
   }
 
   private getOAuthScopeQueryValue(): string {

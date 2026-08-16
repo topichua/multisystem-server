@@ -386,6 +386,30 @@ export class AuthController {
     res.redirect(HttpStatus.FOUND, url);
   }
 
+  @Get("instagram/continue")
+  @ApiOperation({
+    summary: "Bounce to Instagram Login (sets session cookie, then 302)",
+    description:
+      "Opened from POST /integrations `url`. Sets a cookie so callback still works " +
+      "when Instagram appends `#_` and drops `state`.",
+  })
+  @ApiQuery({ name: "sessionId", required: true, format: "uuid" })
+  async instagramOAuthContinue(
+    @Query("sessionId") sessionId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const url =
+      await this.instagramOAuth.getInstagramAuthorizeUrlForSession(sessionId);
+    res.cookie("ig_oauth_sid", sessionId, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: 30 * 60 * 1000,
+    });
+    res.redirect(HttpStatus.FOUND, url);
+  }
+
   @Get("instagram/callback")
   @ApiOperation({
     summary: "Instagram Login redirect URI (Meta calls this with ?code=&state=)",
@@ -398,6 +422,7 @@ export class AuthController {
   @ApiQuery({ name: "error", required: false })
   @ApiQuery({ name: "error_description", required: false })
   async instagramOAuthCallback(
+    @Req() req: Request,
     @Query("code") code: string | undefined,
     @Query("state") state: string | undefined,
     @Query("error") error: string | undefined,
@@ -410,6 +435,7 @@ export class AuthController {
         state,
         error,
         errorDescription,
+        this.readCookie(req.headers.cookie, "ig_oauth_sid"),
       );
       const title =
         result.status === "failed"
@@ -480,5 +506,22 @@ export class AuthController {
       return;
     }
     res.redirect(302, `${base}/settings/integrations/tiktok?status=${status}`);
+  }
+
+  private readCookie(
+    cookieHeader: string | undefined,
+    name: string,
+  ): string | undefined {
+    if (!cookieHeader) {
+      return undefined;
+    }
+    const prefix = `${name}=`;
+    for (const part of cookieHeader.split(";")) {
+      const trimmed = part.trim();
+      if (trimmed.startsWith(prefix)) {
+        return decodeURIComponent(trimmed.slice(prefix.length));
+      }
+    }
+    return undefined;
   }
 }
