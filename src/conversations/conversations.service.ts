@@ -74,6 +74,7 @@ import {
 } from "../telegram-integrations/telegram-integrations.tokens";
 import { TelegramUsersService } from "../telegram-integrations/telegram-users.service";
 import { InstagramUsersService } from "../instagram/instagram-users.service";
+import { instagramGraphOrigin } from "../instagram/instagram-graph.util";
 import { ProductsService } from "../products/products.service";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import { WorkspacePermissionsService } from "../workspace-access/workspace-permissions.service";
@@ -685,6 +686,7 @@ export class ConversationsService {
           userAccessToken: integration.userAccessToken,
           businessAccountId: integration.instagramAccountId,
           pageId: integration.pageId,
+          oauthProvider: integration.oauthProvider,
         },
         { maxSync: participantIds.size },
       );
@@ -808,6 +810,7 @@ export class ConversationsService {
           userAccessToken: integration.userAccessToken,
           businessAccountId: integration.instagramAccountId,
           pageId: integration.pageId,
+          oauthProvider: integration.oauthProvider,
         },
         { maxSync: participantIds.size },
       );
@@ -918,8 +921,9 @@ export class ConversationsService {
     accessToken: string,
     fields = "id,created_time,from,to,message",
   ): Promise<InstagramMessageDto> {
+    const origin = await this.originForInstagramToken(accessToken);
     const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(messageId)}`,
+      `${origin}/v25.0/${encodeURIComponent(messageId)}`,
     );
     url.searchParams.set("fields", fields);
     url.searchParams.set("access_token", accessToken);
@@ -935,9 +939,10 @@ export class ConversationsService {
     accessToken: string,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
+    const origin = await this.originForInstagramToken(accessToken);
     const fields = encodeURIComponent("id,participants,updated_time");
     let nextUrl: string | null =
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(pageId)}/conversations` +
+      `${origin}/v25.0/${encodeURIComponent(pageId)}/conversations` +
       `?platform=instagram&user_id=${encodeURIComponent(userId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {
@@ -3659,9 +3664,10 @@ export class ConversationsService {
     graphConversationId: string,
     accessToken: string,
     sinceUnixSeconds?: number,
+    origin = "https://graph.facebook.com",
   ): URL {
     const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
+      `${origin}/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
     );
     url.searchParams.set(
       "fields",
@@ -3694,10 +3700,12 @@ export class ConversationsService {
     maxPages = 25,
   ): Promise<InstagramMessagesResponseDto> {
     const sinceMs = since.getTime();
+    const origin = await this.originForInstagramToken(accessToken);
     const firstUrl = this.buildConversationMessagesGraphUrl(
       graphConversationId,
       accessToken,
       Math.floor(sinceMs / 1000),
+      origin,
     );
 
     const byId = new Map<string, InstagramMessageDto>();
@@ -3931,7 +3939,7 @@ export class ConversationsService {
     }
 
     const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
+      `${instagramGraphOrigin(integration.oauthProvider)}/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
     );
     url.searchParams.set(
       "fields",
@@ -4221,10 +4229,11 @@ export class ConversationsService {
     accessToken: string,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
+    const origin = await this.originForInstagramToken(accessToken);
     const fields =
       "id,updated_time,participants{id,name,username,profile_pic},unread_count,message_count";
     let nextUrl: string | null =
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(pageId)}/conversations` +
+      `${origin}/v25.0/${encodeURIComponent(pageId)}/conversations` +
       `?platform=instagram&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {
@@ -4288,8 +4297,9 @@ export class ConversationsService {
     userId: string,
     accessToken: string,
   ): Promise<string | undefined> {
+    const origin = await this.originForInstagramToken(accessToken);
     const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(userId)}`,
+      `${origin}/v25.0/${encodeURIComponent(userId)}`,
     );
     url.searchParams.set("fields", "profile_pic");
     url.searchParams.set("access_token", accessToken);
@@ -4366,6 +4376,13 @@ export class ConversationsService {
     throw new BadGatewayException(msg);
   }
 
+  private async originForInstagramToken(accessToken: string): Promise<string> {
+    const row = await this.instagramIntegrationRepo.findOne({
+      where: [{ accessToken }, { userAccessToken: accessToken }],
+    });
+    return instagramGraphOrigin(row?.oauthProvider);
+  }
+
   private async sendInstagramGraphMessage(
     accessToken: string,
     params: {
@@ -4388,7 +4405,8 @@ export class ConversationsService {
       sendBody.reply_to = { mid: replyMid };
     }
 
-    const url = new URL("https://graph.facebook.com/v25.0/me/messages");
+    const origin = await this.originForInstagramToken(accessToken);
+    const url = new URL(`${origin}/v25.0/me/messages`);
     url.searchParams.set("access_token", accessToken);
 
     return this.instagramGraphFetch<SendInstagramMessageResponseDto>(url, {
@@ -4403,9 +4421,8 @@ export class ConversationsService {
     file: { buffer: Buffer; mimetype?: string; originalname?: string },
     mediaType: OutboundConversationMessageMediaType,
   ): Promise<string> {
-    const url = new URL(
-      "https://graph.facebook.com/v25.0/me/message_attachments",
-    );
+    const origin = await this.originForInstagramToken(accessToken);
+    const url = new URL(`${origin}/v25.0/me/message_attachments`);
     url.searchParams.set("access_token", accessToken);
 
     const form = new FormData();

@@ -173,6 +173,7 @@ export class FacebookOAuthService {
         workspaceId: workspace.id,
         userId: ownerId,
         status: "awaiting_facebook",
+        oauthProvider: "facebook",
         userAccessToken: null,
         pages: [],
         errorMessage: null,
@@ -475,6 +476,7 @@ export class FacebookOAuthService {
       igId: selected.instagramAccountId,
       longLivedUserToken: session.userAccessToken,
       pageAccessToken: selected.pageAccessToken,
+      oauthProvider: session.oauthProvider ?? "facebook",
     });
 
     await this.pendingSessionRepo.delete({ id: session.id });
@@ -577,6 +579,7 @@ export class FacebookOAuthService {
     igId: string;
     longLivedUserToken: string;
     pageAccessToken: string;
+    oauthProvider?: "facebook" | "instagram";
   }): Promise<InstagramIntegration> {
     const now = new Date();
     const existing = await this.instagramIntegrationRepo.findOne({
@@ -601,6 +604,7 @@ export class FacebookOAuthService {
         params.pageName.length > 0 ? params.pageName : null;
       existing.tokenConnectedAt = now;
       existing.tokenStatus = TOKEN_STATUS_ACTIVE;
+      existing.oauthProvider = params.oauthProvider ?? existing.oauthProvider;
       return this.instagramIntegrationRepo.save(existing);
     }
 
@@ -614,6 +618,7 @@ export class FacebookOAuthService {
         facebookPageName: params.pageName.length > 0 ? params.pageName : null,
         tokenConnectedAt: now,
         tokenStatus: TOKEN_STATUS_ACTIVE,
+        oauthProvider: params.oauthProvider ?? "facebook",
         ownerId: params.workspace.ownerId,
         workspaceId: params.workspace.id,
       }),
@@ -750,7 +755,8 @@ export class FacebookOAuthService {
       );
     }
     if (
-      session.status === "awaiting_facebook" &&
+      (session.status === "awaiting_facebook" ||
+        session.status === "awaiting_instagram") &&
       options?.allowAwaiting !== true
     ) {
       throw new BadRequestException(

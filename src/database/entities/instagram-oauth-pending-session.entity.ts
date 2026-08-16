@@ -12,6 +12,7 @@ import { Workspace } from "./workspace.entity";
 
 export const INSTAGRAM_OAUTH_PENDING_STATUSES = [
   "awaiting_facebook",
+  "awaiting_instagram",
   "select_page",
   "failed",
 ] as const;
@@ -52,7 +53,11 @@ export class InstagramOAuthPendingSession {
   })
   status: InstagramOAuthPendingStatus;
 
-  /** Long-lived Facebook user token — set after Facebook Login callback. */
+  /** `facebook` — Facebook Login; `instagram` — Instagram Login. */
+  @Column({ name: "oauth_provider", type: "varchar", length: 32, default: "facebook" })
+  oauthProvider: "facebook" | "instagram";
+
+  /** Long-lived Facebook / Instagram user token — set after OAuth callback. */
   @Column({ name: "user_access_token", type: "text", nullable: true })
   userAccessToken: string | null;
 

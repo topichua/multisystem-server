@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
 import { InstagramUser } from "../database/entities";
+import { instagramGraphUrl } from "./instagram-graph.util";
 
 type InstagramScopedUserNode = {
   id?: string;
@@ -26,6 +27,7 @@ export type InstagramUserSyncContext = {
   userAccessToken?: string | null;
   businessAccountId?: string | null;
   pageId?: string | null;
+  oauthProvider?: string | null;
 };
 
 @Injectable()
@@ -108,6 +110,7 @@ export class InstagramUsersService {
       workspaceId,
       id,
       context.pageAccessToken,
+      context.oauthProvider,
     );
   }
 
@@ -129,9 +132,13 @@ export class InstagramUsersService {
     workspaceId: number,
     instagramUserId: string,
     pageAccessToken: string,
+    oauthProvider?: string | null,
   ): Promise<void> {
     const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(instagramUserId)}`,
+      instagramGraphUrl(
+        oauthProvider,
+        encodeURIComponent(instagramUserId),
+      ),
     );
     url.searchParams.set("fields", "id,name,username,profile_pic");
     url.searchParams.set("access_token", pageAccessToken);
@@ -155,7 +162,10 @@ export class InstagramUsersService {
     const accessToken =
       context.userAccessToken?.trim() || context.pageAccessToken.trim();
     const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(instagramUserId)}`,
+      instagramGraphUrl(
+        context.oauthProvider,
+        encodeURIComponent(instagramUserId),
+      ),
     );
     url.searchParams.set("fields", "id,name,username,profile_picture_url");
     url.searchParams.set("access_token", accessToken);

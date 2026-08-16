@@ -29,6 +29,7 @@ import {
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import { FacebookOAuthService } from "./facebook-oauth.service";
+import { InstagramOAuthService } from "./instagram-oauth.service";
 import { TikTokOAuthService } from "./tiktok-oauth.service";
 import { MeResponseDto } from "./dto/me-response.dto";
 import { ChangePasswordRequestDto } from "./dto/change-password-request.dto";
@@ -66,6 +67,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly facebookOAuth: FacebookOAuthService,
+    private readonly instagramOAuth: InstagramOAuthService,
     private readonly tikTokOAuth: TikTokOAuthService,
     private readonly registration: RegistrationService,
     private readonly passwordReset: PasswordResetService,
@@ -358,6 +360,85 @@ export class AuthController {
       );
     }
     return this.facebookOAuth.getStatusForOwner(ownerId);
+  }
+
+  @Get("instagram")
+  @ApiOperation({
+    summary: "Start Instagram Login (no Facebook Page)",
+    description:
+      "Redirects to Instagram OAuth. Same Meta app as Facebook Login. " +
+      "Requires INSTAGRAM_REDIRECT_URI. Prefer POST /integrations with auth_flow=instagram_login.",
+  })
+  @ApiQuery({
+    name: "jwt",
+    required: false,
+    description: "Access token from POST /auth/login (for browser address bar)",
+  })
+  async instagramOAuthStart(
+    @Query("jwt") jwt: string | undefined,
+    @Headers("authorization") authorization: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const url = await this.instagramOAuth.buildAuthorizeRedirectUrl(
+      jwt,
+      authorization,
+    );
+    res.redirect(HttpStatus.FOUND, url);
+  }
+
+  @Get("instagram/callback")
+  @ApiOperation({
+    summary: "Instagram Login redirect URI (Meta calls this with ?code=&state=)",
+    description:
+      "Completes Instagram Login. Client should poll GET /integrations/instagram/oauth/pages?sessionId=… " +
+      "until status is `select_page` (one Instagram account), then POST /integrations/instagram/oauth/confirm.",
+  })
+  @ApiQuery({ name: "code", required: false })
+  @ApiQuery({ name: "state", required: false })
+  @ApiQuery({ name: "error", required: false })
+  @ApiQuery({ name: "error_description", required: false })
+  async instagramOAuthCallback(
+    @Query("code") code: string | undefined,
+    @Query("state") state: string | undefined,
+    @Query("error") error: string | undefined,
+    @Query("error_description") errorDescription: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const result = await this.instagramOAuth.handleCallback(
+        code,
+        state,
+        error,
+        errorDescription,
+      );
+      const title =
+        result.status === "failed"
+          ? "Instagram Login failed"
+          : "Instagram Login complete";
+      const body =
+        result.status === "failed"
+          ? "Login failed. You can close this window and try again in the app."
+          : "You can close this window and continue in the app.";
+      res
+        .status(HttpStatus.OK)
+        .type("html")
+        .send(
+          `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title></head>` +
+            `<body><p>${body}</p>` +
+            `<script>window.close();</script></body></html>`,
+        );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Instagram Login failed";
+      res
+        .status(HttpStatus.BAD_REQUEST)
+        .type("html")
+        .send(
+          `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Instagram Login failed</title></head>` +
+            `<body><p>${message}</p>` +
+            `<script>window.close();</script></body></html>`,
+        );
+    }
   }
 
   @Get("tiktok/callback")

@@ -12,6 +12,7 @@ import { InstagramIntegration } from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { InstagramIntegrationsListResponseDto } from "./dto/instagram-integration-list-item.dto";
 import { InstagramIntegrationProfileService } from "./instagram-integration-profile.service";
+import { instagramGraphUrl } from "./instagram-graph.util";
 import { InstagramUsersService } from "./instagram-users.service";
 import type { ListInstagramMediaQueryDto } from "./dto/list-instagram-media-query.dto";
 import type {
@@ -27,8 +28,6 @@ import type { ListInstagramCommentRepliesQueryDto } from "./dto/list-instagram-c
 import type { ListInstagramPostCommentsQueryDto } from "./dto/list-instagram-post-comments-query.dto";
 import type { ReplyInstagramCommentQueryDto } from "./dto/reply-instagram-comment.dto";
 import type { ReplyInstagramCommentResponseDto } from "./dto/reply-instagram-comment-response.dto";
-
-const GRAPH_VERSION = "v25.0";
 
 const IG_MEDIA_FIELDS =
   "id,caption,media_type,media_url,permalink,thumbnail_url,timestamp," +
@@ -138,7 +137,10 @@ export class InstagramService {
     const accessToken = await this.resolveGraphAccessToken(integration.id);
 
     const url = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(igUserId)}/media`,
+      instagramGraphUrl(
+        integration.oauthProvider,
+        `${encodeURIComponent(igUserId)}/media`,
+      ),
     );
     url.searchParams.set("fields", IG_MEDIA_FIELDS);
     url.searchParams.set("limit", String(query.limit ?? 25));
@@ -177,7 +179,10 @@ export class InstagramService {
     const includeReplies = query.include_replies === true;
 
     const url = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(mediaId)}/comments`,
+      instagramGraphUrl(
+        integration.oauthProvider,
+        `${encodeURIComponent(mediaId)}/comments`,
+      ),
     );
     url.searchParams.set(
       "fields",
@@ -231,7 +236,10 @@ export class InstagramService {
     const accessToken = await this.resolveGraphAccessToken(integration.id);
 
     const url = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`,
+      instagramGraphUrl(
+        integration.oauthProvider,
+        `${encodeURIComponent(commentId)}/replies`,
+      ),
     );
     url.searchParams.set("fields", IG_COMMENT_REPLY_FIELDS);
     url.searchParams.set("limit", String(query.limit ?? 25));
@@ -284,7 +292,10 @@ export class InstagramService {
     }
 
     const url = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}/replies`,
+      instagramGraphUrl(
+        integration.oauthProvider,
+        `${encodeURIComponent(commentId)}/replies`,
+      ),
     );
     url.searchParams.set("access_token", accessToken);
 
@@ -355,7 +366,10 @@ export class InstagramService {
       "caption,media_type,media_url,thumbnail_url,permalink,shortcode," +
       "children{id,media_type,media_url,thumbnail_url,permalink}";
     const url = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(mediaId)}`,
+      instagramGraphUrl(
+        integration.oauthProvider,
+        encodeURIComponent(mediaId),
+      ),
     );
     url.searchParams.set("fields", fields);
     url.searchParams.set("access_token", accessToken);
@@ -448,6 +462,7 @@ export class InstagramService {
         userAccessToken: integration.userAccessToken,
         businessAccountId: integration.instagramAccountId,
         pageId: integration.pageId,
+        oauthProvider: integration.oauthProvider,
       },
     );
     const userById = await this.instagramUsers.getMapByIds(

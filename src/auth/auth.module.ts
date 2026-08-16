@@ -28,6 +28,7 @@ import { InvitationTokenService } from "../users/crypto/invitation-token.service
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { FacebookOAuthService } from "./facebook-oauth.service";
+import { InstagramOAuthService } from "./instagram-oauth.service";
 import { TikTokOAuthService } from "./tiktok-oauth.service";
 import { CredentialsEncryptionService } from "../payments/encryption/credentials-encryption.service";
 import { JwtStrategy } from "./jwt.strategy";
@@ -77,6 +78,7 @@ import { PasswordResetService } from "./password-reset.service";
     PasswordResetService,
     RegistrationTokenCryptoService,
     FacebookOAuthService,
+    InstagramOAuthService,
     TikTokOAuthService,
     CredentialsEncryptionService,
     JwtStrategy,
@@ -86,6 +88,7 @@ import { PasswordResetService } from "./password-reset.service";
   exports: [
     AuthService,
     FacebookOAuthService,
+    InstagramOAuthService,
     TikTokOAuthService,
     JwtModule,
     PassportModule,

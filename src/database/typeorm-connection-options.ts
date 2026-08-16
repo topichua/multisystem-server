@@ -185,6 +185,7 @@ import { AutomationSendMessage1744200000187 } from "./migrations/1744200000187-A
 import { ConversationFollowUps1744200000188 } from "./migrations/1744200000188-ConversationFollowUps";
 import { WishlistAnalyticsIndexes1744200000189 } from "./migrations/1744200000189-WishlistAnalyticsIndexes";
 import { WorkspaceTemplateIsActive1744200000190 } from "./migrations/1744200000190-WorkspaceTemplateIsActive";
+import { InstagramLoginOAuth1744200000191 } from "./migrations/1744200000191-InstagramLoginOAuth";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -602,6 +603,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationFollowUps1744200000188,
       WishlistAnalyticsIndexes1744200000189,
       WorkspaceTemplateIsActive1744200000190,
+      InstagramLoginOAuth1744200000191,
     ],
   };
 }

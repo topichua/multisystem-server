@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Not, IsNull, QueryFailedError, Repository } from "typeorm";
 import { FacebookOAuthService } from "../auth/facebook-oauth.service";
+import { InstagramOAuthService } from "../auth/instagram-oauth.service";
 import { TikTokOAuthService } from "../auth/tiktok-oauth.service";
 import {
   InstagramIntegration,
@@ -40,6 +41,7 @@ export class IntegrationsService {
     private readonly tiktokIntegrationRepo: Repository<TikTokIntegration>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly facebookOAuth: FacebookOAuthService,
+    private readonly instagramOAuth: InstagramOAuthService,
     private readonly tikTokOAuth: TikTokOAuthService,
     private readonly telegramIntegrations: TelegramIntegrationsService,
     private readonly novaPoshtaIntegrations: NovaPoshtaIntegrationsService,
@@ -56,10 +58,16 @@ export class IntegrationsService {
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
 
     if (type === "instagram") {
-      const started = await this.facebookOAuth.startInstagramOAuthForOwner(
-        ownerId,
-        workspace.id,
-      );
+      const started =
+        dto.auth_flow === "instagram_login"
+          ? await this.instagramOAuth.startInstagramLoginForOwner(
+              ownerId,
+              workspace.id,
+            )
+          : await this.facebookOAuth.startInstagramOAuthForOwner(
+              ownerId,
+              workspace.id,
+            );
       return {
         type: "instagram",
         name: workspace.name,

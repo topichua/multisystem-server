@@ -27,7 +27,21 @@ export class InstagramIntegration {
   pageId: string;
 
   /**
-   * Long-lived Facebook **user** token from OAuth (`fb_exchange_token` flow).
+   * How the channel was connected.
+   * `facebook` — Facebook Login + Page token (`graph.facebook.com`).
+   * `instagram` — Instagram Login (`graph.instagram.com`).
+   */
+  @Column({
+    name: "oauth_provider",
+    type: "varchar",
+    length: 32,
+    default: "facebook",
+  })
+  oauthProvider: "facebook" | "instagram";
+
+  /**
+   * Long-lived Facebook **user** token from OAuth (`fb_exchange_token` flow),
+   * or long-lived Instagram user token from Instagram Login.
    */
   @Column({ name: "user_access_token", type: "text", nullable: true })
   userAccessToken: string | null;

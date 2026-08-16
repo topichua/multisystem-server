@@ -20,7 +20,7 @@ export class InstagramOAuthPendingPollResponseDto {
   @ApiProperty({
     enum: INSTAGRAM_OAUTH_PENDING_STATUSES,
     description:
-      "`awaiting_facebook` — keep polling. " +
+      "`awaiting_facebook` / `awaiting_instagram` — keep polling. " +
       "`select_page` — pages ready, show picker. " +
       "`failed` — show error and restart from POST /integrations.",
   })

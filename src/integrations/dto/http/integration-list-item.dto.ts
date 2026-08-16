@@ -40,7 +40,14 @@ export class IntegrationListItemDto {
 
   @ApiPropertyOptional({
     description:
-      "Instagram only: Business Account id (Graph `instagram_business_account.id`).",
+      "Instagram only: `facebook` (Facebook Login + Page) or `instagram` (Instagram Login).",
+    enum: ["facebook", "instagram"],
+  })
+  oauthProvider?: "facebook" | "instagram";
+
+  @ApiPropertyOptional({
+    description:
+      "Instagram only: Business Account id (Graph `instagram_business_account.id` or Instagram user id).",
   })
   businessAccountId?: string;
 

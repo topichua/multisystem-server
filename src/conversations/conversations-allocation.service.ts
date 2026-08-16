@@ -12,6 +12,7 @@ import {
   ConversationMessage,
   ConversationSource,
 } from "../database/entities";
+import { instagramGraphOrigin } from "../instagram/instagram-graph.util";
 import type {
   InstagramConversationDto,
   InstagramConversationParticipantDto,
@@ -60,6 +61,7 @@ type WebhookCompanyContext = {
   instagramAccountId: string;
   accessToken: string;
   pageId: string;
+  oauthProvider: string;
 };
 
 @Injectable()
@@ -697,6 +699,7 @@ export class ConversationsAllocationService {
       instagramAccountId: businessInstagramId,
       accessToken,
       pageId: company.pageId,
+      oauthProvider: company.oauthProvider ?? "facebook",
     };
     this.companyByInstagramAccountId.set(key, {
       ctx,
@@ -713,8 +716,9 @@ export class ConversationsAllocationService {
     accessToken: string,
     fields = "id,created_time,from,to,message",
   ): Promise<InstagramMessageDto> {
+    const origin = await this.originForInstagramToken(accessToken);
     const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(messageId)}`,
+      `${origin}/v25.0/${encodeURIComponent(messageId)}`,
     );
     url.searchParams.set("fields", fields);
     url.searchParams.set("access_token", accessToken);
@@ -733,9 +737,10 @@ export class ConversationsAllocationService {
     accessToken: string,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
+    const origin = await this.originForInstagramToken(accessToken);
     const fields = encodeURIComponent("id,participants,updated_time");
     let nextUrl: string | null =
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(businessInstagramId)}/conversations` +
+      `${origin}/v25.0/${encodeURIComponent(businessInstagramId)}/conversations` +
       `?platform=instagram&user_id=${encodeURIComponent(customerInstagramUserId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {
@@ -1317,6 +1322,13 @@ export class ConversationsAllocationService {
       );
     }
     throw new BadGatewayException(msg);
+  }
+
+  private async originForInstagramToken(accessToken: string): Promise<string> {
+    const row = await this.companyRepo.findOne({
+      where: [{ accessToken }, { userAccessToken: accessToken }],
+    });
+    return instagramGraphOrigin(row?.oauthProvider);
   }
 
   private async instagramGraphFetch<T>(

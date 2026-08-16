@@ -1,5 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from "@nestjs/common";
 import { InstagramIntegration } from "../database/entities";
+import { instagramGraphUrl } from "./instagram-graph.util";
 import type { InstagramIntegrationListItemDto } from "./dto/instagram-integration-list-item.dto";
 
 type InstagramBusinessProfileNode = {
@@ -61,6 +62,7 @@ export class InstagramIntegrationProfileService {
       type: "instagram",
       id: row.id,
       name,
+      oauthProvider: row.oauthProvider === "instagram" ? "instagram" : "facebook",
       ...(businessAccountId ? { businessAccountId } : {}),
       ...(userName ? { userName } : {}),
       avatar,
@@ -95,7 +97,10 @@ export class InstagramIntegrationProfileService {
 
     try {
       const url = new URL(
-        `https://graph.facebook.com/v25.0/${encodeURIComponent(businessAccountId)}`,
+        instagramGraphUrl(
+          row.oauthProvider,
+          encodeURIComponent(businessAccountId),
+        ),
       );
       url.searchParams.set(
         "fields",

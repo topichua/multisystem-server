@@ -92,7 +92,9 @@ export class IntegrationsController {
   @ApiOperation({
     summary: "Start connecting an integration (returns OAuth URL)",
     description:
-      "For `instagram`, returns Facebook Login `url` + correlation `sessionId`. " +
+      "For `instagram`, returns OAuth `url` + correlation `sessionId`. " +
+      "Default `auth_flow=facebook` (Facebook Login + Page picker). " +
+      "`auth_flow=instagram_login` uses Instagram Login (no Facebook Page). " +
       "Open `url` (popup/new tab). Poll GET /integrations/instagram/oauth/pages?sessionId=… " +
       "every few seconds until `status` is `select_page`, then POST /integrations/instagram/oauth/confirm. " +
       "For `tiktok`, returns TikTok Login Kit `url` + `sessionId`. Poll " +
@@ -117,7 +119,7 @@ export class IntegrationsController {
     summary: "Poll Instagram OAuth pending session (pages ready?)",
     description:
       "Client should poll with the `sessionId` from POST /integrations. " +
-      "`awaiting_facebook` → keep polling. `select_page` → show `pages`. `failed` → restart connect.",
+      "`awaiting_facebook` / `awaiting_instagram` — keep polling. `select_page` — show `pages`. `failed` — restart connect.",
   })
   @ApiQuery({ name: "sessionId", required: true, format: "uuid" })
   @ApiOkResponse({ type: InstagramOAuthPendingPollResponseDto })

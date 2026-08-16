@@ -10,6 +10,13 @@ export class InstagramIntegrationListItemDto {
   })
   id: number;
 
+  @ApiPropertyOptional({
+    enum: ["facebook", "instagram"],
+    description:
+      "`facebook` — Facebook Login + Page. `instagram` — Instagram Login.",
+  })
+  oauthProvider?: "facebook" | "instagram";
+
   @ApiProperty({
     description:
       "Display name from Graph account name (fallback: Facebook Page name).",
