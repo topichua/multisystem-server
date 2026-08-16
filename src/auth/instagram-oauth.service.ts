@@ -101,7 +101,11 @@ export class InstagramOAuthService {
       }),
     );
 
-    const url = this.buildContinueUrl(session.id);
+    const url = this.buildAuthorizeUrl(
+      session.id,
+      this.requireInstagramAppId(),
+      this.requireInstagramRedirectUri(),
+    );
 
     return {
       url,
@@ -492,6 +496,10 @@ export class InstagramOAuthService {
     return undefined;
   }
 
+  isHttpsRedirectUri(): boolean {
+    return this.requireInstagramRedirectUri().toLowerCase().startsWith("https:");
+  }
+
   private requireInstagramRedirectUri(): string {
     const v =
       this.config.get<string>("INSTAGRAM_REDIRECT_URI")?.trim() ??
@@ -502,7 +510,7 @@ export class InstagramOAuthService {
           "Add it in Meta App → Instagram → API setup with Instagram login → Business login settings → OAuth redirect URIs.",
       );
     }
-    return v;
+    return v.replace(/^["']|["']$/g, "").trim();
   }
 
   /**

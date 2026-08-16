@@ -383,7 +383,7 @@ export class AuthController {
       jwt,
       authorization,
     );
-    res.redirect(HttpStatus.FOUND, url);
+    res.status(HttpStatus.FOUND).setHeader("Location", url).end();
   }
 
   @Get("instagram/continue")
@@ -403,11 +403,13 @@ export class AuthController {
     res.cookie("ig_oauth_sid", sessionId, {
       httpOnly: true,
       sameSite: "lax",
-      secure: true,
+      secure: this.instagramOAuth.isHttpsRedirectUri(),
       path: "/",
       maxAge: 30 * 60 * 1000,
     });
-    res.redirect(HttpStatus.FOUND, url);
+    // Express `res.redirect()` percent-encodes Location and breaks Meta's
+    // exact redirect_uri match (`http://…` must stay unencoded).
+    res.status(HttpStatus.FOUND).setHeader("Location", url).end();
   }
 
   @Get("instagram/callback")
