@@ -35,11 +35,26 @@ import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
 import { ConversationIdAllocationService } from "./conversation-id-allocation.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import { resolveInstagramMessageActors } from "./instagram-message-actors.util";
+import {
+  pickCustomerUserIdFromWebhook,
+  serializeWebhookAttachmentsJson,
+  webhookMessagingToInstagramMessageDto,
+} from "./instagram-webhook-message.util";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
+import {
+  parseReactionsJson,
+  serializeReactionsJson,
+} from "./conversation-message-reactions-json.util";
+import {
+  parseAttachmentsJson,
+  resolveMessageTypeFromAttachments,
+} from "./conversation-message-attachments-json.util";
+import type { ConversationMessageReactionFrom } from "./dto/http/conversation-message-reaction.dto";
 import { InstagramUsersService } from "../instagram/instagram-users.service";
 
 type WebhookMessagingEventKind =
   | "new_message"
+  | "edit_message"
   | "reaction"
   | "read"
   | "edit"
@@ -197,7 +212,7 @@ export class ConversationsAllocationService {
       return "new_message";
     }
     if (ev.message_edit?.mid?.trim() && numEdit === 0) {
-      return "new_message";
+      return "edit_message";
     }
     return "skip";
   }
@@ -233,15 +248,13 @@ export class ConversationsAllocationService {
       return;
     }
 
-    const msg = await this.fetchInstagramMessageById(
-      mid,
-      ctx.accessToken,
-      this.graphMessageFieldsWithReactions(),
-    );
-    const customerUserId = this.pickCustomerUserIdForWebhook(
-      msg,
+    const msg = webhookMessagingToInstagramMessageDto(ev, {
+      businessInstagramId: ctx.businessInstagramId,
+      pageId: ctx.pageId,
+    });
+    const customerUserId = pickCustomerUserIdFromWebhook(
+      ev,
       ctx.businessInstagramId,
-      ev.sender?.id,
       ctx.pageId,
     );
     if (!customerUserId) {
@@ -254,7 +267,6 @@ export class ConversationsAllocationService {
       saveConversation,
     } = await this.ensureInstagramConversationRowForWebhook({
       traceId: ctx.traceId,
-      msg,
       mid,
       customerUserId,
       businessInstagramId: ctx.businessInstagramId,
@@ -262,6 +274,7 @@ export class ConversationsAllocationService {
       workspaceId: ctx.companyCtx.workspaceId,
       accessToken: ctx.accessToken,
       pageId: ctx.pageId,
+      createdTime: msg.created_time,
     });
 
     if (saveConversation) {
@@ -273,12 +286,7 @@ export class ConversationsAllocationService {
       await this.chatAutoDistribution.tryAssignOnNewConversation(conv);
     }
 
-    const { senderId } = resolveInstagramMessageActors({
-      msg,
-      businessInstagramId: ctx.businessInstagramId,
-      pageId: ctx.pageId,
-      webhook: ev,
-    });
+    const senderId = ev.sender?.id?.trim();
     const isInboundCustomer = Boolean(
       senderId &&
         senderId === customerUserId &&
@@ -313,6 +321,16 @@ export class ConversationsAllocationService {
       },
     );
 
+    messageRow.attachmentJson = serializeWebhookAttachmentsJson(
+      ev,
+      messageRow.createdAt,
+    );
+    const storedAttachments = parseAttachmentsJson(messageRow.attachmentJson);
+    if (storedAttachments.length > 0) {
+      messageRow.messageType =
+        resolveMessageTypeFromAttachments(storedAttachments);
+    }
+
     await this.archiveInstagramMessageRow(messageRow, ctx.accessToken, conv.id);
 
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
@@ -334,13 +352,12 @@ export class ConversationsAllocationService {
     );
   }
 
-  /** (2) Reaction — merge into `instagram_json.reactions` (+ optional Graph refresh). */
+  /** (2) Reaction — merge into `instagram_json.reactions` from webhook payload. */
   private async handleWebhookReaction(
     ev: InstagramWebhookMessagingItem,
     ctx: {
       traceId: string;
       companyCtx: WebhookCompanyContext;
-      accessToken: string;
     },
   ): Promise<void> {
     const t = `[webhook trace=${ctx.traceId}]`;
@@ -348,7 +365,6 @@ export class ConversationsAllocationService {
     if (!mid) {
       return;
     }
-
     const row = await this.conversationMessageRepo.findOne({
       where: { externalId: mid },
     });
@@ -356,30 +372,60 @@ export class ConversationsAllocationService {
       this.log.warn(`${t} reaction: message not in DB mid=${mid.slice(0, 64)}`);
       return;
     }
-
-    try {
-      const graphMsg = await this.fetchInstagramMessageById(
-        mid,
-        ctx.accessToken,
-        this.graphMessageFieldsWithReactions(),
-      );
-      row.instagramJson = this.buildInstagramJsonWithWebhookReaction(
-        graphMsg,
-        ev,
-      );
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      this.log.warn(
-        `${t} reaction Graph refresh failed mid=${mid.slice(0, 64)}: ${err}; merging webhook into stored json`,
-      );
-      row.instagramJson = this.buildInstagramJsonWithWebhookReaction(
-        this.parseStoredInstagramJsonBase(row),
-        ev,
-      );
-    }
-
+    row.reactionsJson = this.buildReactionsJsonFromWebhook(row, ev);
     await this.persistAndNotify(row, ctx.companyCtx.ownerId);
     this.log.log(`${t} reaction saved mid=${mid}`);
+  }
+
+  private buildReactionsJsonFromWebhook(
+    row: ConversationMessage,
+    ev: InstagramWebhookMessagingItem,
+  ): string | null {
+    const reactionEv = ev.reaction;
+    if (!reactionEv) {
+      return row.reactionsJson;
+    }
+
+    const reactionLabel =
+      reactionEv.emoji?.trim() || reactionEv.reaction?.trim() || "";
+    const senderId = ev.sender?.id?.trim();
+    const from = this.reactionActorFromForRow(row, senderId);
+    const at = new Date(ev.timestamp ?? Date.now()).toISOString();
+    const action = (reactionEv.action ?? "react").trim().toLowerCase();
+
+    if (reactionLabel && senderId && from) {
+      let reactions = parseReactionsJson(row.reactionsJson);
+      if (action === "unreact") {
+        reactions = reactions.filter(
+          (item) => !(item.from === from && item.reaction === reactionLabel),
+        );
+      } else {
+        reactions = [
+          ...reactions.filter((item) => item.from !== from),
+          { reaction: reactionLabel, at, from },
+        ];
+      }
+      return serializeReactionsJson(reactions);
+    }
+
+    return JSON.stringify(reactionEv);
+  }
+
+  private reactionActorFromForRow(
+    row: ConversationMessage,
+    actorId: string | undefined,
+  ): ConversationMessageReactionFrom | null {
+    const id = actorId?.trim();
+    if (!id) {
+      return null;
+    }
+    if (id === row.senderId?.trim()) {
+      return "sender";
+    }
+    if (id === row.receiverId?.trim()) {
+      return "receiver";
+    }
+    return null;
   }
 
   /** (3) Read receipt — bump conversation.read_at and message read_at when present. */
@@ -423,7 +469,6 @@ export class ConversationsAllocationService {
     let { row: conv, saveConversation } =
       await this.ensureInstagramConversationRowForWebhook({
         traceId: ctx.traceId,
-        msg,
         mid,
         customerUserId,
         businessInstagramId: ctx.businessInstagramId,
@@ -431,6 +476,7 @@ export class ConversationsAllocationService {
         workspaceId: ctx.companyCtx.workspaceId,
         accessToken: ctx.accessToken,
         pageId: ctx.pageId,
+        createdTime: msg.created_time,
       });
 
     if (saveConversation) {
@@ -493,12 +539,6 @@ export class ConversationsAllocationService {
       return;
     }
 
-    const msg = await this.fetchInstagramMessageById(
-      mid,
-      ctx.accessToken,
-      this.graphMessageFieldsWithReactions(),
-    );
-
     const row = await this.conversationMessageRepo.findOne({
       where: { externalId: mid },
     });
@@ -507,23 +547,28 @@ export class ConversationsAllocationService {
       return;
     }
 
-    const ext = msg.id?.trim() ?? mid;
-    const text = msg.message ?? "";
-    const { reply_to, id, ...messageWithoutId } = msg;
+    const webhookMsg = webhookMessagingToInstagramMessageDto(ev, {
+      businessInstagramId: ctx.companyCtx.instagramAccountId,
+      pageId: ctx.companyCtx.pageId,
+    });
+    const { reply_to, id, created_time, ...messageWithoutId } = webhookMsg;
     void reply_to;
     void id;
+    void created_time;
+
+    const storedBase = this.parseStoredInstagramJsonBase(row);
+    const text = ev.message?.text ?? webhookMsg.message ?? row.message ?? "";
+
     row.message = text;
     row.instagramJson = JSON.stringify(
       mergeMessageJsonPreservingReactions(row.instagramJson, {
+        ...storedBase,
         ...messageWithoutId,
+        message: text,
         webhook_messaging: this.sanitizeWebhookMessagingForStorage(ev),
       }),
     );
     row.editedAt = editedAt;
-    const createdAt = new Date(msg.created_time);
-    if (!Number.isNaN(createdAt.getTime())) {
-      row.createdAt = createdAt;
-    }
 
     const conv = await this.conversationRepo.findOne({
       where: {
@@ -536,7 +581,7 @@ export class ConversationsAllocationService {
     }
 
     await this.persistAndNotify(row, ctx.companyCtx.ownerId);
-    this.log.log(`${t} edit saved mid=${ext}`);
+    this.log.log(`${t} edit saved mid=${mid}`);
   }
 
   private buildMessageRowFromGraph(
@@ -610,11 +655,6 @@ export class ConversationsAllocationService {
       pageId?: string | null;
     },
   ): ConversationMessage {
-    const ext = msg.id?.trim();
-    if (!ext) {
-      throw new Error("Message id missing from Graph");
-    }
-
     const fresh = this.buildMessageRowFromGraph(msg, conversation, ev, {
       inheritReadAtFromConversation: convReadAt,
       businessInstagramId: businessCtx?.businessInstagramId,
@@ -813,14 +853,14 @@ export class ConversationsAllocationService {
   }
 
   private instUpdatedAtFromWebhookMessage(
-    msg: InstagramMessageDto,
+    createdTime: string,
     igConv?: InstagramConversationDto,
   ): Date {
     if (igConv?.updated_time) {
       const d = new Date(igConv.updated_time);
       if (!Number.isNaN(d.getTime())) return d;
     }
-    const d = new Date(msg.created_time);
+    const d = new Date(createdTime);
     if (!Number.isNaN(d.getTime())) return d;
     return new Date();
   }
@@ -831,7 +871,6 @@ export class ConversationsAllocationService {
    */
   private async ensureInstagramConversationRowForWebhook(params: {
     traceId: string;
-    msg: InstagramMessageDto;
     mid: string;
     customerUserId: string;
     businessInstagramId: string;
@@ -839,6 +878,7 @@ export class ConversationsAllocationService {
     workspaceId: number;
     accessToken: string;
     pageId: string;
+    createdTime: string;
   }): Promise<{
     row: Conversation;
     participantExtras: InstagramConversationParticipantDto[] | undefined;
@@ -846,11 +886,10 @@ export class ConversationsAllocationService {
   }> {
     const t = `[webhook trace=${params.traceId}]`;
     const {
-      msg,
       mid,
       customerUserId,
       businessInstagramId,
-      ownerId,
+      createdTime,
       accessToken,
     } = params;
 
@@ -918,18 +957,8 @@ export class ConversationsAllocationService {
     }
 
     const igConv = convList.find((c) => c.id?.trim() === graphConversationId);
-    const updatedTime = this.instUpdatedAtFromWebhookMessage(msg, igConv);
-    const participantId = igConv
-      ? this.pickCustomerParticipantId(
-          igConv.participants?.data ?? [],
-          businessInstagramId,
-          params.pageId,
-        )
-      : (this.pickCustomerUserIdFromMessage(
-          msg,
-          businessInstagramId,
-          params.pageId,
-        ) ?? "unknown");
+    const updatedTime = this.instUpdatedAtFromWebhookMessage(createdTime, igConv);
+    const participantId = customerUserId;
 
     row = await this.conversationRepo.findOne({
       where: {
@@ -1199,6 +1228,9 @@ export class ConversationsAllocationService {
             message: {
               text: ev.message.text,
               is_echo: ev.message.is_echo,
+            ...(ev.message.attachments != null
+              ? { attachments: ev.message.attachments }
+              : {}),
               ...(ev.message.reply_to != null
                 ? {
                     reply_to: {

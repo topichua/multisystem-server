@@ -16,6 +16,25 @@ export interface InstagramWebhookReaction {
   emoji?: string;
 }
 
+/** Payload for webhook `message.attachments[]` (shape varies by `type`). */
+export interface InstagramWebhookMessageAttachmentPayload {
+  url?: string;
+  title?: string;
+  /** Present when `type` is `ig_post`. */
+  ig_post_media_id?: string;
+  /** Present when `type` is `ig_reel`. */
+  reel_video_id?: string;
+  /** Image / video / audio / file CDN URL variants. */
+  preview_url?: string;
+  sticker_id?: number;
+}
+
+export interface InstagramWebhookMessageAttachment {
+  /** e.g. `image`, `video`, `audio`, `file`, `share`, `ig_post`, `ig_reel`, `story_mention`. */
+  type?: string;
+  payload?: InstagramWebhookMessageAttachmentPayload;
+}
+
 export interface InstagramWebhookMessagingItem {
   timestamp?: number;
   read?: {
@@ -35,6 +54,7 @@ export interface InstagramWebhookMessagingItem {
       mid?: string;
       is_self_reply?: boolean;
     };
+    attachments?: InstagramWebhookMessageAttachment[];
   };
   reaction?: InstagramWebhookReaction;
 }
