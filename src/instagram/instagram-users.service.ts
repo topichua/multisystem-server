@@ -87,11 +87,13 @@ export class InstagramUsersService {
     workspaceId: number,
     instagramUserId: string,
     pageAccessToken: string,
+    oauthProvider?: string | null,
   ): Promise<void> {
     await this.upsertScopedUserFromGraph(
       workspaceId,
       instagramUserId,
       pageAccessToken,
+      oauthProvider,
     );
   }
 

@@ -344,20 +344,25 @@ export class ConversationsAllocationService {
 
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
 
+    await this.syncInstagramUsersForWebhookAllocation({
+      workspaceId: conv.workspaceId,
+      conversation: conv,
+      ev,
+      msg,
+      participantExtras,
+      accessToken: ctx.accessToken,
+      oauthProvider: ctx.companyCtx.oauthProvider,
+      businessInstagramId: ctx.businessInstagramId,
+      pageId: ctx.pageId,
+      traceId: ctx.traceId,
+    });
+
     await this.suggestProductsFromSharedPost(conv, messageRow, ctx.traceId);
 
     if (isInboundCustomer) {
       await this.conversationWorkflow.onInboundCustomerMessage(conv);
     }
 
-    await this.syncInstagramUsersForWebhookAllocation(
-      conv.workspaceId,
-      msg,
-      participantExtras,
-      ctx.accessToken,
-      ctx.traceId,
-      null,
-    );
     this.log.log(
       `${t} new_message saved mid=${mid} conversation_id=${conv.id}`,
     );
@@ -1413,41 +1418,56 @@ export class ConversationsAllocationService {
     return customerId ?? ids[0];
   }
 
-  /** Upserts `instagram_users` from message actors + optional conversation participants (Graph profile fields). */
-  private async syncInstagramUsersForWebhookAllocation(
-    workspaceId: number,
-    msg: InstagramMessageDto,
-    participantExtras: InstagramConversationParticipantDto[] | undefined,
-    accessToken: string,
-    traceId: string,
-    /** e.g. user who sent a reaction (from webhook `sender`) */
-    webhookSenderHintId?: string | null,
-  ): Promise<void> {
-    const t = `[webhook trace=${traceId}]`;
+  /** Upserts `instagram_users` from webhook sender/recipient (Graph profile fields). */
+  private async syncInstagramUsersForWebhookAllocation(params: {
+    workspaceId: number;
+    conversation: Conversation;
+    ev: InstagramWebhookMessagingItem;
+    msg: InstagramMessageDto;
+    participantExtras: InstagramConversationParticipantDto[] | undefined;
+    accessToken: string;
+    oauthProvider: string;
+    businessInstagramId: string;
+    pageId: string;
+    traceId: string;
+  }): Promise<void> {
+    const t = `[webhook trace=${params.traceId}]`;
     const ids = new Set<string>();
     const take = (id: string | undefined) => {
       const x = id?.trim();
       if (x && this.isLikelyInstagramPsid(x)) ids.add(x);
     };
-    take(msg.from?.id);
-    for (const u of msg.to?.data ?? []) take(u.id);
-    for (const p of participantExtras ?? []) take(p.id);
-    take(webhookSenderHintId ?? undefined);
-    const graphReactions = (msg as { reactions?: InstagramMessageReactionsDto })
-      .reactions;
-    for (const item of graphReactions?.data ?? []) {
-      const users = (item as { users?: Array<{ id?: string }> }).users;
-      for (const u of users ?? []) take(u.id);
+    take(params.ev.sender?.id);
+    take(params.ev.recipient?.id);
+    take(params.conversation.participantId);
+    take(params.msg.from?.id);
+    for (const u of params.msg.to?.data ?? []) take(u.id);
+    for (const p of params.participantExtras ?? []) take(p.id);
+
+    if (ids.size === 0) {
+      this.log.warn(`${t} instagram_users sync skipped (no participant ids)`);
+      return;
     }
+
+    this.log.log(
+      `${t} instagram_users sync ids=${[...ids].join(",")}`,
+    );
+
+    const context = {
+      pageAccessToken: params.accessToken,
+      businessAccountId: params.businessInstagramId,
+      pageId: params.pageId,
+      oauthProvider: params.oauthProvider,
+    };
 
     for (const instagramUserId of ids) {
       try {
-        await this.instagramUsers.upsertScopedUserFromPageToken(
-          workspaceId,
+        await this.instagramUsers.upsertFromGraph(
+          params.workspaceId,
           instagramUserId,
-          accessToken,
+          context,
         );
-        this.log.debug(`${t} instagram_users upserted id=${instagramUserId}`);
+        this.log.log(`${t} instagram_users upserted id=${instagramUserId}`);
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         this.log.warn(
