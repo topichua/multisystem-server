@@ -557,7 +557,8 @@ export class ConversationsController {
   @ApiOperation({
     summary: "Get Instagram messages live from Meta Graph API",
     description:
-      "Calls Meta Graph `GET /{conversation-id}/messages` with " +
+      "Calls Instagram Login `GET /{conversation-id}?fields=messages{…}` " +
+      "(or Facebook `GET /{conversation-id}/messages`). " +
       "`fields=id,created_time,from,to,message,attachments,shares`. " +
       "Uses the stored Instagram Graph conversation id (`conversations.external_id`). " +
       "Pass Graph cursors `after` / `before` from `paging.cursors` to paginate.",

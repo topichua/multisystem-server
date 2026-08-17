@@ -15,6 +15,7 @@ import {
   FindOptionsWhere,
   In,
   IsNull,
+  Not,
   Repository,
   SelectQueryBuilder,
   WhereExpressionBuilder,
@@ -99,7 +100,10 @@ import type { UpdateConversationRequestDto } from "./dto/http/update-conversatio
 import type { ConversationProductSuggestionsResponseDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import type { ProductSuggestionItemDto } from "./dto/http/conversation-product-suggestions-response.dto";
 import type { CreateProductSuggestionRequestDto } from "./dto/http/create-product-suggestion-request.dto";
-import type { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
+import type {
+  InstagramGraphMessageDto,
+  InstagramGraphMessagesResponseDto,
+} from "./dto/http/instagram-graph-messages-response.dto";
 import type { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
 import { ConversationGroupingBy } from "./dto/http/conversation-grouping-by.enum";
 import type {
@@ -664,6 +668,7 @@ export class ConversationsService {
     const conversations = await this.fetchAllInstagramConversations(
       pageId,
       token,
+      integration.oauthProvider,
     );
     await this.enrichParticipantProfilePics(
       { data: conversations, paging: undefined },
@@ -783,6 +788,7 @@ export class ConversationsService {
     const allConversations = await this.fetchAllInstagramConversations(
       pageId,
       token,
+      integration.oauthProvider,
     );
     const inWindow = allConversations.filter((ig) => {
       const t = new Date(ig.updated_time).getTime();
@@ -940,9 +946,10 @@ export class ConversationsService {
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
     const origin = await this.originForInstagramToken(accessToken);
+    const ownerPath = this.instagramConversationsOwnerPath(origin, pageId);
     const fields = encodeURIComponent("id,participants,updated_time");
     let nextUrl: string | null =
-      `${origin}/v25.0/${encodeURIComponent(pageId)}/conversations` +
+      `${origin}/v25.0/${ownerPath}/conversations` +
       `?platform=instagram&user_id=${encodeURIComponent(userId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {
@@ -3665,12 +3672,15 @@ export class ConversationsService {
     accessToken: string,
     sinceUnixSeconds?: number,
     origin = "https://graph.facebook.com",
+    extra?: {
+      fields?: string;
+      limit?: string;
+      after?: string;
+      before?: string;
+    },
   ): URL {
-    const url = new URL(
-      `${origin}/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
-    );
-    url.searchParams.set(
-      "fields",
+    const fields =
+      extra?.fields ??
       [
         "id",
         "created_time",
@@ -3680,13 +3690,72 @@ export class ConversationsService {
         "to{data{id,name,email,username}}",
         `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
         "reactions{data{reaction,emoji,users{id,username}}}",
-      ].join(","),
+      ].join(",");
+    const instagramLogin = origin.includes("graph.instagram.com");
+    const url = new URL(
+      instagramLogin
+        ? `${origin}/v25.0/${encodeURIComponent(graphConversationId)}`
+        : `${origin}/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
     );
+    if (instagramLogin) {
+      const limit = extra?.limit ?? "25";
+      url.searchParams.set("fields", `messages.limit(${limit}){${fields}}`);
+    } else {
+      url.searchParams.set("fields", fields);
+      if (extra?.limit) {
+        url.searchParams.set("limit", extra.limit);
+      }
+    }
     url.searchParams.set("access_token", accessToken);
     if (sinceUnixSeconds != null && Number.isFinite(sinceUnixSeconds)) {
       url.searchParams.set("since", String(Math.floor(sinceUnixSeconds)));
     }
+    if (extra?.after) {
+      url.searchParams.set("after", extra.after);
+    }
+    if (extra?.before) {
+      url.searchParams.set("before", extra.before);
+    }
     return url;
+  }
+
+  private unwrapConversationMessagesPage<
+    T extends { data?: unknown[]; paging?: unknown },
+  >(
+    raw: T & { messages?: T },
+  ): T {
+    if (raw.messages?.data) {
+      return raw.messages;
+    }
+    return raw;
+  }
+
+  private async resolveInstagramIntegrationForConversation(
+    ownerId: number,
+    conv: Conversation,
+  ): Promise<InstagramIntegration> {
+    const accountId = conv.externalSourceId?.trim();
+    if (accountId) {
+      const matched = await this.instagramIntegrationRepo.findOne({
+        where: [
+          {
+            workspaceId: conv.workspaceId,
+            instagramAccountId: accountId,
+            accessToken: Not(IsNull()),
+          },
+          {
+            workspaceId: conv.workspaceId,
+            pageId: accountId,
+            accessToken: Not(IsNull()),
+          },
+        ],
+        order: { id: "DESC" },
+      });
+      if (matched) {
+        return matched;
+      }
+    }
+    return this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
   }
 
   /**
@@ -3713,10 +3782,15 @@ export class ConversationsService {
     let pages = 0;
 
     while (nextUrl && pages < maxPages) {
+      const raw: InstagramMessagesResponseDto & {
+        messages?: InstagramMessagesResponseDto;
+      } = await this.instagramGraphFetch<
+        InstagramMessagesResponseDto & {
+          messages?: InstagramMessagesResponseDto;
+        }
+      >(new URL(nextUrl));
       const page: InstagramMessagesResponseDto =
-        await this.instagramGraphFetch<InstagramMessagesResponseDto>(
-          new URL(nextUrl),
-        );
+        this.unwrapConversationMessagesPage(raw);
       pages++;
       const batch = page.data ?? [];
       for (const m of batch) {
@@ -3929,32 +4003,61 @@ export class ConversationsService {
       );
     }
 
-    const integration =
-      await this.workspaceContext.requireInstagramIntegrationForOwner(ownerId);
+    const integration = await this.resolveInstagramIntegrationForConversation(
+      ownerId,
+      conv,
+    );
     const accessToken = integration.accessToken?.trim();
     if (!accessToken) {
       throw new ServiceUnavailableException(
-        "No Page Graph token: complete Facebook Login so integration.access_token is set.",
+        "No Instagram Graph token: reconnect Instagram so integration.access_token is set.",
       );
     }
 
-    const url = new URL(
-      `${instagramGraphOrigin(integration.oauthProvider)}/v25.0/${encodeURIComponent(graphConversationId)}/messages`,
+    const origin = instagramGraphOrigin(integration.oauthProvider);
+    const fields = INSTAGRAM_GRAPH_CONVERSATION_MESSAGES_FIELDS;
+    const limit = String(query.limit ?? 25);
+    const url = this.buildConversationMessagesGraphUrl(
+      graphConversationId,
+      accessToken,
+      undefined,
+      origin,
+      { fields, limit, after: query.after?.trim(), before: query.before?.trim() },
     );
-    url.searchParams.set(
-      "fields",
-      INSTAGRAM_GRAPH_CONVERSATION_MESSAGES_FIELDS,
+
+    const raw: InstagramGraphMessagesResponseDto & {
+      messages?: InstagramGraphMessagesResponseDto;
+    } = await this.instagramGraphFetch<
+      InstagramGraphMessagesResponseDto & {
+        messages?: InstagramGraphMessagesResponseDto;
+      }
+    >(url);
+    const page: InstagramGraphMessagesResponseDto =
+      this.unwrapConversationMessagesPage(raw);
+
+    const needsHydrate = (page.data ?? []).some(
+      (m) => m.id && m.from == null && m.message == null,
     );
-    url.searchParams.set("limit", String(query.limit ?? 25));
-    url.searchParams.set("access_token", accessToken);
-    if (query.after?.trim()) {
-      url.searchParams.set("after", query.after.trim());
-    }
-    if (query.before?.trim()) {
-      url.searchParams.set("before", query.before.trim());
+    if (!needsHydrate || (page.data ?? []).length === 0) {
+      return page;
     }
 
-    return this.instagramGraphFetch<InstagramGraphMessagesResponseDto>(url);
+    const hydrated: InstagramGraphMessageDto[] = [];
+    for (const item of page.data.slice(0, 20)) {
+      const id = item.id?.trim();
+      if (!id) continue;
+      try {
+        const full = await this.fetchInstagramMessageById(
+          id,
+          accessToken,
+          fields,
+        );
+        hydrated.push(full as InstagramGraphMessageDto);
+      } catch {
+        hydrated.push(item);
+      }
+    }
+    return { data: hydrated, paging: page.paging };
   }
 
   private normalizeRecipientIdInput(raw: string | undefined | null): string {
@@ -4224,16 +4327,34 @@ export class ConversationsService {
     return customerId ?? ids[0];
   }
 
+  /**
+   * Instagram Login Conversations API is `/me/conversations` on graph.instagram.com.
+   * Facebook Login uses `/{page-id}/conversations` on graph.facebook.com.
+   */
+  private instagramConversationsOwnerPath(
+    origin: string,
+    pageId: string,
+  ): string {
+    return origin.includes("graph.instagram.com")
+      ? "me"
+      : encodeURIComponent(pageId);
+  }
+
   private async fetchAllInstagramConversations(
     pageId: string,
     accessToken: string,
+    oauthProvider?: string | null,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
-    const origin = await this.originForInstagramToken(accessToken);
-    const fields =
-      "id,updated_time,participants{id,name,username,profile_pic},unread_count,message_count";
+    const origin = oauthProvider
+      ? instagramGraphOrigin(oauthProvider)
+      : await this.originForInstagramToken(accessToken);
+    const ownerPath = this.instagramConversationsOwnerPath(origin, pageId);
+    const fields = origin.includes("graph.instagram.com")
+      ? "id,updated_time,participants,unread_count,message_count"
+      : "id,updated_time,participants{id,name,username,profile_pic},unread_count,message_count";
     let nextUrl: string | null =
-      `${origin}/v25.0/${encodeURIComponent(pageId)}/conversations` +
+      `${origin}/v25.0/${ownerPath}/conversations` +
       `?platform=instagram&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {

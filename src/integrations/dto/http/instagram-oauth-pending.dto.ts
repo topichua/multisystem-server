@@ -21,7 +21,8 @@ export class InstagramOAuthPendingPollResponseDto {
     enum: INSTAGRAM_OAUTH_PENDING_STATUSES,
     description:
       "`awaiting_facebook` / `awaiting_instagram` — keep polling. " +
-      "`select_page` — pages ready, show picker. " +
+      "`select_page` — Facebook Login: pages ready, show picker. " +
+      "`connected` — Instagram Login finished; integration is saved. " +
       "`failed` — show error and restart from POST /integrations.",
   })
   status!: (typeof INSTAGRAM_OAUTH_PENDING_STATUSES)[number];

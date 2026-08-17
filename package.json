@@ -13,6 +13,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
+    "https:cert": "mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 -subj /CN=localhost -addext subjectAltName=DNS:localhost,IP:127.0.0.1 -keyout certs/localhost-key.pem -out certs/localhost-cert.pem",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",

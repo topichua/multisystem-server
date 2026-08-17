@@ -1,7 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { NextFunction, Request, Response } from "express";
+import type { HttpsOptions } from "@nestjs/common/interfaces/external/https-options.interface";
 import { AppModule } from "./app.module";
 import { LocationLogger } from "./location-logger";
 import { ParseProductFieldFiltersPipe } from "./products/pipes/parse-product-field-filters.pipe";
@@ -28,12 +30,39 @@ function assertStartupEnv(): void {
   }
 }
 
+function httpsEnabled(): boolean {
+  const flag = process.env.HTTPS?.trim().toLowerCase();
+  return flag === "true" || flag === "1";
+}
+
+function loadHttpsOptions(): HttpsOptions | undefined {
+  if (!httpsEnabled()) {
+    return undefined;
+  }
+  const keyPath =
+    process.env.HTTPS_KEY_PATH?.trim() || "certs/localhost-key.pem";
+  const certPath =
+    process.env.HTTPS_CERT_PATH?.trim() || "certs/localhost-cert.pem";
+  if (!existsSync(keyPath) || !existsSync(certPath)) {
+    throw new Error(
+      `HTTPS=true but cert files are missing. Run: npm run https:cert ` +
+        `(expected ${keyPath} and ${certPath})`,
+    );
+  }
+  return {
+    key: readFileSync(keyPath),
+    cert: readFileSync(certPath),
+  };
+}
+
 async function bootstrap() {
   assertStartupEnv();
 
+  const httpsOptions = loadHttpsOptions();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: new LocationLogger(),
     rawBody: true,
+    httpsOptions,
   });
   app.enableShutdownHooks();
   app.enableCors({ origin: true, credentials: true });
@@ -61,7 +90,8 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port, "0.0.0.0");
-  console.log(`Server listening on http://0.0.0.0:${port}`);
+  const scheme = httpsOptions ? "https" : "http";
+  console.log(`Server listening on ${scheme}://localhost:${port}`);
 }
 
 bootstrap().catch((err: unknown) => {

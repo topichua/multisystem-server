@@ -14,6 +14,7 @@ export const INSTAGRAM_OAUTH_PENDING_STATUSES = [
   "awaiting_facebook",
   "awaiting_instagram",
   "select_page",
+  "connected",
   "failed",
 ] as const;
 

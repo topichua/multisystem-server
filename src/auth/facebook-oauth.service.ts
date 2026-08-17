@@ -500,13 +500,33 @@ export class FacebookOAuthService {
     };
   }
 
-  /** Revoke Meta app permissions for a stored user token (best effort). */
+  /**
+   * Facebook Login disconnect on Graph:
+   * 1. `DELETE /{page-id}/subscribed_apps` — stop Page webhook delivery
+   * 2. `DELETE /me/permissions` — deauthorize the app for the Facebook user
+   * No-op for Instagram Login rows (`oauth_provider=instagram`).
+   */
   async revokeIntegrationPermissionsBestEffort(
     integration: InstagramIntegration,
   ): Promise<void> {
+    if (integration.oauthProvider === "instagram") {
+      return;
+    }
+    const pageToken = integration.accessToken?.trim();
+    const pageId = integration.pageId?.trim();
+    if (pageToken && pageId) {
+      await this.deleteFacebookGraphBestEffort(
+        `${encodeURIComponent(pageId)}/subscribed_apps`,
+        pageToken,
+      );
+    }
     const userToken = integration.userAccessToken?.trim();
     if (userToken) {
-      await this.revokeMetaPermissionsBestEffort(userToken);
+      await this.deleteFacebookGraphBestEffort("me/permissions", userToken);
+    } else {
+      this.log.warn(
+        `Facebook Login permission revoke skipped: no user token (integrationId=${integration.id})`,
+      );
     }
   }
 
@@ -798,14 +818,12 @@ export class FacebookOAuthService {
     };
   }
 
-  /** Removes this app's permissions for the user token (Meta `DELETE /me/permissions`). */
-  private async revokeMetaPermissionsBestEffort(
-    userAccessToken: string,
+  private async deleteFacebookGraphBestEffort(
+    path: string,
+    accessToken: string,
   ): Promise<void> {
-    const url = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/me/permissions`,
-    );
-    url.searchParams.set("access_token", userAccessToken);
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`);
+    url.searchParams.set("access_token", accessToken);
     try {
       const response = await fetch(url.toString(), { method: "DELETE" });
       const text = await response.text();
@@ -818,14 +836,16 @@ export class FacebookOAuthService {
           /* keep raw snippet */
         }
         this.log.warn(
-          `Meta permission revoke HTTP ${response.status}: ${message}`,
+          `Facebook Login disconnect HTTP ${response.status} DELETE ${path}: ${message}`,
         );
         return;
       }
-      this.log.log("Meta permission revoke succeeded");
+      this.log.log(`Facebook Login disconnect succeeded DELETE ${path}`);
     } catch (err) {
       this.log.warn(
-        `Meta permission revoke failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Facebook Login disconnect failed DELETE ${path}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
       );
     }
   }

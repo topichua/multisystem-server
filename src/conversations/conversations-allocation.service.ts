@@ -208,7 +208,6 @@ export class ConversationsAllocationService {
       "created_time",
       "from",
       "to",
-      "reply_to",
       "message",
       "shares{link,id,media_id}",
       `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
@@ -678,7 +677,7 @@ export class ConversationsAllocationService {
     }
 
     const company = await this.companyRepo.findOne({
-      where: { instagramAccountId: key },
+      where: [{ instagramAccountId: key }, { pageId: key }],
       order: { id: "DESC" },
     });
     if (!company) {
@@ -738,9 +737,11 @@ export class ConversationsAllocationService {
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
     const origin = await this.originForInstagramToken(accessToken);
+    const ownerPath =
+      origin.includes("graph.instagram.com") ? "me" : encodeURIComponent(businessInstagramId);
     const fields = encodeURIComponent("id,participants,updated_time");
     let nextUrl: string | null =
-      `${origin}/v25.0/${encodeURIComponent(businessInstagramId)}/conversations` +
+      `${origin}/v25.0/${ownerPath}/conversations` +
       `?platform=instagram&user_id=${encodeURIComponent(customerInstagramUserId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {
@@ -874,7 +875,7 @@ export class ConversationsAllocationService {
     );
 
     const convList = await this.fetchInstagramConversationsForUser(
-      params.pageId,
+      businessInstagramId,
       customerUserId,
       accessToken,
     );

@@ -366,8 +366,8 @@ export class AuthController {
   @ApiOperation({
     summary: "Start Instagram Login (no Facebook Page)",
     description:
-      "Redirects to Instagram OAuth. Same Meta app as Facebook Login. " +
-      "Requires INSTAGRAM_REDIRECT_URI. Prefer POST /integrations with auth_flow=instagram_login.",
+      "Business Login for Instagram (Instagram App ID + INSTAGRAM_REDIRECT_URI). " +
+      "Prefer POST /integrations with auth_flow=instagram_login.",
   })
   @ApiQuery({
     name: "jwt",
@@ -416,18 +416,20 @@ export class AuthController {
   @ApiOperation({
     summary: "Instagram Login redirect URI (Meta calls this with ?code=&state=)",
     description:
-      "Completes Instagram Login. Client should poll GET /integrations/instagram/oauth/pages?sessionId=… " +
-      "until status is `select_page` (one Instagram account), then POST /integrations/instagram/oauth/confirm.",
+      "Completes Instagram Login: exchanges `code` for a token and upserts `instagram_integration` (`oauth_provider=instagram`). " +
+      "Poll GET /integrations/instagram/oauth/pages?sessionId=… until `connected` (no Page picker / confirm).",
   })
   @ApiQuery({ name: "code", required: false })
   @ApiQuery({ name: "state", required: false })
   @ApiQuery({ name: "error", required: false })
+  @ApiQuery({ name: "error_reason", required: false })
   @ApiQuery({ name: "error_description", required: false })
   async instagramOAuthCallback(
     @Req() req: Request,
     @Query("code") code: string | undefined,
     @Query("state") state: string | undefined,
     @Query("error") error: string | undefined,
+    @Query("error_reason") errorReason: string | undefined,
     @Query("error_description") errorDescription: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
@@ -438,6 +440,7 @@ export class AuthController {
         error,
         errorDescription,
         this.readCookie(req.headers.cookie, "ig_oauth_sid"),
+        errorReason,
       );
       const title =
         result.status === "failed"

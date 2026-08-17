@@ -95,8 +95,8 @@ export class IntegrationsController {
       "For `instagram`, returns OAuth `url` + correlation `sessionId`. " +
       "Default `auth_flow=facebook` (Facebook Login + Page picker). " +
       "`auth_flow=instagram_login` uses Instagram Login (no Facebook Page). " +
-      "Open `url` (popup/new tab). Poll GET /integrations/instagram/oauth/pages?sessionId=… " +
-      "every few seconds until `status` is `select_page`, then POST /integrations/instagram/oauth/confirm. " +
+      "Open `url`. Poll GET /integrations/instagram/oauth/pages?sessionId=… until `connected`. " +
+      "Default `auth_flow=facebook` still uses Page picker then POST /integrations/instagram/oauth/confirm. " +
       "For `tiktok`, returns TikTok Login Kit `url` + `sessionId`. Poll " +
       "GET /integrations/tiktok/oauth/status?sessionId=… until `status` is `connected`.",
   })
@@ -119,7 +119,10 @@ export class IntegrationsController {
     summary: "Poll Instagram OAuth pending session (pages ready?)",
     description:
       "Client should poll with the `sessionId` from POST /integrations. " +
-      "`awaiting_facebook` / `awaiting_instagram` — keep polling. `select_page` — show `pages`. `failed` — restart connect.",
+      "`awaiting_facebook` / `awaiting_instagram` — keep polling. " +
+      "`select_page` — Facebook Login: show `pages` then confirm. " +
+      "`connected` — Instagram Login finished (row in `instagram_integration`). " +
+      "`failed` — restart connect.",
   })
   @ApiQuery({ name: "sessionId", required: true, format: "uuid" })
   @ApiOkResponse({ type: InstagramOAuthPendingPollResponseDto })
@@ -222,8 +225,10 @@ export class IntegrationsController {
   @ApiOperation({
     summary: "Disconnect an integration",
     description:
-      "**Instagram:** revokes Meta app permissions (best effort) and deletes the `instagram_integration` row. " +
-      "Reconnect with `POST /integrations` → Facebook Login → select Page → confirm. " +
+      "**Instagram:** unsubscribes webhooks (`DELETE …/subscribed_apps`) then deauthorizes the app " +
+      "(`DELETE …/me/permissions`) on Facebook Login (`graph.facebook.com`) or Instagram Login " +
+      "(`graph.instagram.com`), then deletes `instagram_integration`. " +
+      "Reconnect with `POST /integrations` (`auth_flow=facebook` or `instagram_login`). " +
       "**TikTok:** revokes TikTok tokens (best effort) and deletes the `tiktok_integrations` row. " +
       "**Telegram:** detaches the live session and removes the `telegram_integrations` row.",
   })

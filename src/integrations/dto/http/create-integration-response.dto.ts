@@ -27,9 +27,9 @@ export class CreateIntegrationResponseDto {
   @ApiPropertyOptional({
     format: "uuid",
     description:
-      "Correlation id for OAuth. Instagram: poll GET /integrations/instagram/oauth/pages?sessionId=… " +
-      "until `select_page`, then confirm. TikTok: poll GET /integrations/tiktok/oauth/status?sessionId=… " +
-      "until `connected`.",
+      "Correlation id for OAuth. Facebook Login: poll until `select_page`, then confirm. " +
+      "Instagram Login: poll until `connected` (no confirm). " +
+      "TikTok: poll GET /integrations/tiktok/oauth/status?sessionId=… until `connected`.",
   })
   sessionId?: string;
 

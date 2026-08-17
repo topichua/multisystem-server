@@ -11,8 +11,9 @@ import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { Workspace } from "../database/entities";
+import { InstagramIntegration, Workspace } from "../database/entities";
 import { InstagramOAuthPendingSession } from "../database/entities/instagram-oauth-pending-session.entity";
+import { InstagramSynchronizationsService } from "../instagram/instagram-synchronizations.service";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface";
 import {
   INSTAGRAM_GRAPH_VERSION,
@@ -20,24 +21,30 @@ import {
 } from "../instagram/instagram-graph.util";
 
 const PENDING_SESSION_TTL_MS = 30 * 60 * 1000;
+const TOKEN_STATUS_ACTIVE = "active";
 
+/** Business Login for Instagram — current `scope` names (old `business_*` values deprecated). */
 const DEFAULT_INSTAGRAM_LOGIN_SCOPES = [
   "instagram_business_basic",
   "instagram_business_manage_messages",
   "instagram_business_manage_comments",
-  "instagram_business_content_publish",
-  "instagram_business_manage_insights",
 ];
 
 type MetaErrorBody = {
   error?: { message?: string; type?: string; code?: number };
+  error_type?: string;
   error_message?: string;
+  code?: number;
 };
 
-type ShortLivedTokenResponse = {
+type ShortLivedTokenFields = {
   access_token?: string;
   user_id?: string | number;
-  permissions?: string[];
+  permissions?: string | string[];
+};
+
+type ShortLivedTokenResponse = ShortLivedTokenFields & {
+  data?: ShortLivedTokenFields[];
 };
 
 type LongLivedTokenResponse = {
@@ -61,8 +68,11 @@ export class InstagramOAuthService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwtService: JwtService,
+    private readonly instagramSynchronizations: InstagramSynchronizationsService,
     @InjectRepository(Workspace)
     private readonly workspaceRepo: Repository<Workspace>,
+    @InjectRepository(InstagramIntegration)
+    private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
     @InjectRepository(InstagramOAuthPendingSession)
     private readonly pendingSessionRepo: Repository<InstagramOAuthPendingSession>,
   ) {}
@@ -175,7 +185,8 @@ export class InstagramOAuthService {
     oauthError: string | undefined,
     oauthErrorDescription: string | undefined,
     cookieSessionId?: string,
-  ): Promise<{ ok: true; sessionId: string; status: "select_page" | "failed" }> {
+    oauthErrorReason?: string,
+  ): Promise<{ ok: true; sessionId: string; status: "connected" | "failed" }> {
     const sessionId =
       this.parseSessionIdFromState(state) ??
       this.parseSessionIdFromState(cookieSessionId);
@@ -183,9 +194,12 @@ export class InstagramOAuthService {
 
     if (oauthError) {
       const message =
-        oauthErrorDescription ?? oauthError ?? "Instagram Login failed";
+        oauthErrorDescription ??
+        oauthErrorReason ??
+        oauthError ??
+        "Instagram Login failed";
       this.log.warn(
-        `Instagram Login error from provider error=${oauthError} description=${oauthErrorDescription ?? ""}`,
+        `Instagram Login error from provider error=${oauthError} reason=${oauthErrorReason ?? ""} description=${oauthErrorDescription ?? ""}`,
       );
       if (sessionId) {
         const session = await this.pendingSessionRepo.findOne({
@@ -258,24 +272,29 @@ export class InstagramOAuthService {
         profile.name?.trim() ||
         (username ? `@${username}` : `Instagram ${igUserId}`);
 
-      session.status = "select_page";
+      const workspace = await this.requireWorkspaceForOwner(
+        session.userId,
+        session.workspaceId,
+      );
+      const integration = await this.saveInstagramLoginIntegration({
+        workspace,
+        igUserId,
+        displayName,
+        longLivedToken: longLived,
+      });
+      await this.instagramSynchronizations.enqueueAfterConnect(integration);
+
+      session.status = "connected";
       session.oauthProvider = INSTAGRAM_OAUTH_PROVIDER.instagram;
-      session.userAccessToken = longLived;
+      session.userAccessToken = null;
       session.errorMessage = null;
-      session.pages = [
-        {
-          pageId: igUserId,
-          pageName: displayName,
-          pageAccessToken: longLived,
-          instagramAccountId: igUserId,
-        },
-      ];
+      session.pages = [];
       await this.pendingSessionRepo.save(session);
 
       this.log.log(
-        `Instagram Login complete sessionId=${session.id} igUserId=${igUserId} username=${username || "-"}`,
+        `Instagram Login complete sessionId=${session.id} integrationId=${integration.id} igUserId=${igUserId} username=${username || "-"}`,
       );
-      return { ok: true, sessionId: session.id, status: "select_page" };
+      return { ok: true, sessionId: session.id, status: "connected" };
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Instagram Login failed";
@@ -323,27 +342,24 @@ export class InstagramOAuthService {
     return raw.replace(/#_$/u, "").split("#")[0]?.trim() || null;
   }
 
+  /**
+   * Business Login embed URL:
+   * https://www.instagram.com/oauth/authorize?client_id&redirect_uri&response_type=code&scope
+   */
   private buildAuthorizeUrl(
     sessionId: string,
     appId: string,
     redirectUri: string,
   ): string {
-    const scope = encodeURIComponent(this.getOAuthScopeQueryValue());
-    return (
-      "https://www.instagram.com/oauth/authorize" +
-      "?force_reauth=true" +
-      `&client_id=${appId}` +
-      `&redirect_uri=${redirectUri}` +
-      "&response_type=code" +
-      `&scope=${scope}` +
-      `&state=${sessionId}`
-    );
-  }
-
-  private buildContinueUrl(sessionId: string): string {
-    const callback = this.requireInstagramRedirectUri();
-    const origin = callback.replace(/\/auth\/instagram\/callback\/?$/i, "");
-    return `${origin}/auth/instagram/continue?sessionId=${sessionId}`;
+    const params = new URLSearchParams();
+    params.set("client_id", appId);
+    params.set("redirect_uri", redirectUri);
+    params.set("response_type", "code");
+    params.set("scope", this.getOAuthScopeQueryValue());
+    params.set("state", sessionId);
+    params.set("force_reauth", "true");
+    params.set("enable_fb_login", "0");
+    return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
   }
 
   private getOAuthScopeQueryValue(): string {
@@ -354,29 +370,33 @@ export class InstagramOAuthService {
     return DEFAULT_INSTAGRAM_LOGIN_SCOPES.join(",");
   }
 
+  /**
+   * Step 2 — POST https://api.instagram.com/oauth/access_token
+   * Same fields as Meta's curl `-F` sample (multipart form, not JSON).
+   */
   private async exchangeCodeForShortLivedToken(
     appId: string,
     appSecret: string,
     redirectUri: string,
     code: string,
   ): Promise<{ accessToken: string; userId: string }> {
-    const body = new URLSearchParams({
-      client_id: appId,
-      client_secret: appSecret,
-      grant_type: "authorization_code",
-      redirect_uri: redirectUri,
-      code,
-    });
+    const body = new FormData();
+    body.append("client_id", appId);
+    body.append("client_secret", appSecret);
+    body.append("grant_type", "authorization_code");
+    body.append("redirect_uri", redirectUri);
+    body.append("code", code);
+
     const response = await fetch("https://api.instagram.com/oauth/access_token", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
     });
     const json = (await this.readJson(
       response,
     )) as ShortLivedTokenResponse & MetaErrorBody;
-    const accessToken = json.access_token?.trim();
-    const userId = json.user_id != null ? String(json.user_id) : "";
+    const payload = json.data?.[0] ?? json;
+    const accessToken = payload.access_token?.trim();
+    const userId = payload.user_id != null ? String(payload.user_id) : "";
     if (!accessToken) {
       throw new BadGatewayException(
         json.error?.message ||
@@ -385,6 +405,34 @@ export class InstagramOAuthService {
       );
     }
     return { accessToken, userId };
+  }
+
+  /** Refresh a long-lived Instagram Login token for another 60 days. */
+  async refreshLongLivedToken(longLivedToken: string): Promise<{
+    accessToken: string;
+    expiresIn: number | null;
+  }> {
+    const u = new URL("https://graph.instagram.com/refresh_access_token");
+    u.searchParams.set("grant_type", "ig_refresh_token");
+    u.searchParams.set("access_token", longLivedToken);
+    const json = (await this.graphGet(
+      u,
+    )) as LongLivedTokenResponse & MetaErrorBody;
+    const token = json.access_token?.trim();
+    if (!token) {
+      throw new BadGatewayException(
+        json.error?.message ||
+        json.error_message ||
+        "Instagram did not return a refreshed access token",
+      );
+    }
+    return {
+      accessToken: token,
+      expiresIn:
+        typeof json.expires_in === "number" && Number.isFinite(json.expires_in)
+          ? json.expires_in
+          : null,
+    };
   }
 
   private async exchangeForLongLivedToken(
@@ -436,10 +484,82 @@ export class InstagramOAuthService {
       throw new BadGatewayException(
         json.error?.message ||
           json.error_message ||
-          `Instagram API HTTP ${response.status}`,
+        (json.error_type
+          ? `${json.error_type}: ${json.error_message ?? `HTTP ${response.status}`}`
+          : `Instagram API HTTP ${response.status}`),
       );
     }
     return json;
+  }
+
+  /**
+   * Instagram Login disconnect on Graph:
+   * 1. `DELETE /me/subscribed_apps` — stop webhook delivery
+   * 2. `DELETE /me/permissions` — deauthorize the app / invalidate the token
+   * No-op for Facebook Login rows (`oauth_provider=facebook`).
+   */
+  async revokeIntegrationPermissionsBestEffort(
+    integration: InstagramIntegration,
+  ): Promise<void> {
+    if (integration.oauthProvider !== INSTAGRAM_OAUTH_PROVIDER.instagram) {
+      return;
+    }
+    const token =
+      integration.userAccessToken?.trim() ||
+      integration.accessToken?.trim() ||
+      "";
+    if (!token) {
+      this.log.warn(
+        `Instagram Login disconnect skipped: no access token (integrationId=${integration.id})`,
+      );
+      return;
+    }
+    await this.deleteInstagramGraphBestEffort("me/subscribed_apps", token);
+    await this.deleteInstagramGraphBestEffort("me/permissions", token);
+  }
+
+  async clearPendingLoginSessions(
+    workspaceId: number,
+    userId: number,
+  ): Promise<void> {
+    await this.pendingSessionRepo.delete({
+      workspaceId,
+      userId,
+      oauthProvider: INSTAGRAM_OAUTH_PROVIDER.instagram,
+    });
+  }
+
+  private async deleteInstagramGraphBestEffort(
+    path: string,
+    accessToken: string,
+  ): Promise<void> {
+    const url = new URL(
+      `https://graph.instagram.com/${INSTAGRAM_GRAPH_VERSION}/${path}`,
+    );
+    url.searchParams.set("access_token", accessToken);
+    try {
+      const response = await fetch(url.toString(), { method: "DELETE" });
+      const text = await response.text();
+      if (!response.ok) {
+        let message = text.slice(0, 300);
+        try {
+          const body = JSON.parse(text) as MetaErrorBody;
+          message = body.error?.message ?? body.error_message ?? message;
+        } catch {
+          /* keep snippet */
+        }
+        this.log.warn(
+          `Instagram Login disconnect HTTP ${response.status} DELETE ${path}: ${message}`,
+        );
+        return;
+      }
+      this.log.log(`Instagram Login disconnect succeeded DELETE ${path}`);
+    } catch (err) {
+      this.log.warn(
+        `Instagram Login disconnect failed DELETE ${path}: ${err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async markPendingFailed(
@@ -456,6 +576,55 @@ export class InstagramOAuthService {
     session.status = "failed";
     session.errorMessage = message.slice(0, 2000);
     await this.pendingSessionRepo.save(session);
+  }
+
+  /**
+   * Persist Instagram Login on `instagram_integration` (same row shape as Facebook Login).
+   * `oauth_provider = instagram` distinguishes Business Login from Page tokens.
+   * `page_id` is the Instagram-scoped user id (no Facebook Page).
+   */
+  private async saveInstagramLoginIntegration(params: {
+    workspace: Workspace;
+    igUserId: string;
+    displayName: string;
+    longLivedToken: string;
+  }): Promise<InstagramIntegration> {
+    const now = new Date();
+    const existing = await this.instagramIntegrationRepo.findOne({
+      where: {
+        workspaceId: params.workspace.id,
+        pageId: params.igUserId,
+      },
+      order: { id: "DESC" },
+    });
+
+    if (existing) {
+      existing.name = params.displayName;
+      existing.userAccessToken = params.longLivedToken;
+      existing.accessToken = params.longLivedToken;
+      existing.instagramAccountId = params.igUserId;
+      existing.facebookPageName = params.displayName;
+      existing.tokenConnectedAt = now;
+      existing.tokenStatus = TOKEN_STATUS_ACTIVE;
+      existing.oauthProvider = INSTAGRAM_OAUTH_PROVIDER.instagram;
+      return this.instagramIntegrationRepo.save(existing);
+    }
+
+    return this.instagramIntegrationRepo.save(
+      this.instagramIntegrationRepo.create({
+        name: params.displayName,
+        pageId: params.igUserId,
+        userAccessToken: params.longLivedToken,
+        accessToken: params.longLivedToken,
+        instagramAccountId: params.igUserId,
+        facebookPageName: params.displayName,
+        tokenConnectedAt: now,
+        tokenStatus: TOKEN_STATUS_ACTIVE,
+        oauthProvider: INSTAGRAM_OAUTH_PROVIDER.instagram,
+        ownerId: params.workspace.ownerId,
+        workspaceId: params.workspace.id,
+      }),
+    );
   }
 
   private async requireWorkspaceForOwner(

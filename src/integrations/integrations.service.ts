@@ -252,6 +252,11 @@ export class IntegrationsService {
     await this.workspaceContext.requireWorkspaceOwner(ownerId, row.workspaceId);
 
     await this.facebookOAuth.revokeIntegrationPermissionsBestEffort(row);
+    await this.instagramOAuth.revokeIntegrationPermissionsBestEffort(row);
+    await this.instagramOAuth.clearPendingLoginSessions(
+      row.workspaceId,
+      row.ownerId,
+    );
     await this.roleIntegrationGrants.removeForIntegration("instagram", id);
 
     try {
