@@ -8,4 +8,5 @@ export enum ConversationEventType {
   FOLLOW_UP_CHANGED = "follow_up_changed",
   FOLLOW_UP_DECLINED = "follow_up_declined",
   FOLLOW_UP_APPLIED = "follow_up_applied",
+  RECOGNITION_DONE = "recognition_done",
 }

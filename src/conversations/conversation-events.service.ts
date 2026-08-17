@@ -39,4 +39,29 @@ export class ConversationEventsService {
       order: { createdAt: "DESC", id: "DESC" },
     });
   }
+
+  async existsOfType(
+    conversation: { id: number; workspaceId: number },
+    type: ConversationEventType,
+    payloadPostId?: string,
+  ): Promise<boolean> {
+    const rows = await this.eventRepo.find({
+      where: {
+        workspaceId: conversation.workspaceId,
+        conversationId: conversation.id,
+        type,
+      },
+      select: { id: true, payload: true },
+    });
+    if (payloadPostId == null || payloadPostId.length === 0) {
+      return rows.length > 0;
+    }
+    return rows.some((row) => {
+      const postId =
+        row.payload != null && typeof row.payload.postId === "string"
+          ? row.payload.postId.trim()
+          : "";
+      return postId === payloadPostId;
+    });
+  }
 }

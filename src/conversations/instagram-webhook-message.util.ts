@@ -9,6 +9,7 @@ import { resolveInstagramMessageActors } from "./instagram-message-actors.util";
 import type { ConversationMessageAttachmentType } from "./dto/http/conversation-message-attachment.dto";
 import type { StoredMessageAttachment } from "./conversation-message-attachments-json.util";
 import { serializeAttachmentsJson } from "./conversation-message-attachments-json.util";
+import { ConversationMessageType } from "../database/entities/conversation-message-type.enum";
 import type {
   InstagramWebhookMessageAttachment,
   InstagramWebhookMessagingItem,
@@ -250,4 +251,40 @@ export function serializeWebhookAttachmentsJson(
     at.toISOString(),
   );
   return serializeAttachmentsJson(stored) ?? JSON.stringify(attachments);
+}
+
+/** Instagram post/reel media id from webhook `message.attachments[].payload`. */
+export function extractSocialMediaIdFromWebhook(
+  ev: InstagramWebhookMessagingItem,
+): string | null {
+  for (const item of ev.message?.attachments ?? []) {
+    const payload = item.payload ?? {};
+    const igPostId = payload.ig_post_media_id?.trim();
+    if (igPostId) {
+      return igPostId;
+    }
+    const reelId = payload.reel_video_id?.trim();
+    if (reelId) {
+      return reelId;
+    }
+  }
+  return null;
+}
+
+export function resolveWebhookMessageType(
+  ev: InstagramWebhookMessagingItem,
+): ConversationMessageType | null {
+  for (const item of ev.message?.attachments ?? []) {
+    const type = item.type?.trim().toLowerCase();
+    if (type === "ig_post") {
+      return ConversationMessageType.instagram_post;
+    }
+    if (type === "ig_reel" || type === "reel") {
+      return ConversationMessageType.instagram_reels;
+    }
+    if (type === "story_mention") {
+      return ConversationMessageType.instagram_story;
+    }
+  }
+  return null;
 }

@@ -86,6 +86,17 @@ export class ConversationMessage {
   attachmentJson: string | null;
 
   /**
+   * Instagram media id when the message shares a post/reel (webhook `ig_post_media_id`, etc.).
+   */
+  @Column({
+    name: "social_media_id",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  socialMediaId: string | null;
+
+  /**
    * Last time this application wrote/updated the row in the database.
    */
   @UpdateDateColumn({ name: "system_updated_at", type: "timestamptz" })

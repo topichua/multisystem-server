@@ -132,8 +132,10 @@ export class ConversationMessagePresenterService {
   }
 
   private resolveDbColumnsForApi(row: ConversationMessage) {
+    const socialMediaId = row.socialMediaId?.trim();
     return {
       type: row.messageType,
+      ...(socialMediaId ? { social_media_id: socialMediaId } : {}),
     };
   }
 

@@ -43,4 +43,9 @@ export class ConversationMessageV2Dto {
   attachments: ConversationMessageAttachmentsDto;
 
   systemUpdatedAt: Date;
+
+  @ApiPropertyOptional({
+    description: "Instagram post/reel media id when the message shares media.",
+  })
+  socialMediaId: string | null;
 }

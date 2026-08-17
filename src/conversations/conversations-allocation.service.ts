@@ -9,8 +9,13 @@ import { Repository } from "typeorm";
 import {
   InstagramIntegration,
   Conversation,
+  ConversationEventType,
   ConversationMessage,
+  ConversationMessageType,
   ConversationSource,
+  ProductInstagramReference,
+  ProductSuggestion,
+  ProductSuggestionReasonType,
 } from "../database/entities";
 import { instagramGraphOrigin } from "../instagram/instagram-graph.util";
 import type {
@@ -31,12 +36,15 @@ import type {
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
 import { ConversationWorkflowService } from "./conversation-workflow.service";
+import { ConversationEventsService } from "./conversation-events.service";
 import { ChatAutoDistributionService } from "./chat-auto-distribution.service";
 import { ConversationIdAllocationService } from "./conversation-id-allocation.service";
 import { INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS } from "./instagram-graph-message-fields";
 import { resolveInstagramMessageActors } from "./instagram-message-actors.util";
 import {
   pickCustomerUserIdFromWebhook,
+  extractSocialMediaIdFromWebhook,
+  resolveWebhookMessageType,
   serializeWebhookAttachmentsJson,
   webhookMessagingToInstagramMessageDto,
 } from "./instagram-webhook-message.util";
@@ -96,10 +104,15 @@ export class ConversationsAllocationService {
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(ConversationMessage)
     private readonly conversationMessageRepo: Repository<ConversationMessage>,
+    @InjectRepository(ProductInstagramReference)
+    private readonly productInstagramReferenceRepo: Repository<ProductInstagramReference>,
+    @InjectRepository(ProductSuggestion)
+    private readonly productSuggestionRepo: Repository<ProductSuggestion>,
     private readonly instagramUsers: InstagramUsersService,
     private readonly messageNotify: ConversationMessageNotifyService,
     private readonly mediaArchive: ConversationMediaArchiveService,
     private readonly conversationWorkflow: ConversationWorkflowService,
+    private readonly conversationEvents: ConversationEventsService,
     private readonly chatAutoDistribution: ChatAutoDistributionService,
     private readonly conversationIdAllocation: ConversationIdAllocationService,
   ) {
@@ -325,15 +338,13 @@ export class ConversationsAllocationService {
       ev,
       messageRow.createdAt,
     );
-    const storedAttachments = parseAttachmentsJson(messageRow.attachmentJson);
-    if (storedAttachments.length > 0) {
-      messageRow.messageType =
-        resolveMessageTypeFromAttachments(storedAttachments);
-    }
+    this.applyWebhookAttachmentFieldsToMessageRow(messageRow, ev);
 
     await this.archiveInstagramMessageRow(messageRow, ctx.accessToken, conv.id);
 
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
+
+    await this.suggestProductsFromSharedPost(conv, messageRow, ctx.traceId);
 
     if (isInboundCustomer) {
       await this.conversationWorkflow.onInboundCustomerMessage(conv);
@@ -569,6 +580,10 @@ export class ConversationsAllocationService {
       }),
     );
     row.editedAt = editedAt;
+    if ((ev.message?.attachments?.length ?? 0) > 0) {
+      row.attachmentJson = serializeWebhookAttachmentsJson(ev, row.createdAt);
+      this.applyWebhookAttachmentFieldsToMessageRow(row, ev);
+    }
 
     const conv = await this.conversationRepo.findOne({
       where: {
@@ -581,7 +596,134 @@ export class ConversationsAllocationService {
     }
 
     await this.persistAndNotify(row, ctx.companyCtx.ownerId);
+    if (conv) {
+      await this.suggestProductsFromSharedPost(conv, row, ctx.traceId);
+    }
     this.log.log(`${t} edit saved mid=${mid}`);
+  }
+
+  private applyWebhookAttachmentFieldsToMessageRow(
+    row: ConversationMessage,
+    ev: InstagramWebhookMessagingItem,
+  ): void {
+    const socialMediaId = extractSocialMediaIdFromWebhook(ev);
+    if (socialMediaId) {
+      row.socialMediaId = socialMediaId;
+    }
+
+    const webhookMessageType = resolveWebhookMessageType(ev);
+    if (webhookMessageType) {
+      row.messageType = webhookMessageType;
+      return;
+    }
+
+    const storedAttachments = parseAttachmentsJson(row.attachmentJson);
+    if (storedAttachments.length > 0) {
+      row.messageType = resolveMessageTypeFromAttachments(storedAttachments);
+    }
+  }
+
+  /**
+   * When a message shares an Instagram post/reel (`social_media_id`), copy catalog
+   * links from `product_instagram_references` into `product_suggestions` and emit
+   * `recognition_done`.
+   */
+  private async suggestProductsFromSharedPost(
+    conversation: Conversation,
+    message: ConversationMessage,
+    traceId: string,
+  ): Promise<void> {
+    const t = `[webhook trace=${traceId}]`;
+    const postId = message.socialMediaId?.trim();
+    if (!postId) {
+      return;
+    }
+
+    const refs = await this.productInstagramReferenceRepo.find({
+      where: {
+        workspaceId: conversation.workspaceId,
+        postId,
+      },
+    });
+    const accountId = conversation.externalSourceId?.trim();
+    const scoped =
+      accountId != null && accountId.length > 0
+        ? refs.filter((r) => r.instagramAccountId === accountId)
+        : refs;
+    const matched = scoped.length > 0 ? scoped : refs;
+
+    const existing = await this.productSuggestionRepo.find({
+      where: {
+        workspaceId: conversation.workspaceId,
+        conversationId: conversation.id,
+        postId,
+      },
+    });
+    const existingKeys = new Set(
+      existing.map(
+        (s) => `${s.productId}:${s.productVariantId ?? ""}`,
+      ),
+    );
+
+    const reasonType = this.suggestionReasonFromMessageType(message.messageType);
+    const created: ProductSuggestion[] = [];
+    for (const ref of matched) {
+      const key = `${ref.productId}:${ref.productVariantId ?? ""}`;
+      if (existingKeys.has(key)) {
+        continue;
+      }
+      existingKeys.add(key);
+      created.push(
+        this.productSuggestionRepo.create({
+          workspaceId: conversation.workspaceId,
+          conversationId: conversation.id,
+          productId: ref.productId,
+          productVariantId: ref.productVariantId,
+          postId,
+          reasonType,
+        }),
+      );
+    }
+
+    if (created.length > 0) {
+      await this.productSuggestionRepo.save(created);
+    }
+
+    const alreadyRecognized = await this.conversationEvents.existsOfType(
+      conversation,
+      ConversationEventType.RECOGNITION_DONE,
+      postId,
+    );
+    if (created.length === 0 && alreadyRecognized) {
+      return;
+    }
+
+    await this.conversationEvents.append(
+      conversation,
+      ConversationEventType.RECOGNITION_DONE,
+      null,
+      {
+        postId,
+        messageExternalId: message.externalId,
+        reasonType,
+        suggestionCount: created.length + existing.length,
+        addedCount: created.length,
+        productIds: [...existing, ...created].map((s) => s.productId),
+      },
+    );
+
+    this.log.log(
+      `${t} recognition_done conversation_id=${conversation.id} postId=${postId} added=${created.length} total=${created.length + existing.length}`,
+    );
+  }
+
+  private suggestionReasonFromMessageType(
+    messageType: ConversationMessageType,
+  ): ProductSuggestionReasonType {
+    if (messageType === ConversationMessageType.instagram_reels) {
+      return ProductSuggestionReasonType.reels_refference;
+    }
+    return ProductSuggestionReasonType.post_reference;
   }
 
   private buildMessageRowFromGraph(

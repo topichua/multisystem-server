@@ -246,6 +246,12 @@ export class InstagramMessageDto {
   })
   type?: ConversationMessageType;
 
+  @ApiPropertyOptional({
+    description:
+      "Instagram post/reel media id when the message shares media (`conversation_messages.social_media_id`).",
+  })
+  social_media_id?: string;
+
   @ApiPropertyOptional({ type: () => InstagramMessageTagsDto })
   tags?: InstagramMessageTagsDto;
 
