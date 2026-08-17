@@ -276,7 +276,6 @@ export class ConversationsAllocationService {
 
     const {
       row: conv,
-      participantExtras,
       saveConversation,
     } = await this.ensureInstagramConversationRowForWebhook({
       traceId: ctx.traceId,
@@ -346,10 +345,7 @@ export class ConversationsAllocationService {
 
     await this.syncInstagramUsersForWebhookAllocation({
       workspaceId: conv.workspaceId,
-      conversation: conv,
-      ev,
-      msg,
-      participantExtras,
+      customerUserId,
       accessToken: ctx.accessToken,
       oauthProvider: ctx.companyCtx.oauthProvider,
       businessInstagramId: ctx.businessInstagramId,
@@ -1418,13 +1414,10 @@ export class ConversationsAllocationService {
     return customerId ?? ids[0];
   }
 
-  /** Upserts `instagram_users` from webhook sender/recipient (Graph profile fields). */
+  /** Upserts `instagram_users` for the conversation customer (`participant_id`). */
   private async syncInstagramUsersForWebhookAllocation(params: {
     workspaceId: number;
-    conversation: Conversation;
-    ev: InstagramWebhookMessagingItem;
-    msg: InstagramMessageDto;
-    participantExtras: InstagramConversationParticipantDto[] | undefined;
+    customerUserId: string;
     accessToken: string;
     oauthProvider: string;
     businessInstagramId: string;
@@ -1432,48 +1425,31 @@ export class ConversationsAllocationService {
     traceId: string;
   }): Promise<void> {
     const t = `[webhook trace=${params.traceId}]`;
-    const ids = new Set<string>();
-    const take = (id: string | undefined) => {
-      const x = id?.trim();
-      if (x && this.isLikelyInstagramPsid(x)) ids.add(x);
-    };
-    take(params.ev.sender?.id);
-    take(params.ev.recipient?.id);
-    take(params.conversation.participantId);
-    take(params.msg.from?.id);
-    for (const u of params.msg.to?.data ?? []) take(u.id);
-    for (const p of params.participantExtras ?? []) take(p.id);
-
-    if (ids.size === 0) {
-      this.log.warn(`${t} instagram_users sync skipped (no participant ids)`);
+    const customerUserId = params.customerUserId.trim();
+    if (!this.isLikelyInstagramPsid(customerUserId)) {
+      this.log.warn(
+        `${t} instagram_users sync skipped (invalid customerUserId)`,
+      );
       return;
     }
 
-    this.log.log(
-      `${t} instagram_users sync ids=${[...ids].join(",")}`,
-    );
-
-    const context = {
-      pageAccessToken: params.accessToken,
-      businessAccountId: params.businessInstagramId,
-      pageId: params.pageId,
-      oauthProvider: params.oauthProvider,
-    };
-
-    for (const instagramUserId of ids) {
-      try {
-        await this.instagramUsers.upsertFromGraph(
-          params.workspaceId,
-          instagramUserId,
-          context,
-        );
-        this.log.log(`${t} instagram_users upserted id=${instagramUserId}`);
-      } catch (e) {
-        const err = e instanceof Error ? e.message : String(e);
-        this.log.warn(
-          `${t} instagram_users upsert failed id=${instagramUserId}: ${err}`,
-        );
-      }
+    try {
+      await this.instagramUsers.upsertFromGraph(
+        params.workspaceId,
+        customerUserId,
+        {
+          pageAccessToken: params.accessToken,
+          businessAccountId: params.businessInstagramId,
+          pageId: params.pageId,
+          oauthProvider: params.oauthProvider,
+        },
+      );
+      this.log.log(`${t} instagram_users upserted id=${customerUserId}`);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `${t} instagram_users upsert failed id=${customerUserId}: ${err}`,
+      );
     }
   }
 
