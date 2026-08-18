@@ -97,6 +97,17 @@ export class ConversationMessage {
   socialMediaId: string | null;
 
   /**
+   * Instagram comment id when this row is a comment (`type = instagram_comment`).
+   */
+  @Column({
+    name: "comment_id",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  commentId: string | null;
+
+  /**
    * Last time this application wrote/updated the row in the database.
    */
   @UpdateDateColumn({ name: "system_updated_at", type: "timestamptz" })

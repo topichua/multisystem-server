@@ -35,8 +35,9 @@ export class Conversation {
   @Column({ name: "external_source_id", type: "varchar", length: 255 })
   externalSourceId: string;
 
-  @Column({ name: "external_id", type: "varchar", length: 255 })
-  externalId: string;
+  /** Instagram Graph conversation id. Null for virtual threads (e.g. comments with no DM). */
+  @Column({ name: "external_id", type: "varchar", length: 255, nullable: true })
+  externalId: string | null;
 
   /** When the conversation row was first created (not last activity). */
   @Column({

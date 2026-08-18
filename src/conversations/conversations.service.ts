@@ -709,9 +709,11 @@ export class ConversationsService {
       const instUpdatedAt = new Date(ig.updated_time);
       if (Number.isNaN(instUpdatedAt.getTime())) continue;
 
-      let row = await this.conversationRepo.findOne({
-        where: { workspaceId: integration.workspaceId, externalId },
-      });
+      let row = await this.findInstagramConversationForGraphUpsert(
+        integration.workspaceId,
+        externalId,
+        participantId,
+      );
       const isNew = !row;
       if (!row) {
         const id =
@@ -843,9 +845,11 @@ export class ConversationsService {
         );
         const instUpdatedAt = new Date(ig.updated_time);
 
-        let row = await this.conversationRepo.findOne({
-          where: { workspaceId: integration.workspaceId, externalId },
-        });
+        let row = await this.findInstagramConversationForGraphUpsert(
+          integration.workspaceId,
+          externalId,
+          participantId,
+        );
         const isNew = !row;
         if (!row) {
           const id =
@@ -3485,8 +3489,44 @@ export class ConversationsService {
   private isTelegramConversation(row: Conversation): boolean {
     return (
       row.source === ConversationSource.TELEGRAM ||
-      row.externalId.trim().startsWith("telegram:")
+      row.externalId?.trim().startsWith("telegram:") === true
     );
+  }
+
+  /**
+   * Match Graph conversation by `external_id`, or attach that id to a virtual
+   * comment thread for the same participant (`external_id` is null).
+   */
+  private async findInstagramConversationForGraphUpsert(
+    workspaceId: number,
+    externalId: string,
+    participantId: string,
+  ): Promise<Conversation | null> {
+    const byExternal = await this.conversationRepo.findOne({
+      where: { workspaceId, externalId },
+    });
+    if (byExternal) {
+      return byExternal;
+    }
+    const participant = participantId?.trim();
+    if (!participant) {
+      return null;
+    }
+    const byParticipant = await this.conversationRepo.findOne({
+      where: {
+        workspaceId,
+        participantId: participant,
+        source: ConversationSource.INSTAGRAM,
+      },
+      order: { id: "DESC" },
+    });
+    if (!byParticipant) {
+      return null;
+    }
+    if (!byParticipant.externalId?.trim() && externalId.trim()) {
+      byParticipant.externalId = externalId;
+    }
+    return byParticipant;
   }
 
   private async getParticipantMapsForRows(

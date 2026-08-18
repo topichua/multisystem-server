@@ -28,10 +28,13 @@ import type {
   InstagramMessageReactionItemDto,
   InstagramMessageReactionsDto,
 } from "./dto/http/instagram-messages-response.dto";
-import type {
-  InstagramWebhookEntry,
-  InstagramWebhookMessagingItem,
-  InstagramWebhookPayload,
+import {
+  commentPostIdFromWebhookValue,
+  isInstagramCommentWebhookChange,
+  type InstagramWebhookCommentValue,
+  type InstagramWebhookEntry,
+  type InstagramWebhookMessagingItem,
+  type InstagramWebhookPayload,
 } from "../webhook/instagram-webhook-payload.types";
 import { ConversationMessageNotifyService } from "./conversation-message-notify.service";
 import { ConversationMediaArchiveService } from "./conversation-media-archive.service";
@@ -154,6 +157,7 @@ export class ConversationsAllocationService {
     }
 
     const messaging = entry.messaging ?? [];
+    const changes = entry.changes ?? [];
     const companyCtx = await this.resolveWebhookCompanyContext(entryPageId);
     if (!companyCtx) {
       this.log.warn(
@@ -203,6 +207,25 @@ export class ConversationsAllocationService {
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         this.log.warn(`${t} ${kind} failed: ${err}`);
+      }
+    }
+
+    for (let ci = 0; ci < changes.length; ci++) {
+      const change = changes[ci];
+      if (!isInstagramCommentWebhookChange(change)) {
+        this.log.log(
+          `${t} entry[${entryIndex}] changes[${ci}] skip (field=${change?.field ?? "none"})`,
+        );
+        continue;
+      }
+      this.log.log(
+        `${t} entry[${entryIndex}] changes[${ci}] kind=comment field=${change.field}`,
+      );
+      try {
+        await this.handleWebhookComment(change.value, ctx);
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        this.log.warn(`${t} comment failed: ${err}`);
       }
     }
   }
@@ -362,6 +385,157 @@ export class ConversationsAllocationService {
     this.log.log(
       `${t} new_message saved mid=${mid} conversation_id=${conv.id}`,
     );
+  }
+
+  /** Instagram `comments` / `live_comments` webhook — persist as `instagram_comment`. */
+  private async handleWebhookComment(
+    value: InstagramWebhookCommentValue,
+    ctx: {
+      traceId: string;
+      entry: { time: number };
+      companyCtx: WebhookCompanyContext;
+      businessInstagramId: string;
+      accessToken: string;
+      pageId: string;
+    },
+  ): Promise<void> {
+    const t = `[webhook trace=${ctx.traceId}]`;
+    const commentId = value.id?.trim() ?? "";
+    if (!commentId) {
+      return;
+    }
+
+    const fromId = value.from?.id?.trim() ?? "";
+    if (!fromId) {
+      this.log.warn(
+        `${t} comment skipped (missing from.id) id=${commentId.slice(0, 64)}`,
+      );
+      return;
+    }
+
+    if (this.isOwnInstagramAccount(fromId, ctx.businessInstagramId, ctx.pageId)) {
+      this.log.log(
+        `${t} comment ignored (own account) id=${commentId.slice(0, 64)}`,
+      );
+      return;
+    }
+
+    const customerUserId = fromId;
+    const parentId = value.parent_id?.trim() || null;
+    const createdTime = this.dateFromInstagramWebhookTime(ctx.entry.time);
+    const createdTimeIso = createdTime.toISOString();
+
+    const {
+      row: conv,
+      saveConversation,
+    } = await this.ensureInstagramConversationRowForComment({
+      traceId: ctx.traceId,
+      customerUserId,
+      businessInstagramId: ctx.businessInstagramId,
+      workspaceId: ctx.companyCtx.workspaceId,
+      createdTime: createdTimeIso,
+    });
+
+    if (saveConversation) {
+      await this.conversationRepo.save(conv);
+      await this.conversationWorkflow.onConversationCreated(
+        conv,
+        ctx.companyCtx.ownerId,
+      );
+      await this.chatAutoDistribution.tryAssignOnNewConversation(conv);
+    } else {
+      conv.instUpdatedAt = createdTime;
+      await this.conversationRepo.save(conv);
+    }
+
+    if (await this.conversationWorkflow.shouldDropInboundMessage(conv)) {
+      this.log.log(
+        `${t} dropped inbound comment for spam conversation id=${conv.id} commentId=${commentId}`,
+      );
+      return;
+    }
+
+    const text = value.text ?? "";
+    const postId = commentPostIdFromWebhookValue(value);
+    const receiverId = ctx.businessInstagramId;
+
+    const existingMessage =
+      (await this.conversationMessageRepo.findOne({
+        where: { commentId },
+      })) ??
+      (await this.conversationMessageRepo.findOne({
+        where: { externalId: commentId },
+      }));
+
+    const instagramJson = JSON.stringify({
+      created_time: createdTimeIso,
+      message: text,
+      from: {
+        id: fromId,
+        ...(value.from?.username ? { username: value.from.username } : {}),
+      },
+      to: { data: receiverId ? [{ id: receiverId }] : [] },
+      webhook_comment: value,
+    });
+
+    const messageRow =
+      existingMessage ??
+      this.conversationMessageRepo.create({
+        workspaceId: conv.workspaceId,
+        conversationId: conv.id,
+        createdAt: createdTime,
+        senderId: fromId,
+        receiverId: receiverId || "0",
+        readAt: null,
+      });
+
+    if (!messageRow.externalId?.trim()) {
+      messageRow.externalId = commentId;
+    }
+    messageRow.message = text;
+    messageRow.instagramJson = instagramJson;
+    messageRow.senderId = fromId;
+    messageRow.receiverId = receiverId || "0";
+    messageRow.messageType = ConversationMessageType.instagram_comment;
+    messageRow.socialMediaId = postId;
+    messageRow.commentId = commentId;
+    if (parentId && parentId !== commentId) {
+      messageRow.repliedToExternalId = parentId;
+    }
+
+    await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
+
+    await this.syncInstagramUsersForWebhookAllocation({
+      workspaceId: conv.workspaceId,
+      customerUserId,
+      accessToken: ctx.accessToken,
+      oauthProvider: ctx.companyCtx.oauthProvider,
+      businessInstagramId: ctx.businessInstagramId,
+      pageId: ctx.pageId,
+      traceId: ctx.traceId,
+    });
+
+    await this.suggestProductsFromSharedPost(conv, messageRow, ctx.traceId);
+    await this.conversationWorkflow.onInboundCustomerMessage(conv);
+
+    this.log.log(
+      `${t} comment saved id=${commentId} conversation_id=${conv.id} postId=${postId ?? "-"}`,
+    );
+  }
+
+  private isOwnInstagramAccount(
+    actorId: string,
+    businessInstagramId: string,
+    pageId?: string | null,
+  ): boolean {
+    const id = actorId.trim();
+    if (!id) {
+      return false;
+    }
+    return [businessInstagramId, pageId]
+      .map((x) => x?.trim())
+      .filter((x): x is string => Boolean(x))
+      .includes(id);
   }
 
   /** (2) Reaction — merge into `instagram_json.reactions` from webhook payload. */
@@ -990,6 +1164,16 @@ export class ConversationsAllocationService {
     );
   }
 
+  /** Meta comment `entry.time` is unix seconds; messaging timestamps are often ms. */
+  private dateFromInstagramWebhookTime(time: number | undefined): Date {
+    if (time == null || !Number.isFinite(time) || time <= 0) {
+      return new Date();
+    }
+    const ms = time < 1e12 ? time * 1000 : time;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+
   private instUpdatedAtFromWebhookMessage(
     createdTime: string,
     igConv?: InstagramConversationDto,
@@ -1004,8 +1188,66 @@ export class ConversationsAllocationService {
   }
 
   /**
+   * Finds or builds a conversation for a comment by customer `participant_id`.
+   * First interaction (no row yet) always creates a virtual thread with `external_id = null`.
+   * Never writes Graph conversation id here — DMs may fill it later (null → non-null only).
+   */
+  private async ensureInstagramConversationRowForComment(params: {
+    traceId: string;
+    customerUserId: string;
+    businessInstagramId: string;
+    workspaceId: number;
+    createdTime: string;
+  }): Promise<{
+    row: Conversation;
+    saveConversation: boolean;
+  }> {
+    const t = `[webhook trace=${params.traceId}]`;
+    const { customerUserId, businessInstagramId, createdTime } = params;
+
+    const row = await this.conversationRepo.findOne({
+      where: {
+        workspaceId: params.workspaceId,
+        participantId: customerUserId,
+        source: ConversationSource.INSTAGRAM,
+      },
+      order: { id: "DESC" },
+    });
+
+    if (row) {
+      this.log.log(
+        `${t} comment conversation matched by participant_id=${customerUserId} db_id=${row.id}`,
+      );
+      return { row, saveConversation: false };
+    }
+
+    const updatedTime = this.instUpdatedAtFromWebhookMessage(createdTime);
+    const id =
+      await this.conversationIdAllocation.allocateNextConversationId(
+        params.workspaceId,
+      );
+    const created = this.conversationRepo.create({
+      id,
+      externalSourceId: businessInstagramId,
+      externalId: null,
+      createdAt: new Date(),
+      instUpdatedAt: updatedTime,
+      readAt: null,
+      participantId: customerUserId,
+      source: ConversationSource.INSTAGRAM,
+      workspaceId: params.workspaceId,
+      groupId: null,
+    });
+    this.log.log(
+      `${t} comment first interaction CREATE conversation db_id=${id} participant=${customerUserId} external_id=null`,
+    );
+    return { row: created, saveConversation: true };
+  }
+
+  /**
    * Finds or builds the `Conversation` row: by customer `participant_id` first, else via Graph
    * (`/conversations?user_id=…` then optional `message.conversation`).
+   * When a virtual comment thread matches the participant, fills `external_id` from Graph.
    */
   private async ensureInstagramConversationRowForWebhook(params: {
     traceId: string;
@@ -1041,9 +1283,26 @@ export class ConversationsAllocationService {
     });
 
     if (row) {
-      this.log.log(
-        `${t} conversation matched by participant_id=${customerUserId} db_id=${row.id} (no save)`,
-      );
+      if (!row.externalId?.trim()) {
+        try {
+          await this.fillConversationExternalIdFromGraph({
+            row,
+            mid,
+            customerUserId,
+            accessToken,
+            traceId: params.traceId,
+          });
+        } catch (e) {
+          const err = e instanceof Error ? e.message : String(e);
+          this.log.warn(
+            `${t} fill external_id failed db_id=${row.id} participant=${customerUserId}: ${err}`,
+          );
+        }
+      } else {
+        this.log.log(
+          `${t} conversation matched by participant_id=${customerUserId} db_id=${row.id} (no save)`,
+        );
+      }
       return { row, participantExtras: undefined, saveConversation: false };
     }
 
@@ -1051,41 +1310,14 @@ export class ConversationsAllocationService {
       `${t} no DB row for participant_id=${customerUserId}; Graph user_id=${customerUserId}`,
     );
 
-    const convList = await this.fetchInstagramConversationsForUser(
+    const resolved = await this.resolveGraphConversationIdForUser({
+      mid,
       customerUserId,
       accessToken,
-    );
-    this.log.log(
-      `${t} Graph conversations count=${convList.length} first_id=${convList[0]?.id ?? "none"}`,
-    );
-
-    let graphConversationId: string | undefined = convList[0]?.id?.trim();
-
-    if (!graphConversationId) {
-      this.log.log(
-        `${t} conversations edge empty; loading message.conversation{id}`,
-      );
-      const extended = await this.fetchInstagramMessageById(
-        mid,
-        accessToken,
-        [
-          "id",
-          "created_time",
-          "from",
-          "to",
-          "message",
-          `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
-          "conversation{id}",
-          "reactions{data{reaction,emoji,users{id,username}}}",
-        ].join(","),
-      );
-      graphConversationId = extended.conversation?.id?.trim();
-      if (graphConversationId) {
-        this.log.log(
-          `${t} conversation id from message node id=${graphConversationId}`,
-        );
-      }
-    }
+      traceId: params.traceId,
+    });
+    const graphConversationId = resolved.graphConversationId;
+    const convList = resolved.convList;
 
     if (!graphConversationId) {
       throw new Error(
@@ -1139,6 +1371,121 @@ export class ConversationsAllocationService {
       participantExtras: igConv?.participants?.data,
       saveConversation: false,
     };
+  }
+
+  private async fillConversationExternalIdFromGraph(params: {
+    row: Conversation;
+    mid: string;
+    customerUserId: string;
+    accessToken: string;
+    traceId: string;
+  }): Promise<void> {
+    const t = `[webhook trace=${params.traceId}]`;
+    if (params.row.externalId?.trim()) {
+      this.log.log(
+        `${t} skip fill external_id db_id=${params.row.id}: already set`,
+      );
+      return;
+    }
+    const resolved = await this.resolveGraphConversationIdForUser({
+      mid: params.mid,
+      customerUserId: params.customerUserId,
+      accessToken: params.accessToken,
+      traceId: params.traceId,
+    });
+    const graphConversationId = resolved.graphConversationId;
+    if (!graphConversationId) {
+      this.log.log(
+        `${t} virtual conversation db_id=${params.row.id} left without external_id (Graph id missing)`,
+      );
+      return;
+    }
+
+    const conflict = await this.conversationRepo.findOne({
+      where: {
+        workspaceId: params.row.workspaceId,
+        externalId: graphConversationId,
+      },
+    });
+    if (conflict && conflict.id !== params.row.id) {
+      this.log.warn(
+        `${t} skip fill external_id=${graphConversationId} db_id=${params.row.id}: already on conversation ${conflict.id}`,
+      );
+      return;
+    }
+
+    if (
+      !this.assignConversationExternalIdIfNull(params.row, graphConversationId)
+    ) {
+      return;
+    }
+    await this.conversationRepo.save(params.row);
+    this.log.log(
+      `${t} filled external_id=${graphConversationId} on virtual conversation db_id=${params.row.id} participant=${params.customerUserId}`,
+    );
+  }
+
+  /** `external_id` may change only from empty/null → a non-null Graph id. */
+  private assignConversationExternalIdIfNull(
+    row: Conversation,
+    nextExternalId: string | null | undefined,
+  ): boolean {
+    const current = row.externalId?.trim() || null;
+    const next = nextExternalId?.trim() || null;
+    if (current != null || next == null) {
+      return false;
+    }
+    row.externalId = next;
+    return true;
+  }
+
+  private async resolveGraphConversationIdForUser(params: {
+    mid: string;
+    customerUserId: string;
+    accessToken: string;
+    traceId: string;
+  }): Promise<{
+    graphConversationId: string | undefined;
+    convList: InstagramConversationDto[];
+  }> {
+    const t = `[webhook trace=${params.traceId}]`;
+    const convList = await this.fetchInstagramConversationsForUser(
+      params.customerUserId,
+      params.accessToken,
+    );
+    this.log.log(
+      `${t} Graph conversations count=${convList.length} first_id=${convList[0]?.id ?? "none"}`,
+    );
+
+    let graphConversationId: string | undefined = convList[0]?.id?.trim();
+    if (graphConversationId) {
+      return { graphConversationId, convList };
+    }
+
+    this.log.log(
+      `${t} conversations edge empty; loading message.conversation{id}`,
+    );
+    const extended = await this.fetchInstagramMessageById(
+      params.mid,
+      params.accessToken,
+      [
+        "id",
+        "created_time",
+        "from",
+        "to",
+        "message",
+        `attachments{${INSTAGRAM_GRAPH_MESSAGE_ATTACHMENTS_FIELDS}}`,
+        "conversation{id}",
+        "reactions{data{reaction,emoji,users{id,username}}}",
+      ].join(","),
+    );
+    graphConversationId = extended.conversation?.id?.trim();
+    if (graphConversationId) {
+      this.log.log(
+        `${t} conversation id from message node id=${graphConversationId}`,
+      );
+    }
+    return { graphConversationId, convList };
   }
 
   /** Save row, then WS push with the same `InstagramMessageDto` as GET .../messages `data[]`. */

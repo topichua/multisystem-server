@@ -187,6 +187,8 @@ import { WishlistAnalyticsIndexes1744200000189 } from "./migrations/174420000018
 import { WorkspaceTemplateIsActive1744200000190 } from "./migrations/1744200000190-WorkspaceTemplateIsActive";
 import { InstagramLoginOAuth1744200000191 } from "./migrations/1744200000191-InstagramLoginOAuth";
 import { ConversationMessageSocialMediaId1744200000192 } from "./migrations/1744200000192-ConversationMessageSocialMediaId";
+import { ConversationExternalIdNullable1744200000193 } from "./migrations/1744200000193-ConversationExternalIdNullable";
+import { ConversationMessageCommentId1744200000194 } from "./migrations/1744200000194-ConversationMessageCommentId";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -606,6 +608,8 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       WorkspaceTemplateIsActive1744200000190,
       InstagramLoginOAuth1744200000191,
       ConversationMessageSocialMediaId1744200000192,
+      ConversationExternalIdNullable1744200000193,
+      ConversationMessageCommentId1744200000194,
     ],
   };
 }

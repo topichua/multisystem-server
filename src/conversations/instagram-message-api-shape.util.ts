@@ -18,6 +18,8 @@ export type LegacyInstagramMessageApi = {
   story?: Record<string, unknown>;
   reactions?: ConversationMessageReactionDto[];
   type?: ConversationMessageType;
+  social_media_id?: string;
+  comment_id?: string;
   tags?: { data?: Array<{ name?: string }> };
   is_unsupported?: boolean;
   edited_at?: string;
@@ -98,6 +100,12 @@ export function toLegacyInstagramMessageApiShape(
   }
   if (msg.type != null) {
     out.type = msg.type;
+  }
+  if (msg.social_media_id?.trim()) {
+    out.social_media_id = msg.social_media_id.trim();
+  }
+  if (msg.comment_id?.trim()) {
+    out.comment_id = msg.comment_id.trim();
   }
   if (msg.tags?.data != null && msg.tags.data.length > 0) {
     out.tags = { data: msg.tags.data };

@@ -496,7 +496,7 @@ export class InstagramOAuthService {
 
   /**
    * Instagram Login connect on Graph:
-   * `POST /{instagram_user_id}/subscribed_apps?subscribed_fields=messages`
+   * `POST /{instagram_user_id}/subscribed_apps?subscribed_fields=messages,comments`
    */
   private async subscribeInstagramWebhooksBestEffort(
     igUserId: string,
@@ -504,7 +504,7 @@ export class InstagramOAuthService {
   ): Promise<void> {
     const path = `${encodeURIComponent(igUserId)}/subscribed_apps`;
     const url = new URL(instagramGraphUrl(path));
-    url.searchParams.set("subscribed_fields", "messages");
+    url.searchParams.set("subscribed_fields", "messages,comments");
     try {
       const response = await fetch(url.toString(), {
         method: "POST",

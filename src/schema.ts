@@ -32,7 +32,7 @@ export type InstagramIntegration = {
 export type Conversation = {
   id: number;
   externalSourceId: string;
-  externalId: string;
+  externalId: string | null;
   instUpdatedAt: Date;
   readAt: Date | null;
   participantId: string;

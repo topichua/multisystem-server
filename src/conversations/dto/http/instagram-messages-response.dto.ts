@@ -252,6 +252,12 @@ export class InstagramMessageDto {
   })
   social_media_id?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "Instagram comment id when the row is a comment (`conversation_messages.comment_id`).",
+  })
+  comment_id?: string;
+
   @ApiPropertyOptional({ type: () => InstagramMessageTagsDto })
   tags?: InstagramMessageTagsDto;
 

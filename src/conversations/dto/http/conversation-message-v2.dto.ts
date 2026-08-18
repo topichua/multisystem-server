@@ -48,4 +48,9 @@ export class ConversationMessageV2Dto {
     description: "Instagram post/reel media id when the message shares media.",
   })
   socialMediaId: string | null;
+
+  @ApiPropertyOptional({
+    description: "Instagram comment id when the row is a comment.",
+  })
+  commentId: string | null;
 }

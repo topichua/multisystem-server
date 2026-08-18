@@ -133,9 +133,11 @@ export class ConversationMessagePresenterService {
 
   private resolveDbColumnsForApi(row: ConversationMessage) {
     const socialMediaId = row.socialMediaId?.trim();
+    const commentId = row.commentId?.trim();
     return {
       type: row.messageType,
       ...(socialMediaId ? { social_media_id: socialMediaId } : {}),
+      ...(commentId ? { comment_id: commentId } : {}),
     };
   }
 
@@ -179,6 +181,7 @@ export class ConversationMessagePresenterService {
       if (typeof createdTime === "string" && createdTime.length > 0) {
         const {
           webhook_messaging,
+          webhook_comment,
           reactions: _storedReactions,
           attachments: _storedAttachments,
           conversation: _conversation,
@@ -186,6 +189,7 @@ export class ConversationMessagePresenterService {
           ...forClient
         } = parsed;
         void webhook_messaging;
+        void webhook_comment;
         void _storedReactions;
         void _storedAttachments;
         void _conversation;
