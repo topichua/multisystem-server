@@ -87,13 +87,11 @@ export class InstagramUsersService {
     workspaceId: number,
     instagramUserId: string,
     pageAccessToken: string,
-    oauthProvider?: string | null,
   ): Promise<void> {
     await this.upsertScopedUserFromGraph(
       workspaceId,
       instagramUserId,
       pageAccessToken,
-      oauthProvider,
     );
   }
 
@@ -112,7 +110,6 @@ export class InstagramUsersService {
       workspaceId,
       id,
       context.pageAccessToken,
-      context.oauthProvider,
     );
   }
 
@@ -134,13 +131,9 @@ export class InstagramUsersService {
     workspaceId: number,
     instagramUserId: string,
     pageAccessToken: string,
-    oauthProvider?: string | null,
   ): Promise<void> {
     const url = new URL(
-      instagramGraphUrl(
-        oauthProvider,
-        encodeURIComponent(instagramUserId),
-      ),
+      instagramGraphUrl(encodeURIComponent(instagramUserId)),
     );
     url.searchParams.set("fields", "id,name,username,profile_pic");
     url.searchParams.set("access_token", pageAccessToken);
@@ -164,10 +157,7 @@ export class InstagramUsersService {
     const accessToken =
       context.userAccessToken?.trim() || context.pageAccessToken.trim();
     const url = new URL(
-      instagramGraphUrl(
-        context.oauthProvider,
-        encodeURIComponent(instagramUserId),
-      ),
+      instagramGraphUrl(encodeURIComponent(instagramUserId)),
     );
     url.searchParams.set("fields", "id,name,username,profile_picture_url");
     url.searchParams.set("access_token", accessToken);

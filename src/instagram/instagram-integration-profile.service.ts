@@ -97,10 +97,7 @@ export class InstagramIntegrationProfileService {
 
     try {
       const url = new URL(
-        instagramGraphUrl(
-          row.oauthProvider,
-          encodeURIComponent(businessAccountId),
-        ),
+        instagramGraphUrl(encodeURIComponent(businessAccountId)),
       );
       url.searchParams.set(
         "fields",

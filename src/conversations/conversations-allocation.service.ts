@@ -17,7 +17,7 @@ import {
   ProductSuggestion,
   ProductSuggestionReasonType,
 } from "../database/entities";
-import { instagramGraphOrigin } from "../instagram/instagram-graph.util";
+import { INSTAGRAM_GRAPH_ORIGIN } from "../instagram/instagram-graph.util";
 import type {
   InstagramConversationDto,
   InstagramConversationParticipantDto,
@@ -898,9 +898,8 @@ export class ConversationsAllocationService {
     accessToken: string,
     fields = "id,created_time,from,to,message",
   ): Promise<InstagramMessageDto> {
-    const origin = await this.originForInstagramToken(accessToken);
     const url = new URL(
-      `${origin}/v25.0/${encodeURIComponent(messageId)}`,
+      `${INSTAGRAM_GRAPH_ORIGIN}/v25.0/${encodeURIComponent(messageId)}`,
     );
     url.searchParams.set("fields", fields);
     url.searchParams.set("access_token", accessToken);
@@ -908,23 +907,19 @@ export class ConversationsAllocationService {
   }
 
   /**
-   * GET `/v25.0/{instagram-business-account-id}/conversations?platform=instagram&user_id=…`
+   * GET `/v25.0/me/conversations?platform=instagram&user_id=…`
    *
    * `customerInstagramUserId` is the Instagram-scoped **other party** id (same value we store as
    * `conversations.participant_id`); Meta expects it as the `user_id` query param.
    */
   private async fetchInstagramConversationsForUser(
-    businessInstagramId: string,
     customerInstagramUserId: string,
     accessToken: string,
   ): Promise<InstagramConversationDto[]> {
     const out: InstagramConversationDto[] = [];
-    const origin = await this.originForInstagramToken(accessToken);
-    const ownerPath =
-      origin.includes("graph.instagram.com") ? "me" : encodeURIComponent(businessInstagramId);
     const fields = encodeURIComponent("id,participants,updated_time");
     let nextUrl: string | null =
-      `${origin}/v25.0/${ownerPath}/conversations` +
+      `${INSTAGRAM_GRAPH_ORIGIN}/v25.0/me/conversations` +
       `?platform=instagram&user_id=${encodeURIComponent(customerInstagramUserId)}&fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
 
     while (nextUrl) {
@@ -1057,7 +1052,6 @@ export class ConversationsAllocationService {
     );
 
     const convList = await this.fetchInstagramConversationsForUser(
-      businessInstagramId,
       customerUserId,
       accessToken,
     );
@@ -1493,13 +1487,6 @@ export class ConversationsAllocationService {
       );
     }
     throw new BadGatewayException(msg);
-  }
-
-  private async originForInstagramToken(accessToken: string): Promise<string> {
-    const row = await this.companyRepo.findOne({
-      where: [{ accessToken }, { userAccessToken: accessToken }],
-    });
-    return instagramGraphOrigin(row?.oauthProvider);
   }
 
   private async instagramGraphFetch<T>(

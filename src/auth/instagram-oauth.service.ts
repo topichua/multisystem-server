@@ -18,6 +18,7 @@ import type { JwtPayload } from "./interfaces/jwt-payload.interface";
 import {
   INSTAGRAM_GRAPH_VERSION,
   INSTAGRAM_OAUTH_PROVIDER,
+  instagramGraphUrl,
 } from "../instagram/instagram-graph.util";
 
 const PENDING_SESSION_TTL_MS = 30 * 60 * 1000;
@@ -282,6 +283,7 @@ export class InstagramOAuthService {
         displayName,
         longLivedToken: longLived,
       });
+      await this.subscribeInstagramWebhooksBestEffort(igUserId, longLived);
       await this.instagramSynchronizations.enqueueAfterConnect(integration);
 
       session.status = "connected";
@@ -490,6 +492,47 @@ export class InstagramOAuthService {
       );
     }
     return json;
+  }
+
+  /**
+   * Instagram Login connect on Graph:
+   * `POST /{instagram_user_id}/subscribed_apps?subscribed_fields=messages`
+   */
+  private async subscribeInstagramWebhooksBestEffort(
+    igUserId: string,
+    accessToken: string,
+  ): Promise<void> {
+    const path = `${encodeURIComponent(igUserId)}/subscribed_apps`;
+    const url = new URL(instagramGraphUrl(path));
+    url.searchParams.set("subscribed_fields", "messages");
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        let message = text.slice(0, 300);
+        try {
+          const body = JSON.parse(text) as MetaErrorBody;
+          message = body.error?.message ?? body.error_message ?? message;
+        } catch {
+          /* keep snippet */
+        }
+        this.log.warn(
+          `Instagram Login webhook subscribe HTTP ${response.status} POST ${path}: ${message}`,
+        );
+        return;
+      }
+      this.log.log(`Instagram Login webhook subscribe succeeded POST ${path}`);
+    } catch (err) {
+      this.log.warn(
+        `Instagram Login webhook subscribe failed POST ${path}: ${err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**

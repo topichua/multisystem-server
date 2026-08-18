@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { AccountResponseDto } from "./dto/account-response.dto";
+import { instagramGraphUrl } from "../instagram/instagram-graph.util";
 
 type InstagramErrorResponse = {
   error?: {
@@ -29,9 +30,7 @@ export class AccountService {
   async getInstagramAccount(accountId: string): Promise<AccountResponseDto> {
     const accessToken = this.getInstagramAccessToken();
 
-    const url = new URL(
-      `https://graph.facebook.com/v25.0/${encodeURIComponent(accountId)}`,
-    );
+    const url = new URL(instagramGraphUrl(encodeURIComponent(accountId)));
     // Scoped customer IDs do not support IG User fields like profile_picture_url.
     // See: User Profile API (Instagram messaging).
     url.searchParams.set("fields", "id,name,username,profile_pic");

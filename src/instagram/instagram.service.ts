@@ -137,10 +137,7 @@ export class InstagramService {
     const accessToken = await this.resolveGraphAccessToken(integration.id);
 
     const url = new URL(
-      instagramGraphUrl(
-        integration.oauthProvider,
-        `${encodeURIComponent(igUserId)}/media`,
-      ),
+      instagramGraphUrl(`${encodeURIComponent(igUserId)}/media`),
     );
     url.searchParams.set("fields", IG_MEDIA_FIELDS);
     url.searchParams.set("limit", String(query.limit ?? 25));
@@ -179,10 +176,7 @@ export class InstagramService {
     const includeReplies = query.include_replies === true;
 
     const url = new URL(
-      instagramGraphUrl(
-        integration.oauthProvider,
-        `${encodeURIComponent(mediaId)}/comments`,
-      ),
+      instagramGraphUrl(`${encodeURIComponent(mediaId)}/comments`),
     );
     url.searchParams.set(
       "fields",
@@ -236,10 +230,7 @@ export class InstagramService {
     const accessToken = await this.resolveGraphAccessToken(integration.id);
 
     const url = new URL(
-      instagramGraphUrl(
-        integration.oauthProvider,
-        `${encodeURIComponent(commentId)}/replies`,
-      ),
+      instagramGraphUrl(`${encodeURIComponent(commentId)}/replies`),
     );
     url.searchParams.set("fields", IG_COMMENT_REPLY_FIELDS);
     url.searchParams.set("limit", String(query.limit ?? 25));
@@ -292,10 +283,7 @@ export class InstagramService {
     }
 
     const url = new URL(
-      instagramGraphUrl(
-        integration.oauthProvider,
-        `${encodeURIComponent(commentId)}/replies`,
-      ),
+      instagramGraphUrl(`${encodeURIComponent(commentId)}/replies`),
     );
     url.searchParams.set("access_token", accessToken);
 
@@ -366,10 +354,7 @@ export class InstagramService {
       "caption,media_type,media_url,thumbnail_url,permalink,shortcode," +
       "children{id,media_type,media_url,thumbnail_url,permalink}";
     const url = new URL(
-      instagramGraphUrl(
-        integration.oauthProvider,
-        encodeURIComponent(mediaId),
-      ),
+      instagramGraphUrl(encodeURIComponent(mediaId)),
     );
     url.searchParams.set("fields", fields);
     url.searchParams.set("access_token", accessToken);
