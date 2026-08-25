@@ -14,6 +14,13 @@ export class RegistrationUserDto {
   @ApiPropertyOptional({ nullable: true })
   lastName: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    example: "+380501234567",
+    description: "Mobile phone from registration start.",
+  })
+  phone: string | null;
+
   @ApiPropertyOptional({ nullable: true, type: String, format: "date-time" })
   emailVerifiedAt: Date | null;
 }

@@ -29,6 +29,7 @@ import type { ConfirmRegistrationResponseDto } from "./dto/confirm-registration-
 import type { StartRegistrationRequestDto } from "./dto/start-registration-request.dto";
 import type { StartRegistrationResponseDto } from "./dto/start-registration-response.dto";
 import { RegistrationTokenCryptoService } from "./registration-token-crypto.service";
+import { InvitationTokenService } from "../users/crypto/invitation-token.service";
 
 const REGISTRATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -41,6 +42,7 @@ export class RegistrationService {
     private readonly userRepo: Repository<User>,
     private readonly passwordService: PasswordService,
     private readonly registrationTokenCrypto: RegistrationTokenCryptoService,
+    private readonly invitationTokenService: InvitationTokenService,
     private readonly sendgrid: SendgridService,
     private readonly config: ConfigService,
     private readonly conversationGroupDefaults: ConversationGroupDefaultsService,
@@ -54,6 +56,7 @@ export class RegistrationService {
     dto: StartRegistrationRequestDto,
   ): Promise<StartRegistrationResponseDto> {
     const email = dto.email.trim().toLowerCase();
+    const phone = this.normalizePhone(dto.phone);
     await this.assertEmailAvailable(email);
 
     await this.registrationTokenRepo.delete({
@@ -73,6 +76,7 @@ export class RegistrationService {
         companyName: dto.companyName.trim(),
         firstName: dto.firstName.trim(),
         lastName: dto.lastName.trim(),
+        phone,
         passwordHash,
         expiresAt,
         usedAt: null,
@@ -148,6 +152,8 @@ export class RegistrationService {
           email: locked.email,
           firstName: locked.firstName,
           lastName: locked.lastName,
+          phone: locked.phone,
+          mobilePhoneHash: this.mobilePhoneHashFromPhone(locked.phone),
           passwordHash: locked.passwordHash,
           status: UserStatus.Active,
           emailVerifiedAt: now,
@@ -212,6 +218,7 @@ export class RegistrationService {
         email: result.user.email,
         firstName: result.user.firstName,
         lastName: result.user.lastName,
+        phone: result.user.phone,
         emailVerifiedAt: result.user.emailVerifiedAt,
       },
       workspace: {
@@ -234,6 +241,27 @@ export class RegistrationService {
     if (taken) {
       throw new ConflictException("Email already in use");
     }
+  }
+
+  private normalizePhone(raw: string | null | undefined): string | null {
+    if (raw == null) {
+      return null;
+    }
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private mobilePhoneHashFromPhone(
+    phone: string | null | undefined,
+  ): string | null {
+    const normalized = this.normalizePhone(phone);
+    if (!normalized) {
+      return null;
+    }
+    const digits = normalized.replace(/\D/g, "");
+    return digits.length === 0
+      ? null
+      : this.invitationTokenService.hash(digits);
   }
 
   private buildConfirmUrl(rawToken: string): string {

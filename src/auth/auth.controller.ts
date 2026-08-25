@@ -79,6 +79,7 @@ export class AuthController {
     summary: "Start workspace owner registration",
     description:
       "Creates a pending registration token and sends a confirmation email. " +
+      "Requires company name, owner name, email, mobile phone, and password. " +
       "Workspace and user are created only after POST /auth/register/confirm.",
   })
   @ApiBody({ type: StartRegistrationRequestDto })

@@ -189,6 +189,7 @@ import { InstagramLoginOAuth1744200000191 } from "./migrations/1744200000191-Ins
 import { ConversationMessageSocialMediaId1744200000192 } from "./migrations/1744200000192-ConversationMessageSocialMediaId";
 import { ConversationExternalIdNullable1744200000193 } from "./migrations/1744200000193-ConversationExternalIdNullable";
 import { ConversationMessageCommentId1744200000194 } from "./migrations/1744200000194-ConversationMessageCommentId";
+import { RegistrationTokenPhone1744200000195 } from "./migrations/1744200000195-RegistrationTokenPhone";
 import { TelegramUsers1744200000077 } from "./migrations/1744200000077-TelegramUsers";
 import {
   Client,
@@ -610,6 +611,7 @@ export function getDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
       ConversationMessageSocialMediaId1744200000192,
       ConversationExternalIdNullable1744200000193,
       ConversationMessageCommentId1744200000194,
+      RegistrationTokenPhone1744200000195,
     ],
   };
 }

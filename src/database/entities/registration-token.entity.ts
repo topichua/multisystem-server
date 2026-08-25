@@ -29,6 +29,9 @@ export class RegistrationToken {
   @Column({ name: "last_name", type: "varchar", length: 120 })
   lastName: string;
 
+  @Column({ name: "phone", type: "varchar", length: 64, nullable: true })
+  phone: string | null;
+
   @Column({ name: "password_hash", type: "text" })
   passwordHash: string;
 

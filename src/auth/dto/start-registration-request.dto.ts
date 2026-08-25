@@ -43,6 +43,18 @@ export class StartRegistrationRequestDto {
   )
   email: string;
 
+  @ApiProperty({
+    example: "+380501234567",
+    description: "Mobile phone number (stored on the owner profile after confirm).",
+  })
+  @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  @IsNotEmpty()
+  @MaxLength(64)
+  phone: string;
+
   @ApiProperty({ minLength: 8 })
   @IsString()
   @MinLength(8)
