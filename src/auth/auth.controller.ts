@@ -79,7 +79,8 @@ export class AuthController {
   @ApiOperation({
     summary: "Start workspace owner registration",
     description:
-      "Creates a pending registration token and sends a confirmation email. " +
+      "Creates a pending registration token and sends a confirmation email (best effort). " +
+      "Always returns `confirmUrl` even if email delivery fails. " +
       "Requires company name, owner name, email, mobile phone, and password. " +
       "Workspace and user are created only after POST /auth/register/confirm.",
   })
@@ -441,7 +442,7 @@ export class AuthController {
   @ApiQuery({ name: "error", required: false })
   @ApiQuery({ name: "error_reason", required: false })
   @ApiQuery({ name: "error_description", required: false })
-  async instagramOAuthCallback(
+  async instagramOAuthCallback( 
     @Req() req: Request,
     @Query("code") code: string | undefined,
     @Query("state") state: string | undefined,

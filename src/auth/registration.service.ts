@@ -88,16 +88,6 @@ export class RegistrationService {
 
     const confirmUrl = this.buildConfirmUrl(rawToken);
 
-    if (this.isOutboundEmailRequired()) {
-      await this.sendgrid.sendRegistrationConfirmationEmail({
-        to: email,
-        firstName: dto.firstName.trim(),
-        companyName: dto.companyName.trim(),
-        confirmUrl,
-      });
-      return { success: true };
-    }
-
     try {
       await this.sendgrid.sendRegistrationConfirmationEmail({
         to: email,
@@ -108,7 +98,7 @@ export class RegistrationService {
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       this.log.warn(
-        `Registration confirmation email failed (non-required): ${err}`,
+        `Registration confirmation email failed to=${email}: ${err}`,
       );
     }
 
@@ -259,21 +249,6 @@ export class RegistrationService {
     if (taken) {
       throw new ConflictException("Email already in use");
     }
-  }
-
-  private isOutboundEmailRequired(): boolean {
-    const enabled = this.config.get<string>("SENDGRID_ENABLED")?.trim();
-    if (enabled === "false" || enabled === "0") {
-      return false;
-    }
-    if (this.config.get<string>("NODE_ENV") !== "production") {
-      return false;
-    }
-    const appUrl = this.config.get<string>("APP_URL")?.trim() ?? "";
-    if (/localhost|127\.0\.0\.1/i.test(appUrl)) {
-      return false;
-    }
-    return true;
   }
 
   private normalizePhone(raw: string | null | undefined): string | null {

@@ -1,12 +1,14 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty } from "@nestjs/swagger";
 
 export class StartRegistrationResponseDto {
   @ApiProperty({ example: true })
   success: true;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
-      "Non-production only. Full confirmation URL with the raw token (use the `token` query param, not `token_hash` from DB).",
+      "Confirmation URL with the raw token (use the `token` query param). " +
+      "Always returned, including when the confirmation email fails to send.",
+    example: "https://app.example.com/register/confirm?token=…",
   })
-  confirmUrl?: string;
+  confirmUrl: string;
 }
