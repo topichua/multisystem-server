@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -226,6 +227,21 @@ export class AuthController {
     @UploadedFile() image?: UploadedAvatarFile,
   ): Promise<UpdateAuthAvatarResponseDto> {
     return this.authService.updateAvatar(req.user, image);
+  }
+
+  @Delete("avatar")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Delete current user avatar",
+    description:
+      "Removes the avatar from Cloudflare CDN when present and clears it on the user. Idempotent: succeeds even if there is no avatar.",
+  })
+  @ApiOkResponse({ type: UpdateAuthAvatarResponseDto })
+  async deleteAvatar(
+    @Req() req: Request & { user: AuthUser },
+  ): Promise<UpdateAuthAvatarResponseDto> {
+    return this.authService.deleteAvatar(req.user);
   }
 
   @Post("change-password")
