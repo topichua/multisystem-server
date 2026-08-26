@@ -179,6 +179,28 @@ export class AuthService {
     return { avatar_src: uploaded.cdnUrl };
   }
 
+  async deleteAvatar(authUser: AuthUser): Promise<{ avatar_src: null }> {
+    if (authUser.userId === "super-admin") {
+      throw new BadRequestException(
+        "Env super-admin account has no profile to update",
+      );
+    }
+
+    const user = await this.requireUserFromAuth(authUser);
+
+    if (user.avatarCloudflareImageId) {
+      await this.cloudflareImages.deleteImage(user.avatarCloudflareImageId);
+    }
+
+    if (user.avatarSrc != null || user.avatarCloudflareImageId != null) {
+      user.avatarSrc = null;
+      user.avatarCloudflareImageId = null;
+      await this.userRepo.save(user);
+    }
+
+    return { avatar_src: null };
+  }
+
   async changePassword(
     authUser: AuthUser,
     dto: ChangePasswordRequestDto,
