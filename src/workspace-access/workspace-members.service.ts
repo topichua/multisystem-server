@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   forwardRef,
 } from "@nestjs/common";
@@ -49,6 +50,8 @@ const TEST_SKIP_PASSWORD = "password";
 
 @Injectable()
 export class WorkspaceMembersService {
+  private readonly log = new Logger(WorkspaceMembersService.name);
+
   constructor(
     @InjectRepository(WorkspaceMember)
     private readonly memberRepo: Repository<WorkspaceMember>,
@@ -222,7 +225,7 @@ export class WorkspaceMembersService {
       throw new BadRequestException("User account is disabled");
     }
 
-    const rawToken = await this.refreshInvitationAndSend(
+    const { rawToken, invitationLink } = await this.refreshInvitationAndSend(
       ownerId,
       workspace.id,
       user,
@@ -231,6 +234,7 @@ export class WorkspaceMembersService {
     const response: InviteWorkspaceMemberResponseDto = {
       kind: "invitation",
       invitationId: member.id,
+      invitationLink,
     };
     if (this.config.get<string>("NODE_ENV") !== "production") {
       response.invitationToken = rawToken;
@@ -420,7 +424,7 @@ export class WorkspaceMembersService {
       );
     }
 
-    const rawToken = await this.refreshInvitationAndSend(
+    const { rawToken, invitationLink } = await this.refreshInvitationAndSend(
       ownerId,
       workspaceId,
       user,
@@ -434,6 +438,7 @@ export class WorkspaceMembersService {
     const response: InviteWorkspaceMemberResponseDto = {
       kind: "invitation",
       invitationId: savedMember.id,
+      invitationLink,
     };
     if (this.config.get<string>("NODE_ENV") !== "production") {
       response.invitationToken = rawToken;
@@ -605,7 +610,7 @@ export class WorkspaceMembersService {
     ownerId: number,
     workspaceId: number,
     user: User,
-  ): Promise<string> {
+  ): Promise<{ rawToken: string; invitationLink: string }> {
     const rawToken = this.invitationTokenService.generateRawToken();
     const invitationExpiresAt = new Date(Date.now() + DEFAULT_INVITE_TTL_MS);
 
@@ -619,13 +624,43 @@ export class WorkspaceMembersService {
     await this.revokePendingWorkspaceInvitations(workspaceId, user.email);
 
     const invitationLink = this.buildInvitationLink(rawToken);
-    await this.sendgrid.sendWorkspaceInvitationEmail(
-      user.email,
-      user.firstName,
-      invitationLink,
-    );
+    if (this.isOutboundEmailRequired()) {
+      await this.sendgrid.sendWorkspaceInvitationEmail(
+        user.email,
+        user.firstName,
+        invitationLink,
+      );
+    } else {
+      try {
+        await this.sendgrid.sendWorkspaceInvitationEmail(
+          user.email,
+          user.firstName,
+          invitationLink,
+        );
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        this.log.warn(
+          `Workspace invitation email failed (non-required) to=${user.email}: ${err}`,
+        );
+      }
+    }
 
-    return rawToken;
+    return { rawToken, invitationLink };
+  }
+
+  private isOutboundEmailRequired(): boolean {
+    const enabled = this.config.get<string>("SENDGRID_ENABLED")?.trim();
+    if (enabled === "false" || enabled === "0") {
+      return false;
+    }
+    if (this.config.get<string>("NODE_ENV") !== "production") {
+      return false;
+    }
+    const appUrl = this.config.get<string>("APP_URL")?.trim() ?? "";
+    if (/localhost|127\.0\.0\.1/i.test(appUrl)) {
+      return false;
+    }
+    return true;
   }
 
   private async findOrCreateTestUser(

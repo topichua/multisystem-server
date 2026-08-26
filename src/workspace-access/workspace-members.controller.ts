@@ -172,7 +172,7 @@ export class WorkspaceMembersController {
     summary: "Invite a member by email (workspace owner assigns role)",
     description:
       "Creates an invited user and inactive workspace member, sends a SendGrid invitation email, " +
-      "and returns invitationId (workspace member id). " +
+      "and returns `invitationId` plus `invitationLink` (confirmation URL). " +
       'skipConfirmation (non-production): creates user with password "password" and adds member immediately.',
   })
   @ApiBody({ type: InviteWorkspaceMemberRequestDto })

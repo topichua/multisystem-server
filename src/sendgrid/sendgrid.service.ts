@@ -127,8 +127,26 @@ export class SendgridService {
       });
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
-      this.log.warn(`SendGrid email failed to=${params.to}: ${err}`);
+      const detail = this.formatSendGridErrorDetail(e);
+      this.log.warn(
+        `SendGrid email failed to=${params.to}: ${err}${detail}`,
+      );
       throw new BadGatewayException("Failed to send email");
+    }
+  }
+
+  private formatSendGridErrorDetail(error: unknown): string {
+    if (error === null || typeof error !== "object") {
+      return "";
+    }
+    const response = (error as { response?: { body?: unknown } }).response;
+    if (response?.body == null) {
+      return "";
+    }
+    try {
+      return ` body=${JSON.stringify(response.body)}`;
+    } catch {
+      return "";
     }
   }
 }

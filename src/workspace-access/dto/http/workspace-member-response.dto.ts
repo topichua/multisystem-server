@@ -81,6 +81,12 @@ export class InviteWorkspaceMemberResponseDto {
   invitationId?: number;
 
   @ApiPropertyOptional({
+    description:
+      "Invitation / confirmation link for the invitee (`APP_URL/invitation/{token}`).",
+  })
+  invitationLink?: string;
+
+  @ApiPropertyOptional({
     description: "Non-production only: raw invitation token for local testing.",
   })
   invitationToken?: string;
