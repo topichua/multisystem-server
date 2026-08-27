@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -19,6 +20,7 @@ import {
   ProductMedia,
   ProductVariant,
   UploadMedia,
+  VariantStock,
   Workspace,
   WorkspaceVariantCustomField,
   OrderItem,
@@ -765,6 +767,13 @@ export class ProductsService {
       );
     }
 
+    await this.assertVariantSkusAvailableInWorkspace(
+      workspace.id,
+      variantInputs.map((spec) => ({
+        sku: this.normalizeVariantSku(spec.sku),
+      })),
+    );
+
     const stagedMediaIds = this.collectStagedMediaIds(dto);
     const stagedById = await this.uploadMedia.requireForWorkspace(
       workspace.id,
@@ -807,7 +816,7 @@ export class ProductsService {
               productId: saved.id,
               price: spec.price ?? null,
               inStock: spec.inStock ?? null,
-              sku: spec.sku?.trim() || null,
+              sku: this.normalizeVariantSku(spec.sku),
               status: spec.status ?? productStatus,
               createdByUserId: ownerId,
               updatedByUserId: null,
@@ -900,6 +909,8 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
+    this.assertNoDirectQuantityEditsInProductDto(workspace, dto);
+
     let newVariantQuantities: Array<{
       variantId: number;
       quantity: number | undefined;
@@ -924,21 +935,23 @@ export class ProductsService {
       }
     });
 
-    for (const item of newVariantQuantities) {
-      await this.applySimpleQuantityIfProvided(
+    if (this.inventoryModeOf(workspace) === InventoryMode.simple) {
+      for (const item of newVariantQuantities) {
+        await this.applySimpleQuantityIfProvided(
+          ownerId,
+          workspace,
+          item.variantId,
+          item.quantity,
+        );
+      }
+
+      await this.applySingleProductQuantityFromDto(
         ownerId,
         workspace,
-        item.variantId,
-        item.quantity,
+        product,
+        dto.quantity,
       );
     }
-
-    await this.applySingleProductQuantityFromDto(
-      ownerId,
-      workspace,
-      product,
-      dto.quantity,
-    );
 
     return this.findOneForOwner(ownerId, productId);
   }
@@ -1069,6 +1082,8 @@ export class ProductsService {
       await this.workspaceContext.requireWorkspaceForOwner(ownerId);
     const product = await this.requireProduct(workspace.id, productId);
     await this.assertCanAddVariantToProduct(product);
+    const sku = this.normalizeVariantSku(dto.sku);
+    await this.assertVariantSkusAvailableInWorkspace(workspace.id, [{ sku }]);
     const resolved =
       await this.variantCustomFields.resolveVariantAttributesFromPayload(
         ownerId,
@@ -1083,7 +1098,7 @@ export class ProductsService {
       productId,
       price: dto.price ?? null,
       inStock: dto.inStock ?? null,
-      sku: dto.sku?.trim() || null,
+      sku,
       status: dto.status ?? product.status ?? ProductStatus.active,
       createdByUserId: ownerId,
       updatedByUserId: null,
@@ -1174,7 +1189,11 @@ export class ProductsService {
       );
     }
     if (dto.sku !== undefined) {
-      variant.sku = dto.sku === null ? null : dto.sku.trim() || null;
+      const sku = this.normalizeVariantSku(dto.sku);
+      await this.assertVariantSkusAvailableInWorkspace(workspace.id, [
+        { sku, excludeVariantId: variant.id },
+      ]);
+      variant.sku = sku;
     }
     if (dto.status !== undefined) {
       variant.status = dto.status;
@@ -1204,6 +1223,7 @@ export class ProductsService {
     await this.variantRepo.manager.transaction(async (em) => {
       await this.archiveOrRemoveVariants(
         em,
+        workspace,
         [variant],
         orderLinkedVariantIds,
         ownerId,
@@ -1649,8 +1669,33 @@ export class ProductsService {
       em,
     );
     const toRemove = existing.filter((v) => !payloadIds.has(v.id));
+
+    const skuClaims: Array<{ sku: string | null; excludeVariantId?: number }> =
+      [];
+    for (const spec of variantInputs) {
+      if (spec.id != null) {
+        const current = existingById.get(spec.id)!;
+        const sku =
+          spec.sku !== undefined
+            ? this.normalizeVariantSku(spec.sku)
+            : this.normalizeVariantSku(current.sku);
+        skuClaims.push({ sku, excludeVariantId: current.id });
+      } else {
+        skuClaims.push({ sku: this.normalizeVariantSku(spec.sku) });
+      }
+    }
+    await this.assertVariantSkusAvailableInWorkspace(
+      workspaceId,
+      skuClaims,
+      {
+        em,
+        excludeVariantIds: existing.map((v) => v.id),
+      },
+    );
+
     await this.archiveOrRemoveVariants(
       em,
+      workspace,
       toRemove,
       orderLinkedVariantIds,
       ownerId,
@@ -1690,7 +1735,7 @@ export class ProductsService {
             productId: product.id,
             price: spec.price ?? null,
             inStock: spec.inStock ?? null,
-            sku: spec.sku?.trim() || null,
+            sku: this.normalizeVariantSku(spec.sku),
             status: spec.status ?? product.status,
             createdByUserId: ownerId,
             updatedByUserId: null,
@@ -1768,7 +1813,7 @@ export class ProductsService {
       );
     }
     if (spec.sku !== undefined) {
-      variant.sku = spec.sku?.trim() || null;
+      variant.sku = this.normalizeVariantSku(spec.sku);
     }
     if (spec.status !== undefined) {
       variant.status = spec.status;
@@ -1837,18 +1882,68 @@ export class ProductsService {
 
   private async archiveOrRemoveVariants(
     em: EntityManager,
+    workspace: Workspace,
     variants: ProductVariant[],
     orderLinkedVariantIds: Set<number>,
     ownerId: number,
   ): Promise<void> {
+    const hardDeleteCandidates = variants.filter(
+      (variant) => !orderLinkedVariantIds.has(variant.id),
+    );
+    if (hardDeleteCandidates.length > 0) {
+      await this.inventory.releaseActiveReservationsForVariants(
+        workspace.id,
+        hardDeleteCandidates.map((variant) => variant.id),
+        ownerId,
+      );
+    }
+
+    const preserveStockIds = new Set<number>();
+    if (
+      this.inventoryModeOf(workspace) === InventoryMode.advanced &&
+      hardDeleteCandidates.length > 0
+    ) {
+      const stocks = await em.find(VariantStock, {
+        where: {
+          workspaceId: workspace.id,
+          variantId: In(hardDeleteCandidates.map((variant) => variant.id)),
+        },
+      });
+      for (const stock of stocks) {
+        if (
+          stock.stockInitialized ||
+          stock.quantity > 0 ||
+          stock.reservedQuantity > 0
+        ) {
+          preserveStockIds.add(stock.variantId);
+        }
+      }
+    }
+
     for (const variant of variants) {
-      if (orderLinkedVariantIds.has(variant.id)) {
+      const mustKeep =
+        orderLinkedVariantIds.has(variant.id) ||
+        preserveStockIds.has(variant.id);
+      if (mustKeep) {
         variant.status = ProductStatus.archived;
         variant.updatedByUserId = ownerId;
         await em.save(variant);
       } else {
         await em.remove(variant);
       }
+    }
+  }
+
+  private assertNoDirectQuantityEditsInProductDto(
+    workspace: Workspace,
+    dto: UpdateProductDto,
+  ): void {
+    if (this.inventoryModeOf(workspace) !== InventoryMode.advanced) {
+      return;
+    }
+    assertNoDirectQuantityEdit(InventoryMode.advanced, dto.quantity);
+    for (const variant of dto.variants ?? []) {
+      assertNoDirectQuantityEdit(InventoryMode.advanced, variant.quantity);
     }
   }
 
@@ -1996,7 +2091,7 @@ export class ProductsService {
     fieldFilterPlan: ResolvedFieldFilter[] = [],
   ): void {
     qb.where("p.workspaceId = :workspaceId", { workspaceId });
-    this.applyProductStatusFilter(qb, query);
+    this.applyVariantListProductStatusFilter(qb, query);
     this.applyProductFieldFilters(qb, "variant", fieldFilterPlan);
     if (query.wishlistOnly === true) {
       qb.andWhere(
@@ -2060,6 +2155,36 @@ export class ProductsService {
     if (query.status !== undefined) {
       qb.andWhere("p.status = :status", { status: query.status });
     }
+  }
+
+  /**
+   * `GET /products/variants`: hide archived products by default.
+   * Explicit `byStatus=onlyArchived` or `status=archived` still returns them.
+   */
+  private applyVariantListProductStatusFilter(
+    qb: SelectQueryBuilder<ProductVariant>,
+    query: ListProductsQueryDto,
+  ): void {
+    const byStatus = query.byStatus ?? ProductListByStatus.all;
+    if (byStatus === ProductListByStatus.onlyActive) {
+      qb.andWhere("p.status = :byStatusActive", {
+        byStatusActive: ProductStatus.active,
+      });
+      return;
+    }
+    if (byStatus === ProductListByStatus.onlyArchived) {
+      qb.andWhere("p.status = :byStatusArchived", {
+        byStatusArchived: ProductStatus.archived,
+      });
+      return;
+    }
+    if (query.status !== undefined) {
+      qb.andWhere("p.status = :status", { status: query.status });
+      return;
+    }
+    qb.andWhere("p.status != :excludeArchivedProduct", {
+      excludeArchivedProduct: ProductStatus.archived,
+    });
   }
 
   private applyStockQuantityRangeFilter(
@@ -2644,6 +2769,71 @@ export class ProductsService {
       name: p.name,
       product_parent: this.toProductParentSummary(p, mainImageByProductId),
     };
+  }
+
+  private normalizeVariantSku(raw: string | null | undefined): string | null {
+    if (raw == null) {
+      return null;
+    }
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  /**
+   * SKU must be unique within the workspace (case-insensitive). Null/empty SKUs are allowed.
+   */
+  private async assertVariantSkusAvailableInWorkspace(
+    workspaceId: number,
+    claims: Array<{ sku: string | null; excludeVariantId?: number }>,
+    options?: { em?: EntityManager; excludeVariantIds?: number[] },
+  ): Promise<void> {
+    const seen = new Map<string, string>();
+    for (const claim of claims) {
+      const sku = claim.sku;
+      if (!sku) {
+        continue;
+      }
+      const key = sku.toLowerCase();
+      const previous = seen.get(key);
+      if (previous != null) {
+        throw new ConflictException(
+          `Variant SKU must be unique within the workspace: "${sku}"`,
+        );
+      }
+      seen.set(key, sku);
+    }
+
+    if (seen.size === 0) {
+      return;
+    }
+
+    const excludeIds = new Set<number>(options?.excludeVariantIds ?? []);
+    for (const claim of claims) {
+      if (claim.excludeVariantId != null) {
+        excludeIds.add(claim.excludeVariantId);
+      }
+    }
+
+    const manager = options?.em ?? this.variantRepo.manager;
+    for (const sku of seen.values()) {
+      const qb = manager
+        .createQueryBuilder(ProductVariant, "v")
+        .innerJoin("v.product", "p")
+        .where("p.workspace_id = :workspaceId", { workspaceId })
+        .andWhere("v.sku IS NOT NULL")
+        .andWhere("LOWER(v.sku) = LOWER(:sku)", { sku });
+      if (excludeIds.size > 0) {
+        qb.andWhere("v.id NOT IN (:...excludeIds)", {
+          excludeIds: [...excludeIds],
+        });
+      }
+      const conflict = await qb.getOne();
+      if (conflict) {
+        throw new ConflictException(
+          `Variant SKU must be unique within the workspace: "${sku}"`,
+        );
+      }
+    }
   }
 
   private normalizeCreateVariantInputs(

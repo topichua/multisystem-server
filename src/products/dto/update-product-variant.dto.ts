@@ -69,7 +69,11 @@ export class UpdateProductVariantDto {
   @Min(1, { each: true })
   mediaIds?: number[];
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Variant SKU / article. Must be unique within the workspace (case-insensitive).",
+  })
   @IsOptional()
   @IsString()
   @Transform(({ value }: { value: unknown }) =>

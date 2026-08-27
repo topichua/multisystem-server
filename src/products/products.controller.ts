@@ -192,6 +192,7 @@ export class ProductsController {
     summary: "List product variants (full rows)",
     description:
       "Paginated variants with `product_parent`, filters, and variant `media`. For a lighter picker, use `GET /products/catalog-variants`. " +
+      "Archived products are excluded by default; pass `byStatus=onlyArchived` or `status=archived` to include them. " +
       "Supports the same `field:{id}=...` characteristic filters as `GET /products`.",
   })
   async listVariants(
@@ -419,7 +420,9 @@ export class ProductsController {
       "Updates product fields and, when `variants` is provided, syncs the full variant list. " +
       "Shipping fields weightGrams, lengthCm, widthCm, heightCm are saved on the product row. " +
       "Each variant's `mediaIds` is the full gallery (unlisted staged ids are removed; omit for no images). " +
-      "Variants omitted from `variants` are hard-deleted, or archived when referenced by order line items.",
+      "Variants omitted from `variants` are hard-deleted, or archived when referenced by order line items " +
+      "or (advanced inventory) when they still have stock. " +
+      "In advanced inventory mode, `quantity` on the product/variants is rejected — use the inventory API.",
   })
   @ApiBody({ type: UpdateProductDto })
   async replace(

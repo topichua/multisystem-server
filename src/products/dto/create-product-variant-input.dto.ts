@@ -65,7 +65,10 @@ export class CreateProductVariantInputDto {
   @Min(0)
   quantity?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      "Variant SKU / article. Must be unique within the workspace (case-insensitive).",
+  })
   @IsOptional()
   @IsString()
   @Transform(({ value }: { value: unknown }) =>
