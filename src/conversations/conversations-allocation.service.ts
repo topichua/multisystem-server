@@ -417,42 +417,59 @@ export class ConversationsAllocationService {
       return;
     }
 
-    if (this.isOwnInstagramAccount(fromId, ctx.businessInstagramId, ctx.pageId)) {
-      this.log.log(
-        `${t} comment ignored (own account) id=${commentId.slice(0, 64)}`,
-      );
-      return;
-    }
-
-    const customerUserId = fromId;
+    const isOwnComment = this.isOwnInstagramAccount(
+      fromId,
+      ctx.businessInstagramId,
+      ctx.pageId,
+    );
     const parentId = value.parent_id?.trim() || null;
+    const postId = commentPostIdFromWebhookValue(value);
     const createdTime = this.dateFromInstagramWebhookTime(ctx.entry.time);
     const createdTimeIso = createdTime.toISOString();
 
-    const {
-      row: conv,
-      saveConversation,
-    } = await this.ensureInstagramConversationRowForComment({
-      traceId: ctx.traceId,
-      customerUserId,
-      businessInstagramId: ctx.businessInstagramId,
-      workspaceId: ctx.companyCtx.workspaceId,
-      createdTime: createdTimeIso,
-    });
-
-    if (saveConversation) {
-      await this.conversationRepo.save(conv);
-      await this.conversationWorkflow.onConversationCreated(
-        conv,
-        ctx.companyCtx.ownerId,
-      );
-      await this.chatAutoDistribution.tryAssignOnNewConversation(conv);
-    } else {
+    let conv: Conversation;
+    if (isOwnComment) {
+      const existingConv = await this.resolveConversationForOwnComment({
+        workspaceId: ctx.companyCtx.workspaceId,
+        parentId,
+        postId,
+        commentId,
+      });
+      if (!existingConv) {
+        this.log.log(
+          `${t} own comment skipped (no customer thread) id=${commentId.slice(0, 64)} parent=${parentId ?? "-"}`,
+        );
+        return;
+      }
+      conv = existingConv;
       conv.instUpdatedAt = createdTime;
       await this.conversationRepo.save(conv);
+    } else {
+      const ensured = await this.ensureInstagramConversationRowForComment({
+        traceId: ctx.traceId,
+        customerUserId: fromId,
+        businessInstagramId: ctx.businessInstagramId,
+        workspaceId: ctx.companyCtx.workspaceId,
+        createdTime: createdTimeIso,
+      });
+      conv = ensured.row;
+      if (ensured.saveConversation) {
+        await this.conversationRepo.save(conv);
+        await this.conversationWorkflow.onConversationCreated(
+          conv,
+          ctx.companyCtx.ownerId,
+        );
+        await this.chatAutoDistribution.tryAssignOnNewConversation(conv);
+      } else {
+        conv.instUpdatedAt = createdTime;
+        await this.conversationRepo.save(conv);
+      }
     }
 
-    if (await this.conversationWorkflow.shouldDropInboundMessage(conv)) {
+    if (
+      !isOwnComment &&
+      (await this.conversationWorkflow.shouldDropInboundMessage(conv))
+    ) {
       this.log.log(
         `${t} dropped inbound comment for spam conversation id=${conv.id} commentId=${commentId}`,
       );
@@ -460,8 +477,9 @@ export class ConversationsAllocationService {
     }
 
     const text = value.text ?? "";
-    const postId = commentPostIdFromWebhookValue(value);
-    const receiverId = ctx.businessInstagramId;
+    const receiverId = isOwnComment
+      ? conv.participantId?.trim() || ctx.businessInstagramId
+      : ctx.businessInstagramId;
 
     const existingMessage =
       (await this.conversationMessageRepo.findOne({
@@ -525,21 +543,22 @@ export class ConversationsAllocationService {
     );
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
 
-    await this.syncInstagramUsersForWebhookAllocation({
-      workspaceId: conv.workspaceId,
-      customerUserId,
-      accessToken: ctx.accessToken,
-      oauthProvider: ctx.companyCtx.oauthProvider,
-      businessInstagramId: ctx.businessInstagramId,
-      pageId: ctx.pageId,
-      traceId: ctx.traceId,
-    });
-
-    await this.suggestProductsFromSharedPost(conv, messageRow, ctx.traceId);
-    await this.conversationWorkflow.onInboundCustomerMessage(conv);
+    if (!isOwnComment) {
+      await this.syncInstagramUsersForWebhookAllocation({
+        workspaceId: conv.workspaceId,
+        customerUserId: fromId,
+        accessToken: ctx.accessToken,
+        oauthProvider: ctx.companyCtx.oauthProvider,
+        businessInstagramId: ctx.businessInstagramId,
+        pageId: ctx.pageId,
+        traceId: ctx.traceId,
+      });
+      await this.suggestProductsFromSharedPost(conv, messageRow, ctx.traceId);
+      await this.conversationWorkflow.onInboundCustomerMessage(conv);
+    }
 
     this.log.log(
-      `${t} comment saved id=${commentId} conversation_id=${conv.id} postId=${postId ?? "-"}`,
+      `${t} comment saved id=${commentId} conversation_id=${conv.id} postId=${postId ?? "-"} own=${isOwnComment}`,
     );
   }
 
@@ -1276,6 +1295,47 @@ export class ConversationsAllocationService {
     const d = new Date(createdTime);
     if (!Number.isNaN(d.getTime())) return d;
     return new Date();
+  }
+
+  /**
+   * Own comments (business account) must not open a self-conversation.
+   * Attach replies to the parent comment's customer thread.
+   */
+  private async resolveConversationForOwnComment(params: {
+    workspaceId: number;
+    parentId: string | null;
+    postId: string | null;
+    commentId: string;
+  }): Promise<Conversation | null> {
+    const parentId = params.parentId?.trim() || "";
+    const postId = params.postId?.trim() || "";
+    if (!parentId || parentId === params.commentId || parentId === postId) {
+      return null;
+    }
+
+    const parentMessage =
+      (await this.conversationMessageRepo.findOne({
+        where: {
+          workspaceId: params.workspaceId,
+          commentId: parentId,
+        },
+      })) ??
+      (await this.conversationMessageRepo.findOne({
+        where: {
+          workspaceId: params.workspaceId,
+          externalId: parentId,
+        },
+      }));
+    if (!parentMessage) {
+      return null;
+    }
+
+    return this.conversationRepo.findOne({
+      where: {
+        workspaceId: params.workspaceId,
+        id: parentMessage.conversationId,
+      },
+    });
   }
 
   /**
