@@ -297,13 +297,13 @@ export class InstagramController {
   @ApiOperation({
     summary: "List comments on an Instagram post",
     description:
-      "Calls Meta Graph `GET /{instagram-media-id}/comments` with the integration Page token. " +
+      "Reads stored comments from `conversation_messages` for this post (`social_media_id` = media id). " +
       "By default returns top-level comments only with lightweight `reply_count` / `has_replies` " +
       "(no reply bodies). Load replies on demand via GET .../comments/:commentId/replies. " +
       "Comment authors are enriched from `instagram_users` (`from.name`, `from.profilePic`). " +
-      "Set `include_replies=true` only if you need embedded replies in one response (heavier). " +
+      "Set `include_replies=true` to embed reply objects in one response. " +
       "Pass `integrationId` from GET /api/instagram/integrations when you have multiple accounts. " +
-      "Use `limit` (default 25, max 50) and Graph cursors `after` / `before` from `paging.cursors` to paginate.",
+      "Use `limit` (default 25, max 50) and cursors `after` / `before` from `paging.cursors` to paginate.",
   })
   @ApiOkResponse({ type: InstagramPostCommentsListResponseDto })
   async listPostComments(
@@ -328,8 +328,8 @@ export class InstagramController {
   @ApiOperation({
     summary: "List replies on an Instagram comment",
     description:
-      "Calls Meta Graph `GET /{ig-comment-id}/replies`. Use after checking `has_replies` on the parent " +
-      "comment from GET /api/instagram/posts/:instagramPostId/comments. " +
+      "Reads stored replies from `conversation_messages` for the parent comment. " +
+      "Use after checking `has_replies` on the parent comment from GET /api/instagram/posts/:instagramPostId/comments. " +
       "Pass `integrationId` when you have multiple connected Instagram accounts.",
   })
   @ApiParam({
@@ -361,7 +361,12 @@ export class InstagramController {
     if (!id || id.length > 128) {
       throw new BadRequestException("commentId is invalid");
     }
-    return this.instagram.listRepliesForCommentForOwner(ownerId, id, query);
+    return this.instagram.listRepliesForCommentForOwner(
+      ownerId,
+      postId,
+      id,
+      query,
+    );
   }
 
   @Post("posts/:instagramPostId/comments/:commentId/reply")

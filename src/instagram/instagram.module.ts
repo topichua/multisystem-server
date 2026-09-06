@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { CategoriesModule } from "../categories/categories.module";
 import {
+  ConversationMessage,
   InstagramIntegration,
   InstagramSynchronization,
   InstagramUser,
@@ -22,6 +23,7 @@ import { InstagramService } from "./instagram.service";
       InstagramIntegration,
       InstagramSynchronization,
       InstagramUser,
+      ConversationMessage,
     ]),
     CategoriesModule,
     ProductInstagramReferencesModule,

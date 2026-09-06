@@ -3,12 +3,15 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { IsNull, Not, Repository } from "typeorm";
-import { InstagramIntegration } from "../database/entities";
+import { IsNull, Not, Repository, SelectQueryBuilder } from "typeorm";
+import {
+  ConversationMessage,
+  ConversationMessageType,
+  InstagramIntegration,
+} from "../database/entities";
 import { WorkspaceAccessContextService } from "../workspace-access/workspace-access-context.service";
 import type { InstagramIntegrationsListResponseDto } from "./dto/instagram-integration-list-item.dto";
 import { InstagramIntegrationProfileService } from "./instagram-integration-profile.service";
@@ -34,17 +37,7 @@ const IG_MEDIA_FIELDS =
   "like_count,comments_count," +
   "children{id,media_type,media_url,thumbnail_url}";
 
-const IG_COMMENT_LIST_FIELDS =
-  "id,text,timestamp,username,like_count,hidden," +
-  "from{id,username},replies.limit(0).summary(true)";
-
-const IG_COMMENT_LIST_FIELDS_WITH_REPLIES =
-  "id,text,timestamp,username,like_count,hidden," +
-  "from{id,username}," +
-  "replies{id,text,timestamp,username,like_count,hidden,from{id,username}}";
-
-const IG_COMMENT_REPLY_FIELDS =
-  "id,text,timestamp,username,like_count,hidden,from{id,username}";
+type CommentListCursor = { t: string; id: string };
 
 type InstagramErrorResponse = {
   error?: { message?: string; type?: string; code?: number };
@@ -58,11 +51,6 @@ type IgMediaPaging = {
 
 type IgMediaListResponse = {
   data?: InstagramMediaItemDto[];
-  paging?: IgMediaPaging;
-};
-
-type IgCommentListResponse = {
-  data?: InstagramCommentDto[];
   paging?: IgMediaPaging;
 };
 
@@ -91,6 +79,8 @@ export class InstagramService {
   constructor(
     @InjectRepository(InstagramIntegration)
     private readonly instagramIntegrationRepo: Repository<InstagramIntegration>,
+    @InjectRepository(ConversationMessage)
+    private readonly conversationMessageRepo: Repository<ConversationMessage>,
     private readonly workspaceContext: WorkspaceAccessContextService,
     private readonly integrationProfile: InstagramIntegrationProfileService,
     private readonly instagramUsers: InstagramUsersService,
@@ -159,7 +149,7 @@ export class InstagramService {
 
   /**
    * Lists one page of top-level comments on an Instagram media post
-   * (Graph `GET /{ig-media-id}/comments`).
+   * from `conversation_messages` (`social_media_id` = media id).
    */
   async listCommentsForPostForOwner(
     ownerId: number,
@@ -172,52 +162,101 @@ export class InstagramService {
         undefined,
         query.integrationId,
       );
-    const accessToken = await this.resolveGraphAccessToken(integration.id);
     const includeReplies = query.include_replies === true;
-
-    const url = new URL(
-      instagramGraphUrl(`${encodeURIComponent(mediaId)}/comments`),
-    );
-    url.searchParams.set(
-      "fields",
-      includeReplies
-        ? IG_COMMENT_LIST_FIELDS_WITH_REPLIES
-        : IG_COMMENT_LIST_FIELDS,
-    );
-    url.searchParams.set("filter", "stream");
-    url.searchParams.set("limit", String(query.limit ?? 25));
-    url.searchParams.set("access_token", accessToken);
-    if (query.after?.trim()) {
-      url.searchParams.set("after", query.after.trim());
+    const limit = query.limit ?? 25;
+    const after = this.decodeCommentCursor(query.after);
+    const before = this.decodeCommentCursor(query.before);
+    if (query.after?.trim() && !after) {
+      throw new BadRequestException("after is invalid");
     }
-    if (query.before?.trim()) {
-      url.searchParams.set("before", query.before.trim());
+    if (query.before?.trim() && !before) {
+      throw new BadRequestException("before is invalid");
     }
 
-    const commentsPage =
-      await this.instagramGraphFetch<IgCommentListResponse>(url);
-
-    const normalized = (commentsPage.data ?? []).map((item) =>
-      this.normalizeComment(item, { includeReplies }),
+    const qb = this.storedCommentsQuery(integration.workspaceId, mediaId).andWhere(
+      this.topLevelCommentSql(),
+      { mediaId },
     );
+    const direction = this.applyCommentKeyset(qb, { after, before, limit });
+    const fetched = await qb.getMany();
+    const { rows, paging } = this.sliceCommentPage(fetched, {
+      limit,
+      direction,
+      after,
+      before,
+    });
+
+    const parentIds = rows.map((row) => this.commentIdOf(row)).filter(Boolean);
+    const replyCountByParent = new Map<string, number>();
+    const repliesByParent = new Map<string, ConversationMessage[]>();
+
+    if (parentIds.length > 0) {
+      if (includeReplies) {
+        const replyRows = await this.storedCommentsQuery(
+          integration.workspaceId,
+          mediaId,
+        )
+          .andWhere("m.replied_to_external_id IN (:...parentIds)", { parentIds })
+          .andWhere(this.replyCommentSql(), { mediaId })
+          .orderBy("m.created_at", "ASC")
+          .addOrderBy("m.external_id", "ASC")
+          .getMany();
+        for (const reply of replyRows) {
+          const parentId = reply.repliedToExternalId?.trim();
+          if (!parentId) continue;
+          const list = repliesByParent.get(parentId) ?? [];
+          list.push(reply);
+          repliesByParent.set(parentId, list);
+          replyCountByParent.set(parentId, list.length);
+        }
+      } else {
+        const counts = await this.storedCommentsQuery(
+          integration.workspaceId,
+          mediaId,
+        )
+          .select("m.replied_to_external_id", "parent_id")
+          .addSelect("COUNT(*)", "cnt")
+          .andWhere("m.replied_to_external_id IN (:...parentIds)", { parentIds })
+          .andWhere(this.replyCommentSql(), { mediaId })
+          .groupBy("m.replied_to_external_id")
+          .getRawMany<{ parent_id: string; cnt: string | number }>();
+        for (const row of counts) {
+          const parentId = row.parent_id?.trim();
+          if (!parentId) continue;
+          replyCountByParent.set(parentId, Number(row.cnt) || 0);
+        }
+      }
+    }
+
+    const normalized = rows.map((row) => {
+      const id = this.commentIdOf(row);
+      const replyCount = replyCountByParent.get(id) ?? 0;
+      const nested =
+        includeReplies
+          ? (repliesByParent.get(id) ?? []).map((reply) =>
+              this.mapStoredComment(reply),
+            )
+          : undefined;
+      return this.mapStoredComment(row, {
+        reply_count: replyCount,
+        has_replies: replyCount > 0,
+        ...(nested && nested.length > 0 ? { replies: nested } : {}),
+      });
+    });
     const data = await this.enrichCommentsWithUsers(
       normalized,
-      integration,
-      accessToken,
+      integration.workspaceId,
     );
 
-    return {
-      data,
-      paging: this.mapMediaPaging(commentsPage.paging),
-    };
+    return { data, paging };
   }
 
   /**
-   * Lists one page of replies on a top-level comment
-   * (Graph `GET /{ig-comment-id}/replies`).
+   * Lists one page of replies on a top-level comment from `conversation_messages`.
    */
   async listRepliesForCommentForOwner(
     ownerId: number,
+    mediaId: string,
     commentId: string,
     query: ListInstagramCommentRepliesQueryDto = {},
   ): Promise<InstagramPostCommentsListResponseDto> {
@@ -227,37 +266,35 @@ export class InstagramService {
         undefined,
         query.integrationId,
       );
-    const accessToken = await this.resolveGraphAccessToken(integration.id);
-
-    const url = new URL(
-      instagramGraphUrl(`${encodeURIComponent(commentId)}/replies`),
-    );
-    url.searchParams.set("fields", IG_COMMENT_REPLY_FIELDS);
-    url.searchParams.set("limit", String(query.limit ?? 25));
-    url.searchParams.set("access_token", accessToken);
-    if (query.after?.trim()) {
-      url.searchParams.set("after", query.after.trim());
+    const limit = query.limit ?? 25;
+    const after = this.decodeCommentCursor(query.after);
+    const before = this.decodeCommentCursor(query.before);
+    if (query.after?.trim() && !after) {
+      throw new BadRequestException("after is invalid");
     }
-    if (query.before?.trim()) {
-      url.searchParams.set("before", query.before.trim());
+    if (query.before?.trim() && !before) {
+      throw new BadRequestException("before is invalid");
     }
 
-    const repliesPage =
-      await this.instagramGraphFetch<IgCommentListResponse>(url);
+    const qb = this.storedCommentsQuery(integration.workspaceId, mediaId)
+      .andWhere("m.replied_to_external_id = :commentId", { commentId })
+      .andWhere(this.replyCommentSql(), { mediaId });
+    const direction = this.applyCommentKeyset(qb, { after, before, limit });
+    const fetched = await qb.getMany();
+    const { rows, paging } = this.sliceCommentPage(fetched, {
+      limit,
+      direction,
+      after,
+      before,
+    });
 
-    const normalized = (repliesPage.data ?? []).map((item) =>
-      this.normalizeComment(item, { includeReplies: false }),
-    );
+    const normalized = rows.map((row) => this.mapStoredComment(row));
     const data = await this.enrichCommentsWithUsers(
       normalized,
-      integration,
-      accessToken,
+      integration.workspaceId,
     );
 
-    return {
-      data,
-      paging: this.mapMediaPaging(repliesPage.paging),
-    };
+    return { data, paging };
   }
 
   /**
@@ -431,27 +468,15 @@ export class InstagramService {
 
   private async enrichCommentsWithUsers(
     comments: InstagramCommentDto[],
-    integration: InstagramIntegration,
-    pageAccessToken: string,
+    workspaceId: number,
   ): Promise<InstagramCommentDto[]> {
     const authorIds = this.collectCommentAuthorIds(comments);
     if (authorIds.length === 0) {
       return comments;
     }
 
-    await this.instagramUsers.syncMissingFromGraph(
-      integration.workspaceId,
-      authorIds,
-      {
-        pageAccessToken,
-        userAccessToken: integration.userAccessToken,
-        businessAccountId: integration.instagramAccountId,
-        pageId: integration.pageId,
-        oauthProvider: integration.oauthProvider,
-      },
-    );
     const userById = await this.instagramUsers.getMapByIds(
-      integration.workspaceId,
+      workspaceId,
       authorIds,
     );
 
@@ -510,42 +535,172 @@ export class InstagramService {
     };
   }
 
-  private normalizeComment(
-    raw: InstagramCommentDto,
-    options: { includeReplies?: boolean } = {},
-  ): InstagramCommentDto {
-    const repliesNode = (
-      raw as {
-        replies?: {
-          data?: InstagramCommentDto[];
-          summary?: { total_count?: number };
-        };
-      }
-    ).replies;
+  private storedCommentsQuery(
+    workspaceId: number,
+    mediaId: string,
+  ): SelectQueryBuilder<ConversationMessage> {
+    return this.conversationMessageRepo
+      .createQueryBuilder("m")
+      .where("m.workspace_id = :workspaceId", { workspaceId })
+      .andWhere("m.social_media_id = :mediaId", { mediaId })
+      .andWhere("m.type = :type", {
+        type: ConversationMessageType.instagram_comment,
+      })
+      .andWhere("m.deleted_at IS NULL");
+  }
 
-    const replyCount = repliesNode?.summary?.total_count;
-    const repliesRaw = options.includeReplies ? repliesNode?.data : undefined;
-    const replies =
-      repliesRaw?.map((reply) =>
-        this.normalizeComment(reply, { includeReplies: false }),
-      ) ?? undefined;
+  /** Top-level comments: no parent, or parent is the media/post id (Instagram webhook). */
+  private topLevelCommentSql(): string {
+    return `(m.replied_to_external_id IS NULL OR m.replied_to_external_id = m.social_media_id OR m.replied_to_external_id = :mediaId)`;
+  }
+
+  private replyCommentSql(): string {
+    return `(m.replied_to_external_id IS NOT NULL AND m.replied_to_external_id <> m.social_media_id AND m.replied_to_external_id <> :mediaId)`;
+  }
+
+  private applyCommentKeyset(
+    qb: SelectQueryBuilder<ConversationMessage>,
+    params: {
+      after?: CommentListCursor | null;
+      before?: CommentListCursor | null;
+      limit: number;
+    },
+  ): "desc" | "asc" {
+    const idExpr = "m.external_id";
+    const goingBack = Boolean(params.before) && !params.after;
+    if (goingBack && params.before) {
+      qb.andWhere(
+        `(m.created_at > :cursorAt OR (m.created_at = :cursorAt AND ${idExpr} > :cursorId))`,
+        { cursorAt: params.before.t, cursorId: params.before.id },
+      );
+      qb.orderBy("m.created_at", "ASC").addOrderBy(idExpr, "ASC");
+      qb.take(params.limit + 1);
+      return "asc";
+    }
+    if (params.after) {
+      qb.andWhere(
+        `(m.created_at < :cursorAt OR (m.created_at = :cursorAt AND ${idExpr} < :cursorId))`,
+        { cursorAt: params.after.t, cursorId: params.after.id },
+      );
+    }
+    qb.orderBy("m.created_at", "DESC").addOrderBy(idExpr, "DESC");
+    qb.take(params.limit + 1);
+    return "desc";
+  }
+
+  private sliceCommentPage(
+    fetched: ConversationMessage[],
+    params: {
+      limit: number;
+      direction: "desc" | "asc";
+      after?: CommentListCursor | null;
+      before?: CommentListCursor | null;
+    },
+  ): {
+    rows: ConversationMessage[];
+    paging: InstagramMediaPagingDto | undefined;
+  } {
+    const hasMore = fetched.length > params.limit;
+    const sliced = hasMore ? fetched.slice(0, params.limit) : fetched;
+    const rows =
+      params.direction === "asc" ? [...sliced].reverse() : sliced;
+
+    if (rows.length === 0) {
+      return { rows, paging: undefined };
+    }
+
+    const first = this.encodeCommentCursor(rows[0]);
+    const last = this.encodeCommentCursor(rows[rows.length - 1]);
+    const goingBack = Boolean(params.before) && !params.after;
+    const hasNext = goingBack ? true : hasMore;
+    const hasPrevious = goingBack ? hasMore : Boolean(params.after);
 
     return {
-      id: raw.id ?? "",
-      text: raw.text,
-      timestamp: raw.timestamp,
-      username: raw.username ?? raw.from?.username,
-      like_count: raw.like_count,
-      hidden: raw.hidden,
-      ...(raw.from ? { from: raw.from } : {}),
-      ...(replyCount != null
+      rows,
+      paging: {
+        cursors: {
+          ...(first ? { before: first } : {}),
+          ...(last ? { after: last } : {}),
+        },
+        has_next: hasNext,
+        has_previous: hasPrevious,
+      },
+    };
+  }
+
+  private commentIdOf(row: ConversationMessage): string {
+    return (row.commentId ?? row.externalId)?.trim() ?? "";
+  }
+
+  private encodeCommentCursor(row: ConversationMessage): string {
+    return Buffer.from(
+      `${row.createdAt.toISOString()}|${row.externalId}`,
+      "utf8",
+    ).toString("base64url");
+  }
+
+  private decodeCommentCursor(raw?: string): CommentListCursor | null {
+    if (!raw?.trim()) return null;
+    try {
+      const decoded = Buffer.from(raw.trim(), "base64url").toString("utf8");
+      const sep = decoded.indexOf("|");
+      if (sep <= 0) return null;
+      const t = decoded.slice(0, sep);
+      const id = decoded.slice(sep + 1).trim();
+      if (!id || Number.isNaN(Date.parse(t))) return null;
+      return { t, id };
+    } catch {
+      return null;
+    }
+  }
+
+  private mapStoredComment(
+    row: ConversationMessage,
+    extras: {
+      reply_count?: number;
+      has_replies?: boolean;
+      replies?: InstagramCommentDto[];
+    } = {},
+  ): InstagramCommentDto {
+    const fromParsed = this.parseStoredCommentFrom(row);
+    const authorId = fromParsed.id || row.senderId?.trim() || "";
+    const username = fromParsed.username;
+    return {
+      id: this.commentIdOf(row),
+      text: row.message,
+      timestamp: row.createdAt.toISOString(),
+      ...(username ? { username } : {}),
+      ...(authorId
         ? {
-            reply_count: replyCount,
-            has_replies: replyCount > 0,
+            from: {
+              id: authorId,
+              ...(username ? { username } : {}),
+            },
           }
         : {}),
-      ...(replies && replies.length > 0 ? { replies } : {}),
+      ...extras,
     };
+  }
+
+  private parseStoredCommentFrom(row: ConversationMessage): {
+    id?: string;
+    username?: string;
+  } {
+    try {
+      const parsed = JSON.parse(row.instagramJson) as {
+        from?: { id?: string; username?: string };
+        webhook_comment?: { from?: { id?: string; username?: string } };
+      };
+      const from = parsed.from ?? parsed.webhook_comment?.from;
+      const id = from?.id?.trim();
+      const username = from?.username?.trim();
+      return {
+        ...(id ? { id } : {}),
+        ...(username ? { username } : {}),
+      };
+    } catch {
+      return {};
+    }
   }
 
   private async resolveGraphAccessToken(companyId: number): Promise<string> {

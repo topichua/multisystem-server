@@ -26,7 +26,7 @@ export class InstagramCommentDto {
   @ApiPropertyOptional()
   text?: string;
 
-  @ApiPropertyOptional({ description: "ISO 8601 from Graph" })
+  @ApiPropertyOptional({ description: "ISO 8601 comment timestamp" })
   timestamp?: string;
 
   @ApiPropertyOptional()
@@ -43,7 +43,7 @@ export class InstagramCommentDto {
 
   @ApiPropertyOptional({
     description:
-      "Number of replies on this comment (from Graph `replies.summary.total_count`).",
+      "Number of stored replies on this comment.",
   })
   reply_count?: number;
 

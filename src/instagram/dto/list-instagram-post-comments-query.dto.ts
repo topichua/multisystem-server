@@ -27,7 +27,7 @@ export class ListInstagramPostCommentsQueryDto {
     default: 25,
     minimum: 1,
     maximum: 50,
-    description: "Page size passed to Graph `limit` (max 50 for comments).",
+    description: "Page size for stored comments (max 50).",
   })
   @IsOptional()
   @Type(() => Number)
@@ -38,7 +38,7 @@ export class ListInstagramPostCommentsQueryDto {
 
   @ApiPropertyOptional({
     description:
-      "Graph cursor for the next page. Use `paging.cursors.after` from the previous response.",
+      "Cursor for the next page. Use `paging.cursors.after` from the previous response.",
   })
   @IsOptional()
   @Transform(({ value }) => {
@@ -52,7 +52,7 @@ export class ListInstagramPostCommentsQueryDto {
 
   @ApiPropertyOptional({
     description:
-      "Graph cursor for the previous page. Use `paging.cursors.before` from the previous response.",
+      "Cursor for the previous page. Use `paging.cursors.before` from the previous response.",
   })
   @IsOptional()
   @Transform(({ value }) => {
@@ -67,7 +67,7 @@ export class ListInstagramPostCommentsQueryDto {
   @ApiPropertyOptional({
     default: false,
     description:
-      "When true, embeds full reply objects in each comment (heavier Graph request). " +
+      "When true, embeds full reply objects in each comment. " +
       "Default false: only returns lightweight `reply_count` / `has_replies`; load replies via " +
       "GET /api/instagram/posts/:id/comments/:commentId/replies.",
   })
