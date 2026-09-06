@@ -582,7 +582,6 @@ export class ConversationsAllocationService {
     const attachment = buildIgSharedPostWebhookAttachment({
       mediaId: detail?.id?.trim() || postId,
       mediaProductType: params.mediaProductType,
-      permalink: detail?.permalink,
       mediaUrl: detail?.media_url || child?.media_url,
       thumbnailUrl: detail?.thumbnail_url || child?.thumbnail_url,
       caption: detail?.caption,

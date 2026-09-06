@@ -253,11 +253,11 @@ export function serializeWebhookAttachmentsJson(
 /**
  * Build an `ig_post` / `ig_reel` webhook attachment from Graph media
  * (same shape as a shared post link in DMs).
+ * `url` / `link` use the CDN media asset (`media_url` / `thumbnail_url`), not the IG permalink.
  */
 export function buildIgSharedPostWebhookAttachment(params: {
   mediaId: string;
   mediaProductType?: string | null;
-  permalink?: string | null;
   mediaUrl?: string | null;
   thumbnailUrl?: string | null;
   caption?: string | null;
@@ -271,10 +271,7 @@ export function buildIgSharedPostWebhookAttachment(params: {
   const isReel = productType === "REELS" || productType === "CLIPS";
   const type = isReel ? "ig_reel" : "ig_post";
   const url =
-    params.permalink?.trim() ||
-    params.mediaUrl?.trim() ||
-    params.thumbnailUrl?.trim() ||
-    "";
+    params.mediaUrl?.trim() || params.thumbnailUrl?.trim() || "";
   const title = params.caption?.trim().slice(0, 200) || undefined;
 
   return {
