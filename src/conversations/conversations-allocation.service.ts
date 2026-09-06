@@ -49,8 +49,12 @@ import {
   extractSocialMediaIdFromWebhook,
   resolveWebhookMessageType,
   serializeWebhookAttachmentsJson,
+  serializeMessageAttachmentsJson,
+  buildIgSharedPostWebhookAttachment,
+  mapWebhookAttachmentsToGraphShape,
   webhookMessagingToInstagramMessageDto,
 } from "./instagram-webhook-message.util";
+import type { InstagramGraphMediaDetail } from "../instagram/instagram.service";
 import { mergeMessageJsonPreservingReactions } from "./instagram-message-reactions.util";
 import {
   parseReactionsJson,
@@ -467,6 +471,14 @@ export class ConversationsAllocationService {
         where: { externalId: commentId },
       }));
 
+    const postShare = await this.resolveCommentPostShareAttachment({
+      postId,
+      mediaProductType: value.media?.media_product_type,
+      accessToken: ctx.accessToken,
+      at: createdTime,
+      traceId: ctx.traceId,
+    });
+
     const instagramJson = JSON.stringify({
       created_time: createdTimeIso,
       message: text,
@@ -475,6 +487,8 @@ export class ConversationsAllocationService {
         ...(value.from?.username ? { username: value.from.username } : {}),
       },
       to: { data: receiverId ? [{ id: receiverId }] : [] },
+      ...(postShare?.shares ? { shares: postShare.shares } : {}),
+      ...(postShare?.attachments ? { attachments: postShare.attachments } : {}),
       webhook_comment: value,
     });
 
@@ -494,6 +508,7 @@ export class ConversationsAllocationService {
     }
     messageRow.message = text;
     messageRow.instagramJson = instagramJson;
+    messageRow.attachmentJson = postShare?.attachmentJson ?? null;
     messageRow.senderId = fromId;
     messageRow.receiverId = receiverId || "0";
     messageRow.messageType = ConversationMessageType.instagram_comment;
@@ -503,6 +518,11 @@ export class ConversationsAllocationService {
       messageRow.repliedToExternalId = parentId;
     }
 
+    await this.archiveInstagramMessageRow(
+      messageRow,
+      ctx.accessToken,
+      conv.id,
+    );
     await this.persistAndNotify(messageRow, ctx.companyCtx.ownerId);
 
     await this.syncInstagramUsersForWebhookAllocation({
@@ -521,6 +541,78 @@ export class ConversationsAllocationService {
     this.log.log(
       `${t} comment saved id=${commentId} conversation_id=${conv.id} postId=${postId ?? "-"}`,
     );
+  }
+
+  /**
+   * Load parent post via Graph and map it like a shared `ig_post` / `ig_reel` link
+   * so comment messages get the same `shares` + `attachment_json` shape as DMs.
+   */
+  private async resolveCommentPostShareAttachment(params: {
+    postId: string | null;
+    mediaProductType?: string | null;
+    accessToken: string;
+    at: Date;
+    traceId: string;
+  }): Promise<{
+    shares?: ReturnType<
+      typeof mapWebhookAttachmentsToGraphShape
+    >["shares"];
+    attachments?: ReturnType<
+      typeof mapWebhookAttachmentsToGraphShape
+    >["attachments"];
+    attachmentJson: string | null;
+  } | null> {
+    const postId = params.postId?.trim() ?? "";
+    if (!postId) {
+      return null;
+    }
+
+    const t = `[webhook trace=${params.traceId}]`;
+    let detail: InstagramGraphMediaDetail | null = null;
+    try {
+      detail = await this.fetchInstagramMediaById(postId, params.accessToken);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `${t} comment post fetch failed postId=${postId.slice(0, 64)}: ${err}`,
+      );
+    }
+
+    const child = detail?.children?.data?.[0];
+    const attachment = buildIgSharedPostWebhookAttachment({
+      mediaId: detail?.id?.trim() || postId,
+      mediaProductType: params.mediaProductType,
+      permalink: detail?.permalink,
+      mediaUrl: detail?.media_url || child?.media_url,
+      thumbnailUrl: detail?.thumbnail_url || child?.thumbnail_url,
+      caption: detail?.caption,
+    });
+    if (!attachment) {
+      return null;
+    }
+
+    const mapped = mapWebhookAttachmentsToGraphShape([attachment]);
+    return {
+      ...(mapped.shares ? { shares: mapped.shares } : {}),
+      ...(mapped.attachments ? { attachments: mapped.attachments } : {}),
+      attachmentJson: serializeMessageAttachmentsJson([attachment], params.at),
+    };
+  }
+
+  /** Graph `GET /{media-id}` — same fields as GET Instagram post by id. */
+  private async fetchInstagramMediaById(
+    mediaId: string,
+    accessToken: string,
+  ): Promise<InstagramGraphMediaDetail> {
+    const fields =
+      "caption,media_type,media_url,thumbnail_url,permalink,shortcode," +
+      "children{id,media_type,media_url,thumbnail_url,permalink}";
+    const url = new URL(
+      `${INSTAGRAM_GRAPH_ORIGIN}/v25.0/${encodeURIComponent(mediaId)}`,
+    );
+    url.searchParams.set("fields", fields);
+    url.searchParams.set("access_token", accessToken);
+    return this.instagramGraphFetch<InstagramGraphMediaDetail>(url);
   }
 
   private isOwnInstagramAccount(

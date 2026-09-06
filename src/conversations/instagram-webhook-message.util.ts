@@ -99,7 +99,8 @@ function mapWebhookAttachmentToGraphData(
   }
 }
 
-function mapWebhookAttachmentsToGraphShape(
+/** Map webhook `message.attachments[]` → Graph-shaped `attachments` / `shares`. */
+export function mapWebhookAttachmentsToGraphShape(
   attachments: InstagramWebhookMessageAttachment[],
 ): {
   attachments?: InstagramMessageAttachmentsDto;
@@ -242,6 +243,56 @@ export function serializeWebhookAttachmentsJson(
   at: Date,
 ): string | null {
   const attachments = ev.message?.attachments ?? [];
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return serializeMessageAttachmentsJson(attachments, at);
+}
+
+/**
+ * Build an `ig_post` / `ig_reel` webhook attachment from Graph media
+ * (same shape as a shared post link in DMs).
+ */
+export function buildIgSharedPostWebhookAttachment(params: {
+  mediaId: string;
+  mediaProductType?: string | null;
+  permalink?: string | null;
+  mediaUrl?: string | null;
+  thumbnailUrl?: string | null;
+  caption?: string | null;
+}): InstagramWebhookMessageAttachment | null {
+  const mediaId = params.mediaId.trim();
+  if (!mediaId) {
+    return null;
+  }
+
+  const productType = params.mediaProductType?.trim().toUpperCase() ?? "";
+  const isReel = productType === "REELS" || productType === "CLIPS";
+  const type = isReel ? "ig_reel" : "ig_post";
+  const url =
+    params.permalink?.trim() ||
+    params.mediaUrl?.trim() ||
+    params.thumbnailUrl?.trim() ||
+    "";
+  const title = params.caption?.trim().slice(0, 200) || undefined;
+
+  return {
+    type,
+    payload: {
+      ...(url ? { url } : {}),
+      ...(title ? { title } : {}),
+      ig_post_media_id: mediaId,
+      ...(isReel ? { reel_video_id: mediaId } : {}),
+    },
+  };
+}
+
+/** Serialize attachment list for `conversation_messages.attachment_json`. */
+export function serializeMessageAttachmentsJson(
+  attachments: InstagramWebhookMessageAttachment[],
+  at: Date,
+): string | null {
   if (attachments.length === 0) {
     return null;
   }
