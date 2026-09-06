@@ -1,5 +1,6 @@
 import { forwardRef, Inject, Injectable } from "@nestjs/common";
 import { ConversationMessage } from "../database/entities";
+import type { ConversationRowDto } from "./dto/http/conversations-list-response.dto";
 import { ConversationMessagePresenterService } from "./conversation-message-presenter.service";
 import { ConversationsRealtimeService } from "./conversations-realtime.service";
 import { ConversationsService } from "./conversations.service";
@@ -39,11 +40,14 @@ export class ConversationMessageNotifyService {
   async notifyConversationForOwner(
     ownerId: number,
     conversation: { id: number; workspaceId: number },
+    conversationRow?: ConversationRowDto,
   ): Promise<void> {
-    const row = await this.conversations.getConversationForOwnerById(
-      ownerId,
-      conversation.id,
-    );
+    const row =
+      conversationRow ??
+      (await this.conversations.getConversationForOwnerById(
+        ownerId,
+        conversation.id,
+      ));
     this.realtime.emitUpdate(ownerId, conversation, { conversation: row });
   }
 }

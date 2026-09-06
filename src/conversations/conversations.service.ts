@@ -1293,8 +1293,20 @@ export class ConversationsService {
       conv.readAt = readAt;
       await this.conversationRepo.save(conv);
     }
-    await this.messageNotify.notifyConversationForOwner(userId, conv);
-    return this.getConversationForOwnerById(userId, conv.id, context);
+    const row = await this.getConversationForOwnerById(
+      userId,
+      conv.id,
+      context,
+    );
+    try {
+      await this.messageNotify.notifyConversationForOwner(userId, conv, row);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.log.warn(
+        `mark-read websocket notify failed conversationId=${conv.id}: ${err}`,
+      );
+    }
+    return row;
   }
 
   private async buildConversationRowForUser(
@@ -4341,6 +4353,7 @@ export class ConversationsService {
     });
 
     await this.conversationWorkflow.onOutboundAgentReply(conv);
+    await this.touchConversationInstUpdatedAt(conv, new Date());
     return result;
   }
 
@@ -4740,6 +4753,8 @@ export class ConversationsService {
       return;
     }
 
+    await this.touchConversationInstUpdatedAt(params.conv, params.messageDate);
+
     const legacyAttachments = this.buildInstagramLegacyAttachmentsFromStored(
       params.storedAttachments,
     );
@@ -4769,6 +4784,18 @@ export class ConversationsService {
 
     const saved = await this.conversationMessageRepo.save(row);
     await this.messageNotify.notifyPersistedMessage(saved, params.ownerId);
+  }
+
+  private async touchConversationInstUpdatedAt(
+    conv: Conversation,
+    at: Date,
+  ): Promise<void> {
+    const next = Number.isNaN(at.getTime()) ? new Date() : at;
+    if (conv.instUpdatedAt.getTime() >= next.getTime()) {
+      return;
+    }
+    conv.instUpdatedAt = next;
+    await this.conversationRepo.save(conv);
   }
 
   private async instagramGraphFetch<T>(

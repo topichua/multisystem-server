@@ -738,6 +738,7 @@ export class ConversationsController {
     summary: "Mark conversation as read",
     description:
       "Sets `conversations.read_at` to now so list `isUnread` becomes false when the latest message is from the customer. " +
+      "Pushes `conversations.update` on `/conversations` with the same conversation object (`isUnread` included) so other views can clear the unread badge. " +
       "Same access rules as GET /conversations/:id/messages. Idempotent if already read.",
   })
   @ApiOkResponse({ type: ConversationRowDto })

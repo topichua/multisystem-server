@@ -341,6 +341,13 @@ export class ConversationsAllocationService {
       return;
     }
 
+    if (!saveConversation) {
+      await this.touchConversationInstUpdatedAt(
+        conv,
+        this.instUpdatedAtFromWebhookMessage(msg.created_time),
+      );
+    }
+
     const existingMessage = await this.conversationMessageRepo.findOne({
       where: {
         externalId: mid,
@@ -1295,6 +1302,19 @@ export class ConversationsAllocationService {
     const d = new Date(createdTime);
     if (!Number.isNaN(d.getTime())) return d;
     return new Date();
+  }
+
+  /** Bump `conversations.inst_updated_at` when a newer message lands on an existing thread. */
+  private async touchConversationInstUpdatedAt(
+    conv: Conversation,
+    at: Date,
+  ): Promise<void> {
+    const next = Number.isNaN(at.getTime()) ? new Date() : at;
+    if (conv.instUpdatedAt.getTime() >= next.getTime()) {
+      return;
+    }
+    conv.instUpdatedAt = next;
+    await this.conversationRepo.save(conv);
   }
 
   /**
