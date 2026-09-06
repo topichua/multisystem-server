@@ -60,6 +60,7 @@ import { SendInstagramMessageRequestDto } from "./dto/http/send-instagram-messag
 import { SendInstagramMessageResponseDto } from "./dto/http/send-instagram-message-response.dto";
 import { InstagramGraphMessagesResponseDto } from "./dto/http/instagram-graph-messages-response.dto";
 import { ListInstagramGraphMessagesQueryDto } from "./dto/http/list-instagram-graph-messages-query.dto";
+import { MarkConversationPostCommentsReadResponseDto } from "./dto/http/mark-conversation-post-comments-read-response.dto";
 import { ConversationChannelCriteriaResponseDto } from "./dto/http/conversations-channel-criteria-response.dto";
 import { ConversationGroupingBy } from "./dto/http/conversation-grouping-by.enum";
 import { ConversationsGroupsResponseDto } from "./dto/http/conversations-groups-response.dto";
@@ -553,6 +554,42 @@ export class ConversationsController {
     );
   }
 
+  @Post(":conversationId/posts/:postId/read")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Mark post comments as read",
+    description:
+      "Sets `conversation_messages.read_at` to now for Instagram comments in this conversation " +
+      "whose `social_media_id` matches `postId`. Does not change `conversations.read_at`. " +
+      "Same access rules as GET /conversations/:conversationId/messages.",
+  })
+  @ApiOkResponse({ type: MarkConversationPostCommentsReadResponseDto })
+  async markConversationPostCommentsRead(
+    @Req() req: { user?: AuthUser },
+    @Param("conversationId") conversationId: string,
+    @Param("postId") postId: string,
+  ): Promise<MarkConversationPostCommentsReadResponseDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
+    return this.conversationsService.markConversationPostCommentsRead(
+      ownerId,
+      conversationId,
+      postId,
+      {
+        sessionWorkspaceId,
+        appRole: req.user?.role,
+      },
+    );
+  }
+
   @Get(":conversationId/graph-messages")
   @ApiOperation({
     summary: "Get Instagram messages live from Meta Graph API",
@@ -686,6 +723,47 @@ export class ConversationsController {
       throw new BadRequestException("id must be a positive integer");
     }
     return this.conversationsService.takeConversationForUser(
+      ownerId,
+      numericId,
+      {
+        sessionWorkspaceId,
+        appRole: req.user?.role,
+      },
+    );
+  }
+
+  @Post(":id/read")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Mark conversation as read",
+    description:
+      "Sets `conversations.read_at` to now so list `isUnread` becomes false when the latest message is from the customer. " +
+      "Same access rules as GET /conversations/:id/messages. Idempotent if already read.",
+  })
+  @ApiOkResponse({ type: ConversationRowDto })
+  async markConversationRead(
+    @Req() req: { user?: AuthUser },
+    @Param("id") id: string,
+  ): Promise<ConversationRowDto> {
+    const ownerId = Number(req.user?.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      throw new BadRequestException(
+        "Current authorized user does not contain numeric owner id",
+      );
+    }
+    const sessionWorkspaceId = req.user?.workspaceId;
+    if (sessionWorkspaceId == null) {
+      throw new BadRequestException("workspaceId is required in JWT session");
+    }
+    const numericId = Number(id);
+    if (
+      !Number.isInteger(numericId) ||
+      numericId <= 0 ||
+      !/^\d+$/.test(id.trim())
+    ) {
+      throw new BadRequestException("id must be a positive integer");
+    }
+    return this.conversationsService.markConversationReadForUser(
       ownerId,
       numericId,
       {

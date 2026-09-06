@@ -1275,6 +1275,28 @@ export class ConversationsService {
     );
   }
 
+  /**
+   * Sets `conversations.read_at` to now so list `isUnread` is false for inbound last messages.
+   */
+  async markConversationReadForUser(
+    userId: number,
+    conversationId: number,
+    context: { sessionWorkspaceId: number; appRole?: string },
+  ): Promise<ConversationRowDto> {
+    const conv = await this.requireReadableConversation(
+      userId,
+      String(conversationId),
+      context,
+    );
+    const readAt = new Date();
+    if (conv.readAt == null || conv.readAt.getTime() < readAt.getTime()) {
+      conv.readAt = readAt;
+      await this.conversationRepo.save(conv);
+    }
+    await this.messageNotify.notifyConversationForOwner(userId, conv);
+    return this.getConversationForOwnerById(userId, conv.id, context);
+  }
+
   private async buildConversationRowForUser(
     userId: number,
     conversationId: number,
@@ -3994,6 +4016,49 @@ export class ConversationsService {
       pageSize: options.pageSize ?? 50,
     });
     return result;
+  }
+
+  /**
+   * Sets `conversation_messages.read_at` to now for comments on a post in this thread.
+   */
+  async markConversationPostCommentsRead(
+    ownerId: number,
+    conversationId: string,
+    postIdRaw: string,
+    context: { sessionWorkspaceId: number; appRole?: string },
+  ): Promise<{ read_at: string; updated: number }> {
+    const postId = postIdRaw?.trim();
+    if (!postId || postId.length > 128) {
+      throw new BadRequestException("postId is invalid");
+    }
+
+    const conv = await this.requireReadableConversation(
+      ownerId,
+      conversationId,
+      context,
+    );
+    const readAt = new Date();
+    const result = await this.conversationMessageRepo
+      .createQueryBuilder()
+      .update(ConversationMessage)
+      .set({ readAt })
+      .where("workspace_id = :workspaceId", { workspaceId: conv.workspaceId })
+      .andWhere("conversation_id = :conversationId", {
+        conversationId: conv.id,
+      })
+      .andWhere("social_media_id = :postId", { postId })
+      .andWhere("type = :type", {
+        type: ConversationMessageType.instagram_comment,
+      })
+      .andWhere("deleted_at IS NULL")
+      .execute();
+
+    const updated = result.affected ?? 0;
+    if (updated > 0) {
+      await this.messageNotify.notifyConversationForOwner(ownerId, conv);
+    }
+
+    return { read_at: readAt.toISOString(), updated };
   }
 
   /**

@@ -43,7 +43,7 @@ export class ConversationRowDto {
 
   @ApiProperty({
     description:
-      "True when the latest message is from the participant (not your account) and is newer than `read_at` on this conversation, or you have never opened the thread (`read_at` null). Updated when you GET conversation messages.",
+      "True when the latest message is from the participant (not your account) and is newer than `conversations.read_at`, or you have never opened the thread (`read_at` null). Call POST /conversations/:id/read after viewing the thread.",
   })
   isUnread: boolean;
 
